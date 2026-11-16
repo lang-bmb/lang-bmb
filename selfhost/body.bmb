@@ -4,7 +4,7 @@ mod body {
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
     #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
-    struct Body { c: decls::Checker, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
+    struct Body { c: decls::Checker, recursive: table::Table<usize>, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
 
     impl Body {
         #[summary("caller가 callee를 부른다고 적는다")]
@@ -1434,6 +1434,28 @@ mod body {
             self.c.tparams = Vec::new();
         }
 
+        #[summary("프로그램의 main: 하나뿐이고 (E0702, 글의 순서로 뒤의 것이 남는 것) `#[effects(io)] fn main() -> ()` 꼴이다 (E0701)")]
+        #[effects(alloc)]
+        fn check_main(self: &mut Body, p: &ast::Program) -> () {
+            let mut found: Vec<ast::FnDef> = Vec::new();
+            for i in 0..p.mods.len()
+                invariant 0 <= i && i <= p.mods.len(),
+            {
+                mains_of(&p.mods[i], &mut found, 100000);
+            }
+            let mains: Vec<ast::FnDef> = by_place(found.as_slice());
+            for i in 0..mains.len()
+                invariant 0 <= i && i <= mains.len(),
+            {
+                if i > 0 {
+                    self.c.err("E0702", mains[i].name.span, "the program already has a `main`");
+                }
+                if mains[i].params.len() != 0 || !decls::is_unit(&mains[i].ret.ty.kind) || !declares_io(mains[i].attrs.as_slice()) {
+                    self.c.help("E0701", mains[i].name.span, "`main` must be `#[effects(io)] fn main() -> ()`", "write `#[effects(io)] fn main() -> ()`: no parameters, no result (other effects may be listed with `io`)");
+                }
+            }
+        }
+
         #[summary("단위 하나: 속성과 요약, 안의 단위, 상수, 함수, impl과 trait의 함수")]
         #[effects(alloc)]
         fn check_mod(self: &mut Body, m: &ast::Mod, prefix: &str, f: usize) -> ()
@@ -1526,6 +1548,59 @@ mod body {
             match ref_inner(&t.kind) {
                 None => { if !is_exec(kind) && named_one(&t.kind, "Vec") { self.spec_vec(t.span); } else if !is_exec(kind) && named_one(&t.kind, "String") { self.spec_string(t.span); } else { self.check_value_type(t, "parameter type"); } },
                 Some(inner) => self.check_ref_param(t.span, types::is_ref_mut(&t.kind), &inner, kind, resolved),
+            }
+        }
+
+        #[summary("재귀: 호출 그래프의 순환마다 번호를 적고(recursive), 순환 위의 정의에 decreases가 없으면 E0507 (경계 있는 Self의 호출을 지나는 순환은 trait_cycles가 E0207로 알린다). 타입 매개변수를 더 큰 타입에 싸서 넘기는 재귀 호출은 E0430 (인스턴스가 끝나지 않는다)")]
+        #[effects(alloc)]
+        fn check_recursion(self: &mut Body, p: &ast::Program) -> () {
+            let rows: Vec<DefRow> = defs_of(p, &self.c.fns);
+            let mut defs: table::Table<DefRow> = table::new::<DefRow>();
+            for i in 0..rows.len()
+                invariant 0 <= i && i <= rows.len(),
+            {
+                if !defs.has(rows[i].path.as_str()) {
+                    defs.insert(rows[i].path.as_str(), rows[i].clone());
+                }
+            }
+            let comps: Vec<Vec<String>> = sccs_with_cycles(&self.calls);
+            for i in 0..comps.len()
+                invariant 0 <= i && i <= comps.len(),
+            {
+                for j in 0..comps[i].len()
+                    invariant 0 <= j && j <= comps[i].len(),
+                {
+                    self.recursive.insert(comps[i][j].as_str(), i);
+                }
+            }
+            let through_trait: Vec<String> = self.trait_cycles(&defs);
+            for i in 0..comps.len()
+                invariant 0 <= i && i <= comps.len(),
+            {
+                for j in 0..comps[i].len()
+                    invariant 0 <= j && j <= comps[i].len(),
+                {
+                    match defs.find(comps[i][j].as_str()) {
+                        None => {},
+                        Some(at) => { if !defs.items[at].has_dec && !types::has(through_trait.as_slice(), comps[i][j].as_str()) { self.c.help("E0507", defs.items[at].span, types::cat3("`", comps[i][j].as_str(), "` is recursive and has no `decreases` clause").as_str(), "add `decreases <expr>,` after `ensures`"); } },
+                    }
+                }
+            }
+            let calls: Vec<GCall> = self.gcalls.clone();
+            self.gcalls = Vec::new();
+            for i in 0..calls.len()
+                invariant 0 <= i && i <= calls.len(),
+            {
+                let same: bool = match self.recursive.find(calls[i].caller.as_str()) {
+                    None => false,
+                    Some(a) => { match self.recursive.find(calls[i].callee.as_str()) { None => false, Some(b) => self.recursive.items[a] == self.recursive.items[b], } },
+                };
+                if same {
+                    match wrapped_param(calls[i].args.as_slice()) {
+                        None => {},
+                        Some(t) => { self.c.help("E0430", calls[i].span, types::cat5("the recursive call of `", calls[i].callee.as_str(), "` wraps a type parameter in `", types::text(&t).as_str(), "`: its instances would never end").as_str(), "pass a type parameter itself or a type without parameters"); },
+                    }
+                }
             }
         }
 
@@ -2061,6 +2136,19 @@ mod body {
             self.c.fixed("E0218", a.span, "a `Vec` is not a slice", types::cat3("pass `", r.as_str(), "`").as_str(), r.as_str());
         }
 
+        #[summary("타입 인자 a로 부른 호출 e가 닿는 인스턴스: trait 메서드면 그 Self의 impl의 함수 (정해지지 않으면 없음), 아니면 그 함수 자신")]
+        #[effects(alloc)]
+        fn edge_target(self: &Body, e: &Edge, a: Vec<ast::TypeKind>) -> Option<Edge> {
+            if self.trait_method(e.callee.as_str()) {
+                match dispatch(&self.c.fns, self.c.trait_impls.as_slice(), e.callee.as_str(), a.as_slice()) {
+                    None => None,
+                    Some(d) => Some(Edge { callee: d.path, args: d.args }),
+                }
+            } else {
+                Some(Edge { callee: e.callee.clone(), args: a })
+            }
+        }
+
         #[summary("색인한 자리: 원소의 타입, 색인할 수 없으면 E0407")]
         #[effects(alloc)]
         fn elem_place(self: &mut Body, span: source::Span, p: Place) -> Place {
@@ -2569,6 +2657,27 @@ mod body {
                 return ast::TypeKind::Error;
             }
             ast::TypeKind::Named(path, targs)
+        }
+
+        #[summary("인스턴스 w(정의와 타입 인자)가 부르는 인스턴스들을 그래프에 넣는다: trait 메서드의 호출은 Self가 알려지면 impl의 함수로 가고(호출에서 Self가 타입 매개변수였으면 경계 있는 호출로 적는다), 깊이가 한도를 넘는 타입 인자의 호출은 버린다")]
+        #[effects(alloc)]
+        fn instance_edges(self: &Body, w: &Edge, edges: &table::Table<Vec<Edge>>, graph: &mut table::Table<Vec<String>>, bound_edges: &mut Vec<Pair>, base_of: &mut table::Table<String>, work: &mut Vec<Edge>) -> () {
+            let k: String = inst_key(w.callee.as_str(), w.args.as_slice());
+            if graph.has(k.as_str()) {
+                return;
+            }
+            let mut to: Vec<String> = Vec::new();
+            base_of.insert(k.as_str(), w.callee.clone());
+            let mut sub: types::Subst = empty_subst();
+            match self.c.fns.find(w.callee.as_str()) {
+                None => {},
+                Some(at) => { for i in 0..self.c.fns.items[at].generics.len() invariant 0 <= i && i <= self.c.fns.items[at].generics.len(), { if i < w.args.len() { sub_put(&mut sub, self.c.fns.items[at].generics[i].name.as_str(), w.args[i].clone()); } } },
+            }
+            match edges.find(w.callee.as_str()) {
+                None => {},
+                Some(e) => { for i in 0..edges.items[e].len() invariant 0 <= i && i <= edges.items[e].len(), { let mut a: Vec<ast::TypeKind> = Vec::new(); let mut deep: bool = false; for j in 0..edges.items[e][i].args.len() invariant 0 <= j && j <= edges.items[e][i].args.len(), { let t: ast::TypeKind = types::subst(&edges.items[e][i].args[j], &sub); if type_depth(&t, 100000) > 8 { deep = true; } a.push(t); } if !deep { match self.edge_target(&edges.items[e][i], a.clone()) { None => {}, Some(target) => { let ck: String = inst_key(target.callee.as_str(), target.args.as_slice()); if edges.items[e][i].args.len() > 0 && types::is_param(&edges.items[e][i].args[0]) && self.trait_method(edges.items[e][i].callee.as_str()) { bound_edges.push(Pair { from: k.clone(), to: ck.clone() }); } types::add(&mut to, ck.as_str()); work.push(target); }, } } } },
+            }
+            graph.insert(k.as_str(), to);
         }
 
         #[summary("f64를 기대한 자리의 정수 리터럴 (let x: f64 = 1;): E0401, 고침은 실수 리터럴. 검사는 f64로 이어 간다")]
@@ -3671,6 +3780,15 @@ mod body {
             match lookup(cx, id.name.as_str()) {
                 None => { self.unknown_local(cx, id.name.as_str(), id.span); ast::TypeKind::Error },
                 Some(l) => { if !l.mutable { let msg: String = types::cat3("`", id.name.as_str(), "` is not mutable"); if l.is_param { self.c.help("E0408", target.span, msg.as_str(), "copy the parameter into a `let mut` local"); } else if types::has(cx.for_vars.as_slice(), id.name.as_str()) { self.c.help("E0408", target.span, msg.as_str(), "a `for` variable steps by itself; copy it into a `let mut` local to change the copy"); } else { self.c.help("E0408", target.span, msg.as_str(), "declare it with `let mut`"); } } l.ty },
+            }
+        }
+
+        #[summary("타입 매개변수가 없는 함수인가")]
+        #[effects(alloc)]
+        fn plain_fn(self: &Body, path: &str) -> bool {
+            match self.c.fns.find(path) {
+                None => false,
+                Some(at) => self.c.fns.items[at].generics.len() == 0,
             }
         }
 
@@ -4804,6 +4922,71 @@ mod body {
             self.expr(cx, e, hint, mode, f - 1)
         }
 
+        #[summary("경계 있는 Self의 호출을 지나는 재귀 (ADR-0046 §2): 타입 매개변수 없는 정의에서 닿는 인스턴스의 그래프에서 그런 호출을 지나는 순환. 제네릭 정의는 한 번 증명되고 거기서 그 호출은 trait의 계약만 이름하는데, 계약에는 척도가 없다. 그런 순환의 정의에 E0207을 내고 그 정의들을 돌려준다. 구조를 따라 맡기는 것(impl<T: Shape> Shape for Wrap<T>가 T의 것을 부름)은 순환이 아니다")]
+        #[effects(alloc)]
+        fn trait_cycles(self: &mut Body, defs: &table::Table<DefRow>) -> Vec<String> {
+            let mut edges: table::Table<Vec<Edge>> = table::new::<Vec<Edge>>();
+            for i in 0..self.gcalls.len()
+                invariant 0 <= i && i <= self.gcalls.len(),
+            {
+                add_edge(&mut edges, self.gcalls[i].caller.as_str(), Edge { callee: self.gcalls[i].callee.clone(), args: self.gcalls[i].args.clone() });
+            }
+            let callers: usize = self.calls.len();
+            for n in 0..callers
+                invariant 0 <= n && n <= callers,
+            {
+                match self.calls.nth(n) {
+                    None => {},
+                    Some(at) => { let caller: String = self.calls.key(n); let cs: Vec<String> = decls::sorted(self.calls.items[at].as_slice()); for j in 0..cs.len() invariant 0 <= j && j <= cs.len(), { if self.plain_fn(cs[j].as_str()) { let none: Vec<ast::TypeKind> = Vec::new(); add_edge(&mut edges, caller.as_str(), Edge { callee: cs[j].clone(), args: none }); } } },
+                }
+            }
+            let mut graph: table::Table<Vec<String>> = table::new::<Vec<String>>();
+            let mut bound_edges: Vec<Pair> = Vec::new();
+            let mut base_of: table::Table<String> = table::new::<String>();
+            let mut work: Vec<Edge> = Vec::new();
+            let total: usize = defs.len();
+            for n in 0..total
+                invariant 0 <= n && n <= total,
+            {
+                let path: String = defs.key(n);
+                if self.plain_fn(path.as_str()) {
+                    let none: Vec<ast::TypeKind> = Vec::new();
+                    work.push(Edge { callee: path.clone(), args: none });
+                }
+            }
+            let mut fuel: usize = 1000000000;
+            while work.len() > 0 && fuel > 0
+                invariant 0 <= fuel,
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match work.pop() {
+                    None => {},
+                    Some(w) => { self.instance_edges(&w, &edges, &mut graph, &mut bound_edges, &mut base_of, &mut work); },
+                }
+            }
+            let mut out: Vec<String> = Vec::new();
+            let comps: Vec<Vec<String>> = sccs_with_cycles(&graph);
+            for i in 0..comps.len()
+                invariant 0 <= i && i <= comps.len(),
+            {
+                match first_bound(bound_edges.as_slice(), comps[i].as_slice()) {
+                    None => {},
+                    Some(to) => { for j in 0..comps[i].len() invariant 0 <= j && j <= comps[i].len(), { match base_of.find(comps[i][j].as_str()) { None => {}, Some(at) => { let b: String = base_of.items[at].clone(); if types::add(&mut out, b.as_str()) { match defs.find(b.as_str()) { None => {}, Some(d) => { self.c.help("E0207", defs.items[d].span, types::cat5("`", b.as_str(), "` is recursive through a call on a bounded `Self` (reaching `", to.as_str(), "`), which carries no measure (ADR-0046 §4)").as_str(), "call with a known `Self` type, or break the cycle"); }, } } }, } } },
+                }
+            }
+            out
+        }
+
+        #[summary("trait의 메서드인가")]
+        #[effects(alloc)]
+        fn trait_method(self: &Body, path: &str) -> bool {
+            match self.c.fns.find(path) {
+                None => false,
+                Some(at) => !no_text(&self.c.fns.items[at].trait_of),
+            }
+        }
+
         #[summary("#[trigger] 항: 명세의 forall·exists 몸 안에서만")]
         #[effects(alloc)]
         fn trigger_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
@@ -5400,8 +5583,14 @@ mod body {
     #[summary("해소된 프로그램이 읽을 const의 참조: 값과 타입")]
     struct ConstUse { v: consts::CVal, ty: ast::TypeKind }
 
+    #[summary("몸이 있는 정의 하나: 경로, 단위, 이름의 자리, decreases가 있는가")]
+    struct DefRow { path: String, unit: String, span: source::Span, has_dec: bool }
+
     #[summary("trait 메서드의 호출이 돌리는 함수: impl의 함수와 그 타입 인자 (impl의 것, 이어서 메서드의 것)")]
     struct Dispatched { path: String, args: Vec<ast::TypeKind> }
+
+    #[summary("인스턴스 그래프의 호출 하나, 또는 인스턴스 하나: 정의와 타입 인자")]
+    struct Edge { callee: String, args: Vec<ast::TypeKind> }
 
     #[summary("변수가 쓰인 자리 하나. kind 0은 연산의 한 쪽(other는 다른 쪽, literal은 그것이 리터럴인가), 1은 색인, 2는 push의 받는 쪽(other는 넣는 값)")]
     struct Fact { kind: u8, lo: u32, other: source::Span, literal: bool }
@@ -5455,6 +5644,8 @@ mod body {
     #[summary("타입 없는 let: 이름과, 초기값이 Vec::new()인가")]
     struct OpenLet { name: ast::Ident, vec_new: bool }
 
+    struct Pair { from: String, to: String }
+
     #[summary("자리의 타입과 쓸 수 있는가")]
     struct Place { ty: ast::TypeKind, writable: bool }
 
@@ -5469,6 +5660,9 @@ mod body {
             }
         }
     }
+
+    #[summary("강한 연결 성분을 찾는 걸음의 상태 (Tarjan)")]
+    struct Scc { index: table::Table<usize>, low: table::Table<usize>, on: Vec<String>, stack: Vec<String>, next: usize, out: Vec<Vec<String>> }
 
     #[summary("&s[a..b]의 글과 두 끝")]
     struct SliceOf { base: ast::Expr, lo: ast::Expr, hi: ast::Expr }
@@ -5544,6 +5738,16 @@ mod body {
 
     #[summary("slice_of_vec의 결과: Vec에 관한 인자인가, 그렇다면 출발하는 변수")]
     struct VecSlice { about: bool, root: Option<String> }
+
+    #[effects(alloc)]
+    fn add_edge(edges: &mut table::Table<Vec<Edge>>, from: &str, e: Edge) -> () {
+        let mut es: Vec<Edge> = match edges.find(from) {
+            None => Vec::new(),
+            Some(at) => edges.items[at].clone(),
+        };
+        es.push(e);
+        edges.insert(from, es);
+    }
 
     #[summary("구조체의 필드 타입들이나 열거형의 페이로드 타입들")]
     #[effects(alloc)]
@@ -5777,6 +5981,15 @@ mod body {
         }
     }
 
+    #[summary("표에서 k의 수, 없으면 0")]
+    #[effects(alloc)]
+    fn at_or_zero(t: &table::Table<usize>, k: &str) -> usize {
+        match t.find(k) {
+            None => 0,
+            Some(i) => t.items[i],
+        }
+    }
+
     #[summary("lo가 더 앞이면 고른 것을 바꾼다")]
     #[effects(alloc)]
     fn better(best: &mut Best, lo: u32, t: &ast::TypeKind) -> () {
@@ -5893,6 +6106,70 @@ mod body {
     #[effects(pure)]
     fn builtin_path(segs: &[ast::Ident]) -> bool {
         segs.len() == 2 && (segs[0].name == "Option" && (segs[1].name == "Some" || segs[1].name == "None") || segs[0].name == "Result" && (segs[1].name == "Ok" || segs[1].name == "Err"))
+    }
+
+    #[summary("성분들을 첫 원소의 순서로 (성분은 서로 겹치지 않고 저마다 정렬되어 있어, 이것이 stage0의 Vec<Vec<String>> 정렬이다)")]
+    #[effects(alloc)]
+    fn by_first(xs: &[Vec<String>]) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut at: usize = out.len();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len() && at <= out.len(),
+            {
+                if at == out.len() && comp_lt(xs[i].as_slice(), out[j].as_slice()) {
+                    at = j;
+                }
+            }
+            let mut next: Vec<Vec<String>> = Vec::new();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len(),
+            {
+                if j == at {
+                    next.push(xs[i].clone());
+                }
+                next.push(out[j].clone());
+            }
+            if at == out.len() {
+                next.push(xs[i].clone());
+            }
+            out = next;
+        }
+        out
+    }
+
+    #[summary("main들을 글의 순서(파일, 시작)로. 같은 자리는 온 순서를 지킨다")]
+    #[effects(alloc)]
+    fn by_place(xs: &[ast::FnDef]) -> Vec<ast::FnDef> {
+        let mut out: Vec<ast::FnDef> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut at: usize = out.len();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len() && at <= out.len(),
+            {
+                if at == out.len() && place_lt(xs[i].name.span, out[j].name.span) {
+                    at = j;
+                }
+            }
+            let mut next: Vec<ast::FnDef> = Vec::new();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len(),
+            {
+                if j == at {
+                    next.push(xs[i].clone());
+                }
+                next.push(out[j].clone());
+            }
+            if at == out.len() {
+                next.push(xs[i].clone());
+            }
+            out = next;
+        }
+        out
     }
 
     #[summary("&[u8]")]
@@ -6038,6 +6315,25 @@ mod body {
         }
     }
 
+    #[summary("글의 목록 a가 b보다 앞인가 (사전 순서)")]
+    #[effects(pure)]
+    fn comp_lt(a: &[String], b: &[String]) -> bool {
+        for i in 0..a.len()
+            invariant 0 <= i && i <= a.len(),
+        {
+            if i >= b.len() {
+                return false;
+            }
+            if a[i].as_str() < b[i].as_str() {
+                return true;
+            }
+            if b[i].as_str() < a[i].as_str() {
+                return false;
+            }
+        }
+        a.len() < b.len()
+    }
+
     #[summary("T::try_from(x) 꼴인가 (T는 정수 타입)")]
     #[effects(pure)]
     fn conv_call(e: &ast::Expr) -> bool {
@@ -6086,6 +6382,109 @@ mod body {
         match int_of(source) {
             None => true,
             Some(s) => { match int_of(target) { None => true, Some(t) => !fits(s, t), } },
+        }
+    }
+
+    #[summary("#[effects(..)]에 io가 있는가")]
+    #[effects(pure)]
+    fn declares_io(attrs: &[ast::Attr]) -> bool {
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name == "effects" {
+                for j in 0..attrs[i].args.len()
+                    invariant 0 <= j && j <= attrs[i].args.len(),
+                {
+                    if io_arg(&attrs[i].args[j]) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    #[effects(alloc)]
+    fn def_row(path: String, unit: &str, d: &ast::FnDef) -> DefRow {
+        let has_dec: bool = match &d.measure {
+            None => false,
+            Some(e) => true,
+        };
+        DefRow { path: path, unit: String::from(unit), span: d.name.span, has_dec: has_dec }
+    }
+
+    #[summary("몸이 있는 모든 정의를 걷는 순서로 (단위마다 안의 단위 먼저, 이어서 함수, impl T의 함수, trait impl의 함수, 기본 메서드의 몸). trait impl의 함수는 검사기가 준 경로(<T as Trait>::f)를 갖고, 거절된 것은 빠진다")]
+    #[effects(alloc)]
+    fn defs_of(p: &ast::Program, fns: &table::Table<types::FnSig>) -> Vec<DefRow> {
+        let mut by_span: table::Table<String> = table::new::<String>();
+        let total: usize = fns.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match fns.nth(n) {
+                None => {},
+                Some(at) => { if fns.items[at].in_impl && impl_path(fns.items[at].path.as_str()) { by_span.insert(span_key(fns.items[at].span).as_str(), fns.items[at].path.clone()); } },
+            }
+        }
+        let mut out: Vec<DefRow> = Vec::new();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            defs_walk(&p.mods[i], "", &by_span, &mut out, 100000);
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn defs_walk(m: &ast::Mod, prefix: &str, by_span: &table::Table<String>, out: &mut Vec<DefRow>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            defs_walk(&m.mods[i], sub.as_str(), by_span, out, f - 1);
+        }
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            out.push(def_row(types::cat2(sub.as_str(), m.fns[i].name.name.as_str()), mp.as_str(), &m.fns[i]));
+        }
+        for i in 0..m.impls.len()
+            invariant 0 <= i && i <= m.impls.len(),
+        {
+            for j in 0..m.impls[i].fns.len()
+                invariant 0 <= j && j <= m.impls[i].fns.len(),
+            {
+                out.push(def_row(types::cat4(sub.as_str(), m.impls[i].ty.name.as_str(), "::", m.impls[i].fns[j].name.name.as_str()), mp.as_str(), &m.impls[i].fns[j]));
+            }
+        }
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            for j in 0..m.trait_impls[i].fns.len()
+                invariant 0 <= j && j <= m.trait_impls[i].fns.len(),
+            {
+                match by_span.find(span_key(m.trait_impls[i].fns[j].span).as_str()) {
+                    None => {},
+                    Some(at) => { out.push(def_row(by_span.items[at].clone(), mp.as_str(), &m.trait_impls[i].fns[j])); },
+                }
+            }
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            for j in 0..m.traits[i].fns.len()
+                invariant 0 <= j && j <= m.traits[i].fns.len(),
+            {
+                if m.traits[i].fns[j].has_body {
+                    out.push(def_row(types::cat4(sub.as_str(), m.traits[i].name.name.as_str(), "::", m.traits[i].fns[j].f.name.name.as_str()), mp.as_str(), &m.traits[i].fns[j].f));
+                }
+            }
         }
     }
 
@@ -6298,6 +6697,28 @@ mod body {
             }
         }
         false
+    }
+
+    #[summary("성분 comp 안의 경계 있는 호출 가운데 순서로 첫 것이 닿는 인스턴스")]
+    #[effects(alloc)]
+    fn first_bound(pairs: &[Pair], comp: &[String]) -> Option<String> {
+        let mut found: bool = false;
+        let mut best: usize = 0;
+        for i in 0..pairs.len()
+            invariant 0 <= i && i <= pairs.len() && best <= i,
+        {
+            if types::has(comp, pairs[i].from.as_str()) && types::has(comp, pairs[i].to.as_str()) {
+                if !found || best < pairs.len() && pair_lt(&pairs[i], &pairs[best]) {
+                    best = i;
+                    found = true;
+                }
+            }
+        }
+        if found && best < pairs.len() {
+            Some(pairs[best].to.clone())
+        } else {
+            None
+        }
     }
 
     #[summary("몸에서 가장 앞에 있는 name[var]의 자리: E0511의 고침이 표시할 트리거")]
@@ -6636,6 +7057,12 @@ mod body {
         }
     }
 
+    #[summary("인스턴스가 아닌 trait impl 함수의 경로인가: <로 시작하고 >로 끝나지 않는다 (<..>::f<i64>는 인코더의 표가 넣는 인스턴스)")]
+    #[effects(pure)]
+    fn impl_path(p: &str) -> bool {
+        p.len() > 0 && p.as_bytes()[0] == 60 && p.as_bytes()[p.len() - 1] != 62
+    }
+
     #[summary("name[var] 꼴인가 (name은 변수나 그 필드 경로)")]
     #[effects(alloc)]
     fn index_on(e: &ast::Expr, var: &str) -> bool {
@@ -6718,6 +7145,21 @@ mod body {
             ast::ExprKind::Range(q4_ek_range0) => false,
             ast::ExprKind::Error => false,
         }
+    }
+
+    #[summary("제네릭 정의 path의 인스턴스의 열쇠 (타입 인자가 없으면 경로 자신)")]
+    #[effects(alloc)]
+    fn inst_key(path: &str, args: &[ast::TypeKind]) -> String {
+        if args.len() == 0 {
+            return String::from(path);
+        }
+        let mut texts: Vec<String> = Vec::new();
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            texts.push(types::text(&args[i]));
+        }
+        types::cat4(path, "<", types::join(texts.as_slice(), ", ").as_str(), ">")
     }
 
     #[summary("T::MIN, T::MAX인가")]
@@ -6809,6 +7251,15 @@ mod body {
             return Some(t.clone());
         }
         None
+    }
+
+    #[effects(pure)]
+    fn io_arg(x: &ast::AttrArg) -> bool {
+        match x {
+            ast::AttrArg::Ident(i) => i.name == "io",
+            ast::AttrArg::Str(q4_s, q4_at) => false,
+            ast::AttrArg::Pair(q4_k, q4_v) => false,
+        }
     }
 
     #[effects(pure)]
@@ -7837,6 +8288,36 @@ mod body {
         }
     }
 
+    #[summary("표에서 k의 수를 n보다 크지 않게")]
+    #[effects(alloc)]
+    fn lower_to(t: &mut table::Table<usize>, k: &str, n: usize) -> () {
+        if n < at_or_zero(t, k) {
+            t.insert(k, n);
+        }
+    }
+
+    #[summary("단위 m과 그 안의 단위들의 실행 함수 main (안의 단위 먼저)")]
+    #[effects(alloc)]
+    fn mains_of(m: &ast::Mod, out: &mut Vec<ast::FnDef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            mains_of(&m.mods[i], out, f - 1);
+        }
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            if is_exec(m.fns[i].kind) && m.fns[i].name.name == "main" {
+                out.push(m.fns[i].clone());
+            }
+        }
+    }
+
     #[summary("std::mem::replace, std::mem::swap (ADR-0047 §2)")]
     #[effects(pure)]
     fn mem_op(path: &[ast::Ident]) -> bool {
@@ -8197,7 +8678,7 @@ mod body {
         let spec_at: Vec<source::Span> = Vec::new();
         let aliases: Vec<diag::Diag> = Vec::new();
         let gcalls: Vec<GCall> = Vec::new();
-        Body { c: c, gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
+        Body { c: c, recursive: table::new::<usize>(), gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
     }
 
     #[summary("함수 하나의 빈 문맥: 범위 하나")]
@@ -8423,8 +8904,18 @@ mod body {
     }
 
     #[effects(pure)]
+    fn pair_lt(a: &Pair, b: &Pair) -> bool {
+        a.from.as_str() < b.from.as_str() || a.from == b.from && a.to.as_str() < b.to.as_str()
+    }
+
+    #[effects(pure)]
     fn panic_effect() -> types::Effects {
         types::Effects { alloc: false, io: false, nondet: false, panic: true }
+    }
+
+    #[effects(pure)]
+    fn place_lt(a: source::Span, b: source::Span) -> bool {
+        a.file < b.file || a.file == b.file && a.lo < b.lo
     }
 
     #[summary("참조나 Box가 가리키는 타입")]
@@ -8801,6 +9292,77 @@ mod body {
     #[effects(pure)]
     fn same_span(a: source::Span, b: source::Span) -> bool {
         a.file == b.file && a.lo == b.lo && a.hi == b.hi
+    }
+
+    #[summary("v에서 닿는 성분들을 찾는다 (Tarjan). 이웃은 이름의 순서로 본다")]
+    #[effects(alloc)]
+    fn scc_visit(t: &mut Scc, g: &table::Table<Vec<String>>, v: &str, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let order: usize = t.next;
+        t.index.insert(v, order);
+        t.low.insert(v, order);
+        if t.next < 1000000000 {
+            t.next = t.next + 1;
+        }
+        t.stack.push(String::from(v));
+        t.on.push(String::from(v));
+        let ws: Vec<String> = match g.find(v) {
+            None => Vec::new(),
+            Some(at) => decls::sorted(g.items[at].as_slice()),
+        };
+        for i in 0..ws.len()
+            invariant 0 <= i && i <= ws.len(),
+        {
+            if !t.index.has(ws[i].as_str()) {
+                scc_visit(t, g, ws[i].as_str(), f - 1);
+                let lw: usize = at_or_zero(&t.low, ws[i].as_str());
+                lower_to(&mut t.low, v, lw);
+            } else if types::has(t.on.as_slice(), ws[i].as_str()) {
+                let iw: usize = at_or_zero(&t.index, ws[i].as_str());
+                lower_to(&mut t.low, v, iw);
+            }
+        }
+        if at_or_zero(&t.low, v) == at_or_zero(&t.index, v) {
+            let mut comp: Vec<String> = Vec::new();
+            let mut done: bool = false;
+            let mut left: usize = t.stack.len();
+            while !done && left > 0
+                invariant 0 <= left,
+                decreases left,
+            {
+                left = left - 1;
+                match t.stack.pop() {
+                    None => { done = true; },
+                    Some(w) => { t.on = without(t.on.as_slice(), w.as_str()); if w.as_str() == v { done = true; } comp.push(w); },
+                }
+            }
+            if comp.len() > 1 || types::has(ws.as_slice(), v) {
+                t.out.push(decls::sorted(comp.as_slice()));
+            }
+        }
+    }
+
+    #[summary("그래프 g의 순환이 있는 강한 연결 성분들 (둘 이상이거나 저를 부르는 하나): 성분은 이름의 순서로, 성분들도 그 순서로")]
+    #[effects(alloc)]
+    fn sccs_with_cycles(g: &table::Table<Vec<String>>) -> Vec<Vec<String>> {
+        let on: Vec<String> = Vec::new();
+        let stack: Vec<String> = Vec::new();
+        let out: Vec<Vec<String>> = Vec::new();
+        let mut t: Scc = Scc { index: table::new::<usize>(), low: table::new::<usize>(), on: on, stack: stack, next: 0, out: out };
+        let total: usize = g.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            let v: String = g.key(n);
+            if !t.index.has(v.as_str()) {
+                scc_visit(&mut t, g, v.as_str(), 1000000000);
+            }
+        }
+        by_first(t.out.as_slice())
     }
 
     #[summary("이름 name의 첫 E0201을 고칠 글 r을 단 것으로 바꾼다")]
@@ -9356,6 +9918,36 @@ mod body {
         }
     }
 
+    #[summary("타입의 깊이: 배열·조각·Vec·Box·참조·이름 붙은 타입이 한 겹씩")]
+    #[effects(pure)]
+    fn type_depth(t: &ast::TypeKind, f: usize) -> (r: usize)
+        ensures r <= f,
+        decreases f,
+    {
+        if f == 0 {
+            return 0;
+        }
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => 0,
+            ast::TypeKind::F64 => 0,
+            ast::TypeKind::Bool => 0,
+            ast::TypeKind::Unit => 0,
+            ast::TypeKind::Char => 0,
+            ast::TypeKind::String => 0,
+            ast::TypeKind::Str => 0,
+            ast::TypeKind::Array(e, q4_n) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::ArrayN(e, q4_ns) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::Slice(e) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::Ref(q4_m, e) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::Named(q4_p, args) => { let mut deepest: usize = 0; for i in 0..args.len() invariant 0 <= i && i <= args.len() && deepest <= f - 1, { let d: usize = type_depth(&args[i].kind, f - 1); if d > deepest { deepest = d; } } 1 + deepest },
+            ast::TypeKind::Vec(e) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::Box(e) => 1 + type_depth(&e.kind, f - 1),
+            ast::TypeKind::Param(q4_tk_param0) => 0,
+            ast::TypeKind::Never => 0,
+            ast::TypeKind::Error => 0,
+        }
+    }
+
     #[summary("t에 아직 묶이지 않은 ps의 매개변수가 남는가: tm으로 바꾼 뒤에도 매개변수를 말하고, t가 말하는 ps의 매개변수 가운데 tm에 없는 것이 있다")]
     #[effects(alloc)]
     fn unbound(ps: &[types::TParam], tm: &types::Subst, t: &ast::TypeKind) -> bool {
@@ -9641,6 +10233,20 @@ mod body {
         p.path.len() == 1 && p.path[0].name == "_"
     }
 
+    #[summary("xs에서 s를 뺀 것")]
+    #[effects(alloc)]
+    fn without(xs: &[String], s: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].as_str() != s {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
     #[summary("tm에서 Error로 묶인 것을 뺀 것")]
     #[effects(alloc)]
     fn without_errors(tm: &types::Subst) -> types::Subst {
@@ -9654,6 +10260,19 @@ mod body {
             }
         }
         out
+    }
+
+    #[summary("타입 매개변수를 더 큰 타입에 싼 첫 타입 인자")]
+    #[effects(alloc)]
+    fn wrapped_param(args: &[ast::TypeKind]) -> Option<ast::TypeKind> {
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            if has_param(&args[i], 100000) && !types::is_param(&args[i]) {
+                return Some(args[i].clone());
+            }
+        }
+        None
     }
 
     #[summary("자리 e에 쓸 수 있는가: let mut 지역 변수나 &mut 매개변수 아래, 필드·Box·원소를 지나 (s.buf, b.v, (*b).w)")]
