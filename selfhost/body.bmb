@@ -4,9 +4,25 @@ mod body {
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
     #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
-    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, spec_widen: bool }
+    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
 
     impl Body {
+        #[summary("인자들을 기대 없이 검사한다 (오류를 낸 호출의 나머지)")]
+        #[effects(alloc)]
+        fn args_only(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], mode: Mode, f: usize) -> ()
+            decreases f * 3,
+        {
+            if f == 0 {
+                return;
+            }
+            let no: Option<ast::TypeKind> = None;
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                self.expr(cx, &args[i], &no, mode, f - 1);
+            }
+        }
+
         #[summary("갈래의 패턴이 묶는 이름들의 타입: 변형 k의 페이로드 (참조를 match하면 그 참조). 자리 수가 어긋나면 E0427")]
         #[effects(alloc)]
         fn arm_binds(self: &mut Body, mp: &str, p: &ast::Pat, tp: &str, vs: &[types::VariantSig], k: usize, by_ref: bool, by_mut: bool) -> Vec<ast::TypeKind> {
@@ -413,6 +429,52 @@ mod body {
             self.binary_same(op, l, r, lt, mode, span)
         }
 
+        #[summary("owner의 함수 sig를 메서드로 부르는 길 (ADR-0051): 수신자를 넘기는 방식과 타입 인자. by_self면 trait의 메서드(수신자는 Self), 아니면 타입 owner의 impl. 메서드로 부를 수 없으면 E0314, 공유 참조로 &mut 메서드를 부르면 E0401")]
+        #[effects(alloc)]
+        fn bind_method(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, value: &ast::TypeKind, owner: &str, by_self: bool, sig: &types::FnSig, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span) -> Found {
+            let adjust: ast::Adjust = match receiver_adjust(sig.params.as_slice(), is_ref(rt), owner, by_self) {
+                None => { let none: Option<ast::Adjust> = None; self.not_a_method(cx, owner, recv, name, args, span, true, none); return Found::Reported; },
+                Some(a) => a,
+            };
+            if self.shared_receiver(cx, rt, sig, owner, recv, name) {
+                return Found::Reported;
+            }
+            if sig.generics.len() > sig.impl_generics {
+                self.not_a_method(cx, owner, recv, name, args, span, false, Some(adjust));
+                return Found::Reported;
+            }
+            let mut type_args: Vec<ast::TypeKind> = Vec::new();
+            if !by_self {
+                let mut ig: Vec<types::TParam> = Vec::new();
+                for i in 0..sig.generics.len()
+                    invariant 0 <= i && i <= sig.generics.len(),
+                {
+                    if i < sig.impl_generics {
+                        ig.push(sig.generics[i].clone());
+                    }
+                }
+                let mut m: types::Subst = empty_subst();
+                if sig.params.len() > 0 {
+                    let decl: ast::TypeKind = match ref_inner(&sig.params[0]) {
+                        None => sig.params[0].clone(),
+                        Some(inner) => inner,
+                    };
+                    types::unify(&decl, value, ig.as_slice(), &mut m, 100000);
+                }
+                for j in 0..ig.len()
+                    invariant 0 <= j && j <= ig.len(),
+                {
+                    match types::sub_get(&m, ig[j].name.as_str()) {
+                        None => { type_args.push(ast::TypeKind::Error); },
+                        Some(t) => { type_args.push(t); },
+                    }
+                }
+            }
+            let mut path: Vec<String> = refs::split_path(owner);
+            path.push(name.name.clone());
+            Found::Target(MethodTarget { path: path, type_args: type_args, adjust: adjust })
+        }
+
         #[summary("블록 안의 by (bit_vector) 항: let의 초기값과 끝 식. let의 이름은 블록 안에서 묶인다")]
         #[effects(alloc)]
         fn bit_vector_block(self: &mut Body, b: &ast::Block, bound: &mut Vec<String>, f: usize) -> ()
@@ -763,6 +825,12 @@ mod body {
                 return ast::TypeKind::Int(ast::IntTy::U8);
             }
             ast::TypeKind::Char
+        }
+
+        #[summary("char의 메서드. 다음 조각(4D-03e6c)이 채운다")]
+        #[effects(alloc)]
+        fn char_method(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind {
+            ast::TypeKind::Error
         }
 
         #[summary("const 하나 (ADR-0052): 타입은 값만 담고(E0437) 초기값은 그 타입이다. 평가기가 먼저 돌았으므로, 검사기가 초기값을 틀렸다고 하면 그 자리의 평가기 진단은 뺀다")]
@@ -2027,6 +2095,114 @@ mod body {
             t
         }
 
+        #[summary("정수와 그 밖의 내장 메서드: len, wrapping_*·saturating_*·checked_*, 바이트(to_be_bytes·to_le_bytes), 비트 메서드 (ADR-0028 §3, ADR-0048 §2). 모르는 이름은 E0404")]
+        #[effects(alloc)]
+        fn int_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let m: String = name.name.clone();
+            let ty: String = types::text(rt);
+            let undefined: String = types::cat5("`", m.as_str(), "` is not defined for `", ty.as_str(), "`");
+            if m == "len" {
+                if args.len() != 0 {
+                    self.c.err("E0405", name.span, "`len` takes no arguments");
+                }
+                let has_elem: bool = match elem_of(rt) {
+                    None => false,
+                    Some(et) => true,
+                };
+                if !has_elem && !types::is_error(rt) {
+                    self.c.err("E0404", name.span, undefined.as_str());
+                    return ast::TypeKind::Error;
+                }
+                return ast::TypeKind::Int(ast::IntTy::Usize);
+            }
+            if arith_method(m.as_str()) {
+                if args.len() != 1 {
+                    self.c.err("E0405", name.span, types::cat3("`", m.as_str(), "` takes one argument").as_str());
+                    return ast::TypeKind::Error;
+                }
+                let hint: Option<ast::TypeKind> = Some(rt.clone());
+                let at: ast::TypeKind = self.expr(cx, &args[0], &hint, mode, f - 1);
+                if !types::is_int(rt) && !types::is_error(rt) {
+                    self.c.err("E0404", name.span, undefined.as_str());
+                    return ast::TypeKind::Error;
+                }
+                self.expect_ty(&at, rt, args[0].span);
+                if checked_arith(m.as_str()) && !types::is_error(rt) {
+                    return option_of(rt.clone());
+                }
+                return rt.clone();
+            }
+            if m == "to_be_bytes" || m == "to_le_bytes" {
+                if args.len() != 0 {
+                    self.c.help("E0405", name.span, types::cat3("`", m.as_str(), "` takes no arguments").as_str(), types::cat3("write `x.", m.as_str(), "()` (Rust's signature)").as_str());
+                    return ast::TypeKind::Error;
+                }
+                return match int_of(rt) { None => { if !types::is_error(rt) { self.c.help("E0404", name.span, undefined.as_str(), "bit methods are methods of the integer types"); } ast::TypeKind::Error }, Some(i) => bytes_ty(i), };
+            }
+            let arity: u8 = bit_method(m.as_str());
+            if arity > 0 {
+                let want: usize = if arity == 2 {
+                    1
+                } else {
+                    0
+                };
+                if args.len() != want {
+                    if want == 0 {
+                        self.c.help("E0405", name.span, types::cat3("`", m.as_str(), "` takes no arguments").as_str(), types::cat3("write `x.", m.as_str(), "()` (Rust's signature)").as_str());
+                    } else {
+                        self.c.help("E0405", name.span, types::cat3("`", m.as_str(), "` takes one argument").as_str(), types::cat3("write `x.", m.as_str(), "(n)` with an amount `n: u32` (Rust's signature)").as_str());
+                    }
+                    return ast::TypeKind::Error;
+                }
+                let u32t: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::U32);
+                let amount: Option<ast::TypeKind> = Some(u32t.clone());
+                let mut at: ast::TypeKind = ast::TypeKind::Error;
+                if args.len() > 0 {
+                    at = self.expr(cx, &args[0], &amount, mode, f - 1);
+                }
+                let it: ast::IntTy = match int_of(rt) {
+                    None => { if !types::is_error(rt) { self.c.help("E0404", name.span, undefined.as_str(), "bit methods are methods of the integer types"); } return ast::TypeKind::Error; },
+                    Some(i) => i,
+                };
+                if args.len() > 0 {
+                    self.expect_ty(&at, &u32t, args[0].span);
+                }
+                if m == "is_power_of_two" {
+                    if signed(it) {
+                        self.c.help("E0404", name.span, undefined.as_str(), "it is a method of the unsigned integer types (Rust's)");
+                        return ast::TypeKind::Error;
+                    }
+                    return ast::TypeKind::Bool;
+                }
+                if m == "checked_shl" || m == "checked_shr" {
+                    return option_of(rt.clone());
+                }
+                if bit_count(m.as_str()) {
+                    return u32t;
+                }
+                return rt.clone();
+            }
+            if (m == "into" || m == "try_into") && types::is_int(rt) {
+                self.args_only(cx, args, mode, f - 1);
+                self.c.help("E0212", name.span, types::cat3("`.", m.as_str(), "()` is not used").as_str(), types::cat3("write `", fmt::expr_text(recv).as_str(), " as T` with the target type `T`").as_str());
+                return ast::TypeKind::Error;
+            }
+            let msg: String = types::cat3("unknown method `", m.as_str(), "`");
+            let fix: String = method_missing(m.as_str());
+            if fix.len() > 0 {
+                self.c.help("E0404", name.span, msg.as_str(), fix.as_str());
+            } else {
+                self.c.err("E0404", name.span, msg.as_str());
+            }
+            self.args_only(cx, args, mode, f - 1);
+            ast::TypeKind::Error
+        }
+
         #[summary("span의 break나 continue가 떠나는 루프: 레이블이 가리키는 것이나 가장 안쪽 것의 cx.loops 자리 (없으면 E0250, E0317)")]
         #[effects(alloc)]
         fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {
@@ -2494,16 +2670,173 @@ mod body {
             t
         }
 
-        #[summary("메서드 호출. 다음 조각(4D-03e6)이 채운다")]
+        #[summary("메서드 호출 x.f(..)의 타입. 쓴 사람의 함수면 경로 호출 T::f(adjust(x), ..)로 검사하고 그 길을 methods에 적는다 (ADR-0051); 아니면 내장 메서드. 글 리터럴 수신자는 표준 라이브러리의 글 함수에서만 &str이다 (ADR-0092 §2)")]
         #[effects(alloc)]
-        fn method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind {
-            ast::TypeKind::Error
+        fn method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let lit: bool = is_str_lit(&recv.kind);
+            let rt: ast::TypeKind = if lit {
+                let t: ast::TypeKind = str_ref();
+                self.types.insert(span_key(recv.span).as_str(), t.clone());
+                t
+            } else {
+                self.expr(cx, recv, &no, mode, f - 1)
+            };
+            if types::is_error(&rt) {
+                self.args_only(cx, args, mode, f);
+                return ast::TypeKind::Error;
+            }
+            if name.name == "clone" && self.builtin_clone(&rt) {
+                return self.clone_method(cx, &rt, name, args, span, mode, f);
+            }
+            let found: Found = self.method_target(cx, &rt, recv, name, args, span);
+            match found {
+                Found::No => {},
+                Found::Reported => { self.args_only(cx, args, mode, f); return ast::TypeKind::Error; },
+                Found::Target(target) => { let call: ast::Expr = method_call(recv, name, args, &target, span); self.methods.insert(span_key(span).as_str(), target); return self.expr(cx, &call, &no, mode, f - 1); },
+            }
+            if lit {
+                self.expr(cx, recv, &no, mode, f - 1);
+                self.args_only(cx, args, mode, f);
+                return ast::TypeKind::Error;
+            }
+            if is_text(&rt) {
+                return self.text_method(cx, recv, &rt, name, args, span, mode, f);
+            }
+            if is_char(&rt) {
+                return self.char_method(cx, name, args, mode, f);
+            }
+            match vec_elem(&rt) {
+                None => {},
+                Some(et) => { return self.vec_method(cx, recv, &rt, &et, name, args, span, mode, f); },
+            }
+            let value: ast::TypeKind = match ref_inner(&rt) {
+                None => rt.clone(),
+                Some(inner) => inner,
+            };
+            let tp: String = match types::named_path(&value) {
+                None => String::new(),
+                Some(p) => p,
+            };
+            if (tp == "Option" || tp == "Result") && (name.name == "unwrap" || name.name == "expect") {
+                self.args_only(cx, args, mode, f);
+                let arms: String = if tp == "Option" {
+                    String::from("None => .., Some(v) => v")
+                } else {
+                    String::from("Ok(v) => v, Err(e) => ..")
+                };
+                self.c.help("E0229", span, types::cat3("`.", name.name.as_str(), "()` is not allowed").as_str(), types::cat3("`match` both cases: `match x { ", arms.as_str(), " }`").as_str());
+                return ast::TypeKind::Error;
+            }
+            if is_f64(&value) {
+                return self.f64_method(cx, name, args, mode, f);
+            }
+            if name.name == "copy_within" {
+                match elem_of(&rt) {
+                    None => {},
+                    Some(et) => { return self.copy_within(cx, recv, &rt, &et, name, args, span, mode, f); },
+                }
+            }
+            self.int_method(cx, recv, &rt, name, args, mode, f)
+        }
+
+        #[summary("x.f(..)가 이름하는 쓴 사람의 함수 (ADR-0051): x의 타입(참조 하나 뒤)의 impl의 f, 없으면 표준 라이브러리의 글 함수, 없으면 타입 매개변수의 경계나 타입이 구현한 trait 가운데 f를 가진 단 하나. No는 이름하는 것이 없음(내장이거나 모르는 메서드), Reported는 여기서 알림 (E0313, E0314)")]
+        #[effects(alloc)]
+        fn method_target(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span) -> Found {
+            let value: ast::TypeKind = match ref_inner(rt) {
+                None => rt.clone(),
+                Some(inner) => inner,
+            };
+            let tp: String = match types::named_path(&value) {
+                None => String::new(),
+                Some(p) => p,
+            };
+            let user_type: bool = is_named(&value) && self.c.adts.has(tp.as_str());
+            if user_type {
+                match self.c.fns.find(types::cat3(tp.as_str(), "::", name.name.as_str()).as_str()) {
+                    None => {},
+                    Some(at) => { let sig: types::FnSig = self.c.fns.items[at].clone(); if no_text(&sig.trait_of) { return self.bind_method(cx, rt, &value, tp.as_str(), false, &sig, recv, name, args, span); } },
+                }
+            }
+            if text_kind(&value) && !builtin_method_name(name.name.as_str()) {
+                match self.c.fns.find(types::cat2("std::str::", name.name.as_str()).as_str()) {
+                    None => {},
+                    Some(at) => { if self.c.fns.items[at].generics.len() == 0 && self.c.fns.items[at].params.len() > 0 && is_text(&self.c.fns.items[at].params[0]) { let mut path: Vec<String> = Vec::new(); path.push(String::from("std")); path.push(String::from("str")); path.push(name.name.clone()); let adjust: ast::Adjust = if is_str(&value) { ast::Adjust::Value } else { ast::Adjust::AsStr }; let none: Vec<ast::TypeKind> = Vec::new(); return Found::Target(MethodTarget { path: path, type_args: none, adjust: adjust }); } },
+                }
+            }
+            let mut traits: Vec<String> = Vec::new();
+            let by_param: bool = types::is_param(&value);
+            match types::param_name(&value) {
+                None => { if !user_type && builtin_method_name(name.name.as_str()) { return Found::No; } if types::is_error(&value) || is_never(&value) { return Found::No; } for i in 0..self.c.trait_impls.len() invariant 0 <= i && i <= self.c.trait_impls.len(), { if impl_matches(&self.c.trait_impls[i], &value) { traits.push(self.c.trait_impls[i].trait_path.clone()); } } for j in 0..self.c.rejected_impls.len() invariant 0 <= j && j <= self.c.rejected_impls.len(), { if impl_matches(&self.c.rejected_impls[j], &value) { traits.push(self.c.rejected_impls[j].trait_path.clone()); } } },
+                Some(p) => { for i in 0..self.c.tparams.len() invariant 0 <= i && i <= self.c.tparams.len(), { if self.c.tparams[i].name == p { for j in 0..self.c.tparams[i].bounds.len() invariant 0 <= j && j <= self.c.tparams[i].bounds.len(), { traits.push(self.c.tparams[i].bounds[j].clone()); } } } },
+            }
+            let mut having: Vec<String> = Vec::new();
+            for i in 0..traits.len()
+                invariant 0 <= i && i <= traits.len(),
+            {
+                match self.c.traits.find(traits[i].as_str()) {
+                    None => {},
+                    Some(at) => { if types::has(self.c.traits.items[at].methods.as_slice(), name.name.as_str()) { having.push(traits[i].clone()); } },
+                }
+            }
+            let with: Vec<String> = sorted_set(having.as_slice());
+            if with.len() == 0 {
+                if user_type || by_param {
+                    self.unknown_method(cx, &value, name, traits.as_slice());
+                    return Found::Reported;
+                }
+                return Found::No;
+            }
+            if with.len() == 1 {
+                return match self.c.fns.find(types::cat3(with[0].as_str(), "::", name.name.as_str()).as_str()) { None => Found::No, Some(at) => { let sig: types::FnSig = self.c.fns.items[at].clone(); self.bind_method(cx, rt, &value, with[0].as_str(), true, &sig, recv, name, args, span) }, };
+            }
+            let mut shown: Vec<String> = Vec::new();
+            for i in 0..with.len()
+                invariant 0 <= i && i <= with.len(),
+            {
+                shown.push(variant_text(with[i].as_str(), name.name.as_str(), cx.mod_path.as_str()));
+            }
+            let first: String = if shown.len() > 0 {
+                shown[0].clone()
+            } else {
+                String::new()
+            };
+            self.c.help("E0313", name.span, types::cat7("`", name.name.as_str(), "` is a method of more than one trait of `", types::text_in(&value, cx.mod_path.as_str()).as_str(), "`: `", types::join(shown.as_slice(), "`, `").as_str(), "`").as_str(), types::cat3("call the one you mean by path: `", first.as_str(), "(..)`").as_str());
+            Found::Reported
         }
 
         #[summary("언어가 짓지 않는 clone의 E0404 (ADR-0141 §2)")]
         #[effects(alloc)]
         fn no_clone(self: &mut Body, at: source::Span, t: &ast::TypeKind, why: &str) -> () {
             self.c.help("E0404", at, types::cat3("`clone` is not defined for `", types::text(t).as_str(), "`").as_str(), why);
+        }
+
+        #[summary("E0314: x.f(..)가 owner의 함수를 이름하지만 메서드로 부르지 않는다. 고침은 경로 호출. 수신자가 없는 함수(no_receiver)는 x를 받지 않고, 제 타입 매개변수가 있는 함수는 그것을 써서 부른다")]
+        #[effects(alloc)]
+        fn not_a_method(self: &mut Body, cx: &FnCtx, owner: &str, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span, no_receiver: bool, adjust: Option<ast::Adjust>) -> () {
+            let callee: String = variant_text(owner, name.name.as_str(), cx.mod_path.as_str());
+            let x: String = fmt::expr_text(recv);
+            let mut all: Vec<String> = Vec::new();
+            match adjust {
+                None => {},
+                Some(a) => { match a { ast::Adjust::Value => { all.push(x.clone()); }, ast::Adjust::Ref => { all.push(types::cat2("&", x.as_str())); }, ast::Adjust::RefMut => { all.push(types::cat2("&mut ", x.as_str())); }, ast::Adjust::AsStr => { all.push(types::cat2(x.as_str(), ".as_str()")); }, } },
+            }
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                all.push(fmt::expr_text(&args[i]));
+            }
+            let list: String = types::join(all.as_slice(), ", ");
+            if no_receiver {
+                self.c.help("E0314", span, types::cat3("`", callee.as_str(), "` is not called as a method: it has no receiver").as_str(), types::cat5("call it by path: `", callee.as_str(), "(", list.as_str(), ")`").as_str());
+            } else {
+                self.c.help("E0314", span, types::cat3("`", callee.as_str(), "` is not called as a method: it has type parameters of its own").as_str(), types::cat5("call it by path: `", callee.as_str(), "::<..>(", list.as_str(), ")`").as_str());
+            }
         }
 
         #[summary("old(x): ensures·루프 불변식·assert에서, &mut 매개변수 x에만")]
@@ -3051,6 +3384,23 @@ mod body {
             }
         }
 
+        #[summary("공유 참조 수신자(x: &T)로 self: &mut T 메서드를 부르면 E0401: 참조는 그대로 넘기므로(한 걸음, ADR-0051) &를 지나 쓰게 된다. 알렸는가")]
+        #[effects(alloc)]
+        fn shared_receiver(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, sig: &types::FnSig, owner: &str, recv: &ast::Expr, name: &ast::Ident) -> bool {
+            let shared: bool = is_ref(rt) && !types::is_ref_mut(rt);
+            let wants_mut: bool = sig.params.len() > 0 && types::is_ref_mut(&sig.params[0]);
+            if !(shared && wants_mut) {
+                return false;
+            }
+            let callee: String = variant_text(owner, name.name.as_str(), cx.mod_path.as_str());
+            let inner: ast::TypeKind = match ref_inner(rt) {
+                None => rt.clone(),
+                Some(under) => under,
+            };
+            self.c.help("E0401", recv.span, types::cat5("`", callee.as_str(), "` takes `self: &mut`, found the shared reference `", types::text_in(rt, cx.mod_path.as_str()).as_str(), "`").as_str(), types::cat5("pass a `&mut ", types::text_in(&inner, cx.mod_path.as_str()).as_str(), "` receiver: declare `", fmt::expr_text(recv).as_str(), "` with that type").as_str());
+            true
+        }
+
         #[summary("a << s, a >> s (ADR-0048 §2): a는 정수, 양 s도 어느 정수 타입이든 (리터럴 양은 u32). 값은 a의 타입. 양의 범위는 증명 의무다 (E0803)")]
         #[effects(alloc)]
         fn shift(self: &mut Body, cx: &mut FnCtx, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, span: source::Span, f: usize) -> ast::TypeKind
@@ -3359,6 +3709,12 @@ mod body {
             ast::TypeKind::Error
         }
 
+        #[summary("글의 메서드. 다음 조각(4D-03e6c)이 채운다")]
+        #[effects(alloc)]
+        fn text_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind {
+            ast::TypeKind::Error
+        }
+
         #[summary("견줌의 글 피연산자: 문자열 리터럴은 거기서 &str다 (Rust의 버릇 s == \"abc\", ADR-0050 §2)")]
         #[effects(alloc)]
         fn text_operand(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, hint: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
@@ -3526,6 +3882,49 @@ mod body {
                 None => self.c.err("E0301", span, msg.as_str()),
                 Some(near) => self.c.fixed("E0301", span, msg.as_str(), types::cat3("did you mean `", near.as_str(), "`?").as_str(), near.as_str()),
             }
+        }
+
+        #[summary("타입의 impl에도 그 trait들(경계나 구현한 trait)에도 없는 메서드 이름의 E0404, 가진 메서드들과 함께")]
+        #[effects(alloc)]
+        fn unknown_method(self: &mut Body, cx: &FnCtx, value: &ast::TypeKind, name: &ast::Ident, traits: &[String]) -> () {
+            let mut have: Vec<String> = Vec::new();
+            let named: bool = is_named(value);
+            let tp: String = match types::named_path(value) {
+                None => String::new(),
+                Some(p) => p,
+            };
+            if named {
+                let depth: usize = refs::split_path(tp.as_str()).len();
+                let total: usize = self.c.fns.len();
+                for n in 0..total
+                    invariant 0 <= n && n <= total,
+                {
+                    match self.c.fns.nth(n) {
+                        None => {},
+                        Some(at) => { let segs: Vec<String> = refs::split_path(self.c.fns.key(n).as_str()); if segs.len() == depth + 1 && types::join_head(segs.as_slice(), depth) == tp && no_text(&self.c.fns.items[at].trait_of) && self.c.fns.items[at].in_impl && self.c.fns.items[at].params.len() > 0 { let first: ast::TypeKind = match ref_inner(&self.c.fns.items[at].params[0]) { None => self.c.fns.items[at].params[0].clone(), Some(inner) => inner, }; let same: bool = match types::named_path(&first) { None => false, Some(q) => is_named(&first) && q == tp, }; if same { have.push(segs[depth].clone()); } } },
+                    }
+                }
+            }
+            for i in 0..traits.len()
+                invariant 0 <= i && i <= traits.len(),
+            {
+                match self.c.traits.find(traits[i].as_str()) {
+                    None => {},
+                    Some(at) => { for j in 0..self.c.traits.items[at].methods.len() invariant 0 <= j && j <= self.c.traits.items[at].methods.len(), { have.push(self.c.traits.items[at].methods[j].clone()); } },
+                }
+            }
+            let methods: Vec<String> = sorted_set(have.as_slice());
+            let ty: String = types::text_in(value, cx.mod_path.as_str());
+            let moving: Vec<String> = self.c.moving_params();
+            let copied: bool = name.name == "clone" && named && !types::is_move_in(value, &self.c.adts, moving.as_slice());
+            let fix: String = if copied {
+                types::cat3("a `", ty.as_str(), "` is copied by value; remove `.clone()`")
+            } else if methods.len() == 0 {
+                types::cat5("`", ty.as_str(), "` has no methods; define `", name.name.as_str(), "` in an `impl` of it")
+            } else {
+                types::cat5("the methods of `", ty.as_str(), "` are `", types::join(methods.as_slice(), "`, `").as_str(), "`")
+            };
+            self.c.help("E0404", name.span, types::cat5("unknown method `", name.name.as_str(), "` of `", ty.as_str(), "`").as_str(), fix.as_str());
         }
 
         #[summary("경로가 변형이 아닐 때의 진단: 그런 변형이 없는 열거형(E0307), 또는 모르는 타입(E0305)")]
@@ -3912,11 +4311,17 @@ mod body {
     #[summary("함수 하나를 검사하는 동안의 문맥. scopes는 안쪽이 뒤, all_names는 지금까지 묶은 이름, reserved는 몸이 묶을 수 없는 이름(ensures의 결과 이름), loops는 둘러싼 루프(안쪽이 뒤), needs는 효과마다 처음 요구한 자리")]
     struct FnCtx { path: String, mod_path: String, effect: types::Effects, scopes: Vec<Vec<Local>>, all_names: Vec<String>, reserved: Vec<String>, forall_depth: usize, ret: ast::TypeKind, loops: Vec<LoopCx>, for_vars: Vec<String>, ghost: bool, needs: Vec<Need>, own: types::Effects }
 
+    #[summary("method_target의 결과: 이름하는 함수가 없음, 여기서 알림, 찾은 함수")]
+    enum Found { No, Reported, Target(MethodTarget) }
+
     #[summary("범위의 이름 하나")]
     struct Local { name: String, ty: ast::TypeKind, mutable: bool, is_param: bool }
 
     #[summary("break나 continue가 가리킬 수 있는 루프. is_loop는 값을 낼 수 있는 loop, value는 본 break 값의 타입")]
     struct LoopCx { label: Option<String>, is_loop: bool, value: Option<ast::TypeKind> }
+
+    #[summary("메서드 호출이 이름하는 함수 (ADR-0051), 뒤 단계가 읽는 경로 호출의 꼴로: path::<type_args>::f(adjust(x), ..). type_args는 타입의 매개변수의 인자(제네릭 타입의 impl)로, 이름 앞 마디 뒤에 쓴다")]
+    struct MethodTarget { path: Vec<String>, type_args: Vec<ast::TypeKind>, adjust: ast::Adjust }
 
     #[summary("검사하는 자리: 실행 코드, 명세(Spec의 값은 old를 쓸 수 있는가), 유령 코드")]
     enum Mode { Exec, Spec(bool), Ghost }
@@ -4077,6 +4482,12 @@ mod body {
         false
     }
 
+    #[summary("정수의 산술 메서드: wrapping_*, saturating_*, checked_* (ADR-0028 §3)")]
+    #[effects(pure)]
+    fn arith_method(m: &str) -> bool {
+        m == "wrapping_add" || m == "wrapping_sub" || m == "wrapping_mul" || m == "saturating_add" || m == "saturating_sub" || m == "saturating_mul" || checked_arith(m)
+    }
+
     #[summary("배열 타입이면 그 원소의 타입")]
     #[effects(alloc)]
     fn array_elem(t: &ast::TypeKind) -> Option<ast::TypeKind> {
@@ -4205,6 +4616,24 @@ mod body {
         }
     }
 
+    #[summary("비트 메서드 m이 세는 것인가 (0..=w의 u32)")]
+    #[effects(pure)]
+    fn bit_count(m: &str) -> bool {
+        m == "count_ones" || m == "count_zeros" || m == "leading_zeros" || m == "trailing_zeros" || m == "leading_ones" || m == "trailing_ones"
+    }
+
+    #[summary("정수의 비트 메서드 m (ADR-0048 §2): 0은 아님, 1은 인자 없음(세기, swap_bytes, reverse_bits, is_power_of_two), 2는 u32 양 하나(회전, wrapping·checked 밀기)")]
+    #[effects(pure)]
+    fn bit_method(m: &str) -> u8 {
+        if m == "rotate_left" || m == "rotate_right" || m == "wrapping_shl" || m == "wrapping_shr" || m == "checked_shl" || m == "checked_shr" {
+            2
+        } else if m == "swap_bytes" || m == "reverse_bits" || m == "is_power_of_two" || bit_count(m) {
+            1
+        } else {
+            0
+        }
+    }
+
     #[summary("정수 타입의 비트 수")]
     #[effects(pure)]
     fn bits(t: ast::IntTy) -> u32 {
@@ -4264,10 +4693,22 @@ mod body {
         }
     }
 
+    #[summary("m이 어떤 내장 타입의 내장 메서드 이름인가: 내장 타입에서 그 이름의 trait 메서드는 경로로 부른다")]
+    #[effects(pure)]
+    fn builtin_method_name(m: &str) -> bool {
+        m == "len" || m == "is_char_boundary" || m == "push_str" || m == "push" || m == "pop" || m == "truncate" || m == "clone" || m == "as_str" || m == "as_bytes" || m == "as_slice" || m == "as_mut_slice" || m == "copy_within" || m == "len_utf8" || m == "unwrap" || m == "expect" || m == "ok" || m == "to_be_bytes" || m == "to_le_bytes" || arith_method(m) || bit_method(m) > 0 || f64_sig(m) > 0
+    }
+
     #[summary("Option::Some, Option::None, Result::Ok, Result::Err: 내장 변형을 타입과 함께 쓴 경로인가")]
     #[effects(pure)]
     fn builtin_path(segs: &[ast::Ident]) -> bool {
         segs.len() == 2 && (segs[0].name == "Option" && (segs[1].name == "Some" || segs[1].name == "None") || segs[0].name == "Result" && (segs[1].name == "Ok" || segs[1].name == "Err"))
+    }
+
+    #[summary("정수의 바이트들의 타입: [u8; w / 8]")]
+    #[effects(alloc)]
+    fn bytes_ty(i: ast::IntTy) -> ast::TypeKind {
+        ast::TypeKind::Array(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)), (bits(i) / 8) as u64)
     }
 
     #[summary("e가 호출이면 그 호출")]
@@ -4321,6 +4762,12 @@ mod body {
         } else {
             types::cat3(xs.as_str(), " as ", t)
         }
+    }
+
+    #[summary("checked_add, checked_sub, checked_mul, checked_div, checked_rem: 결과가 범위 안일 때만 Some")]
+    #[effects(pure)]
+    fn checked_arith(m: &str) -> bool {
+        m == "checked_add" || m == "checked_sub" || m == "checked_mul" || m == "checked_div" || m == "checked_rem"
     }
 
     #[summary("언어가 t의 clone을 짓지 않는 까닭 (ADR-0141 §2), 지으면 빈 글: Copy 없는 타입 매개변수를 말하거나 자식 프로세스를 든다")]
@@ -4855,6 +5302,15 @@ mod body {
             ast::PatOrigin::Written => false,
             ast::PatOrigin::IfLetElse => true,
             ast::PatOrigin::Rejected => false,
+        }
+    }
+
+    #[summary("impl i의 머리가 t에 맞는가")]
+    #[effects(alloc)]
+    fn impl_matches(i: &types::TraitImplInfo, t: &ast::TypeKind) -> bool {
+        match types::matches(i, t) {
+            None => false,
+            Some(m) => true,
         }
     }
 
@@ -6012,6 +6468,61 @@ mod body {
         }
     }
 
+    #[summary("x.f(args)가 뜻하는 경로 호출 (ADR-0051): t의 함수에 수신자를 맞춰 넘긴다. 메서드 호출의 자리를 지니고, 수신자에 붙인 빌림은 x.f의 자리다 (다른 식에는 없는 자리)")]
+    #[effects(alloc)]
+    fn method_call(recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], t: &MethodTarget, span: source::Span) -> ast::Expr {
+        let mut path: Vec<ast::Ident> = Vec::new();
+        for i in 0..t.path.len()
+            invariant 0 <= i && i <= t.path.len(),
+        {
+            path.push(ast::Ident { name: t.path[i].clone(), span: name.span });
+        }
+        let mut targs: Vec<ast::TArgs> = Vec::new();
+        if t.type_args.len() > 0 && path.len() >= 2 {
+            let mut tys: Vec<ast::Type> = Vec::new();
+            for i in 0..t.type_args.len()
+                invariant 0 <= i && i <= t.type_args.len(),
+            {
+                tys.push(ast::Type { kind: t.type_args[i].clone(), span: name.span });
+            }
+            targs.push(ast::TArgs { seg: path.len() - 2, args: tys, span: name.span });
+        }
+        let at: source::Span = decls::span_to(recv.span, name.span);
+        let none: Vec<ast::Expr> = Vec::new();
+        let first: ast::Expr = match t.adjust {
+            ast::Adjust::Value => recv.clone(),
+            ast::Adjust::Ref => ast::Expr { kind: ast::ExprKind::Ref(false, Box::new(recv.clone())), span: at },
+            ast::Adjust::RefMut => ast::Expr { kind: ast::ExprKind::Ref(true, Box::new(recv.clone())), span: at },
+            ast::Adjust::AsStr => ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(recv.clone()), name: ast::Ident { name: String::from("as_str"), span: name.span }, args: none }), span: at },
+        };
+        let mut all: Vec<ast::Expr> = Vec::new();
+        all.push(first);
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            all.push(args[i].clone());
+        }
+        ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: path, targs: targs, args: all, method: Some(t.adjust) }), span: span }
+    }
+
+    #[summary("모르는 메서드 m의 고침 글 (없으면 빈 글)")]
+    #[effects(alloc)]
+    fn method_missing(m: &str) -> String {
+        if m == "unwrap" || m == "expect" {
+            return String::from("handle each case explicitly; panics are not allowed");
+        }
+        if m == "iter" || m == "iter_mut" || m == "into_iter" || m == "map" || m == "for_each" {
+            return String::from("use `while` with an index");
+        }
+        if m == "clone" {
+            return String::from("arrays and scalars are copied by value; remove `.clone()`");
+        }
+        if m == "pow" || m == "abs" || m == "overflowing_add" || m == "overflowing_sub" || m == "overflowing_mul" {
+            return String::from("not available; use `checked_*`, `saturating_*` or `wrapping_*` (ADR-0028 §3)");
+        }
+        String::new()
+    }
+
     #[summary("t가 이름 하나짜리 타입 name인가 (쓴 그대로의 Vec, String)")]
     #[effects(pure)]
     fn named_one(t: &ast::TypeKind, name: &str) -> bool {
@@ -6173,7 +6684,7 @@ mod body {
         let open_lets: Vec<OpenLet> = Vec::new();
         let typed_uses: Vec<TypedUse> = Vec::new();
         let spec_at: Vec<source::Span> = Vec::new();
-        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), spec_widen: false }
+        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
     }
 
     #[summary("함수 하나의 빈 문맥: 범위 하나")]
@@ -6195,6 +6706,15 @@ mod body {
         match o {
             None => true,
             Some(q4_i) => false,
+        }
+    }
+
+    #[summary("글이 없는가")]
+    #[effects(pure)]
+    fn no_text(o: &Option<String>) -> bool {
+        match o {
+            None => true,
+            Some(s) => false,
         }
     }
 
@@ -6298,6 +6818,22 @@ mod body {
         ast::TypeKind::Named(single("Option"), targs)
     }
 
+    #[summary("t가 수신자의 타입인가: by_self면 Self, 아니면 타입 owner")]
+    #[effects(alloc)]
+    fn owns(t: &ast::TypeKind, owner: &str, by_self: bool) -> bool {
+        if by_self {
+            match types::param_name(t) {
+                None => false,
+                Some(p) => p == "Self",
+            }
+        } else {
+            match types::named_path(t) {
+                None => false,
+                Some(p) => is_named(t) && p.as_str() == owner,
+            }
+        }
+    }
+
     #[summary("n을 열 자리 10진수로 out에: 글의 순서가 수의 순서다")]
     #[effects(alloc)]
     fn pad10(out: &mut String, n: u32) -> () {
@@ -6383,6 +6919,18 @@ mod body {
             ast::ExprKind::Continue(q4_ek_continue0) => None,
             ast::ExprKind::Range(r) => Some(r.clone()),
             ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("첫 매개변수가 수신자인 함수에 수신자를 넘기는 방식: 수신자가 아니면 None. 이미 참조인 수신자(by_ref)는 그대로 넘긴다 (한 걸음, ADR-0051)")]
+    #[effects(alloc)]
+    fn receiver_adjust(params: &[ast::TypeKind], by_ref: bool, owner: &str, by_self: bool) -> Option<ast::Adjust> {
+        if params.len() == 0 {
+            return None;
+        }
+        match ref_inner(&params[0]) {
+            None => { if owns(&params[0], owner, by_self) { Some(ast::Adjust::Value) } else { None } },
+            Some(inner) => { if !owns(&inner, owner, by_self) { None } else if by_ref { Some(ast::Adjust::Value) } else if types::is_ref_mut(&params[0]) { Some(ast::Adjust::RefMut) } else { Some(ast::Adjust::Ref) } },
         }
     }
 
@@ -6682,6 +7230,21 @@ mod body {
             }
         }
         source::Span { file: 0, lo: 0, hi: 0 }
+    }
+
+    #[summary("xs를 바이트 순서로, 같은 것은 하나만")]
+    #[effects(alloc)]
+    fn sorted_set(xs: &[String]) -> Vec<String> {
+        let s: Vec<String> = decls::sorted(xs);
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len(),
+        {
+            if i == 0 || s[i - 1] != s[i] {
+                out.push(s[i].clone());
+            }
+        }
+        out
     }
 
     #[summary("자리 s의 열쇠: 파일, 시작, 끝을 열 자리씩. 표의 열쇠 순서가 stage0의 (file, lo, hi) 순서다")]
