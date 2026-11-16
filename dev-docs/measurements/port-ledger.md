@@ -30,18 +30,18 @@
 | C1 | 렉서 | P1 | 862 | 2,004 | 139 | 2.2 | 2.3 | 78 | 78/78 | 616 | 18,369,883 | 0 | — | — | — | 고정 |
 | C2 | 파서·구문 트리 | P2 | 5,168 | 5,015 | 255 | 0.9 | 1.0 | 193 | 193/193 | 1,249 | 31,997,838 | 0 | — | 5 | 0 | 고정 |
 | C3 | 정규형·해시·정체성 | P3 | 2,629 | 1,898 | 89 | 1.0 | 1.0 | 69 | 69/69 | 576 | 5,625,298 | 0 | — | — | — | — |
-| C4 | 검사기 | P3 | 17,469 | 19,108 | 559 | 6.0 | 6.2 | 782 | 782/782 | 6,384 | 311,245,343 | 0 | — | 15 | 4 | — |
+| C4 | 검사기 | P3 | 17,474 | 20,178 | 633 | 6.3 | 6.5 | 829 | 829/829 | 7,077 | 335,847,814 | 0 | — | 15 | 4 | — |
 | C5 | 맵·질의 | P5 | 2,654 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C6 | 증명 인코딩 | P6 | 13,734 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C7 | 해법기·도구 연결 | P7 | 1,102 | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| C8 | 코드 생성 | P4 | 6,558 | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| C8 | 코드 생성 | P4 | 6,562 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C9 | 캐시·증분 | P8 | 1,675 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C10 | 도구 | P9 | 9,498 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C11 | 작업 공간·트랜잭션 | P10 | 1,230 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C12 | MCP 서버 | P11 | 1,494 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C13 | CLI | P11 | 1,163 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
-stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,931줄(51%), 포트 합계 28,643줄.
+stage0 합계 66,490줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,940줄(51%), 포트 합계 29,713줄.
 
 마찰:
 - C0: `const`가 `&str`을 담지 못해 진단 코드 표(185 + 6)는 `Vec<Code>`를 만드는 함수다(부를 때마다 만든다). 그대로 둠
@@ -113,6 +113,8 @@ stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,
 - C4: `4D-03e6c`(글, `check/text.rs`): `text_arg`, `text_call`, `text_method`, `char_method`, `as_bytes_arg`. 정의 15개. `bmb check`의 첫 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: 가드 붙은 `match` 갈래(`Method { .. } if name == "as_str"`, `_ if str_slice_of(a).is_some()`)의 사슬은 `Option`을 돌려주는 풀이 함수(`as_str_of`, `slice_of`, `ref_var`)마다의 `match`와 이른 `return`이다. `&s[a..b]`의 세 겹 `let .. else`는 함수 셋(`slice_of`·`slice_index`·`range_of`)이다. `args[0]`을 읽는 자리는 인자 수를 견준 뒤에도 `args.len() > 0`을 다시 적는다(이름의 글 견줌에서 인자 수가 따라 나오지 않는다)
 - C4: `4D-03e7a`(변환과 참조 인자): `conversion`, `ref_arg`, `slice_of_vec`, `e0218`, `data_ref_arg`, `sub_slice_arg`. 정의 13개. `bmb check`의 첫 진단 2개(둘 다 E0303: 한 함수에서 이름 하나가 타입 둘), `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `Option<Option<String>>`(`slice_of_vec`)은 구조체 `VecSlice { about, root }`다. 튜플을 묶는 `let (var, explicit_ref, am) = match .. { 갈래마다 이른 return }`은 변수 둘에 대입하는 `match`와 이름을 푸는 `match`로 나뉜다. 클로저 `vec_var`는 자유 함수다. 별칭 진단 `self.diags.aliases`는 `Body`의 필드 `aliases`다
 - C4: `4D-03e7b`(호출과 타입 인자): `call`, `call_arg`, `written_targs`, `targs_fix`, `arg_peek`, `place_peek`, `dispatch`, `reads_only`. 정의 31개. `bmb check`의 첫 진단 8개(E0303 넷: 이름 하나에 타입 둘, E0414 둘: 한 길에서만 옮긴 값, E0103: 변수 이름으로 쓴 예약어 `proof`와 그 여파 하나). `bmb verify` 첫 회에 2개 실패, 둘 다 솔버의 자원 한도였다: `call`(stage0 357줄을 한 함수로 옮긴 것, 의무 102개, z3가 메모리로 끝남)은 `call_kind`·`call_arg`·`call_deferred`·`call_bound`·`call_record`·`alias_check`로 나눠 풀렸고, `call_arg`는 `&&`의 오른쪽에서 `&mut self` 메서드를 부른 꼴(`.. && !self.deref_fix(..)`)이 원인이었다(백로그 4D-24, 호출을 조건 밖으로 빼서 풀림). 표면이 바꾼 꼴: `(mode, sig.kind)` 튜플의 `match` 아홉 갈래는 `if`의 사슬이다. 루프 안의 `continue`는 인자 하나를 맡는 메서드의 이른 `return`이다. 슬라이스 무늬(`[]`, `[t]`, `[t, ..]`)는 세어 둔 수의 비교다. `BTreeMap<String, TypeKind>`는 `types::Subst`와 `sub_put`이다
+- C4: `4D-03e8a`(전역 검사): `check_recursion`, `trait_cycles`, `check_main`, `sccs_with_cycles`, `defs_of`. 정의 29개. `bmb check`의 첫 진단 7개(E0606 셋: `Table::find`를 부르는 함수의 `pure` 선언, E0410 둘: `t.index.insert(v, t.next)`처럼 `&mut` 수신자의 필드를 인자로 읽음, E0414 둘). `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: 함수 안의 지역 구조체와 `impl`(Tarjan의 `T`)은 단위의 구조체 `Scc`와 자유 함수 `scc_visit`다. `BTreeSet`의 순서로 이웃을 보던 것은 볼 때마다 `decls::sorted`로 정렬한다. `while let Some(x) = work.pop()`은 끝남을 보일 연료가 든 `while`과 한 걸음을 맡는 메서드(`instance_edges`)다. `Vec<Vec<String>>`의 `sort`는 성분이 겹치지 않으므로 첫 원소의 순서(`by_first`)다. `type_depth`는 넘침 의무 때문에 결과가 연료를 넘지 않는다는 `ensures`를 갖는다
+- C4: `4D-03e8b`(구동·표·대조): `check_program`, `check_resolved`, `ConstTrees`(stage0 `consts::literal_tree`), `Methodize`, `may_untrusted`, `lib`의 `push_tables`·`check`. 정의 24개. `bmb check`의 첫 진단 6개(E0303, E0401 넷: `for i in 0..10`의 `i`가 `i64`라 `usize`와 섞임, E0414). `bmb verify` 첫 회에 3개 실패(`key_part`와 `last_of`의 넘침·사후조건, `may_untrusted`의 루프 불변식: `&mut`로 넘긴 `Vec`의 길이가 줄지 않음을 호출 뒤에 알 수 없어 더할 것을 따로 모았다). stage0과의 첫 출력 대조(추적되는 `.bmb` 936개의 `dump types`)는 715개가 같았고 195개에서 stage1이 멈췄다: stage0의 결함 `4D-34`(갈래가 묶은 값의 부분 이동 뒤 이중 해제). 고친 뒤 남은 차이는 앞 조각의 누락 둘이었다: `#[uses(<T as Tr>::m)]`의 풀이(`decls::uses_target`), 상수 검사가 평가기의 진단을 빼는 자리(stage0은 검사기가 앞 단계의 진단 목록 위에서 돈다). 증명은 이 둘을 볼 수 없었다(명세가 없는 동작). 표면이 바꾼 꼴: 클로저 셋(`fresh`, `id`, `segs`)과 `&mut` 둘을 받는 `literal_tree`는 상태를 든 구조체 `ConstTrees`의 메서드다(`&self.adts`와 `&mut self.types`를 한 호출에 넘기면 E0410). `loop { .. return .. }`은 연료가 든 `while`이다. `rsplit_once`는 자리를 찾는 `last_of`와 `lexer::cut`이다
 
 <!-- ledger:data end -->
 
