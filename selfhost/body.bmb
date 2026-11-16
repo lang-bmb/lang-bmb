@@ -4,7 +4,7 @@ mod body {
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
     #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
-    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, spec_widen: bool }
+    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, spec_widen: bool }
 
     impl Body {
         #[summary("갈래의 패턴이 묶는 이름들의 타입: 변형 k의 페이로드 (참조를 match하면 그 참조). 자리 수가 어긋나면 E0427")]
@@ -107,7 +107,8 @@ mod body {
             let t: ast::TypeKind = self.expr(cx, &a.cond, &want, Mode::Spec(true), f - 1);
             self.expect_ty(&t, &ast::TypeKind::Bool, a.cond.span);
             if has_prover(&a.by) && is_bool(&t) {
-                self.bit_vector_terms(&a.cond);
+                let mut bound: Vec<String> = Vec::new();
+                self.bit_vector_terms(&a.cond, &mut bound, 1000000000);
             }
         }
 
@@ -164,9 +165,276 @@ mod body {
             }
         }
 
-        #[summary("by (bit_vector)의 항. 다음 조각(4D-03e5)이 채운다")]
+        #[summary("이항 연산 (시프트와 논리 연산은 따로): 리터럴은 다른 피연산자에서 타입을 받는다")]
         #[effects(alloc)]
-        fn bit_vector_terms(self: &mut Body, e: &ast::Expr) -> () {}
+        fn binary(self: &mut Body, cx: &mut FnCtx, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, span: source::Span, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if is_shift(op) {
+                return self.shift(cx, op, l, r, expected, mode, span, f - 1);
+            }
+            if is_logic(op) {
+                if is_implies(op) && exec_mode(mode) {
+                    self.c.err("E0503", span, "`==>` is only allowed in specifications");
+                }
+                let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);
+                let bl: ast::TypeKind = self.expr(cx, l, &wb, mode, f - 1);
+                let br: ast::TypeKind = self.expr(cx, r, &wb, mode, f - 1);
+                self.expect_ty(&bl, &ast::TypeKind::Bool, l.span);
+                self.expect_ty(&br, &ast::TypeKind::Bool, r.span);
+                return ast::TypeKind::Bool;
+            }
+            let hint: Option<ast::TypeKind> = match expected {
+                None => None,
+                Some(x) => { if is_arith(op) && (types::is_int(x) || is_f64(x)) || is_bit(op) && (types::is_int(x) || is_bool(x)) { Some(x.clone()) } else { None } },
+            };
+            let mut lt: ast::TypeKind = ast::TypeKind::Error;
+            let mut rt: ast::TypeKind = ast::TypeKind::Error;
+            if untyped_literal(l, 1000000000) && !untyped_literal(r, 1000000000) {
+                rt = self.text_operand(cx, r, &hint, mode, f - 1);
+                let rh: Option<ast::TypeKind> = Some(rt.clone());
+                lt = self.text_operand(cx, l, &rh, mode, f - 1);
+            } else {
+                lt = self.text_operand(cx, l, &hint, mode, f - 1);
+                let lh: Option<ast::TypeKind> = Some(lt.clone());
+                rt = self.text_operand(cx, r, &lh, mode, f - 1);
+            }
+            self.binary_types(op, l, r, &lt, &rt, mode, span)
+        }
+
+        #[summary("두 피연산자가 한 타입 lt일 때: ==는 스칼라에(자료 타입·배열·조각의 ==는 명세에서만, E0425), 비트 연산은 정수와 bool에, 나머지는 정수와 f64에")]
+        #[effects(alloc)]
+        fn binary_same(self: &mut Body, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, lt: &ast::TypeKind, mode: Mode, span: source::Span) -> ast::TypeKind {
+            let valued: bool = is_arith(op) || is_bit(op);
+            let sym: String = op_symbol(op);
+            let ltt: String = types::text(lt);
+            let eq: bool = is_eq(op);
+            if eq && is_vec(lt) {
+                self.c.help("E0514", span, types::cat5("`", sym.as_str(), "` is not defined for `", ltt.as_str(), "`").as_str(), "compare the lengths and the elements with a spec predicate over `v.as_slice()`");
+                return ast::TypeKind::Bool;
+            }
+            let slice: bool = match ref_inner(lt) {
+                None => false,
+                Some(inner) => is_slice(&inner),
+            };
+            match types::param_name(lt) {
+                None => {},
+                Some(n) => { if is_cmp(op) && !eq { if !self.c.has_builtin(lt, "Ord") { self.c.help("E0428", span, types::cat7("`", sym.as_str(), "` on `", n.as_str(), "` needs the bound `", n.as_str(), ": Ord`").as_str(), types::cat3("add `Ord` to the bounds of `", n.as_str(), "`").as_str()); } return ast::TypeKind::Bool; } if eq { if exec_mode(mode) && !self.c.has_builtin(lt, "Eq") { self.c.help("E0428", span, types::cat7("`", sym.as_str(), "` on `", ltt.as_str(), "` in code needs the bound `", ltt.as_str(), ": Eq`").as_str(), types::cat3("add `Eq` (or `Ord`) to the bounds of `", ltt.as_str(), "`").as_str()); } return ast::TypeKind::Bool; } },
+            }
+            if eq && (is_named(lt) || is_array(lt) || is_box(lt) || slice) {
+                if exec_mode(mode) {
+                    let fix: String = if is_box(lt) {
+                        types::cat7("compare the values: `*", fmt::expr_text(l).as_str(), " ", sym.as_str(), " *", fmt::expr_text(r).as_str(), "`")
+                    } else {
+                        String::from("compare the fields (or `match` the variants) in code")
+                    };
+                    self.c.help("E0425", span, types::cat5("`", sym.as_str(), "` on `", ltt.as_str(), "` is only defined in specifications").as_str(), fix.as_str());
+                } else {
+                    match self.recursive_with_vec(lt) {
+                        None => {},
+                        Some(c) => self.c.help("E0431", span, types::cat7("`", sym.as_str(), "` on `", ltt.as_str(), "` is not defined: `", types::text(&c).as_str(), "` is recursive and holds a `Vec`").as_str(), "compare the parts that matter, or write a recursive spec fn over them"),
+                    }
+                }
+                return ast::TypeKind::Bool;
+            }
+            let ok: bool = if eq {
+                types::is_scalar(lt)
+            } else if is_bit(op) {
+                types::is_int(lt) || is_bool(lt)
+            } else if is_rem(op) {
+                types::is_int(lt)
+            } else if is_cmp(op) && (is_char(lt) || is_bool(lt)) {
+                true
+            } else {
+                types::is_int(lt) || is_f64(lt)
+            };
+            if !ok {
+                let msg: String = types::cat5("`", sym.as_str(), "` is not defined for `", ltt.as_str(), "`");
+                if is_f64(lt) && is_rem(op) {
+                    self.c.help("E0401", span, msg.as_str(), "`%` on `f64` (Rust's truncated remainder) is not supported yet (ADR-0061 §3): compute `x - y * q` with the quotient you need");
+                } else if is_f64(lt) {
+                    self.c.help("E0401", span, msg.as_str(), "`f64` has `+ - * /`, unary `-` and the comparisons; bit operations are on integers");
+                } else if is_bit(op) {
+                    self.c.help("E0401", span, msg.as_str(), "`&`, `|` and `^` take two integers of one type, or two `bool`s");
+                } else {
+                    self.c.err("E0401", span, msg.as_str());
+                }
+                return bin_fail(valued);
+            }
+            if valued {
+                lt.clone()
+            } else {
+                ast::TypeKind::Bool
+            }
+        }
+
+        #[summary("피연산자의 타입 lt, rt로 이항 연산의 타입: char는 수가 아니고, 글은 글과 견주고, 명세에서는 정수 타입이 섞인다 (ADR-0022), 코드에서는 한 타입이다")]
+        #[effects(alloc)]
+        fn binary_types(self: &mut Body, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, lt: &ast::TypeKind, rt: &ast::TypeKind, mode: Mode, span: source::Span) -> ast::TypeKind {
+            let valued: bool = is_arith(op) || is_bit(op);
+            if types::is_error(lt) || types::is_error(rt) {
+                return bin_fail(valued);
+            }
+            let sym: String = op_symbol(op);
+            if (is_char(lt) || is_char(rt)) && !is_cmp(op) {
+                self.c.help("E0401", span, types::cat3("`", sym.as_str(), "` is not defined for `char`").as_str(), "compute on the scalar value `u32::from(c)` and make a character with `char::from_u32(x)`");
+                return bin_fail(valued);
+            }
+            let ltt: String = types::text(lt);
+            let rtt: String = types::text(rt);
+            if is_text(lt) || is_text(rt) {
+                if is_text(lt) && is_text(rt) && is_cmp(op) {
+                    return ast::TypeKind::Bool;
+                }
+                let tmsg: String = types::cat7("`", sym.as_str(), "` is not defined for `", ltt.as_str(), "` and `", rtt.as_str(), "`");
+                if is_add(op) && is_text(lt) {
+                    self.c.help("E0401", span, tmsg.as_str(), "append with `s.push_str(t)` (or `s.push(c)`)");
+                } else {
+                    self.c.help("E0401", span, tmsg.as_str(), "text compares with text: `==`, `<` and the other comparisons");
+                }
+                return bin_fail(valued);
+            }
+            let same: bool = types::same(lt, rt);
+            let ints: bool = types::is_int(lt) && types::is_int(rt);
+            if !same && !exec_mode(mode) && ints && is_bit(op) {
+                if !conv_obligation(rt, lt) {
+                    return lt.clone();
+                }
+                if !conv_obligation(lt, rt) {
+                    return rt.clone();
+                }
+                self.c.help("E0401", span, types::cat7("`", sym.as_str(), "` needs a width, and no integer type holds both `", ltt.as_str(), "` and `", rtt.as_str(), "`").as_str(), "give both operands one type, e.g. a spec fn parameter of that type");
+                return ast::TypeKind::Error;
+            }
+            if !same && !exec_mode(mode) && ints {
+                if is_arith(op) {
+                    return ast::TypeKind::Int(ast::IntTy::I64);
+                }
+                return ast::TypeKind::Bool;
+            }
+            if !same {
+                let msg: String = types::cat7("`", sym.as_str(), "` needs operands of one type, found `", ltt.as_str(), "` and `", rtt.as_str(), "`");
+                if types::is_int(lt) && is_f64(rt) || is_f64(lt) && types::is_int(rt) {
+                    self.c.help("E0401", span, msg.as_str(), "convert the integer operand: `f64::from(x)` (`f64` does not convert to integers)");
+                } else if ints {
+                    if conv_obligation(lt, rt) {
+                        self.c.help("E0401", span, msg.as_str(), types::cat5("convert the `", rtt.as_str(), "` operand: `x as ", ltt.as_str(), "`").as_str());
+                    } else {
+                        self.c.help("E0401", span, msg.as_str(), types::cat5("convert the `", ltt.as_str(), "` operand: `x as ", rtt.as_str(), "`").as_str());
+                    }
+                } else {
+                    self.c.err("E0401", span, msg.as_str());
+                }
+                return bin_fail(valued);
+            }
+            self.binary_same(op, l, r, lt, mode, span)
+        }
+
+        #[summary("블록 안의 by (bit_vector) 항: let의 초기값과 끝 식. let의 이름은 블록 안에서 묶인다")]
+        #[effects(alloc)]
+        fn bit_vector_block(self: &mut Body, b: &ast::Block, bound: &mut Vec<String>, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let n: usize = bound.len();
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                match &b.stmts[i] {
+                    ast::Stmt::Let(sl) => { self.bit_vector_terms(&sl.init, bound, f - 1); bound.push(sl.name.name.clone()); },
+                    ast::Stmt::Assign(q4_sa) => {},
+                    ast::Stmt::While(q4_sw) => {},
+                    ast::Stmt::For(q4_sf) => {},
+                    ast::Stmt::Assert(q4_st) => {},
+                    ast::Stmt::Assume(q4_su) => {},
+                    ast::Stmt::Proof(q4_sp) => {},
+                    ast::Stmt::LetFields(q4_lf) => {},
+                    ast::Stmt::Expr(q4_se) => {},
+                }
+            }
+            match &b.tail {
+                None => {},
+                Some(t) => self.bit_vector_terms(&**t, bound, f - 1),
+            }
+            bound.truncate(n);
+        }
+
+        #[summary("assert(e) by (bit_vector)의 항 (ADR-0048 §4): 변수·리터럴·정수와 f64의 상수·연산자·if·let 블록·정수 메서드·spec fn 호출로 지은 정수·f64·bool 값. 다른 값의 스칼라 읽기(원소, 필드, 참조 뒤의 값, 스칼라 아닌 받는 값의 메서드)는 단언의 let을 말하지 않으면 부증명의 변수다 (백로그 2N-11). 나머지는 E0515")]
+        #[effects(alloc)]
+        fn bit_vector_terms(self: &mut Body, e: &ast::Expr, bound: &mut Vec<String>, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let ty: ast::TypeKind = self.type_at(e.span);
+            if types::is_error(&ty) {
+                return;
+            }
+            let scalar: bool = types::is_scalar(&ty);
+            let mut what: u8 = 0;
+            match &e.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => { if !scalar { what = 6; } },
+                ast::ExprKind::Float(q4_ek_float0) => { if !scalar { what = 6; } },
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => { if !scalar { what = 6; } },
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => { what = 6; },
+                ast::ExprKind::StrLit(q4_ek_strlit0) => { what = 6; },
+                ast::ExprKind::CharLit(q4_ek_charlit0) => { if !scalar { what = 6; } },
+                ast::ExprKind::Bool(q4_ek_bool0) => { if !scalar { what = 6; } },
+                ast::ExprKind::Unit => { what = 6; },
+                ast::ExprKind::Var(q4_ek_var0) => { if !scalar { what = 6; } },
+                ast::ExprKind::Call(c) => { if scalar { for j in 0..c.args.len() invariant 0 <= j && j <= c.args.len(), { self.bit_vector_terms(&c.args[j], bound, f - 1); } } else { what = 6; } },
+                ast::ExprKind::Method(m) => { if scalar { if types::is_scalar(&self.type_at(m.recv.span)) || any_bound(e, bound.as_slice()) { self.bit_vector_terms(&*m.recv, bound, f - 1); for i in 0..m.args.len() invariant 0 <= i && i <= m.args.len(), { self.bit_vector_terms(&m.args[i], bound, f - 1); } } } else { what = 6; } },
+                ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => { if !scalar || any_bound(e, bound.as_slice()) { what = 1; } },
+                ast::ExprKind::Unary(q4_op, x) => { if scalar { self.bit_vector_terms(&**x, bound, f - 1); } else { what = 6; } },
+                ast::ExprKind::Binary(q4_bop, a, b) => { if scalar { self.bit_vector_terms(&**a, bound, f - 1); self.bit_vector_terms(&**b, bound, f - 1); } else { what = 6; } },
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => { what = 6; },
+                ast::ExprKind::If(ife) => { if scalar { self.bit_vector_terms(&*ife.cond, bound, f - 1); self.bit_vector_block(&ife.then, bound, f - 1); match &ife.els { None => {}, Some(el) => self.bit_vector_terms(&**el, bound, f - 1), } } else { what = 6; } },
+                ast::ExprKind::Block(blk) => { if scalar { self.bit_vector_block(blk, bound, f - 1); } else { what = 6; } },
+                ast::ExprKind::Array(q4_ek_array0) => { what = 6; },
+                ast::ExprKind::Repeat(q4_ek_repeat0) => { what = 6; },
+                ast::ExprKind::Old(q4_ek_old0) => { what = 4; },
+                ast::ExprKind::Quant(q4_ek_quant0) => { what = 3; },
+                ast::ExprKind::Trigger(q4_ek_trigger0) => { what = 6; },
+                ast::ExprKind::Closure(q4_ek_closure0) => { what = 6; },
+                ast::ExprKind::StructLit(q4_ek_structlit0) => { what = 6; },
+                ast::ExprKind::Path(p) => { if !int_const(p.as_slice()) && !f64_const(p.as_slice()) { what = 6; } },
+                ast::ExprKind::Deref(q4_ek_deref0) => { if !scalar || any_bound(e, bound.as_slice()) { what = 5; } },
+                ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => { if !scalar || any_bound(e, bound.as_slice()) { what = 2; } },
+                ast::ExprKind::Match(q4_ek_match0) => { what = 6; },
+                ast::ExprKind::Return(q4_ek_return0) => { what = 6; },
+                ast::ExprKind::Try(q4_ek_try0) => { what = 6; },
+                ast::ExprKind::Loop(q4_ek_loop0) => { what = 6; },
+                ast::ExprKind::Break(q4_ek_break0) => { what = 6; },
+                ast::ExprKind::Continue(q4_ek_continue0) => { what = 6; },
+                ast::ExprKind::Range(q4_ek_range0) => { what = 6; },
+                ast::ExprKind::Error => { what = 6; },
+            }
+            if what == 0 {
+                return;
+            }
+            let text: String = if what == 1 {
+                String::from("an element")
+            } else if what == 2 {
+                String::from("a field")
+            } else if what == 3 {
+                String::from("a quantifier")
+            } else if what == 4 {
+                String::from("an entry value (`old`)")
+            } else if what == 5 {
+                String::from("a value behind a reference")
+            } else if !scalar {
+                types::cat3("a value of type `", types::text(&ty).as_str(), "`")
+            } else {
+                String::from("not a bit-vector term")
+            };
+            self.c.help("E0515", e.span, types::cat4("`by (bit_vector)` takes integer, `f64` and `bool` terms: `", fmt::expr_text(e).as_str(), "` is ", text.as_str()).as_str(), "assert over integer and `bool` terms: an element, a field or a length is one when it names no `let` of the assertion; a quantified fact is a `proof fn` over one value");
+        }
 
         #[summary("블록: 새 범위에서 문장을 차례로, 끝 식의 타입. 끝 식이 없고 끝나지 않는 문장이 있으면 `!`")]
         #[effects(alloc)]
@@ -692,6 +960,34 @@ mod body {
             out
         }
 
+        #[summary("const의 참조 (ADR-0052): 그 타입. 값은 해소된 프로그램을 위해 적어 둔다. 평가되지 않은 const는 이미 오류라 그 참조도 그렇다")]
+        #[effects(alloc)]
+        fn const_ref(self: &mut Body, from: &str, path: &[String], unit: &str, span: source::Span) -> Option<ast::TypeKind> {
+            let full: String = match lookup_const(&self.consts, path, unit) {
+                None => { return None; },
+                Some(p) => p,
+            };
+            match self.const_reads.find(from) {
+                None => { let mut one: Vec<String> = Vec::new(); one.push(full.clone()); self.const_reads.insert(from, one); },
+                Some(i) => { types::add(&mut self.const_reads.items[i], full.as_str()); },
+            }
+            let at: usize = match self.consts.find(full.as_str()) {
+                None => { return Some(ast::TypeKind::Error); },
+                Some(j) => j,
+            };
+            let c: consts::Const = self.consts.items[at].clone();
+            let v: consts::CVal = match &c.value {
+                None => { return Some(ast::TypeKind::Error); },
+                Some(x) => x.clone(),
+            };
+            let t: ast::TypeKind = self.const_type(&c);
+            if types::is_error(&t) {
+                return Some(t);
+            }
+            self.const_uses.insert(span_key(span).as_str(), ConstUse { v: v, ty: t.clone() });
+            Some(t)
+        }
+
         #[summary("const의 선언한 타입을 그 단위에서, 함수의 타입 매개변수 밖에서 푼 것. 값만 담지 않으면 Error")]
         #[effects(alloc)]
         fn const_type(self: &mut Body, c: &consts::Const) -> ast::TypeKind {
@@ -891,6 +1187,32 @@ mod body {
             ast::TypeKind::Error
         }
 
+        #[summary("f64::from(x) (ADR-0061 §4): x는 어느 정수 타입이든, 또는 f64")]
+        #[effects(alloc)]
+        fn f64_from(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            if args.len() != 1 {
+                self.c.help("E0405", span, "`f64::from` takes one argument", "write `f64::from(x)` with an integer `x`");
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    self.expr(cx, &args[i], &no, mode, f - 1);
+                }
+                return ast::TypeKind::Error;
+            }
+            let t: ast::TypeKind = self.expr(cx, &args[0], &no, mode, f - 1);
+            if types::is_int(&t) || is_f64(&t) || types::is_error(&t) {
+                return ast::TypeKind::F64;
+            }
+            self.c.help("E0401", args[0].span, types::cat3("`f64::from` takes an integer, found `", types::text(&t).as_str(), "`").as_str(), "`f64::from(x)` converts an integer of any type");
+            ast::TypeKind::Error
+        }
+
         #[summary("구조체(나 그 참조) bt의 필드 name의 타입")]
         #[effects(alloc)]
         fn field_type_of(self: &mut Body, bt: &ast::TypeKind, name: &ast::Ident) -> ast::TypeKind {
@@ -1075,6 +1397,48 @@ mod body {
             ast::TypeKind::Named(path, targs)
         }
 
+        #[summary("f64를 기대한 자리의 정수 리터럴 (let x: f64 = 1;): E0401, 고침은 실수 리터럴. 검사는 f64로 이어 간다")]
+        #[effects(alloc)]
+        fn int_for_float(self: &mut Body, text: &str, span: source::Span) -> ast::TypeKind {
+            self.c.fixed("E0401", span, types::cat3("expected `f64`, found integer literal `", text, "`").as_str(), "write a float literal (ADR-0061 §2)", types::cat2(text, ".0").as_str());
+            ast::TypeKind::F64
+        }
+
+        #[summary("정수 리터럴: 타입은 기대한 정수 타입, 없으면 i64. 코드에서는 그 타입에 들어야 한다 (E0406); 명세의 정수는 끝이 없다 (ADR-0017, ADR-0024)")]
+        #[effects(alloc)]
+        fn int_lit(self: &mut Body, v: wide::U128, negative: bool, expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode) -> ast::TypeKind {
+            let mut t: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::I64);
+            match expected {
+                None => {},
+                Some(x) => { match int_of(x) { None => {}, Some(xi) => { if signed(xi) || !negative || exec_mode(mode) { t = x.clone(); } }, } },
+            }
+            let i: ast::IntTy = match int_of(&t) {
+                None => ast::IntTy::I64,
+                Some(k) => k,
+            };
+            let zero: bool = v.hi == 0 && v.lo == 0;
+            if negative && !zero && !signed(i) {
+                self.unsigned_negation(span, &t);
+                return ast::TypeKind::Error;
+            }
+            let bound: consts::Num = if negative {
+                consts::min_of(i)
+            } else {
+                consts::max_of(i)
+            };
+            let ok: bool = v.hi == 0 && v.lo <= bound.mag;
+            if !ok && exec_mode(mode) {
+                let tt: String = types::text(&t);
+                let mut fix: String = types::cat3("`", tt.as_str(), "` holds ");
+                consts::push_num(&mut fix, consts::min_of(i));
+                fix.push_str("..=");
+                consts::push_num(&mut fix, consts::max_of(i));
+                fix.push_str(": use a wider type or a value in range");
+                self.c.help("E0406", span, types::cat3("literal does not fit in `", tt.as_str(), "`").as_str(), fix.as_str());
+            }
+            t
+        }
+
         #[summary("span의 break나 continue가 떠나는 루프: 레이블이 가리키는 것이나 가장 안쪽 것의 cx.loops 자리 (없으면 E0250, E0317)")]
         #[effects(alloc)]
         fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {
@@ -1180,6 +1544,22 @@ mod body {
                 self.c.fixed("E0201", l.name.span, msg.as_str(), types::cat3("write `", r.as_str(), "`").as_str(), r.as_str());
             }
             self.declare(cx, &l.name, t, l.mutable, false);
+        }
+
+        #[summary("배열 리터럴이나 반복의 원소: 배열 타입의 원소 규칙 (백로그 1B-35, 2B-14, 2V-04b, 2V-22), 반복은 Copy까지. 원소가 못 되면 false: 리터럴이 보고된 타입을 가져, 감싼 리터럴이 다시 보고하지 않는다")]
+        #[effects(alloc)]
+        fn literal_elem(self: &mut Body, t: &ast::TypeKind, span: source::Span, repeat: bool) -> bool {
+            if !types::array_elem_ok(t, 100000) {
+                self.c.help("E0402", span, types::cat3("array elements are scalars, structs, enums, `Box`es or arrays, found `", types::text(t).as_str(), "`").as_str(), "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`");
+                return false;
+            }
+            if repeat {
+                let moving: Vec<String> = self.c.moving_params();
+                if types::is_move_in(t, &self.c.adts, moving.as_slice()) {
+                    self.c.help("E0402", span, types::cat3("`[v; N]` copies `v`, and `", types::text(t).as_str(), "` moves").as_str(), "write the elements one by one: `[a, b, ..]`");
+                }
+            }
+            true
         }
 
         #[summary("while이나 loop의 invariant와 decreases: invariant의 old(a)는 함수에 들어올 때의 a, decreases는 있어야 한다 (E0506, missing에). 밖의 입력이 끝을 정하는 nondet 함수의 loop는 없어도 된다 (ADR-0094)")]
@@ -1631,6 +2011,26 @@ mod body {
             self.expect_ty(&t, &ast::TypeKind::Unit, p.body.span);
         }
 
+        #[summary("from에서 닿는 타입들 (from도)")]
+        #[effects(alloc)]
+        fn reachable(self: &Body, from: &ast::TypeKind) -> Vec<ast::TypeKind> {
+            let mut seen: Vec<String> = Vec::new();
+            let mut out: Vec<ast::TypeKind> = Vec::new();
+            let mut todo: Vec<ast::TypeKind> = Vec::new();
+            todo.push(from.clone());
+            let mut fuel: usize = 1000000000;
+            while todo.len() > 0 && fuel > 0
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match todo.pop() {
+                    None => {},
+                    Some(c) => { if types::add(&mut seen, types::text(&c).as_str()) { let more: Vec<ast::TypeKind> = self.components(&c); push_all(&mut todo, more.as_slice()); out.push(c.clone()); } },
+                }
+            }
+            out
+        }
+
         #[summary("t가 자기 자신에 닿는가 (값이 담는 타입을 따라)")]
         #[effects(alloc)]
         fn reaches_itself(self: &Body, t: &ast::TypeKind) -> bool {
@@ -1648,6 +2048,27 @@ mod body {
                 }
             }
             false
+        }
+
+        #[summary("t에서 닿는 타입(t도) 가운데 저를 담고 Vec이나 배열을 드는 것: 그 명세의 ==는 끝없는 깊이의 값을 원소마다 견줘야 해서 증명기의 ==가 펼 수 없다")]
+        #[effects(alloc)]
+        fn recursive_with_vec(self: &Body, t: &ast::TypeKind) -> Option<ast::TypeKind> {
+            let all: Vec<ast::TypeKind> = self.reachable(t);
+            for i in 0..all.len()
+                invariant 0 <= i && i <= all.len(),
+            {
+                if is_named(&all[i]) && self.reaches_itself(&all[i]) {
+                    let sub: Vec<ast::TypeKind> = self.reachable(&all[i]);
+                    for j in 0..sub.len()
+                        invariant 0 <= j && j <= sub.len(),
+                    {
+                        if is_vec(&sub[j]) || is_array(&sub[j]) {
+                            return Some(all[i].clone());
+                        }
+                    }
+                }
+            }
+            None
         }
 
         #[summary("호출의 경로가 가리키는 함수: 이 단위의 타입이나 trait의 함수 `T::f`, 이 단위의 함수나 내장 함수 `f`, 온 경로")]
@@ -1748,6 +2169,39 @@ mod body {
                     settle_diag(&mut self.c.diags, &open[o].name, r.as_str());
                 }
             }
+        }
+
+        #[summary("a << s, a >> s (ADR-0048 §2): a는 정수, 양 s도 어느 정수 타입이든 (리터럴 양은 u32). 값은 a의 타입. 양의 범위는 증명 의무다 (E0803)")]
+        #[effects(alloc)]
+        fn shift(self: &mut Body, cx: &mut FnCtx, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, span: source::Span, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let lh: Option<ast::TypeKind> = match expected {
+                None => None,
+                Some(x) => { if types::is_int(x) { Some(x.clone()) } else { None } },
+            };
+            let lt: ast::TypeKind = self.expr(cx, l, &lh, mode, f - 1);
+            let rh: Option<ast::TypeKind> = if untyped_literal(r, 1000000000) {
+                Some(ast::TypeKind::Int(ast::IntTy::U32))
+            } else {
+                None
+            };
+            let rt: ast::TypeKind = self.expr(cx, r, &rh, mode, f - 1);
+            if types::is_error(&lt) || types::is_error(&rt) {
+                return ast::TypeKind::Error;
+            }
+            if !types::is_int(&lt) {
+                self.c.help("E0401", span, types::cat5("`", op_symbol(op).as_str(), "` is not defined for `", types::text(&lt).as_str(), "`").as_str(), "only integers shift");
+                return ast::TypeKind::Error;
+            }
+            if !types::is_int(&rt) {
+                self.c.help("E0401", r.span, types::cat3("a shift amount is an integer, found `", types::text(&rt).as_str(), "`").as_str(), "shift by an integer of any type: `x << k` with `k: u32`");
+                return ast::TypeKind::Error;
+            }
+            lt
         }
 
         #[summary("check_slots의 한 자리의 값을 본다: 인자 at, 또는 필드 at의 값")]
@@ -1992,6 +2446,30 @@ mod body {
             }
         }
 
+        #[summary("글 인자: 다음 조각(4D-03e6)이 채운다")]
+        #[effects(alloc)]
+        fn text_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, mode: Mode, f: usize) -> () {}
+
+        #[summary("견줌의 글 피연산자: 문자열 리터럴은 거기서 &str다 (Rust의 버릇 s == \"abc\", ADR-0050 §2)")]
+        #[effects(alloc)]
+        fn text_operand(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, hint: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if is_str_lit(&e.kind) {
+                let t: ast::TypeKind = str_ref();
+                self.types.insert(span_key(e.span).as_str(), t.clone());
+                return t;
+            }
+            if as_str_call(e) || str_slice(e) {
+                self.text_arg(cx, e, mode, f - 1);
+                return self.type_at(e.span);
+            }
+            self.expr(cx, e, hint, mode, f - 1)
+        }
+
         #[summary("x? (ADR-0049 §1): x는 Option을 내는 함수 안의 Option, 또는 같은 오류 타입의 Result를 내는 함수 안의 Result (암묵 변환 없음, E0241). 타입은 페이로드")]
         #[effects(alloc)]
         fn try_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, mode: Mode, f: usize) -> ast::TypeKind
@@ -2053,6 +2531,15 @@ mod body {
             payload
         }
 
+        #[summary("그 자리의 식에 적힌 타입 (없으면 오류 타입)")]
+        #[effects(alloc)]
+        fn type_at(self: &Body, span: source::Span) -> ast::TypeKind {
+            match self.types.find(span_key(span).as_str()) {
+                None => ast::TypeKind::Error,
+                Some(i) => self.types.items[i].clone(),
+            }
+        }
+
         #[summary("E0301: 범위에 없는 이름. 보이는 이름 가운데 가장 가까운 하나(편집 거리 2 이하)를 고칠 글로 (백로그 2D-18)")]
         #[effects(alloc)]
         fn unknown_local(self: &mut Body, cx: &FnCtx, name: &str, span: source::Span) -> () {
@@ -2092,6 +2579,12 @@ mod body {
                 None => { let tn: Vec<String> = names_of(ty.as_slice()); let d: diag::Diag = self.c.unknown_type(tn.as_slice(), decls::span_to(segs[0].span, segs[n - 2].span), cx.mod_path.as_str()); self.c.diags.push(d); },
                 Some(tp) => { let mut names: Vec<String> = Vec::new(); match self.c.adts.find(tp.as_str()) { None => {}, Some(at) => { match &self.c.adts.items[at].kind { types::AdtKind::Struct(q4_fs) => {}, types::AdtKind::Enum(vs) => { names = variant_names(vs.as_slice()); }, } }, } let msg: String = types::cat5("`", tp.as_str(), "` has no variant `", segs[n - 1].name.as_str(), "`"); match types::closest(segs[n - 1].name.as_str(), names.as_slice()) { None => { if names.len() == 0 { self.c.help("E0307", segs[n - 1].span, msg.as_str(), types::cat5("`", tp.as_str(), "` is a struct: build it with `", segs[n - 2].name.as_str(), " { .. }`").as_str()); } else { self.c.help("E0307", segs[n - 1].span, msg.as_str(), types::cat4("variants of `", tp.as_str(), "`: ", types::join(names.as_slice(), ", ").as_str()).as_str()); } }, Some(near) => self.c.fixed("E0307", segs[n - 1].span, msg.as_str(), types::cat3("did you mean `", near.as_str(), "`?").as_str(), near.as_str()), } },
             }
+        }
+
+        #[summary("E0411: 부호 없는 값에는 음수가 없다")]
+        #[effects(alloc)]
+        fn unsigned_negation(self: &mut Body, span: source::Span, t: &ast::TypeKind) -> () {
+            self.c.help("E0411", span, types::cat3("cannot negate a value of type `", types::text(t).as_str(), "`").as_str(), "an unsigned type has no negative values: use a signed type, or subtract from a larger value");
         }
 
         #[summary("변수인 자리: 참조면 그 참조가 &mut인가, 아니면 let mut인가")]
@@ -2263,6 +2756,9 @@ mod body {
     #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
     struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
 
+    #[summary("해소된 프로그램이 읽을 const의 참조: 값과 타입")]
+    struct ConstUse { v: consts::CVal, ty: ast::TypeKind }
+
     #[summary("변수가 쓰인 자리 하나. kind 0은 연산의 한 쪽(other는 다른 쪽, literal은 그것이 리터럴인가), 1은 색인, 2는 push의 받는 쪽(other는 넣는 값)")]
     struct Fact { kind: u8, lo: u32, other: source::Span, literal: bool }
 
@@ -2385,6 +2881,19 @@ mod body {
         out
     }
 
+    #[summary("bound의 이름 가운데 e가 말하는 것이 있는가")]
+    #[effects(pure)]
+    fn any_bound(e: &ast::Expr, bound: &[String]) -> bool {
+        for i in 0..bound.len()
+            invariant 0 <= i && i <= bound.len(),
+        {
+            if mentions(e, bound[i].as_str(), 1000000000) {
+                return true;
+            }
+        }
+        false
+    }
+
     #[summary("xs 가운데 하나가 name을 말하는가 (strict면 mentions_strict로)")]
     #[effects(pure)]
     fn any_mentions(xs: &[ast::Expr], name: &str, strict: bool, f: usize) -> bool
@@ -2409,6 +2918,48 @@ mod body {
         false
     }
 
+    #[summary("x.as_str() 꼴인가")]
+    #[effects(pure)]
+    fn as_str_call(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(m) => m.name.name == "as_str",
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
     #[summary("lo가 더 앞이면 고른 것을 바꾼다")]
     #[effects(alloc)]
     fn better(best: &mut Best, lo: u32, t: &ast::TypeKind) -> () {
@@ -2416,6 +2967,16 @@ mod body {
             best.found = true;
             best.lo = lo;
             best.ty = t.clone();
+        }
+    }
+
+    #[summary("값을 내는 연산이 틀렸으면 오류 타입, 견줌이면 bool")]
+    #[effects(pure)]
+    fn bin_fail(valued: bool) -> ast::TypeKind {
+        if valued {
+            ast::TypeKind::Error
+        } else {
+            ast::TypeKind::Bool
         }
     }
 
@@ -2613,6 +3174,12 @@ mod body {
             Mode::Spec(q4_old) => false,
             Mode::Ghost => false,
         }
+    }
+
+    #[summary("f64::NAN, f64::MAX 같은 f64의 연관 상수인가 (ADR-0061 §2)")]
+    #[effects(pure)]
+    fn f64_const(path: &[ast::Ident]) -> bool {
+        path.len() == 2 && path[0].name == "f64" && (path[1].name == "INFINITY" || path[1].name == "NEG_INFINITY" || path[1].name == "NAN" || path[1].name == "MAX" || path[1].name == "MIN" || path[1].name == "MIN_POSITIVE" || path[1].name == "EPSILON")
     }
 
     #[summary("이름이 name인 첫 필드 값의 차례")]
@@ -2824,6 +3391,57 @@ mod body {
         }
     }
 
+    #[summary("s[a..b] 꼴인가")]
+    #[effects(pure)]
+    fn index_range(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_b, i) => is_range(&i.kind),
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("T::MIN, T::MAX인가")]
+    #[effects(pure)]
+    fn int_const(path: &[ast::Ident]) -> bool {
+        match consts::int_const(path) {
+            None => false,
+            Some(q4_c) => true,
+        }
+    }
+
     #[summary("초기값이 맨 정수 리터럴이나 그 음수인가")]
     #[effects(pure)]
     fn int_literal(e: &ast::Expr) -> bool {
@@ -2897,6 +3515,31 @@ mod body {
             return Some(t.clone());
         }
         None
+    }
+
+    #[effects(pure)]
+    fn is_add(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => true,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
     }
 
     #[effects(pure)]
@@ -3018,6 +3661,29 @@ mod body {
         }
     }
 
+    #[effects(pure)]
+    fn is_char(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => true,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
     #[summary("t가 std::process::Child(나 그 참조)인가")]
     #[effects(alloc)]
     fn is_child(t: &ast::TypeKind) -> bool {
@@ -3045,6 +3711,32 @@ mod body {
             ast::BinOp::Le => true,
             ast::BinOp::Gt => true,
             ast::BinOp::Ge => true,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("== 또는 !=")]
+    #[effects(pure)]
+    fn is_eq(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => true,
+            ast::BinOp::Ne => true,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
             ast::BinOp::And => false,
             ast::BinOp::Or => false,
             ast::BinOp::Implies => false,
@@ -3089,6 +3781,31 @@ mod body {
     }
 
     #[effects(pure)]
+    fn is_implies(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => true,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[effects(pure)]
     fn is_int_kind(k: &ast::ExprKind) -> bool {
         match k {
             ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => true,
@@ -3126,6 +3843,32 @@ mod body {
             ast::ExprKind::Continue(q4_ek_continue0) => false,
             ast::ExprKind::Range(q4_ek_range0) => false,
             ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("&&, ||, ==>")]
+    #[effects(pure)]
+    fn is_logic(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => true,
+            ast::BinOp::Or => true,
+            ast::BinOp::Implies => true,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
         }
     }
 
@@ -3234,6 +3977,47 @@ mod body {
     }
 
     #[effects(pure)]
+    fn is_range(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => true,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
     fn is_ref(t: &ast::TypeKind) -> bool {
         match t {
             ast::TypeKind::Int(q4_tk_int0) => false,
@@ -3253,6 +4037,31 @@ mod body {
             ast::TypeKind::Param(q4_tk_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_rem(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => true,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
         }
     }
 
@@ -3349,6 +4158,59 @@ mod body {
             ast::TypeKind::Param(q4_tk_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_str_lit(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => true,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("글인가: String, str, 또는 그것의 참조")]
+    #[effects(alloc)]
+    fn is_text(t: &ast::TypeKind) -> bool {
+        if text_kind(t) {
+            return true;
+        }
+        match ref_inner(t) {
+            None => false,
+            Some(inner) => text_kind(&inner),
         }
     }
 
@@ -3662,7 +4524,7 @@ mod body {
         let open_lets: Vec<OpenLet> = Vec::new();
         let typed_uses: Vec<TypedUse> = Vec::new();
         let spec_at: Vec<source::Span> = Vec::new();
-        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), spec_widen: false }
+        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), spec_widen: false }
     }
 
     #[summary("함수 하나의 빈 문맥: 범위 하나")]
@@ -3708,6 +4570,13 @@ mod body {
     #[effects(pure)]
     fn only_io(e: types::Effects) -> bool {
         e.io && !e.alloc && !e.nondet && !e.panic
+    }
+
+    #[effects(alloc)]
+    fn op_symbol(op: ast::BinOp) -> String {
+        let mut s: String = String::new();
+        ast::push_bin_symbol(&mut s, &op);
+        s
     }
 
     #[summary("조건이나 살피는 값의 자리: 유령 코드에서는 old를 쓸 수 있는 명세")]
@@ -4117,11 +4986,83 @@ mod body {
         }
     }
 
+    #[summary("&str")]
+    #[effects(alloc)]
+    fn str_ref() -> ast::TypeKind {
+        ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))
+    }
+
+    #[summary("&s[a..b] 꼴인가")]
+    #[effects(pure)]
+    fn str_slice(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(m, x) => !*m && index_range(&**x),
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
     #[effects(pure)]
     fn struct_kind(k: &types::AdtKind) -> bool {
         match k {
             types::AdtKind::Struct(q4_fs) => true,
             types::AdtKind::Enum(q4_vs) => false,
+        }
+    }
+
+    #[summary("String 또는 str")]
+    #[effects(pure)]
+    fn text_kind(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => true,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
         }
     }
 
