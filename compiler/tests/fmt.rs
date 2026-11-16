@@ -272,6 +272,68 @@ mod geo {
     );
 }
 
+/// `bmb dump types|moves` (backlog 4D-03e1): what the checker's bodies
+/// compute, the same text on every run.
+#[test]
+fn table_dumps_show_what_the_bodies_compute() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    const N: i64 = 3;
+    struct P { x: i64 }
+    impl P { #[effects(pure)] fn get(self: &P) -> i64 { self.x } }
+    #[effects(pure)]
+    fn id<T: Copy>(v: T) -> T { v }
+    #[effects(alloc)]
+    fn keep(v: Vec<i64>, w: Vec<i64>) -> Vec<i64> { v }
+    #[effects(pure)]
+    fn down(n: u8) -> u8
+        decreases n,
+    { if n == 0 { 0 } else { down(n - 1) } }
+    #[effects(io)]
+    fn main() -> () {
+        let p: P = P { x: N };
+        let r: i64 = id::<i64>(p.get());
+        print_i64(r);
+    }
+}
+"#;
+    let dump = |stage: &str, text: &str| bmb(&["dump", stage], &one("x.bmb", text));
+    for stage in ["types", "moves"] {
+        let (ok, out) = dump(stage, SRC);
+        assert!(ok && out.starts_with("---\n"), "{stage}: {out}");
+        assert_eq!(dump(stage, SRC).1, out, "{stage}");
+    }
+    let types = dump("types", SRC).1;
+    for row in [
+        // Resolved: the `const` is its value (the normal form writes a
+        // resolved method call as a method call again).
+        "id::<i64>(p.get())",
+        "P { x: 3 }",
+        r#"{"locals":"d::main","vars":[["p","d::P"],["r","i64"]]}"#,
+        r#""targs":["i64"]}"#,
+        r#"{"calls":"d::down","to":["d::down"]}"#,
+        r#"{"needs":"d::main","own":"pure","body":"io"}"#,
+        r#"{"recursive":"d::down","scc":"#,
+        r#"{"reads":"d::main","consts":["d::N"]}"#,
+    ] {
+        assert!(types.contains(row), "{row}\n{types}");
+    }
+    assert!(types.contains(r#""type":"d::P"}"#), "{types}");
+    let moves = dump("moves", SRC).1;
+    assert!(
+        moves.contains(r#"{"moves":"d::keep","kind":"drops","file":"x.bmb","#)
+            && moves.contains(r#""names":["w"]}"#),
+        "{moves}"
+    );
+    // The checker goes on after a finding: the rows are there with it.
+    let bad = SRC.replace("let r: i64 = id::<i64>(p.get());", "let r: i64 = true;");
+    let (ok, out) = dump("types", &bad);
+    assert!(
+        !ok && out.contains("\"code\":\"E") && out.contains(r#"{"locals":"d::main""#),
+        "{out}"
+    );
+}
+
 /// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
 /// parser and the checker's bodies, each the same text on every run.
 #[test]

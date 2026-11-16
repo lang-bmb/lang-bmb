@@ -176,6 +176,11 @@ const USAGE: &str = "usage:
                             function values and constants are lowered (lower, with the names
                             made and each constant's value), or the declarations the checker
                             collects as JSONL (decls)
+  bmb dump types|moves <file.bmb>...
+                            what the checker's bodies compute: diagnostics, `---`, then the
+                            resolved program and per definition its locals, the type of every
+                            expression, type arguments, call edges, effects and recursion
+                            (types), or where each function drops its owned values (moves)
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1015,7 +1020,7 @@ fn run() -> ExitCode {
             if args.len() > 2
                 && matches!(
                     args[1].as_str(),
-                    "tokens" | "parse" | "std" | "lower" | "decls"
+                    "tokens" | "parse" | "std" | "lower" | "decls" | "types" | "moves"
                 ) =>
         {
             let files = match read_files(&args[2..]) {

@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | R0 관측점 | `4D-03a` | `bmb dump std`·`lower`·`decls`가 결정론이고 퍼저가 변형 입력마다 돌린다 |
 | R1 검사기 앞 | `4D-03b` → `4D-03c` | `dump std`, `dump lower`가 stage0과 바이트 동일 |
-| R2 검사기 | `4D-03d` → `4D-03e` | `dump decls`, `check` JSONL·종료 코드 바이트 동일 |
+| R2 검사기 | `4D-03d` → `4D-03e`(`e1`~`e9`) | `dump decls`, `dump types`·`moves`, `check` JSONL·종료 코드 바이트 동일 |
 | R3 정규형·정체성 | `4D-03f` | `fmt`·`hash` 바이트 동일, C3 고정 |
 | 함께 | `INF-41` | 포트 증명 시간이 포트 크기에 비례하지 않는다 |
 
@@ -369,7 +369,16 @@ Rust·Verus 표면을 따른 것은 새 언어의 학습 부족을 줄이기 위
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
 | 4D-03 | 검사기·정규형 포팅(P3) | `check` 진단 JSONL·종료 코드, `fmt`·`hash` 출력, `codes --md` 바이트 동일 | 4D-02, 4D-12 | 🔄 2026-11-15 조각 `4D-03a`~`4D-03f`로 나눔(열일곱째 계획) |
-| 4D-03e | 검사기의 몸 검사 | `check.rs`의 문장·식·`match`·계약, `moves`, `escape`, `check/text`. 쓰기 전에 관측점을 하나 더 둘 자리를 찾는다. 닫는 조건: `check` JSONL·종료 코드가 코퍼스와 퍼저 생성물에서 바이트 동일 | 4D-03d | ⏳ 승인됨(둘째 승인 2026-11-15) |
+| 4D-03e | 검사기의 몸 검사 | `check.rs`의 문장·식·`match`·계약, `moves`, `escape`, `check/text`. 쓰기 전에 관측점을 하나 더 둘 자리를 찾는다. 닫는 조건: `check` JSONL·종료 코드가 코퍼스와 퍼저 생성물에서 바이트 동일 | 4D-03d | 🔄 2026-11-16 조각 `4D-03e1`~`4D-03e9`로 나눔. 몸 검사는 문장·식·호출·메서드·`match`가 서로를 부르는 한 덩어리라 출력 대조는 `4D-03e8`에서 처음 선다: 그 앞 조각은 증명과 빌드로 닫는다 |
+| 4D-03e1 | 몸 검사의 관측점: `bmb dump types`·`dump moves` | 오류 없는 프로그램에서 `check`는 아무것도 내지 않아, 몸 검사가 계산한 표(식마다 타입, 지역 변수, 타입 인자, 호출 간선, 효과, 재귀, 놓는 자리)가 틀려도 코드 생성(P4)까지 보이지 않는다. stage0이 그 표를 글로 낸다. 닫는 조건: 두 명령이 결정론이고 퍼저가 변형 입력마다 돌린다 | 4D-03d | ✅ 2026-11-16 `check::dump_tables`, `lib.rs`의 `dump_stage`(`types`·`moves`), 시험 `fmt::table_dumps_show_what_the_bodies_compute`, `tests/fuzz.rs`가 변형 입력마다 두 명령을 돌린다. 추적되는 `.bmb` 933개에서 두 번 돌려 같은 출력, 멈춤 0. 받아들이는 언어는 그대로다 |
+| 4D-03e2 | 함수의 머리와 문맥 | `fn_effect`, `check_mod`, `settle_lets`, `check_fn`, `check_param_type`, 근거 속성, `declare`와 `FnCtx`·범위(`check.rs` 4358~5590줄). 닫는 조건: `selfhost/`에 들어가 정의가 모두 증명되고 `bmb fmt --check` 통과 | 4D-03e1 | ⏳ |
+| 4D-03e3 | 문장과 자리 | `stmt`, `try_expr`, `place`·`place_of_inner`, 조각 인자(5594~6630줄). 닫는 조건은 `4D-03e2`와 같다 | 4D-03e2 | ⏳ |
+| 4D-03e4 | `match`·변형·구조체 리터럴 | `variant_value`, `builtin_variant`, `arm_variant`, `wildcard_arms`, `match_expr`, `struct_lit`(6633~7568줄). 닫는 조건은 `4D-03e2`와 같다 | 4D-03e3 | ⏳ |
+| 4D-03e5 | 식 | `expr_inner`, `binary`, `bit_vector_terms`(7569~9077줄). 닫는 조건은 `4D-03e2`와 같다 | 4D-03e4 | ⏳ |
+| 4D-03e6 | 메서드 | `method`, `method_target`, `f64_method`, `copy_within`, `vec_method`, `mem_call`, `vec_call`(9078~10377줄), `check/text`(563줄). 닫는 조건은 `4D-03e2`와 같다 | 4D-03e5 | ⏳ |
+| 4D-03e7 | 호출·변환·참조 인자 | `written_targs`, `targs_fix`, `call`, `conversion`, `ref_arg`, `slice_of_vec`, `data_ref_arg`(10378~11396줄). 닫는 조건은 `4D-03e2`와 같다 | 4D-03e6 | ⏳ |
+| 4D-03e8 | 몸 검사의 마감: 재귀·표·해소 | `check_recursion`, `trait_cycles`, `check_main`, 트리거, SCC, `into_tables`, `check_resolved`의 되풀이(메서드 호출의 고쳐 쓰기, 상수의 리터럴 나무)와 `escape`(189줄). 닫는 조건: `dump types`와 `check`의 JSONL·종료 코드가 추적되는 `.bmb` 전부, 가장자리 입력 `tests/port/types/`, 변형 입력에서 stage0과 바이트 동일 | 4D-03e7 | ⏳ |
+| 4D-03e9 | `moves` | `moves.rs`(1,164줄). 닫는 조건: `dump moves`가 같은 세 입력 집합에서 바이트 동일. 이것으로 `4D-03e`를 닫는다 | 4D-03e8 | ⏳ |
 | 4D-03f | 정규형의 나머지와 정체성 | `fmt`의 정체성 글·한정 글·해시, `identity`(791줄), `check::methodize`. 닫는 조건: `fmt`·`hash` 바이트 동일, C3 고정 | 4D-03e | ⏳ 승인됨(둘째 승인 2026-11-15) |
 | 4D-04 | 증명기·해법기 연결 포팅(P6·P7) | `verify --emit-smt` 스크립트·상태 줄·반례 바이트 동일, `stability` 같음 | 4E-02, 3P-05 | ⏳ |
 | 4D-05 | 코드 생성 포팅(P4, 전체 검사 모드) | `emit-llvm --all-checks` IR 바이트 동일, 실행 코퍼스 출력 동일. 증명된 의무 집합이 비어 증명기 없이 돈다(포팅 지도 P4) | 4D-03 | ⏳ |

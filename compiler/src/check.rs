@@ -452,6 +452,120 @@ pub fn dump_decls(mut p: Program, diags: &mut Diags) -> String {
     out
 }
 
+/// What the checker's bodies compute (`bmb dump types|moves`, backlog
+/// 4D-03e1): `p` checked and resolved (`check_resolved`), then JSONL rows
+/// another implementation's rows compare with byte for byte. `file` names a
+/// file of the source map. A program with an error has rows too: the
+/// checker goes on after a finding, and what it went on with is compared.
+///
+/// - `types`: the resolved program in normal form (each `const` as its
+///   value; a resolved method call shows in the call edges), then per definition its locals, the type
+///   of every expression by span, the type arguments of generic calls, the
+///   call edges, the effects each body needs, the recursive components,
+///   the escapes and what may end up untrusted, and the `const`s read.
+/// - `moves`: per executable function, where its owned values are dropped
+///   (`moves::MoveInfo`).
+pub fn dump_tables(
+    p: Program,
+    diags: &mut Diags,
+    file: &dyn Fn(u32) -> String,
+    moves: bool,
+) -> String {
+    use crate::diag::json_str as q;
+    let (p, t) = check_resolved(p, diags);
+    let list = |xs: Vec<String>| format!("[{}]", xs.join(","));
+    let names = |xs: &mut dyn Iterator<Item = &String>| list(xs.map(|x| q(x)).collect());
+    let at =
+        |k: &(u32, u32, u32)| format!("\"file\":{},\"lo\":{},\"hi\":{}", q(&file(k.0)), k.1, k.2);
+    let mut out = String::new();
+    if moves {
+        for (path, m) in &t.moves {
+            let sets = [("replaces", &m.replaces), ("consumed", &m.consumed)];
+            let maps = [
+                ("drops", &m.drops),
+                ("arm_drops", &m.arm_drops),
+                ("partial_replaces", &m.partial_replaces),
+                ("exits", &m.exits),
+                ("branch_drops", &m.branch_drops),
+            ];
+            for (kind, map) in maps {
+                for (k, vs) in map {
+                    out.push_str(&format!(
+                        "{{\"moves\":{},\"kind\":\"{kind}\",{},\"names\":{}}}\n",
+                        q(path),
+                        at(k),
+                        names(&mut vs.iter())
+                    ));
+                }
+            }
+            for (kind, set) in sets {
+                for k in set {
+                    out.push_str(&format!(
+                        "{{\"moves\":{},\"kind\":\"{kind}\",{}}}\n",
+                        q(path),
+                        at(k)
+                    ));
+                }
+            }
+        }
+        return out;
+    }
+    for text in crate::fmt::format_units(&p).values() {
+        out.push_str(text);
+        out.push('\n');
+    }
+    for (path, vars) in &t.locals {
+        let vars = vars
+            .iter()
+            .map(|(n, ty)| format!("[{},{}]", q(n), q(&ty_str(ty))))
+            .collect();
+        out.push_str(&format!(
+            "{{\"locals\":{},\"vars\":{}}}\n",
+            q(path),
+            list(vars)
+        ));
+    }
+    for (k, ty) in &t.types {
+        out.push_str(&format!("{{{},\"type\":{}}}\n", at(k), q(&ty_str(ty))));
+    }
+    for (k, ts) in &t.targs {
+        let ts = ts.iter().map(|x| q(&ty_str(x))).collect();
+        out.push_str(&format!("{{{},\"targs\":{}}}\n", at(k), list(ts)));
+    }
+    for (path, to) in &t.calls {
+        out.push_str(&format!(
+            "{{\"calls\":{},\"to\":{}}}\n",
+            q(path),
+            names(&mut to.iter())
+        ));
+    }
+    for (path, (own, body)) in &t.effect_needs {
+        out.push_str(&format!(
+            "{{\"needs\":{},\"own\":{},\"body\":{}}}\n",
+            q(path),
+            q(&own.text()),
+            q(&body.text())
+        ));
+    }
+    for (path, scc) in &t.recursive {
+        out.push_str(&format!("{{\"recursive\":{},\"scc\":{scc}}}\n", q(path)));
+    }
+    for path in &t.external {
+        out.push_str(&format!("{{\"external\":{}}}\n", q(path)));
+    }
+    for path in &t.may_untrusted {
+        out.push_str(&format!("{{\"untrusted\":{}}}\n", q(path)));
+    }
+    for (path, cs) in &t.const_reads {
+        out.push_str(&format!(
+            "{{\"reads\":{},\"consts\":{}}}\n",
+            q(path),
+            names(&mut cs.iter())
+        ));
+    }
+    out
+}
+
 /// The normal form's method calls (ADR-0051, backlog 2M-02): `src` with
 /// each call by path `T::f(a, ..)` of a method written `x.f(..)`, where
 /// that names the same function the same way. `resolved` and `tables` are

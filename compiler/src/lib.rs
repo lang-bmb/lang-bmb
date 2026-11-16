@@ -952,6 +952,8 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 ///   function value is passed, and per `const` with its value.
 /// - `decls`: the declarations pass 1 of the checker reads
 ///   (`check::dump_decls`).
+/// - `types`, `moves`: what the checker's bodies compute
+///   (`check::dump_tables`, backlog 4D-03e1).
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1018,7 +1020,13 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
             }
             out
         }
-        _ => check::dump_decls(program, &mut diags),
+        "decls" => check::dump_decls(program, &mut diags),
+        _ => check::dump_tables(
+            program,
+            &mut diags,
+            &|f| sm.name(f).to_string(),
+            stage == "moves",
+        ),
     };
     let out = format!("{}---\n{body}", diags.to_jsonl(&sm));
     if diags.has_errors() {

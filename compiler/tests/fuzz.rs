@@ -209,6 +209,8 @@ fn front_end_never_panics_on_mutated_programs() {
             .and_then(|_| run(&dir, &["dump", "std"]))
             .and_then(|_| run(&dir, &["dump", "lower"]))
             .and_then(|_| run(&dir, &["dump", "decls"]))
+            .and_then(|_| run(&dir, &["dump", "types"]))
+            .and_then(|_| run(&dir, &["dump", "moves"]))
             .and_then(|_| run(&dir, &["check"]))
             .and_then(|ok| {
                 if ok {
