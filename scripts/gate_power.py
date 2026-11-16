@@ -307,9 +307,11 @@ MUTANTS = [
     ("v-return-rest-wrong-side", "unsound", V,
      '''            (true, false) => {
                 self.vars = else_vars;
+                self.vars.retain(|k, _| base_vars.contains_key(k));
                 self.pc.push(format!("(not {c})"));''',
      '''            (true, false) => {
                 self.vars = else_vars;
+                self.vars.retain(|k, _| base_vars.contains_key(k));
                 self.pc.push(c.to_string());''',
      "after a branch that returned, the rest runs under that branch's condition"),
     ("v-havoc-match-arms-skipped", "unsound", V,

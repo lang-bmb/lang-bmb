@@ -160,7 +160,7 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": 11,
+        "gate_runs": 13,
         "undecided_runs": 3,
         "friction": [
           "닫히지 않은 행이다: 검사기 앞의 단계(`refs`·`stdlib`·`closures`·`consts`와 도우미 `std_units`·`table`)뿐이고 `dump std`·`dump lower`를 견준다(`4D-03b`·`4D-03c`). `consts::literal_tree`는 검사기의 표가 필요해 검사기와 함께 옮긴다. 배율은 옮긴 부분이 C4 전체와 견줘진 것이라 낮게 나온다. `gate_runs`는 지금까지의 `bmb verify` 실행 수다(조각마다 더한다: `4D-03b` 3번, `4D-03c` 3번 중 미결정이 있던 것 2번)",
@@ -187,7 +187,8 @@
           "`TypeKind`(17갈래)의 `match`는 전처리(갈래를 채우는 스크립트)로 썼다: 쓰는 글은 갈래 2~6개인데 포트의 글은 17개다(`types`·`decls`에 42곳). 와일드카드 갈래는 넣지 않기로 했다(ADR-0141 근거)",
           "내장 선언(함수 28개, 시스템 타입 5개)은 stage0의 `dump decls`에서 만든다(`scripts/builtins.py`): 손으로 옮기면 두 표가 갈라진다",
           "`clone`(ADR-0141)이 쓰인 자리: 표의 값을 읽고 나서 `self`를 고치는 곳마다(`self.adts.items[i].generics.clone()` 등 90여 곳). 사본 함수는 하나도 쓰지 않았다",
-          "`4D-03e2`(함수의 머리와 문맥): stage0 약 810줄(`check_mod`·`check_fn`·`check_effects`·매개변수의 꼴·`check_contract`·`declare`·`check_const`·`expect_ty`·`block`)에 포트 `body.bmb` 1,345줄(정규형), 배율 1.7. 처음 쓴 글의 `bmb check`가 진단 63개를 냈다: 와일드카드 갈래(E0224) 8, 갈래의 선언 순서(E0426) 4, 참조를 담은 지역 변수(E0403) 4, 실행 코드의 `== None`(E0425) 1, 변수 이름 `spec`(예약어, E0103) 1, 한 경로에서만 옮긴 값(E0414) 1, 한 함수에서 타입이 다른 같은 이름(E0303) 1, 나머지는 그 문법 오류 하나가 뒤의 함수를 모두 가려 난 E0304였다. 세 번째 `check`에서 0개. `bmb verify` 2회: 정의 69개 가운데 실패 하나(진행 중에 길이가 바뀌는 `Vec`의 중간에서 시작하는 `for`의 불변식, 미결정 E0811), 처음부터 돌며 색인을 견주는 꼴로 고쳤다. 갈래를 다 쓰는 `match`는 열거형 선언에서 갈래를 채우는 스크립트로 썼다(`TypeKind` 11곳, `ExprKind` 2곳, `Stmt` 1곳). 문장과 식은 빈 몸이고(`stmt`·`expr`·`measure_type`) 다음 조각이 채운다: 그때까지 `body`는 구동기에 묶이지 않는다"
+          "`4D-03e2`(함수의 머리와 문맥): stage0 약 810줄(`check_mod`·`check_fn`·`check_effects`·매개변수의 꼴·`check_contract`·`declare`·`check_const`·`expect_ty`·`block`)에 포트 `body.bmb` 1,345줄(정규형), 배율 1.7. 처음 쓴 글의 `bmb check`가 진단 63개를 냈다: 와일드카드 갈래(E0224) 8, 갈래의 선언 순서(E0426) 4, 참조를 담은 지역 변수(E0403) 4, 실행 코드의 `== None`(E0425) 1, 변수 이름 `spec`(예약어, E0103) 1, 한 경로에서만 옮긴 값(E0414) 1, 한 함수에서 타입이 다른 같은 이름(E0303) 1, 나머지는 그 문법 오류 하나가 뒤의 함수를 모두 가려 난 E0304였다. 세 번째 `check`에서 0개. `bmb verify` 2회: 정의 69개 가운데 실패 하나(진행 중에 길이가 바뀌는 `Vec`의 중간에서 시작하는 `for`의 불변식, 미결정 E0811), 처음부터 돌며 색인을 견주는 꼴로 고쳤다. 갈래를 다 쓰는 `match`는 열거형 선언에서 갈래를 채우는 스크립트로 썼다(`TypeKind` 11곳, `ExprKind` 2곳, `Stmt` 1곳). 문장과 식은 빈 몸이고(`stmt`·`expr`·`measure_type`) 다음 조각이 채운다: 그때까지 `body`는 구동기에 묶이지 않는다",
+          "`4D-03e3a`(문장): stage0 약 420줄(`stmt`, `loop_clauses`, `struct_fields`, `deref_fix`, `untyped_literal`)에 포트 740줄, 배율 1.8. 앞 조각에서 걸린 규칙(갈래를 다 쓰기, 갈래의 순서, 참조 지역 변수, 한 이름에 한 타입)을 알고 쓴 글이라 `bmb check`의 언어 진단은 0개였고, 정의 33개가 첫 `bmb verify`에서 전부 증명됐다. 대신 stage0의 증명기가 멈췄다(`4D-31`: 한쪽이 `return`한 `match`의 갈래가 묶은 이름이 남아 뒤의 `for` 변수와 부딪친다). 한 이름에 한 타입 규칙 때문에 `i`·`k` 같은 이름을 함수 안에서 되풀이 쓰게 되고, 그 꼴이 stage0이 시험하지 않은 길이었다. 문장의 갈래가 묶는 이름은 문장마다 다르게 지었다(`sl`, `sa`, `sw`, ..): `a` 하나로 쓰면 E0303이다"
         ]
       }
     },

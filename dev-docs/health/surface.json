@@ -1006,6 +1006,10 @@
    "out": "779de80a7d05ad76",
    "src": "e905855962152408"
   },
+  "tests/verify/pass/arm_name_then_loop.bmb": {
+   "out": "d7da9dfa01a47222",
+   "src": "c614468bf512aa48"
+  },
   "tests/verify/pass/bit_vector.bmb": {
    "out": "6a5ad52116266772",
    "src": "19e6b5450bdacac7"

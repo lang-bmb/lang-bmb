@@ -4777,7 +4777,11 @@ impl<'p, 'q> Enc<'p, 'q> {
         let else_dead = std::mem::replace(&mut self.dead, false);
         self.pc.truncate(n);
         // A side that returned does not reach the join (ADR-0049 §3): the
-        // path goes on under the other side's condition and facts.
+        // path goes on under the other side's condition and facts. The
+        // names that side bound (an arm's bindings, a block's `let`s) end
+        // with it, as they do at a join: one left behind met a later loop
+        // variable of the same name, which is gone after its loop on one
+        // side of a later branch only (backlog 4D-31).
         match (then_dead, else_dead) {
             (true, true) => {
                 self.dead = true;
@@ -4786,12 +4790,14 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             (true, false) => {
                 self.vars = else_vars;
+                self.vars.retain(|k, _| base_vars.contains_key(k));
                 self.pc.push(format!("(not {c})"));
                 self.pc.extend(else_facts);
                 return ev;
             }
             (false, true) => {
                 self.vars = then_vars;
+                self.vars.retain(|k, _| base_vars.contains_key(k));
                 self.pc.push(c.to_string());
                 self.pc.extend(then_facts);
                 return tv;

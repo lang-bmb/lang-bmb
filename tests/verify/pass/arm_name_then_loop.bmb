@@ -1,0 +1,18 @@
+#[summary("갈래가 묶은 이름은 그 match에서 끝난다: 다른 갈래가 return해도, 뒤의 match 한 갈래 안의 for가 같은 이름을 변수로 쓸 수 있다 (백로그 4D-31: 증명기가 멈췄다)")]
+mod an {
+    enum K { A(Vec<u8>), B(u8) }
+
+    #[effects(alloc)]
+    fn pick(o: Option<usize>, k: &K) -> Vec<u8> {
+        let mut out: Vec<u8> = Vec::new();
+        let at: usize = match o {
+            None => { return out; },
+            Some(i) => i,
+        };
+        match k {
+            K::A(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(fs[i]); } },
+            K::B(q4_b) => {},
+        }
+        out
+    }
+}
