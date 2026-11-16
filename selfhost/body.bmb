@@ -4,9 +4,135 @@ mod body {
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
     #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
-    struct Body { c: decls::Checker, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
+    struct Body { c: decls::Checker, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
 
     impl Body {
+        #[summary("caller가 callee를 부른다고 적는다")]
+        #[effects(alloc)]
+        fn add_call(self: &mut Body, caller: &str, callee: &str) -> () {
+            let mut set: Vec<String> = match self.calls.find(caller) {
+                None => Vec::new(),
+                Some(at) => self.calls.items[at].clone(),
+            };
+            if !types::has(set.as_slice(), callee) {
+                set.push(String::from(callee));
+            }
+            self.calls.insert(caller, set);
+        }
+
+        #[summary("E0410: &mut으로 넘긴 변수를 다른 인자도 쓴다. 배열을 읽기만 하는 스칼라 인자는 호출 전에 계산된 값이라 겹칠 수 없다 (ADR-0024): fill(&mut a, a.len())")]
+        #[effects(alloc)]
+        fn alias_check(self: &mut Body, sig: &types::FnSig, args: &[ast::Expr], mut_roots: &[MutRoot]) -> () {
+            for q in 0..mut_roots.len()
+                invariant 0 <= q && q <= mut_roots.len(),
+            {
+                for j in 0..args.len()
+                    invariant 0 <= j && j <= args.len(),
+                {
+                    let by_value: bool = !(j < sig.params.len() && (is_ref(&sig.params[j]) || is_vec(&sig.params[j])));
+                    if j != mut_roots[q].at && !(by_value && reads_only(&args[j], 1000000000)) && mentions_strict(&args[j], mut_roots[q].root.as_str(), 1000000000) {
+                        self.c.err("E0410", args[j].span, types::cat3("`", mut_roots[q].root.as_str(), "` is passed as `&mut` and also used by another argument").as_str());
+                    }
+                }
+            }
+        }
+
+        #[summary("타입 인자를 추론하는 중의 인자 a (매개변수 타입 pt0에 아직 묶이지 않은 매개변수가 있다): 문맥의 타입을 받는 리터럴은 미루고, 값 인자는 검사한 타입에서, 참조 인자는 구문에서 읽은 타입에서 묶는다. 이 인자가 끝났는가 (참조 인자는 이어서 ref_arg가 본다)")]
+        #[effects(alloc)]
+        fn arg_infer(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &mut types::Subst, a: &ast::Expr, i: usize, pt0: &ast::TypeKind, mode: Mode, deferred: &mut Vec<usize>, f: usize) -> bool
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return true;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let ints_mix: bool = !exec_mode(mode);
+            if untyped_literal(a, 1000000000) {
+                deferred.push(i);
+                return true;
+            }
+            if is_ref(pt0) {
+                match self.arg_peek(cx, a, 1000000000) {
+                    None => {},
+                    Some(peeked) => { types::unify(pt0, &peeked, sig.generics.as_slice(), tm, 100000); },
+                }
+            } else {
+                let at: ast::TypeKind = self.expr(cx, a, &no, mode, f - 1);
+                types::unify(pt0, &at, sig.generics.as_slice(), tm, 100000);
+                let bound: ast::TypeKind = types::subst(pt0, tm);
+                if !has_param_of(&bound, sig.generics.as_slice(), tm) && !(ints_mix && types::is_int(&at) && types::is_int(&bound)) {
+                    self.expect_ty(&at, &bound, a.span);
+                }
+                return true;
+            }
+            false
+        }
+
+        #[summary("검사하기 전에 구문에서 읽은 인자 a의 타입: 지역 변수, 그것의 참조, 조각으로 본 Vec. 타입 인자를 추론하는 데 쓴다 (E0237)")]
+        #[effects(alloc)]
+        fn arg_peek(self: &Body, cx: &FnCtx, a: &ast::Expr, f: usize) -> Option<ast::TypeKind>
+            decreases f,
+        {
+            if f == 0 {
+                return None;
+            }
+            match &a.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+                ast::ExprKind::Float(q4_ek_float0) => None,
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+                ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+                ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+                ast::ExprKind::Bool(q4_ek_bool0) => None,
+                ast::ExprKind::Unit => None,
+                ast::ExprKind::Var(id) => { match lookup(cx, id.name.as_str()) { None => None, Some(l) => Some(l.ty), } },
+                ast::ExprKind::Call(q4_ek_call0) => None,
+                ast::ExprKind::Method(mc) => self.peek_slice(cx, mc),
+                ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+                ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+                ast::ExprKind::Ref(rm, x) => { match self.place_peek(cx, &**x, f - 1) { None => None, Some(t) => Some(ast::TypeKind::Ref(*rm, types::boxed(t))), } },
+                ast::ExprKind::If(q4_ek_if0) => None,
+                ast::ExprKind::Block(q4_ek_block0) => None,
+                ast::ExprKind::Array(q4_ek_array0) => None,
+                ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+                ast::ExprKind::Old(x) => self.arg_peek(cx, &**x, f - 1),
+                ast::ExprKind::Quant(q4_ek_quant0) => None,
+                ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+                ast::ExprKind::Closure(q4_ek_closure0) => None,
+                ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+                ast::ExprKind::Path(q4_ek_path0) => None,
+                ast::ExprKind::Deref(q4_ek_deref0) => None,
+                ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+                ast::ExprKind::Match(q4_ek_match0) => None,
+                ast::ExprKind::Return(q4_ek_return0) => None,
+                ast::ExprKind::Try(q4_ek_try0) => None,
+                ast::ExprKind::Loop(q4_ek_loop0) => None,
+                ast::ExprKind::Break(q4_ek_break0) => None,
+                ast::ExprKind::Continue(q4_ek_continue0) => None,
+                ast::ExprKind::Range(q4_ek_range0) => None,
+                ast::ExprKind::Error => None,
+            }
+        }
+
+        #[summary("값 매개변수(타입 pt)의 인자 a: 그 타입을 기대하며 검사한다. 명세에서는 정수 타입이 섞인다 (ADR-0022)")]
+        #[effects(alloc)]
+        fn arg_value(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, pt: &ast::TypeKind, mode: Mode, f: usize) -> ()
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return;
+            }
+            let hint: Option<ast::TypeKind> = Some(pt.clone());
+            let t: ast::TypeKind = self.expr(cx, a, &hint, mode, f - 1);
+            if !(!exec_mode(mode) && types::is_int(&t) && types::is_int(pt)) {
+                let fixed: bool = self.deref_fix(&t, pt, a);
+                if !fixed {
+                    self.expect_ty(&t, pt, a.span);
+                }
+            }
+        }
+
         #[summary("인자들을 기대 없이 검사한다 (오류를 낸 호출의 나머지)")]
         #[effects(alloc)]
         fn args_only(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], mode: Mode, f: usize) -> ()
@@ -766,10 +892,182 @@ mod body {
             ast::TypeKind::Int(ast::IntTy::U8)
         }
 
-        #[summary("함수 호출. 다음 조각(4D-03e7)이 채운다")]
+        #[summary("경로로 부르는 호출 f(args): 가리키는 함수, 부르는 곳과 함수의 종류(실행·명세·증명), 효과, 인자 수, 쓰거나 추론한 타입 인자 (ADR-0046 §3, 추론하면 E0237이 써 준다), 인자마다의 타입, &mut 인자의 겹침 (E0410)")]
         #[effects(alloc)]
-        fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind {
-            ast::TypeKind::Error
+        fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 || path.len() == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            let name: String = decls::path_text(path);
+            let quoted: String = types::cat3("`", name.as_str(), "`");
+            let target: String = match self.resolve(path, cx.mod_path.as_str()) {
+                None => { let segs: Vec<String> = names_of(path); let pspan: source::Span = decls::span_to(path[0].span, path[path.len() - 1].span); match self.c.import_text(segs.as_slice(), cx.mod_path.as_str()) { None => { let tip: String = if path.len() == 1 { types::cat7("no `", name.as_str(), "` in unit `", cx.mod_path.as_str(), "`; other units are reached by full path `unit::", name.as_str(), "`") } else { types::cat2("no function ", quoted.as_str()) }; self.c.help("E0304", span, types::cat2("unknown function ", quoted.as_str()).as_str(), tip.as_str()); }, Some(text) => { self.c.fixed("E0214", pspan, types::cat2(quoted.as_str(), " comes from a `use`").as_str(), types::cat3("write `", text.as_str(), "`").as_str(), text.as_str()); }, } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if !is_ref_expr(&args[i].kind) { self.expr(cx, &args[i], &no, mode, f - 1); } } return ast::TypeKind::Error; },
+                Some(t) => t,
+            };
+            let sig: types::FnSig = match self.c.fns.find(target.as_str()) {
+                None => { return ast::TypeKind::Error; },
+                Some(at) => self.c.fns.items[at].clone(),
+            };
+            self.call_kind(cx, path, targs, args, &sig, target.as_str(), quoted.as_str(), span, mode);
+            let no_value: bool = !exec_mode(mode) && !ghost_mode(mode) && is_proof(sig.kind);
+            let amode: Mode = operand(mode);
+            if ghost_mode(mode) {
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    if ref_mutable(&args[i]) {
+                        self.ghost_violation(args[i].span, "`&mut`", "pass the value or `&` it");
+                    }
+                }
+            }
+            if args.len() != sig.params.len() {
+                self.c.err("E0405", span, decls::counts(types::cat2(quoted.as_str(), " takes ").as_str(), sig.params.len(), " argument(s), found ", args.len(), "").as_str());
+            }
+            if sig.generics.len() == 0 && targs.len() > 0 {
+                self.c.fixed("E0429", targs[0].span, types::cat2(quoted.as_str(), " takes no type arguments").as_str(), "remove them", "");
+            }
+            let mut tm: types::Subst = empty_subst();
+            let mut missing: bool = false;
+            if sig.generics.len() > 0 {
+                missing = self.written_targs(cx, path, targs, &sig, &mut tm);
+            }
+            let is_trait: bool = !no_text(&sig.trait_of);
+            let infer: bool = missing || is_trait;
+            if infer {
+                match expected {
+                    None => {},
+                    Some(want) => { types::unify(&sig.ret, want, sig.generics.as_slice(), &mut tm, 100000); },
+                }
+            }
+            let mut deferred: Vec<usize> = Vec::new();
+            let mut mut_roots: Vec<MutRoot> = Vec::new();
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                self.call_arg(cx, &sig, &mut tm, &args[i], i, infer, is_trait, amode, &mut deferred, &mut mut_roots, f - 1);
+            }
+            self.call_deferred(cx, &sig, &tm, args, deferred.as_slice(), amode, f - 1);
+            if !self.call_bound(cx, path, targs, &sig, &tm, name.as_str(), missing, span) {
+                return ast::TypeKind::Error;
+            }
+            if !self.call_record(cx, &sig, &tm, target.as_str(), span) {
+                return ast::TypeKind::Error;
+            }
+            self.alias_check(&sig, args, mut_roots.as_slice());
+            if no_value {
+                return ast::TypeKind::Error;
+            }
+            types::subst(&sig.ret, &tm)
+        }
+
+        #[summary("호출의 i번째 인자 a: 타입 인자를 추론하는 중이면 그 인자에서 묶고(문맥의 타입을 받는 리터럴은 deferred로 미룬다), 참조 매개변수는 ref_arg로 (&mut 인자가 출발하는 변수는 mut_roots에), 값 매개변수는 그 타입을 기대하며 검사한다")]
+        #[effects(alloc)]
+        fn call_arg(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &mut types::Subst, a: &ast::Expr, i: usize, infer: bool, is_trait: bool, mode: Mode, deferred: &mut Vec<usize>, mut_roots: &mut Vec<MutRoot>, f: usize) -> ()
+            decreases f * 3 + 2,
+        {
+            if f == 0 {
+                return;
+            }
+            let no: Option<ast::TypeKind> = None;
+            if i >= sig.params.len() {
+                self.expr(cx, a, &no, mode, f - 1);
+                return;
+            }
+            let pt0: ast::TypeKind = sig.params[i].clone();
+            if infer && unbound(sig.generics.as_slice(), tm, &pt0) {
+                if self.arg_infer(cx, sig, tm, a, i, &pt0, mode, deferred, f) {
+                    return;
+                }
+            }
+            let pt: ast::TypeKind = types::subst(&pt0, tm);
+            if is_trait && is_ref(&pt) && unbound(sig.generics.as_slice(), tm, &pt0) {
+                return;
+            }
+            match ref_inner(&pt) {
+                None => { self.arg_value(cx, a, &pt, mode, f); },
+                Some(inner) => { let pm: bool = types::is_ref_mut(&pt); match self.ref_arg(cx, a, pm, &inner, mode, f) { None => {}, Some(root) => { if pm { mut_roots.push(MutRoot { root: root.clone(), at: i }); } }, } },
+            }
+        }
+
+        #[summary("추론한 타입 인자의 마감: trait 메서드의 Self가 묶였는가 (아니면 E0237)와 그 경계, 빠뜨린 타입 인자가 모두 추론되어 경계를 지키는가, 그리고 써 넣는 E0237. 호출이 계속되는가")]
+        #[effects(alloc)]
+        fn call_bound(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, tm: &types::Subst, name: &str, missing: bool, span: source::Span) -> bool {
+            let is_trait: bool = !no_text(&sig.trait_of);
+            let quoted: String = types::cat3("`", name, "`");
+            if is_trait {
+                let st: ast::TypeKind = match types::sub_get(tm, "Self") {
+                    None => ast::TypeKind::Error,
+                    Some(found) => found,
+                };
+                if types::is_error(&st) {
+                    let tr: String = match &sig.trait_of {
+                        None => String::new(),
+                        Some(p) => p.clone(),
+                    };
+                    self.c.help("E0237", span, types::cat3("the implementing type of ", quoted.as_str(), " cannot be inferred: no argument or expected result gives `Self`").as_str(), types::cat3("give an argument or the result a type that implements `", tr.as_str(), "`").as_str());
+                    return false;
+                }
+                if sig.generics.len() == 0 {
+                    return false;
+                }
+                if !self.c.targ_ok(&st, &sig.generics[0], name, span, true) {
+                    return false;
+                }
+            }
+            if missing {
+                if all_bound(sig.generics.as_slice(), tm) {
+                    let mut ok: bool = true;
+                    for i in 0..sig.generics.len()
+                        invariant 0 <= i && i <= sig.generics.len(),
+                    {
+                        if i > 0 || !is_trait {
+                            let gt: ast::TypeKind = bound_or_error(tm, sig.generics[i].name.as_str());
+                            if !self.c.targ_ok(&gt, &sig.generics[i], name, span, true) {
+                                ok = false;
+                            }
+                        }
+                    }
+                    if !ok {
+                        return false;
+                    }
+                }
+                let known: types::Subst = without_errors(tm);
+                if !self.targs_fix(path, targs, sig, &known, cx.mod_path.as_str()) {
+                    return false;
+                }
+            }
+            true
+        }
+
+        #[summary("미뤄 둔 인자(문맥의 타입을 받는 리터럴): 다른 인자가 타입 인자를 묶은 뒤에 그 타입을 기대하며 검사한다")]
+        #[effects(alloc)]
+        fn call_deferred(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &types::Subst, args: &[ast::Expr], deferred: &[usize], mode: Mode, f: usize) -> ()
+            decreases f * 3,
+        {
+            if f == 0 {
+                return;
+            }
+            let no: Option<ast::TypeKind> = None;
+            for k in 0..deferred.len()
+                invariant 0 <= k && k <= deferred.len(),
+            {
+                let d: usize = deferred[k];
+                if d < sig.params.len() && d < args.len() {
+                    let pt: ast::TypeKind = types::subst(&sig.params[d], tm);
+                    if has_param_of(&pt, sig.generics.as_slice(), tm) {
+                        self.expr(cx, &args[d], &no, mode, f - 1);
+                    } else {
+                        let hint: Option<ast::TypeKind> = Some(pt.clone());
+                        let dt: ast::TypeKind = self.expr(cx, &args[d], &hint, mode, f - 1);
+                        if !(!exec_mode(mode) && types::is_int(&dt) && types::is_int(&pt)) {
+                            self.expect_ty(&dt, &pt, args[d].span);
+                        }
+                    }
+                }
+            }
         }
 
         #[summary("호출 꼴의 식이 무엇인가: 바이트에서 온 정수, f64::from, 정수 변환, 내장 변형, 열거형의 변형, std::mem, Box::new, 글과 Vec의 내장 호출, 그리고 함수 호출")]
@@ -820,6 +1118,63 @@ mod body {
                 return self.vec_call(cx, c.path.as_slice(), c.args.as_slice(), expected, e.span, mode, f);
             }
             self.call(cx, c.path.as_slice(), c.targs.as_slice(), c.args.as_slice(), expected, e.span, mode, f)
+        }
+
+        #[summary("부르는 곳(실행·명세·유령)과 함수의 종류(실행·명세·증명)의 짝: 증명 함수는 유령 코드에서만 (ADR-0062 §1, E0258), 실행 함수는 실행 코드에서만 (E0504, 유령이면 E0257), 명세 함수는 명세에서만 (E0505). 맞는 짝이면 효과를 요구하고 호출을 적는다")]
+        #[effects(alloc)]
+        fn call_kind(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], sig: &types::FnSig, target: &str, quoted: &str, span: source::Span, mode: Mode) -> () {
+            let caller: String = cx.path.clone();
+            if is_proof(sig.kind) {
+                if exec_mode(mode) {
+                    let whole: ast::Expr = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: idents(path), targs: targs_copy(targs), args: exprs_copy(args), method: None }), span: span };
+                    let r: String = types::cat3("proof { ", fmt::expr_text(&whole).as_str(), "; }");
+                    self.c.fixed("E0258", span, types::cat2(quoted, " is a `proof fn`: executable code calls it in a `proof { .. }` block").as_str(), types::cat3("wrap the call: `", r.as_str(), "`").as_str(), r.as_str());
+                } else if ghost_mode(mode) {
+                    self.add_call(caller.as_str(), target);
+                } else {
+                    self.c.help("E0258", span, types::cat2(quoted, " is a `proof fn` and has no value in a specification").as_str(), "call it as a statement of a `proof { .. }` block or a `proof fn`; its `ensures` then hold after the call");
+                }
+            } else if is_exec(sig.kind) {
+                if exec_mode(mode) {
+                    need(cx, sig.effect, types::cat2("a call of ", quoted).as_str());
+                    if types::is_pure(cx.effect) && sig.effect.io {
+                        self.c.help("E0603", span, types::cat5(quoted, " has effect `io`, but `", caller.as_str(), "` is `pure`", "").as_str(), types::cat3("declare `#[effects(io)]` on `", caller.as_str(), "`, or move the call out of it").as_str());
+                    }
+                    self.add_call(caller.as_str(), target);
+                } else if ghost_mode(mode) || cx.ghost {
+                    self.ghost_violation(span, types::cat2("a call of executable function ", quoted).as_str(), "call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`");
+                } else {
+                    self.c.err("E0504", span, types::cat2(quoted, " is executable and cannot be called from a specification").as_str());
+                }
+            } else if exec_mode(mode) {
+                self.c.err("E0505", span, types::cat2(quoted, " is a spec function and cannot be called from executable code").as_str());
+            } else {
+                self.add_call(caller.as_str(), target);
+            }
+        }
+
+        #[summary("타입 인자가 있는 호출을 적는다: 타입 인자(targs), 재귀 검사에 쓸 호출(gcalls), Self가 알려진 trait 호출이 돌리는 impl의 함수. 묶이지 않은 매개변수가 있으면 false")]
+        #[effects(alloc)]
+        fn call_record(self: &mut Body, cx: &FnCtx, sig: &types::FnSig, tm: &types::Subst, target: &str, span: source::Span) -> bool {
+            let caller: String = cx.path.clone();
+            if sig.generics.len() > 0 {
+                if !all_bound(sig.generics.as_slice(), tm) {
+                    return false;
+                }
+                let mut gargs: Vec<ast::TypeKind> = Vec::new();
+                for i in 0..sig.generics.len()
+                    invariant 0 <= i && i <= sig.generics.len(),
+                {
+                    gargs.push(bound_or_error(tm, sig.generics[i].name.as_str()));
+                }
+                match dispatch(&self.c.fns, self.c.trait_impls.as_slice(), target, gargs.as_slice()) {
+                    None => {},
+                    Some(imp) => { self.add_call(caller.as_str(), imp.path.as_str()); },
+                }
+                self.gcalls.push(GCall { caller: caller.clone(), callee: String::from(target), span: span, args: gargs.clone() });
+                self.targs.insert(span_key(span).as_str(), gargs);
+            }
+            true
         }
 
         #[summary("u8을 기대한 자리의 글자 리터럴: Rust의 버릇, BMB에서도 바이트는 b'a'다 (E0401)")]
@@ -3073,6 +3428,28 @@ mod body {
             self.variant_value(cx, path, noargs.as_slice(), expected, e.span, mode, f)
         }
 
+        #[summary("Vec인 지역 변수 v의 v.as_slice() / v.as_mut_slice()를 조각의 참조로 읽는다")]
+        #[effects(alloc)]
+        fn peek_slice(self: &Body, cx: &FnCtx, m: &ast::Method) -> Option<ast::TypeKind> {
+            let is_mut: bool = m.name.name == "as_mut_slice";
+            if m.args.len() != 0 || !(is_mut || m.name.name == "as_slice") {
+                return None;
+            }
+            match vec_var(cx, &*m.recv) {
+                None => None,
+                Some(l) => { match vec_elem(&l.ty) { None => None, Some(e) => Some(ast::TypeKind::Ref(is_mut, types::boxed(ast::TypeKind::Slice(types::boxed(e))))), } },
+            }
+        }
+
+        #[summary("타입 매개변수가 없는 구조체의 리터럴 &Point { .. }는 제 타입을 이름한다")]
+        #[effects(alloc)]
+        fn peek_struct(self: &Body, cx: &FnCtx, path: &[ast::Ident]) -> Option<ast::TypeKind> {
+            match self.c.type_path(path, cx.mod_path.as_str()) {
+                None => None,
+                Some(tp) => { match self.c.adts.find(tp.as_str()) { None => None, Some(at) => { if self.c.adts.items[at].generics.len() == 0 { let none: Vec<ast::Type> = Vec::new(); Some(ast::TypeKind::Named(refs::split_path(tp.as_str()), none)) } else { None } }, } },
+            }
+        }
+
         #[summary("대입의 대상을 검사하고 그 타입을 낸다")]
         #[effects(alloc)]
         fn place(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, f: usize) -> ast::TypeKind
@@ -3239,6 +3616,53 @@ mod body {
                 self.c.help("E0408", target.span, "this place cannot be assigned", "assign through a `let mut` local or a `&mut` parameter");
             }
             p.ty
+        }
+
+        #[summary("자리 x, x.f.g, *p의 타입을 지역 변수의 타입에서")]
+        #[effects(alloc)]
+        fn place_peek(self: &Body, cx: &FnCtx, e: &ast::Expr, f: usize) -> Option<ast::TypeKind>
+            decreases f,
+        {
+            if f == 0 {
+                return None;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+                ast::ExprKind::Float(q4_ek_float0) => None,
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+                ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+                ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+                ast::ExprKind::Bool(q4_ek_bool0) => None,
+                ast::ExprKind::Unit => None,
+                ast::ExprKind::Var(id) => { match lookup(cx, id.name.as_str()) { None => None, Some(l) => Some(l.ty), } },
+                ast::ExprKind::Call(q4_ek_call0) => None,
+                ast::ExprKind::Method(q4_ek_method0) => None,
+                ast::ExprKind::Index(x, q4_i) => { match self.place_peek(cx, &**x, f - 1) { None => None, Some(bt) => elem_of(&bt), } },
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+                ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+                ast::ExprKind::If(q4_ek_if0) => None,
+                ast::ExprKind::Block(q4_ek_block0) => None,
+                ast::ExprKind::Array(q4_ek_array0) => None,
+                ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+                ast::ExprKind::Old(q4_ek_old0) => None,
+                ast::ExprKind::Quant(q4_ek_quant0) => None,
+                ast::ExprKind::Trigger(x) => self.place_peek(cx, &**x, f - 1),
+                ast::ExprKind::Closure(q4_ek_closure0) => None,
+                ast::ExprKind::StructLit(s) => self.peek_struct(cx, s.path.as_slice()),
+                ast::ExprKind::Path(q4_ek_path0) => None,
+                ast::ExprKind::Deref(x) => { match self.place_peek(cx, &**x, f - 1) { None => None, Some(bt) => pointee(&bt), } },
+                ast::ExprKind::Field(x, name) => { match self.place_peek(cx, &**x, f - 1) { None => None, Some(bt) => { let fs: Fields = self.struct_fields(&bt); if fs.found { field_ty(fs.fields.as_slice(), name.name.as_str()) } else { None } }, } },
+                ast::ExprKind::Match(q4_ek_match0) => None,
+                ast::ExprKind::Return(q4_ek_return0) => None,
+                ast::ExprKind::Try(q4_ek_try0) => None,
+                ast::ExprKind::Loop(q4_ek_loop0) => None,
+                ast::ExprKind::Break(q4_ek_break0) => None,
+                ast::ExprKind::Continue(q4_ek_continue0) => None,
+                ast::ExprKind::Range(q4_ek_range0) => None,
+                ast::ExprKind::Error => None,
+            }
         }
 
         #[summary("변수에의 대입: 바꿀 수 있는 지역 변수여야 한다 (E0408)")]
@@ -4034,6 +4458,129 @@ mod body {
             self.types.insert(span_key(a.span).as_str(), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(et)))));
         }
 
+        #[summary("E0237: 추론한 m으로 타입 인자를 써 넣은 호출 (하나라도 추론하지 못했으면 false)")]
+        #[effects(alloc)]
+        fn targs_fix(self: &mut Body, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, m: &types::Subst, mp: &str) -> bool {
+            let n: usize = path.len();
+            if n == 0 {
+                return false;
+            }
+            let mut hi: source::Span = path[n - 1].span;
+            let mut have: bool = false;
+            for i in 0..targs.len()
+                invariant 0 <= i && i <= targs.len(),
+            {
+                if !have || targs[i].span.hi >= hi.hi {
+                    hi = targs[i].span;
+                    have = true;
+                }
+            }
+            if !have || path[n - 1].span.hi >= hi.hi {
+                hi = path[n - 1].span;
+            }
+            let span: source::Span = decls::span_to(path[0].span, hi);
+            let mut unbound_names: Vec<String> = Vec::new();
+            for i in 0..sig.generics.len()
+                invariant 0 <= i && i <= sig.generics.len(),
+            {
+                if !types::has(m.names.as_slice(), sig.generics[i].name.as_str()) {
+                    unbound_names.push(sig.generics[i].name.clone());
+                }
+            }
+            let name: String = decls::path_text(path);
+            if unbound_names.len() > 0 {
+                self.c.help("E0237", span, types::cat5("the type arguments of `", name.as_str(), "` are not written, and `", types::join(unbound_names.as_slice(), "`, `").as_str(), "` cannot be inferred from the arguments").as_str(), types::cat3("write them: `", name.as_str(), "::<..>(..)`").as_str());
+                return false;
+            }
+            let ig: usize = sig.impl_generics;
+            let mut own: Vec<String> = Vec::new();
+            let mut theirs: Vec<String> = Vec::new();
+            for i in 0..sig.generics.len()
+                invariant 0 <= i && i <= sig.generics.len(),
+            {
+                let shown: String = types::text_in(&bound_or_error(m, sig.generics[i].name.as_str()), mp);
+                let written: String = if has_dollar(shown.as_str()) {
+                    String::from("_")
+                } else {
+                    shown
+                };
+                if i < ig {
+                    own.push(written);
+                } else {
+                    theirs.push(written);
+                }
+            }
+            let mut segs: Vec<String> = Vec::new();
+            for i in 0..n
+                invariant 0 <= i && i <= n && n == path.len(),
+            {
+                if i + 2 == n && ig > 0 && no_text(&sig.trait_of) {
+                    segs.push(types::cat4(path[i].name.as_str(), "::<", types::join(own.as_slice(), ", ").as_str(), ">"));
+                } else if i + 1 == n && sig.generics.len() > ig {
+                    segs.push(types::cat4(path[i].name.as_str(), "::<", types::join(theirs.as_slice(), ", ").as_str(), ">"));
+                } else {
+                    segs.push(path[i].name.clone());
+                }
+            }
+            let r: String = types::join(segs.as_slice(), "::");
+            self.c.fixed("E0237", span, types::cat5("the type arguments of `", name.as_str(), "` are written out: `", r.as_str(), "`").as_str(), "write the inferred type arguments (ADR-0046 §3)", r.as_str());
+            true
+        }
+
+        #[summary("경로의 마디 seg 뒤에 쓴 타입 인자를 매개변수 ps에 묶는다 (has_seg가 거짓이면 그런 마디가 없다). 쓰지 않았는데 매개변수가 있으면 true")]
+        #[effects(alloc)]
+        fn targs_level(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], is_trait: bool, m: &mut types::Subst, has_seg: bool, seg: usize, ps: &[types::TParam], of_type: bool) -> bool {
+            let mut written: usize = 0;
+            let mut first: usize = 0;
+            for i in 0..targs.len()
+                invariant 0 <= i && i <= targs.len() && written <= i && first <= i,
+            {
+                if has_seg && targs[i].seg == seg {
+                    if written == 0 {
+                        first = i;
+                    }
+                    written = written + 1;
+                }
+            }
+            if written == 0 || first >= targs.len() {
+                return ps.len() > 0;
+            }
+            let name: String = decls::path_text(path);
+            if written == 1 && is_trait && of_type {
+                self.c.fixed("E0429", targs[first].span, types::cat3("the trait of `", name.as_str(), "` takes no type arguments: `Self` comes from the arguments").as_str(), "remove them", "");
+            } else if written == 1 && targs[first].args.len() == ps.len() {
+                for k in 0..ps.len()
+                    invariant 0 <= k && k <= ps.len() && first < targs.len() && targs[first].args.len() == ps.len(),
+                {
+                    let kind: ast::TypeKind = self.c.canon(&targs[first].args[k], cx.mod_path.as_str(), true, 1000000000);
+                    if self.c.targ_ok(&kind, &ps[k], name.as_str(), targs[first].args[k].span, true) {
+                        sub_put(m, ps[k].name.as_str(), kind);
+                    } else {
+                        sub_put(m, ps[k].name.as_str(), ast::TypeKind::Error);
+                    }
+                }
+            } else {
+                let what: String = if of_type {
+                    String::from("the type")
+                } else {
+                    String::from("the function")
+                };
+                let mut names: Vec<String> = Vec::new();
+                for k in 0..ps.len()
+                    invariant 0 <= k && k <= ps.len(),
+                {
+                    names.push(ps[k].name.clone());
+                }
+                self.c.help("E0429", targs[first].span, decls::counts(types::cat4(what.as_str(), " `", name.as_str(), "` takes ").as_str(), ps.len(), " type argument(s), found ", targs[first].args.len(), "").as_str(), types::cat3("write one type for each of `", types::join(names.as_slice(), "`, `").as_str(), "`").as_str());
+                for k in 0..ps.len()
+                    invariant 0 <= k && k <= ps.len(),
+                {
+                    sub_put(m, ps[k].name.as_str(), ast::TypeKind::Error);
+                }
+            }
+            false
+        }
+
         #[summary("&str 매개변수의 인자 (ADR-0050 §2): 문자열 리터럴, String의 s.as_str(), 넘겨받은 &str, 둘 가운데 하나의 &s[a..b]. Rust의 버릇인 String의 &s와 s는 E0218")]
         #[effects(alloc)]
         fn text_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, mode: Mode, f: usize) -> ()
@@ -4803,6 +5350,48 @@ mod body {
                 }
             }
         }
+
+        #[summary("sig의 호출에 쓴 타입 인자 (ADR-0046 §3): impl의 것은 타입 마디 뒤, 함수의 것은 제 이름 뒤. m에 묶고, 빠뜨린 단이 있는가를 돌려준다")]
+        #[effects(alloc)]
+        fn written_targs(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, m: &mut types::Subst) -> bool {
+            let n: usize = path.len();
+            if n == 0 {
+                return false;
+            }
+            let ig: usize = sig.impl_generics;
+            let is_trait: bool = !no_text(&sig.trait_of);
+            let mut own: Vec<types::TParam> = Vec::new();
+            let mut theirs: Vec<types::TParam> = Vec::new();
+            for i in 0..sig.generics.len()
+                invariant 0 <= i && i <= sig.generics.len(),
+            {
+                if i < ig {
+                    if !is_trait {
+                        own.push(sig.generics[i].clone());
+                    }
+                } else {
+                    theirs.push(sig.generics[i].clone());
+                }
+            }
+            let has_type: bool = n >= 2;
+            let type_seg: usize = if has_type {
+                n - 2
+            } else {
+                0
+            };
+            let mut missing: bool = self.targs_level(cx, path, targs, is_trait, m, has_type, type_seg, own.as_slice(), true);
+            if self.targs_level(cx, path, targs, is_trait, m, true, n - 1, theirs.as_slice(), false) {
+                missing = true;
+            }
+            for i in 0..targs.len()
+                invariant 0 <= i && i <= targs.len(),
+            {
+                if targs[i].seg != n - 1 && !(has_type && targs[i].seg == type_seg) {
+                    self.c.err("E0429", targs[i].span, "type arguments follow the type or the function name");
+                }
+            }
+            missing
+        }
     }
 
     #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
@@ -4810,6 +5399,9 @@ mod body {
 
     #[summary("해소된 프로그램이 읽을 const의 참조: 값과 타입")]
     struct ConstUse { v: consts::CVal, ty: ast::TypeKind }
+
+    #[summary("trait 메서드의 호출이 돌리는 함수: impl의 함수와 그 타입 인자 (impl의 것, 이어서 메서드의 것)")]
+    struct Dispatched { path: String, args: Vec<ast::TypeKind> }
 
     #[summary("변수가 쓰인 자리 하나. kind 0은 연산의 한 쪽(other는 다른 쪽, literal은 그것이 리터럴인가), 1은 색인, 2는 push의 받는 쪽(other는 넣는 값)")]
     struct Fact { kind: u8, lo: u32, other: source::Span, literal: bool }
@@ -4836,6 +5428,9 @@ mod body {
     #[summary("method_target의 결과: 이름하는 함수가 없음, 여기서 알림, 찾은 함수")]
     enum Found { No, Reported, Target(MethodTarget) }
 
+    #[summary("타입 인자가 있는 호출 하나: 부르는 함수, 불리는 함수, 자리, 타입 인자")]
+    struct GCall { caller: String, callee: String, span: source::Span, args: Vec<ast::TypeKind> }
+
     #[summary("범위의 이름 하나")]
     struct Local { name: String, ty: ast::TypeKind, mutable: bool, is_param: bool }
 
@@ -4847,6 +5442,9 @@ mod body {
 
     #[summary("검사하는 자리: 실행 코드, 명세(Spec의 값은 old를 쓸 수 있는가), 유령 코드")]
     enum Mode { Exec, Spec(bool), Ghost }
+
+    #[summary("&mut 인자가 출발하는 변수와 그 인자의 차례")]
+    struct MutRoot { root: String, at: usize }
 
     #[summary("효과 e를 처음 요구한 것")]
     struct Need { e: types::Effects, what: String }
@@ -4966,6 +5564,19 @@ mod body {
         } else {
             lo
         }
+    }
+
+    #[summary("ps의 매개변수가 모두 tm에 오류 아닌 타입으로 묶였는가")]
+    #[effects(alloc)]
+    fn all_bound(ps: &[types::TParam], tm: &types::Subst) -> bool {
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if types::is_error(&bound_or_error(tm, ps[i].name.as_str())) {
+                return false;
+            }
+        }
+        true
     }
 
     #[effects(pure)]
@@ -5237,6 +5848,15 @@ mod body {
             }
         }
         opt_mentions(&b.tail, name, true, f - 1)
+    }
+
+    #[summary("tm이 n에 묶은 타입, 없으면 Error")]
+    #[effects(alloc)]
+    fn bound_or_error(tm: &types::Subst, n: &str) -> ast::TypeKind {
+        match types::sub_get(tm, n) {
+            None => ast::TypeKind::Error,
+            Some(t) => t,
+        }
     }
 
     #[summary("t가 Box면 담은 타입")]
@@ -5511,6 +6131,34 @@ mod body {
         }
     }
 
+    #[summary("타입 인자 args(Self가 처음)로 부른 trait 메서드 target이 돌리는 함수: impl의 함수와 그 타입 인자. target이 trait 메서드가 아니거나 Self가 타입 매개변수면(trait의 시그니처가 대신한다) None")]
+    #[effects(alloc)]
+    fn dispatch(fns: &table::Table<types::FnSig>, impls: &[types::TraitImplInfo], target: &str, args: &[ast::TypeKind]) -> Option<Dispatched> {
+        let at: usize = match fns.find(target) {
+            None => { return None; },
+            Some(i) => i,
+        };
+        let tr: String = match &fns.items[at].trait_of {
+            None => { return None; },
+            Some(p) => p.clone(),
+        };
+        let segs: Vec<String> = refs::split_path(target);
+        if args.len() == 0 || segs.len() == 0 {
+            return None;
+        }
+        for k in 0..impls.len()
+            invariant 0 <= k && k <= impls.len(),
+        {
+            if impls[k].trait_path == tr {
+                match types::matches(&impls[k], &args[0]) {
+                    None => {},
+                    Some(m) => { let path: String = types::fn_path(&impls[k], segs[segs.len() - 1].as_str()); let mut out: Vec<ast::TypeKind> = Vec::new(); if !fns.has(path.as_str()) { if !fns.items[at].default { return None; } for j in 0..args.len() invariant 0 <= j && j <= args.len(), { out.push(args[j].clone()); } return Some(Dispatched { path: String::from(target), args: out }); } for g in 0..impls[k].generics.len() invariant 0 <= g && g <= impls[k].generics.len(), { out.push(bound_or_error(&m, impls[k].generics[g].name.as_str())); } for j in 1..args.len() invariant 1 <= j && j <= args.len(), { out.push(args[j].clone()); } return Some(Dispatched { path: path, args: out }); },
+                }
+            }
+        }
+        None
+    }
+
     #[summary("색인한 원소의 타입: 배열, Vec, 그리고 조각이나 Vec의 참조")]
     #[effects(alloc)]
     fn elem_of(t: &ast::TypeKind) -> Option<ast::TypeKind> {
@@ -5547,6 +6195,17 @@ mod body {
             Mode::Spec(q4_old) => false,
             Mode::Ghost => false,
         }
+    }
+
+    #[effects(alloc)]
+    fn exprs_copy(xs: &[ast::Expr]) -> Vec<ast::Expr> {
+        let mut out: Vec<ast::Expr> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
     }
 
     #[summary("f64::NAN, f64::MAX 같은 f64의 연관 상수인가 (ADR-0061 §2)")]
@@ -5608,6 +6267,19 @@ mod body {
             out.push(fs[i].name.clone());
         }
         out
+    }
+
+    #[summary("필드 n의 타입")]
+    #[effects(alloc)]
+    fn field_ty(fs: &[types::FieldSig], n: &str) -> Option<ast::TypeKind> {
+        for i in 0..fs.len()
+            invariant 0 <= i && i <= fs.len(),
+        {
+            if fs[i].name.as_str() == n {
+                return Some(fs[i].ty.clone());
+            }
+        }
+        None
     }
 
     #[summary("필드 값 가운데 하나가 name을 말하는가")]
@@ -5736,6 +6408,48 @@ mod body {
             }
         }
         false
+    }
+
+    #[summary("글에 $가 있는가: 컴파일러가 지은 타입의 이름 (closures::lower)")]
+    #[effects(pure)]
+    fn has_dollar(s: &str) -> bool {
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len(),
+        {
+            if s.as_bytes()[i] == 36 {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("t가 타입 매개변수를 말하는가")]
+    #[effects(pure)]
+    fn has_param(t: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(e, q4_n) => has_param(&e.kind, f - 1),
+            ast::TypeKind::ArrayN(e, q4_ns) => has_param(&e.kind, f - 1),
+            ast::TypeKind::Slice(e) => has_param(&e.kind, f - 1),
+            ast::TypeKind::Ref(q4_m, e) => has_param(&e.kind, f - 1),
+            ast::TypeKind::Named(q4_p, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if has_param(&args[i].kind, f - 1) { return true; } } false },
+            ast::TypeKind::Vec(e) => has_param(&e.kind, f - 1),
+            ast::TypeKind::Box(e) => has_param(&e.kind, f - 1),
+            ast::TypeKind::Param(q4_pn) => true,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
     }
 
     #[summary("t가 ps의 매개변수 가운데 tm이 아직 묶지 않은 것을 말하는가")]
@@ -5890,6 +6604,17 @@ mod body {
             s.push_str("_");
         }
         s
+    }
+
+    #[effects(alloc)]
+    fn idents(xs: &[ast::Ident]) -> Vec<ast::Ident> {
+        let mut out: Vec<ast::Ident> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
     }
 
     #[summary("else가 if let의 것인 갈래인가 (E0225)")]
@@ -6751,6 +7476,47 @@ mod body {
     }
 
     #[effects(pure)]
+    fn is_ref_expr(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_m, q4_x) => true,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
     fn is_rem(op: ast::BinOp) -> bool {
         match op {
             ast::BinOp::Add => false,
@@ -7430,7 +8196,8 @@ mod body {
         let typed_uses: Vec<TypedUse> = Vec::new();
         let spec_at: Vec<source::Span> = Vec::new();
         let aliases: Vec<diag::Diag> = Vec::new();
-        Body { c: c, aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
+        let gcalls: Vec<GCall> = Vec::new();
+        Body { c: c, gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
     }
 
     #[summary("함수 하나의 빈 문맥: 범위 하나")]
@@ -7660,6 +8427,30 @@ mod body {
         types::Effects { alloc: false, io: false, nondet: false, panic: true }
     }
 
+    #[summary("참조나 Box가 가리키는 타입")]
+    #[effects(alloc)]
+    fn pointee(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => None,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => None,
+            ast::TypeKind::Slice(q4_tk_slice0) => None,
+            ast::TypeKind::Ref(q4_m, e) => Some(e.kind.clone()),
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => None,
+            ast::TypeKind::Vec(q4_tk_vec0) => None,
+            ast::TypeKind::Box(e) => Some(e.kind.clone()),
+            ast::TypeKind::Param(q4_tk_param0) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
     #[effects(alloc)]
     fn push_all(out: &mut Vec<ast::TypeKind>, xs: &[ast::TypeKind]) -> () {
         for i in 0..xs.len()
@@ -7725,6 +8516,53 @@ mod body {
             ast::ExprKind::Continue(q4_ek_continue0) => None,
             ast::ExprKind::Range(r) => Some(r.clone()),
             ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("아무것도 쓸 수 없는 식: 호출이 없고(호출은 &mut을 받을 수 있다) &mut 빌림이 없다. 내장 메서드(len, wrapping_*)는 읽기만 한다")]
+    #[effects(pure)]
+    fn reads_only(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(q4_v, q4_r) => true,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_b) => true,
+            ast::ExprKind::Unit => true,
+            ast::ExprKind::Var(q4_id) => true,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(mc) => { if !reads_only(&*mc.recv, f - 1) { return false; } for i in 0..mc.args.len() invariant 0 <= i && i <= mc.args.len(), { if !reads_only(&mc.args[i], f - 1) { return false; } } true },
+            ast::ExprKind::Index(x, ix) => reads_only(&**x, f - 1) && reads_only(&**ix, f - 1),
+            ast::ExprKind::Unary(q4_op, x) => reads_only(&**x, f - 1),
+            ast::ExprKind::Binary(q4_bop, x, ix) => reads_only(&**x, f - 1) && reads_only(&**ix, f - 1),
+            ast::ExprKind::Ref(rm, x) => !*rm && reads_only(&**x, f - 1),
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
         }
     }
 
@@ -8355,6 +9193,15 @@ mod body {
         }
     }
 
+    #[summary("m에서 n을 t로 (있던 이름이면 바꾼다)")]
+    #[effects(alloc)]
+    fn sub_put(m: &mut types::Subst, n: &str, t: ast::TypeKind) -> () {
+        match types::sub_at(m, n) {
+            None => { m.names.push(String::from(n)); m.tys.push(t); },
+            Some(i) => { m.tys[i] = t; },
+        }
+    }
+
     #[summary("&place나 &mut place가 출발하는 변수")]
     #[effects(alloc)]
     fn swap_root(a: &ast::Expr) -> Option<String> {
@@ -8362,6 +9209,17 @@ mod body {
             None => None,
             Some(x) => root_name(&x, 1000000000),
         }
+    }
+
+    #[effects(alloc)]
+    fn targs_copy(xs: &[ast::TArgs]) -> Vec<ast::TArgs> {
+        let mut out: Vec<ast::TArgs> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
     }
 
     #[summary("ADR-0050 §2의 내장 호출인가: String::new, String::with_capacity, String::from, String::from_utf8, char::from_u32")]
@@ -8496,6 +9354,22 @@ mod body {
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => true,
         }
+    }
+
+    #[summary("t에 아직 묶이지 않은 ps의 매개변수가 남는가: tm으로 바꾼 뒤에도 매개변수를 말하고, t가 말하는 ps의 매개변수 가운데 tm에 없는 것이 있다")]
+    #[effects(alloc)]
+    fn unbound(ps: &[types::TParam], tm: &types::Subst, t: &ast::TypeKind) -> bool {
+        if !has_param(&types::subst(t, tm), 100000) {
+            return false;
+        }
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if types::mentions_param(t, ps[i].name.as_str(), 100000) && !types::has(tm.names.as_slice(), ps[i].name.as_str()) {
+                return true;
+            }
+        }
+        false
     }
 
     #[effects(alloc)]
@@ -8765,6 +9639,21 @@ mod body {
     #[effects(pure)]
     fn wild_name(p: &ast::Pat) -> bool {
         p.path.len() == 1 && p.path[0].name == "_"
+    }
+
+    #[summary("tm에서 Error로 묶인 것을 뺀 것")]
+    #[effects(alloc)]
+    fn without_errors(tm: &types::Subst) -> types::Subst {
+        let mut out: types::Subst = empty_subst();
+        for i in 0..tm.names.len()
+            invariant 0 <= i && i <= tm.names.len(),
+        {
+            if i < tm.tys.len() && !types::is_error(&tm.tys[i]) {
+                out.names.push(tm.names[i].clone());
+                out.tys.push(tm.tys[i].clone());
+            }
+        }
+        out
     }
 
     #[summary("자리 e에 쓸 수 있는가: let mut 지역 변수나 &mut 매개변수 아래, 필드·Box·원소를 지나 (s.buf, b.v, (*b).w)")]
