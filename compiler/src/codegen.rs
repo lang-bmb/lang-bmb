@@ -1306,7 +1306,11 @@ impl<'p> Gen<'p> {
                 .cloned()
                 .unwrap_or_default();
             for n in owned {
-                if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
+                // A path: the binding, or a field it still owns after
+                // another was moved out (backlog 4D-34).
+                if n.contains('.') {
+                    self.drop_path(&n);
+                } else if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
                     self.drop_at(&ptr, &ty);
                 }
             }

@@ -64,7 +64,8 @@ pub struct MoveInfo {
     /// value is dropped after the right side is evaluated.
     pub replaces: BTreeSet<Key>,
     /// Per `match` arm (by its body's span): the bindings still owned at
-    /// its end.
+    /// its end, or, for a binding with a field moved out, the fields it
+    /// still owns (`l.name`).
     pub arm_drops: BTreeMap<Key, Vec<String>>,
     /// The `match`es (by span) that move their scrutinee: some arm binds an
     /// owned payload. Each arm drops the owned payloads it does not bind.
@@ -1053,11 +1054,15 @@ impl Mv<'_> {
                         self.state.insert(b.clone(), St::Owned);
                     }
                     self.expr(&arm.body, true);
+                    // A binding with a field moved out drops the fields it
+                    // still owns, as a local does at the end of its block
+                    // (backlog 4D-34: dropped whole, the moved field was
+                    // freed twice).
                     let mut owned = Vec::new();
                     for b in binds {
-                        if let Some(St::Owned) = self.state.remove(&b) {
-                            owned.push(b);
-                        }
+                        owned.extend(self.drop_paths(&b));
+                        self.clear(&b);
+                        self.state.remove(&b);
                     }
                     let dead = std::mem::replace(&mut self.dead, false);
                     if !owned.is_empty() && !dead {

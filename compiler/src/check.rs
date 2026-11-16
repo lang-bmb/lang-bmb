@@ -173,7 +173,7 @@ fn first_index_on(body: &Expr, var: &str) -> Option<Span> {
 
 /// Whether `m` is the name of a built-in method of some built-in type: a
 /// trait method of that name on a built-in type is called by path.
-fn builtin_method_name(m: &str) -> bool {
+pub fn builtin_method_name(m: &str) -> bool {
     matches!(
         m,
         "len"

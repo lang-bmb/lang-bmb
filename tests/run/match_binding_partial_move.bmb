@@ -1,0 +1,36 @@
+#[summary("a field moved out of a match binding")]
+mod m {
+    struct L { name: Vec<i64>, ty: Vec<i64>, m: bool }
+
+    struct P { ty: Vec<i64>, w: bool }
+
+    #[effects(alloc)]
+    fn look(k: bool) -> Option<L> {
+        if k {
+            let mut a: Vec<i64> = Vec::new();
+            a.push(1);
+            let mut b: Vec<i64> = Vec::new();
+            b.push(2);
+            Some(L { name: a, ty: b, m: true })
+        } else {
+            None
+        }
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let p: P = pick(true);
+        print_i64(p.ty.len() as i64);
+        if p.ty.len() > 0 {
+            print_i64(p.ty[0]);
+        }
+    }
+
+    #[effects(alloc)]
+    fn pick(k: bool) -> P {
+        match look(k) {
+            None => P { ty: Vec::new(), w: false },
+            Some(l) => { let w: bool = l.m; P { ty: l.ty, w: w } },
+        }
+    }
+}

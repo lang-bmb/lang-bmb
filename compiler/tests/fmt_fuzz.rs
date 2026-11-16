@@ -358,6 +358,13 @@ fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
         if checked == max {
             break;
         }
+        // A built-in method's name is not the program's to rename: a trait
+        // method of that name on a built-in type is shadowed by the built-in
+        // (`u.wrapping_add(1)`, `tests/run/method_order.bmb`), so the renamed
+        // program still checks and its call names another function.
+        if bmb::check::builtin_method_name(w) {
+            continue;
+        }
         let to = format!("{w}_rn{k}");
         let files: Files = base
             .iter()

@@ -626,6 +626,10 @@
    "out": "800739503e7b10d4",
    "src": "a6d914b047b9822f"
   },
+  "tests/run/match_binding_partial_move.bmb": {
+   "out": "cdc2c05553942f72",
+   "src": "760d21526098c2e3"
+  },
   "tests/run/max_list.bmb": {
    "out": "1d6f150b8158ad06",
    "src": "d246c300c55bb504"
