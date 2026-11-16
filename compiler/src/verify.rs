@@ -1807,16 +1807,24 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
     // constructor holds it, and not uninterpreted sorts: with a quantified
     // spec fn its model search ran to the resource limit where `Int`
     // handles answer at once (`dev-docs/measurements/z3-nested-datatypes`).
-    let structs: Vec<String> = all
+    //
+    // The order of the declarations is a property of the types alone
+    // (backlog 4D-33): by type text here, by depth below. The order of first
+    // use in the program put a definition's declarations in another order
+    // when an unrelated definition was added before it, so its script, and
+    // with it the solver's cost, changed while its proof key did not.
+    let mut structs: Vec<String> = all
         .iter()
         .filter(|ts| dts[*ts].arb.is_some())
         .cloned()
         .collect();
-    let order: Vec<String> = all
+    structs.sort();
+    let mut order: Vec<String> = all
         .iter()
         .filter(|ts| dts[*ts].arb.is_none())
         .cloned()
         .collect();
+    order.sort();
     // The enums each one's fields name (by sort symbol).
     let deps: BTreeMap<String, Vec<String>> = dts
         .iter()
@@ -1911,7 +1919,34 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
             )
         })
         .collect();
-    for comp in tj.out {
+    // A component comes after the ones its payloads name (its depth), and
+    // among those of one depth by the text of its first type. Both are read
+    // off the types, so two declarations keep their order in every program
+    // that has both.
+    let mut comps: Vec<Vec<String>> = tj.out;
+    for c in &mut comps {
+        c.sort();
+    }
+    let comp_of: BTreeMap<String, usize> = comps
+        .iter()
+        .enumerate()
+        .flat_map(|(i, c)| c.iter().map(move |ts| (ts.clone(), i)))
+        .collect();
+    let mut depth: Vec<usize> = vec![0; comps.len()];
+    for (i, c) in comps.iter().enumerate() {
+        // Tarjan lists a component after the ones it names.
+        depth[i] = c
+            .iter()
+            .flat_map(|ts| deps[ts].iter())
+            .map(|w| comp_of[w])
+            .filter(|j| *j != i)
+            .map(|j| depth[j] + 1)
+            .max()
+            .unwrap_or(0);
+    }
+    let mut by_depth: Vec<usize> = (0..comps.len()).collect();
+    by_depth.sort_by(|a, b| (depth[*a], &comps[*a][0]).cmp(&(depth[*b], &comps[*b][0])));
+    for comp in by_depth.into_iter().map(|i| &comps[i]) {
         let heads: Vec<String> = comp.iter().map(|ts| format!("({} 0)", sym(ts))).collect();
         let bodies: Vec<String> = comp
             .iter()

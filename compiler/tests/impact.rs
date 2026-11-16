@@ -249,3 +249,49 @@ mod u {
     assert_eq!(usage.status.code(), Some(1));
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A definition's script does not change when an unrelated definition is
+/// added before it (backlog 4D-33). The enum declarations were written in
+/// the order the program first used them, so `early`, which names `Ant`
+/// before `Zed`, turned the two declarations of `pick` around: its script,
+/// and with it the solver's cost, changed while its proof key did not.
+#[test]
+fn an_unrelated_definition_leaves_a_script_as_it_was() {
+    let pick = r#"    #[effects(pure)]
+    fn pick(z: Zed, a: Ant) -> (r: i64)
+        ensures r <= 2 || r > 2,
+    {
+        let x: i64 = match z {
+            Zed::A => 0,
+            Zed::B(v) => v,
+        };
+        match a {
+            Ant::C => x,
+            Ant::D(d) => { if d { 1 } else { x } },
+        }
+    }
+"#;
+    let early = r#"    #[effects(pure)]
+    fn early(a: Ant, z: Zed) -> i64 {
+        match a {
+            Ant::C => 0,
+            Ant::D(d) => { if d { 1 } else { match z { Zed::A => 2, Zed::B(v) => v, } } },
+        }
+    }
+
+"#;
+    let program = |before: &str| {
+        format!(
+            "#[summary(\"two enums\")]\nmod m {{\n    enum Ant {{ C, D(bool) }}\n\n    enum Zed {{ A, B(i64) }}\n\n{before}{pick}}}\n"
+        )
+    };
+    let dir = scratch("order");
+    let (ok, out, alone) = verify(&dir, &program(""));
+    assert!(ok, "{out}");
+    let (ok, out, with) = verify(&dir, &program(early));
+    assert!(ok, "{out}");
+    // The script declares both enums: the test is about their order.
+    assert_eq!(alone["m::pick"].matches("declare-datatypes").count(), 2);
+    assert_eq!(alone["m::pick"], with["m::pick"]);
+    let _ = fs::remove_dir_all(&dir);
+}
