@@ -30,7 +30,7 @@
 | C1 | 렉서 | P1 | 862 | 2,004 | 139 | 2.2 | 2.3 | 78 | 78/78 | 616 | 18,369,883 | 0 | — | — | — | 고정 |
 | C2 | 파서·구문 트리 | P2 | 5,168 | 5,015 | 255 | 0.9 | 1.0 | 193 | 193/193 | 1,249 | 31,997,838 | 0 | — | 5 | 0 | 고정 |
 | C3 | 정규형·해시·정체성 | P3 | 2,629 | 1,898 | 89 | 1.0 | 1.0 | 69 | 69/69 | 576 | 5,625,298 | 0 | — | — | — | — |
-| C4 | 검사기 | P3 | 17,469 | 16,642 | 492 | 5.2 | 5.4 | 707 | 707/707 | 5,611 | 247,217,047 | 0 | — | 15 | 4 | — |
+| C4 | 검사기 | P3 | 17,469 | 19,108 | 559 | 6.0 | 6.2 | 782 | 782/782 | 6,384 | 311,245,343 | 0 | — | 15 | 4 | — |
 | C5 | 맵·질의 | P5 | 2,654 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C6 | 증명 인코딩 | P6 | 13,734 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C7 | 해법기·도구 연결 | P7 | 1,102 | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -41,7 +41,7 @@
 | C12 | MCP 서버 | P11 | 1,494 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C13 | CLI | P11 | 1,163 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
-stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,931줄(51%), 포트 합계 26,177줄.
+stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,931줄(51%), 포트 합계 28,643줄.
 
 마찰:
 - C0: `const`가 `&str`을 담지 못해 진단 코드 표(185 + 6)는 `Vec<Code>`를 만드는 함수다(부를 때마다 만든다). 그대로 둠
@@ -109,6 +109,10 @@ stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,
 - C4: `4D-03e5a`(연산과 리터럴): `binary`(셋으로 나눔: 피연산자를 보는 `binary`, 타입이 다를 때의 `binary_types`, 같을 때의 `binary_same`), `shift`, `int_lit`, `f64_from`, `bit_vector_terms`, `const_ref`, `literal_elem`, `recursive_with_vec`, `text_operand`. 정의 35개. `bmb check`의 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `u128` 리터럴 값과 `i128` 경계는 `wide::U128`과 `consts::Num`(부호와 크기)으로 견준다. 지킴이가 겹친 `match`(`bit_vector_terms`의 갈래 15개)는 갈래마다 `if`로 풀고 결과를 수(`what: u8`)로 든다: 글을 만드는 갈래와 되부르는 갈래가 한 `match`에 섞여 값으로 내기 어렵다. 재귀 측도는 조각마다 `f - 1`로 내려 부른다: 같은 깊이에서 서로 부르는 함수의 층(3f, 3f+1, 3f+2)이 셋뿐이라 넷째 층이 필요한 자리는 깊이를 하나 쓴다
 - C4: `4D-03e5b`(식의 갈래): `expr`, `expr_inner`, 갈래마다의 검사 23개, `collect_triggers`, `first_index_on`, `settled`. 정의 68개. `bmb check`의 진단 0개. `bmb verify` 2회: `call_expr`와 `path_expr`가 미결정 셋(E0811, 색인의 범위). `builtin_path(p)`나 `vec_builtin(p)`가 참이면 길이가 2(또는 1 이상)라는 것을 증명기는 모른다: 술어 함수의 몸은 호출하는 쪽에 보이지 않는다. 길이 조건을 `if`에 함께 적었다(뜻은 같다). stage0의 `match`가 지킴이 23개로 고르던 호출의 갈림(`call_expr`)은 `if`의 사슬이고, `expr_inner`의 갈래는 메서드 하나씩이다: 한 정의가 커지면 증명이 느려진다. 옮기다 stage0의 결함을 찾았다(`4D-32`: `u32::from()`이 `args[0]`을 길이 확인 없이 읽는다). BMB에서는 그 색인에 증명 의무가 붙어 같은 글을 쓸 수 없다
 - C4: `4D-03e6a`(내장 호출과 내장 메서드): `box_new`, `vec_call`, `mem_call`, `vec_method`, `f64_method`, `copy_within`, `clone_method`. 정의 20개. `bmb check`의 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `Option<&'static str>`(까닭의 글이 있거나 없다)은 빈 글이 없음을 뜻하는 `String`이다(`clone_blocked`, `vec_missing`). `match m { "push" => (1, true, Unit), .. }`처럼 이름으로 튜플을 고르던 표는 변수 셋에 `if`의 사슬로 대입한다. 클로저 `place_ty`(두 번 부르고 `self`와 `cx`를 잡는다)는 메서드 `mem_place`다
+- C4: `4D-03e6b`(메서드 호출): `method`, `method_target`, `bind_method`, `int_method`, `shared_receiver`, `unknown_method`, `not_a_method`, `method_call`. 정의 22개. `bmb check`의 첫 진단 2개(E0303: 한 함수에서 `t`가 타입 둘, E0504: 루프 불변식에서 실행 함수 `Table::len`을 부름 — 길이를 `let`으로 먼저 읽는다), `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `Option<Option<MethodTarget>>`은 변형 셋의 enum `Found`다. 수신자의 타입을 가리던 클로저 `own`(두 가지)은 `owns(t, owner, by_self)`이고, 그래서 타입의 impl과 trait의 메서드를 한 메서드 `bind_method`가 묶는다. `BTreeMap`을 돌며 `strip_prefix`로 가리던 것은 표의 열쇠를 마디로 나눠 견준다. `sort` + `dedup`은 `sorted_set`이다. `m.starts_with("checked_")`는 이름을 늘어놓은 `checked_arith`다
+- C4: `4D-03e6c`(글, `check/text.rs`): `text_arg`, `text_call`, `text_method`, `char_method`, `as_bytes_arg`. 정의 15개. `bmb check`의 첫 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: 가드 붙은 `match` 갈래(`Method { .. } if name == "as_str"`, `_ if str_slice_of(a).is_some()`)의 사슬은 `Option`을 돌려주는 풀이 함수(`as_str_of`, `slice_of`, `ref_var`)마다의 `match`와 이른 `return`이다. `&s[a..b]`의 세 겹 `let .. else`는 함수 셋(`slice_of`·`slice_index`·`range_of`)이다. `args[0]`을 읽는 자리는 인자 수를 견준 뒤에도 `args.len() > 0`을 다시 적는다(이름의 글 견줌에서 인자 수가 따라 나오지 않는다)
+- C4: `4D-03e7a`(변환과 참조 인자): `conversion`, `ref_arg`, `slice_of_vec`, `e0218`, `data_ref_arg`, `sub_slice_arg`. 정의 13개. `bmb check`의 첫 진단 2개(둘 다 E0303: 한 함수에서 이름 하나가 타입 둘), `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `Option<Option<String>>`(`slice_of_vec`)은 구조체 `VecSlice { about, root }`다. 튜플을 묶는 `let (var, explicit_ref, am) = match .. { 갈래마다 이른 return }`은 변수 둘에 대입하는 `match`와 이름을 푸는 `match`로 나뉜다. 클로저 `vec_var`는 자유 함수다. 별칭 진단 `self.diags.aliases`는 `Body`의 필드 `aliases`다
+- C4: `4D-03e7b`(호출과 타입 인자): `call`, `call_arg`, `written_targs`, `targs_fix`, `arg_peek`, `place_peek`, `dispatch`, `reads_only`. 정의 31개. `bmb check`의 첫 진단 8개(E0303 넷: 이름 하나에 타입 둘, E0414 둘: 한 길에서만 옮긴 값, E0103: 변수 이름으로 쓴 예약어 `proof`와 그 여파 하나). `bmb verify` 첫 회에 2개 실패, 둘 다 솔버의 자원 한도였다: `call`(stage0 357줄을 한 함수로 옮긴 것, 의무 102개, z3가 메모리로 끝남)은 `call_kind`·`call_arg`·`call_deferred`·`call_bound`·`call_record`·`alias_check`로 나눠 풀렸고, `call_arg`는 `&&`의 오른쪽에서 `&mut self` 메서드를 부른 꼴(`.. && !self.deref_fix(..)`)이 원인이었다(백로그 4D-24, 호출을 조건 밖으로 빼서 풀림). 표면이 바꾼 꼴: `(mode, sig.kind)` 튜플의 `match` 아홉 갈래는 `if`의 사슬이다. 루프 안의 `continue`는 인자 하나를 맡는 메서드의 이른 `return`이다. 슬라이스 무늬(`[]`, `[t]`, `[t, ..]`)는 세어 둔 수의 비교다. `BTreeMap<String, TypeKind>`는 `types::Subst`와 `sub_put`이다
 
 <!-- ledger:data end -->
 
