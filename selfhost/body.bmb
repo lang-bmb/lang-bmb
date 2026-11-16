@@ -1,7 +1,10 @@
 #[summary("검사기의 2패스: 몸을 검사한다 (stage0 compiler/src/check.rs의 check_mod부터의 포트, 백로그 4D-03e). 이 조각(4D-03e2)은 함수의 머리와 문맥이다: 단위와 함수를 걷고, 매개변수와 계약의 자리를 보고, 이름을 범위에 넣고, 효과를 견준다. 문장과 식은 다음 조각이 채운다(stmt, expr). f는 남은 깊이다 (ADR-0140)")]
 mod body {
+    #[summary("settle_lets가 고른 타입: 가장 앞 자리의 것")]
+    struct Best { found: bool, lo: u32, ty: ast::TypeKind }
+
     #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
-    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, spec_widen: bool }
+    struct Body { c: decls::Checker, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, spec_widen: bool }
 
     impl Body {
         #[summary("assert(e); 와 assert(e) by (bit_vector); : 실행 코드, proof 블록, proof fn의 몸에 (ADR-0048 §4)")]
@@ -292,6 +295,7 @@ mod body {
             let want: Option<ast::TypeKind> = Some(ret_ty.clone());
             self.open_lets = Vec::new();
             self.typed_uses = Vec::new();
+            self.spec_at = Vec::new();
             let t: ast::TypeKind = self.block(&mut cx, &d.body, &want, mode, 1000000000);
             self.spec_widen = !is_exec(d.kind);
             let end: source::Span = match &d.body.tail {
@@ -476,6 +480,34 @@ mod body {
             }
         }
 
+        #[summary("E0436: std::process::Child는 필드로 짓거나 읽지 않는다")]
+        #[effects(alloc)]
+        fn child_by_hand(self: &mut Body, span: source::Span) -> () {
+            self.c.help("E0436", span, "a `std::process::Child` is not built or read by its fields", "get one from `std::process::spawn(prog, args.as_slice(), std::process::Stdio::Inherit)` and use its methods: `write_all`, `read_line`, `id`, `wait`");
+        }
+
+        #[summary("타입 t의 값이 바로 담는 타입들")]
+        #[effects(alloc)]
+        fn components(self: &Body, t: &ast::TypeKind) -> Vec<ast::TypeKind> {
+            let mut out: Vec<ast::TypeKind> = Vec::new();
+            match held(t) {
+                None => {},
+                Some(e) => { out.push(e); return out; },
+            }
+            let path: String = match types::named_path(t) {
+                None => { return out; },
+                Some(p) => p,
+            };
+            if path == "Option" || path == "Result" {
+                return types::named_args(t);
+            }
+            match self.c.adts.find(path.as_str()) {
+                None => {},
+                Some(at) => { let m: types::Subst = types::adt_subst(&self.c.adts.items[at], t); let parts: Vec<ast::TypeKind> = adt_parts(&self.c.adts.items[at].kind); for i in 0..parts.len() invariant 0 <= i && i <= parts.len(), { out.push(types::subst(&parts[i], &m)); } },
+            }
+            out
+        }
+
         #[summary("const의 선언한 타입을 그 단위에서, 함수의 타입 매개변수 밖에서 푼 것. 값만 담지 않으면 Error")]
         #[effects(alloc)]
         fn const_type(self: &mut Body, c: &consts::Const) -> ast::TypeKind {
@@ -538,6 +570,15 @@ mod body {
             }
         }
 
+        #[summary("E0231: (*p).x는 p.x로 쓴다 (필드는 참조를 지나 읽힌다)")]
+        #[effects(alloc)]
+        fn deref_field(self: &mut Body, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident) -> () {
+            match deref_inner(base) {
+                None => {},
+                Some(x) => { let r: String = types::cat3(fmt::expr_text(&x).as_str(), ".", name.name.as_str()); self.c.fixed("E0231", e.span, types::cat3("write `", r.as_str(), "`").as_str(), "fields are read through a reference directly", r.as_str()); },
+            }
+        }
+
         #[summary("E0401과 고칠 글 `*e`: 구조체나 열거형 T를 기대하는 자리에 &T나 &mut T인 e를 줬다 (백로그 2B-16). 알렸는가")]
         #[effects(alloc)]
         fn deref_fix(self: &mut Body, found: &ast::TypeKind, want: &ast::TypeKind, e: &ast::Expr) -> bool {
@@ -545,6 +586,23 @@ mod body {
                 None => false,
                 Some(inner) => { if !types::same(&inner, want) || !is_named(want) { return false; } let r: String = types::cat2("*", fmt::expr_text(e).as_str()); let msg: String = types::cat5("expected `", types::text(want).as_str(), "`, found `", types::text(found).as_str(), "`"); self.c.fixed("E0401", e.span, msg.as_str(), types::cat3("pass the value: `", r.as_str(), "`").as_str(), r.as_str()); true },
             }
+        }
+
+        #[summary("*x의 자리: x가 &T(조각 아님)나 Box<T>면 T")]
+        #[effects(alloc)]
+        fn deref_place(self: &mut Body, span: source::Span, p: Place) -> Place {
+            match ref_inner(&p.ty) {
+                None => {},
+                Some(inner) => { if !is_slice(&inner) { return Place { ty: inner, writable: p.writable }; } },
+            }
+            match box_inner(&p.ty) {
+                None => {},
+                Some(boxed) => { return Place { ty: boxed, writable: p.writable }; },
+            }
+            if !types::is_error(&p.ty) {
+                self.c.err("E0401", span, types::cat3("`*` needs a reference `&T` or `&mut T` or a `Box<T>`, found `", types::text(&p.ty).as_str(), "`").as_str());
+            }
+            Place { ty: ast::TypeKind::Error, writable: false }
         }
 
         #[summary("블록에 끝나지 않는 문장(타입이 `!`인 식)이 있는가")]
@@ -576,6 +634,24 @@ mod body {
                 }
             }
             self.c.diags = kept;
+        }
+
+        #[summary("색인한 자리: 원소의 타입, 색인할 수 없으면 E0407")]
+        #[effects(alloc)]
+        fn elem_place(self: &mut Body, span: source::Span, p: Place) -> Place {
+            match elem_of(&p.ty) {
+                None => { if !types::is_error(&p.ty) { self.c.err("E0407", span, types::cat3("type `", types::text(&p.ty).as_str(), "` cannot be indexed").as_str()); } Place { ty: ast::TypeKind::Error, writable: false } },
+                Some(t) => Place { ty: t, writable: p.writable },
+            }
+        }
+
+        #[summary("path가 열거형인가")]
+        #[effects(alloc)]
+        fn enum_adt(self: &Body, path: &str) -> bool {
+            match self.c.adts.find(path) {
+                None => false,
+                Some(at) => !struct_kind(&self.c.adts.items[at].kind),
+            }
         }
 
         #[summary("found가 want인가. 아니면 E0401, 고칠 길은 꼴에 따라 (참조의 값 읽기, 정수 변환, f64)")]
@@ -619,6 +695,43 @@ mod body {
         fn expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 2,
         {
+            ast::TypeKind::Error
+        }
+
+        #[summary("구조체(나 그 참조) bt의 필드 name의 타입")]
+        #[effects(alloc)]
+        fn field_type_of(self: &mut Body, bt: &ast::TypeKind, name: &ast::Ident) -> ast::TypeKind {
+            if types::is_error(bt) {
+                return ast::TypeKind::Error;
+            }
+            if is_child(bt) {
+                self.child_by_hand(name.span);
+                return ast::TypeKind::Error;
+            }
+            let decl: Fields = self.struct_fields(bt);
+            if !decl.found {
+                let msg: String = types::cat5("`", types::text(bt).as_str(), "` has no field `", name.name.as_str(), "`");
+                if is_named(bt) {
+                    self.c.help("E0306", name.span, msg.as_str(), "enum values have no fields: `match` the variants");
+                } else {
+                    self.c.help("E0306", name.span, msg.as_str(), "only structs have fields");
+                }
+                return ast::TypeKind::Error;
+            }
+            let mut names: Vec<String> = Vec::new();
+            for i in 0..decl.fields.len()
+                invariant 0 <= i && i <= decl.fields.len(),
+            {
+                if decl.fields[i].name == name.name {
+                    return decl.fields[i].ty.clone();
+                }
+                names.push(decl.fields[i].name.clone());
+            }
+            let none: String = types::cat5("`", decl.path.as_str(), "` has no field `", name.name.as_str(), "`");
+            match types::closest(name.name.as_str(), names.as_slice()) {
+                None => self.c.help("E0306", name.span, none.as_str(), types::cat4("fields of `", decl.path.as_str(), "`: ", types::join(names.as_slice(), ", ").as_str()).as_str()),
+                Some(near) => self.c.fixed("E0306", name.span, none.as_str(), types::cat3("did you mean `", near.as_str(), "`?").as_str(), near.as_str()),
+            }
             ast::TypeKind::Error
         }
 
@@ -723,6 +836,32 @@ mod body {
                 ast::TypeKind::Param(q4_tk_param0) => false,
                 ast::TypeKind::Never => false,
                 ast::TypeKind::Error => false,
+            }
+        }
+
+        #[summary("색인은 usize다")]
+        #[effects(alloc)]
+        fn index_usize(self: &mut Body, cx: &mut FnCtx, index: &ast::Expr, f: usize) -> ()
+            decreases f * 3 + 2,
+        {
+            if f == 0 {
+                return;
+            }
+            let want: Option<ast::TypeKind> = Some(ast::TypeKind::Int(ast::IntTy::Usize));
+            let it: ast::TypeKind = self.expr(cx, index, &want, Mode::Exec, f - 1);
+            self.expect_ty(&it, &ast::TypeKind::Int(ast::IntTy::Usize), index.span);
+        }
+
+        #[summary("span의 break나 continue가 떠나는 루프: 레이블이 가리키는 것이나 가장 안쪽 것의 cx.loops 자리 (없으면 E0250, E0317)")]
+        #[effects(alloc)]
+        fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {
+            if cx.loops.len() == 0 {
+                self.c.help("E0250", span, types::cat3("`", what, "` outside a loop").as_str(), "use it inside a `while`, `for` or `loop`; to leave the function, `return`");
+                return None;
+            }
+            match label {
+                None => Some(cx.loops.len() - 1),
+                Some(l) => { let mut found: Option<usize> = None; let mut known: String = String::new(); for i in 0..cx.loops.len() invariant 0 <= i && i <= cx.loops.len(), { match &cx.loops[i].label { None => {}, Some(n) => { if n.as_str() == l.name.as_str() { found = Some(i); } if known.len() > 0 { known.push_str(", "); } known.push_str("'"); known.push_str(n.as_str()); }, } } if no_index(&found) { let msg: String = types::cat3("no loop labeled `'", l.name.as_str(), "` around this"); if known.len() == 0 { self.c.help("E0317", l.span, msg.as_str(), "label the loop: `'name: while ..`"); } else { self.c.help("E0317", l.span, msg.as_str(), types::cat2("the labels in scope are ", known.as_str()).as_str()); } } found },
             }
         }
 
@@ -841,16 +980,211 @@ mod body {
             }
         }
 
-        #[summary("decreases의 타입. 다음 조각(4D-03e3)이 채운다")]
+        #[summary("decreases의 타입: 정수, 재귀 열거형, 또는 자기를 담는 구조체")]
         #[effects(alloc)]
-        fn measure_type(self: &mut Body, t: &ast::TypeKind, span: source::Span) -> () {}
+        fn measure_type(self: &mut Body, t: &ast::TypeKind, span: source::Span) -> () {
+            if types::is_int(t) || types::is_error(t) {
+                return;
+            }
+            let outer: ast::TypeKind = match ref_inner(t) {
+                None => t.clone(),
+                Some(inner) => inner,
+            };
+            let v: ast::TypeKind = match box_inner(&outer) {
+                None => outer.clone(),
+                Some(boxed) => boxed,
+            };
+            let is_enum: bool = match types::named_path(&v) {
+                None => false,
+                Some(path) => path == "Option" || path == "Result" || self.enum_adt(path.as_str()),
+            };
+            let reaches: bool = self.reaches_itself(&v);
+            if is_enum && reaches || self.struct_cycle(&v) {
+                return;
+            }
+            let msg: String = types::cat3("`decreases` must be an integer, a recursive enum or a recursive struct, found `", types::text(t).as_str(), "`");
+            if is_named(&v) && reaches {
+                self.c.help("E0401", span, msg.as_str(), "decrease the enum-valued part that holds the recursion (a field such as `n.next`)");
+            } else {
+                self.c.help("E0401", span, msg.as_str(), "an integer, or a value of a recursive enum or of a struct that holds itself in a `Vec` (its structural size)");
+            }
+        }
 
-        #[summary("대입의 대상. 다음 조각(4D-03e3b)이 채운다")]
+        #[summary("대입의 대상을 검사하고 그 타입을 낸다")]
         #[effects(alloc)]
         fn place(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, f: usize) -> ast::TypeKind
             decreases f * 3 + 2,
         {
-            ast::TypeKind::Error
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            match &target.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Float(q4_ek_float0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::StrLit(q4_ek_strlit0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::CharLit(q4_ek_charlit0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Bool(q4_ek_bool0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Unit => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Var(id) => self.place_var(cx, target, id),
+                ast::ExprKind::Call(q4_ek_call0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Method(q4_ek_method0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Index(base, index) => self.place_index(cx, target, &**base, &**index, f),
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::If(q4_ek_if0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Block(q4_ek_block0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Array(q4_ek_array0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Repeat(q4_ek_repeat0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Old(q4_ek_old0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Quant(q4_ek_quant0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Trigger(q4_ek_trigger0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Closure(q4_ek_closure0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::StructLit(q4_ek_structlit0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Path(q4_ek_path0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Deref(q4_ek_deref0) => self.place_path(cx, target, f),
+                ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => self.place_path(cx, target, f),
+                ast::ExprKind::Match(q4_ek_match0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Return(q4_ek_return0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Try(q4_ek_try0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Loop(q4_ek_loop0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Break(q4_ek_break0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Continue(q4_ek_continue0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Range(q4_ek_range0) => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+                ast::ExprKind::Error => { self.c.err("E0408", target.span, "invalid assignment target"); ast::TypeKind::Error },
+            }
+        }
+
+        #[summary("원소에의 대입 base[index] = v. base가 필드·원소·`*`면 그 자리를 따라가고(s.w[i], g[i][j], (*b)[i]), 아니면 변수여야 한다")]
+        #[effects(alloc)]
+        fn place_index(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, base: &ast::Expr, index: &ast::Expr, f: usize) -> ast::TypeKind
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if nested_place(&base.kind) {
+                let p: Place = self.place_of(cx, base, f - 1);
+                self.types.insert(span_key(base.span).as_str(), p.ty.clone());
+                self.index_usize(cx, index, f - 1);
+                let bad: bool = types::is_error(&p.ty);
+                let writable: bool = p.writable;
+                let indexable: bool = has_type(&elem_of(&p.ty));
+                let q: Place = self.elem_place(base.span, p);
+                if !indexable {
+                    return ast::TypeKind::Error;
+                }
+                if !writable && !bad {
+                    self.c.help("E0408", target.span, "this place cannot be assigned", "assign through a `let mut` local or a `&mut` parameter");
+                }
+                return q.ty;
+            }
+            let id: String = match ast::var_name(base) {
+                None => { self.c.err("E0408", target.span, "only elements of a variable, a field or an element can be assigned"); return ast::TypeKind::Error; },
+                Some(n) => n,
+            };
+            let l: Local = match lookup(cx, id.as_str()) {
+                None => { self.unknown_local(cx, id.as_str(), base.span); return ast::TypeKind::Error; },
+                Some(found) => found,
+            };
+            let writable: bool = if is_array(&l.ty) || is_vec(&l.ty) {
+                l.mutable
+            } else {
+                types::is_ref_mut(&l.ty)
+            };
+            self.index_usize(cx, index, f - 1);
+            match elem_of(&l.ty) {
+                None => { self.c.err("E0407", base.span, types::cat5("`", id.as_str(), "` has type `", types::text(&l.ty).as_str(), "` and cannot be indexed").as_str()); ast::TypeKind::Error },
+                Some(elem) => { if !writable { self.c.err("E0408", target.span, types::cat5("elements of `", id.as_str(), "` cannot be assigned (`", types::text(&l.ty).as_str(), "`)").as_str()); } elem },
+            }
+        }
+
+        #[summary("필드나 `*` 대상 아래의 자리의 타입과 쓸 수 있는가: let mut 지역 변수, &mut 매개변수, 쓸 수 있는 원소. 뒤 단계가 자리의 타입도 읽으므로 적어 둔다")]
+        #[effects(alloc)]
+        fn place_of(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, f: usize) -> Place
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return Place { ty: ast::TypeKind::Error, writable: false };
+            }
+            let p: Place = self.place_of_inner(cx, e, f);
+            let key: String = span_key(e.span);
+            if !self.types.has(key.as_str()) {
+                self.types.insert(key.as_str(), p.ty.clone());
+            }
+            p
+        }
+
+        #[effects(alloc)]
+        fn place_of_inner(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, f: usize) -> Place
+            decreases f * 3,
+        {
+            if f == 0 {
+                return Place { ty: ast::TypeKind::Error, writable: false };
+            }
+            match &e.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Float(q4_ek_float0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::StrLit(q4_ek_strlit0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::CharLit(q4_ek_charlit0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Bool(q4_ek_bool0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Unit => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Var(id) => self.var_place(cx, id),
+                ast::ExprKind::Call(q4_ek_call0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Method(q4_ek_method0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Index(base, index) => { let p: Place = self.place_of(cx, &**base, f - 1); self.index_usize(cx, &**index, f - 1); self.elem_place(base.span, p) },
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::If(q4_ek_if0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Block(q4_ek_block0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Array(q4_ek_array0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Repeat(q4_ek_repeat0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Old(q4_ek_old0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Quant(q4_ek_quant0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Trigger(q4_ek_trigger0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Closure(q4_ek_closure0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::StructLit(q4_ek_structlit0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Path(q4_ek_path0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Deref(x) => { let p: Place = self.place_of(cx, &**x, f - 1); self.deref_place(e.span, p) },
+                ast::ExprKind::Field(base, name) => { self.deref_field(e, &**base, name); let p: Place = self.place_of(cx, &**base, f - 1); Place { ty: self.field_type_of(&p.ty, name), writable: p.writable } },
+                ast::ExprKind::Match(q4_ek_match0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Return(q4_ek_return0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Try(q4_ek_try0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Loop(q4_ek_loop0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Break(q4_ek_break0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Continue(q4_ek_continue0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Range(q4_ek_range0) => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+                ast::ExprKind::Error => { self.c.err("E0408", e.span, "invalid assignment target"); Place { ty: ast::TypeKind::Error, writable: false } },
+            }
+        }
+
+        #[summary("필드나 `*`인 대입의 대상")]
+        #[effects(alloc)]
+        fn place_path(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, f: usize) -> ast::TypeKind
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let p: Place = self.place_of(cx, target, f - 1);
+            if !p.writable && !types::is_error(&p.ty) {
+                self.c.help("E0408", target.span, "this place cannot be assigned", "assign through a `let mut` local or a `&mut` parameter");
+            }
+            p.ty
+        }
+
+        #[summary("변수에의 대입: 바꿀 수 있는 지역 변수여야 한다 (E0408)")]
+        #[effects(alloc)]
+        fn place_var(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, id: &ast::Ident) -> ast::TypeKind {
+            match lookup(cx, id.name.as_str()) {
+                None => { self.unknown_local(cx, id.name.as_str(), id.span); ast::TypeKind::Error },
+                Some(l) => { if !l.mutable { let msg: String = types::cat3("`", id.name.as_str(), "` is not mutable"); if l.is_param { self.c.help("E0408", target.span, msg.as_str(), "copy the parameter into a `let mut` local"); } else if types::has(cx.for_vars.as_slice(), id.name.as_str()) { self.c.help("E0408", target.span, msg.as_str(), "a `for` variable steps by itself; copy it into a `let mut` local to change the copy"); } else { self.c.help("E0408", target.span, msg.as_str(), "declare it with `let mut`"); } } l.ty },
+            }
         }
 
         #[summary("proof { .. } (ADR-0062 §1): 실행 코드 안의 유령 문장. 그 let은 블록 안의 것이라 유령 값이 실행 코드에 닿지 않는다")]
@@ -872,6 +1206,25 @@ mod body {
             let t: ast::TypeKind = self.block(cx, &p.body, &wu, Mode::Ghost, f - 1);
             cx.ghost = was;
             self.expect_ty(&t, &ast::TypeKind::Unit, p.body.span);
+        }
+
+        #[summary("t가 자기 자신에 닿는가 (값이 담는 타입을 따라)")]
+        #[effects(alloc)]
+        fn reaches_itself(self: &Body, t: &ast::TypeKind) -> bool {
+            let target: String = types::text(t);
+            let mut seen: Vec<String> = Vec::new();
+            let mut todo: Vec<ast::TypeKind> = self.components(t);
+            let mut fuel: usize = 1000000000;
+            while todo.len() > 0 && fuel > 0
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match todo.pop() {
+                    None => {},
+                    Some(c) => { let k: String = types::text(&c); if k == target { return true; } if types::add(&mut seen, k.as_str()) { let more: Vec<ast::TypeKind> = self.components(&c); push_all(&mut todo, more.as_slice()); } },
+                }
+            }
+            false
         }
 
         #[summary("호출의 경로가 가리키는 함수: 이 단위의 타입이나 trait의 함수 `T::f`, 이 단위의 함수나 내장 함수 `f`, 온 경로")]
@@ -912,9 +1265,67 @@ mod body {
             None
         }
 
-        #[summary("타입 없는 let의 E0201을 처음 쓰인 자리의 타입으로 고친다. 다음 조각(4D-03e3b)이 채운다")]
+        #[summary("타입 없는 let의 E0201을 고친다 (백로그 2N-12): 타입은 그 변수가 뒤에서 처음 쓰이는 자리에서 온다. 산술·비교·비트 연산의 다른 쪽(리터럴이 아닌 것), 색인(usize), 함수의 인자(매개변수의 타입), Vec이면 첫 push(원소의 타입). 그런 자리가 없으면 초기값의 타입을 둔다")]
         #[effects(alloc)]
-        fn settle_lets(self: &mut Body, d: &ast::FnDef, mp: &str) -> () {}
+        fn settle_lets(self: &mut Body, d: &ast::FnDef, mp: &str) -> () {
+            let open: Vec<OpenLet> = self.open_lets.clone();
+            self.open_lets = Vec::new();
+            let typed: Vec<TypedUse> = self.typed_uses.clone();
+            self.typed_uses = Vec::new();
+            let spec_at: Vec<source::Span> = self.spec_at.clone();
+            self.spec_at = Vec::new();
+            if open.len() == 0 {
+                return;
+            }
+            let mut body: ast::FnDef = d.clone();
+            for o in 0..open.len()
+                invariant 0 <= o && o <= open.len(),
+            {
+                let facts: Vec<Fact> = Vec::new();
+                let calls: Vec<CallUse> = Vec::new();
+                let mut uses: Uses = Uses { name: open[o].name.name.clone(), after: open[o].name.span.hi, vec_new: open[o].vec_new, spec_at: spec_at.clone(), facts: facts, calls: calls };
+                ast::fn_exprs_mut::<Uses>(&mut body, &mut uses, true, 1000000000);
+                let mut best: Best = Best { found: false, lo: 0, ty: ast::TypeKind::Error };
+                for i in 0..uses.facts.len()
+                    invariant 0 <= i && i <= uses.facts.len(),
+                {
+                    if uses.facts[i].kind == 0 {
+                        if !uses.facts[i].literal {
+                            match self.types.find(span_key(uses.facts[i].other).as_str()) {
+                                None => {},
+                                Some(at) => { if types::is_int(&self.types.items[at]) { better(&mut best, uses.facts[i].lo, &self.types.items[at]); } },
+                            }
+                        }
+                    } else if uses.facts[i].kind == 1 {
+                        better(&mut best, uses.facts[i].lo, &ast::TypeKind::Int(ast::IntTy::Usize));
+                    } else {
+                        match self.types.find(span_key(uses.facts[i].other).as_str()) {
+                            None => {},
+                            Some(at) => { let v: ast::TypeKind = ast::TypeKind::Vec(Box::new(ast::Type { kind: self.types.items[at].clone(), span: uses.facts[i].other })); better(&mut best, uses.facts[i].lo, &v); },
+                        }
+                    }
+                }
+                for i in 0..typed.len()
+                    invariant 0 <= i && i <= typed.len(),
+                {
+                    if typed[i].name == open[o].name.name && typed[i].lo > open[o].name.span.hi && fits_let(&typed[i].ty, open[o].vec_new) {
+                        better(&mut best, typed[i].lo, &typed[i].ty);
+                    }
+                }
+                for i in 0..uses.calls.len()
+                    invariant 0 <= i && i <= uses.calls.len(),
+                {
+                    match self.resolve(uses.calls[i].path.as_slice(), mp) {
+                        None => {},
+                        Some(p) => { match self.c.fns.find(p.as_str()) { None => {}, Some(at) => { let k: usize = uses.calls[i].k; if k < self.c.fns.items[at].params.len() && fits_let(&self.c.fns.items[at].params[k], open[o].vec_new) { better(&mut best, uses.calls[i].lo, &self.c.fns.items[at].params[k]); } }, } },
+                    }
+                }
+                if best.found {
+                    let r: String = types::cat3(open[o].name.name.as_str(), ": ", types::text(&best.ty).as_str());
+                    settle_diag(&mut self.c.diags, &open[o].name, r.as_str());
+                }
+            }
+        }
 
         #[summary("E0503: 명세는 식 하나이고 루프가 없다")]
         #[effects(alloc)]
@@ -955,6 +1366,29 @@ mod body {
             }
         }
 
+        #[summary("구조체 값 t가 구조체만을 지나(필드, Vec, 배열, Box) 자기를 담는가 (ADR-0047 §3)")]
+        #[effects(alloc)]
+        fn struct_cycle(self: &Body, t: &ast::TypeKind) -> bool {
+            let v: ast::TypeKind = match ref_inner(t) {
+                None => t.clone(),
+                Some(inner) => inner,
+            };
+            let target: String = types::text(&v);
+            let mut seen: Vec<String> = Vec::new();
+            let mut todo: Vec<ast::TypeKind> = self.struct_parts(&v);
+            let mut fuel: usize = 1000000000;
+            while todo.len() > 0 && fuel > 0
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match todo.pop() {
+                    None => {},
+                    Some(c) => { let k: String = types::text(&c); if k == target { return true; } if types::add(&mut seen, k.as_str()) { let more: Vec<ast::TypeKind> = self.struct_parts(&c); push_all(&mut todo, more.as_slice()); } },
+                }
+            }
+            false
+        }
+
         #[summary("타입 t가 가리키는 구조체의 경로와 필드 (참조 하나와 Box들을 지나: p: &Point나 p: &Box<Point>의 p.x). 구조체가 아니면 found가 거짓")]
         #[effects(alloc)]
         fn struct_fields(self: &Body, t: &ast::TypeKind) -> Fields {
@@ -991,6 +1425,140 @@ mod body {
             Fields { found: is_struct, path: self.c.adts.items[at].path.clone(), fields: out }
         }
 
+        #[summary("t가 구조체면 그 필드 (참조나 Box를 지나지 않는다)")]
+        #[effects(alloc)]
+        fn struct_fields_of(self: &Body, t: &ast::TypeKind) -> Fields {
+            if is_ref(t) || is_box(t) {
+                let none: Vec<types::FieldSig> = Vec::new();
+                return Fields { found: false, path: String::new(), fields: none };
+            }
+            self.struct_fields(t)
+        }
+
+        #[summary("구조체 t의 필드가 Vec·배열·Box·조각·참조를 지나 담는 구조체들")]
+        #[effects(alloc)]
+        fn struct_parts(self: &Body, t: &ast::TypeKind) -> Vec<ast::TypeKind> {
+            let mut out: Vec<ast::TypeKind> = Vec::new();
+            let decl: Fields = self.struct_fields_of(t);
+            for i in 0..decl.fields.len()
+                invariant 0 <= i && i <= decl.fields.len(),
+            {
+                self.struct_under(&decl.fields[i].ty, &mut out, 1000000000);
+            }
+            out
+        }
+
+        #[summary("t 아래의 구조체를 out에: t가 구조체면 그것, Vec·배열·Box·조각·참조면 그 안")]
+        #[effects(alloc)]
+        fn struct_under(self: &Body, t: &ast::TypeKind, out: &mut Vec<ast::TypeKind>, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            match under(t) {
+                None => { match types::named_path(t) { None => {}, Some(path) => { match self.c.adts.find(path.as_str()) { None => {}, Some(at) => { if struct_kind(&self.c.adts.items[at].kind) { out.push(t.clone()); } }, } }, } },
+                Some(e) => self.struct_under(&e, out, f - 1),
+            }
+        }
+
+        #[summary("x? (ADR-0049 §1): x는 Option을 내는 함수 안의 Option, 또는 같은 오류 타입의 Result를 내는 함수 안의 Result (암묵 변환 없음, E0241). 타입은 페이로드")]
+        #[effects(alloc)]
+        fn try_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            if !exec_mode(mode) {
+                self.c.help("E0503", e.span, "`?` is not allowed in a specification", "a specification is one expression: test the variant with `match`");
+            }
+            let no: Option<ast::TypeKind> = None;
+            let xt: ast::TypeKind = self.expr(cx, x, &no, mode, f - 1);
+            let kind: u8 = try_variants(&xt);
+            if kind == 0 {
+                if !types::is_error(&xt) && !is_never(&xt) {
+                    let through: bool = match ref_inner(&xt) {
+                        None => false,
+                        Some(inner) => try_variants(&inner) != 0,
+                    };
+                    let msg: String = types::cat3("`?` applies to an `Option` or a `Result`, found `", types::text(&xt).as_str(), "`");
+                    if through {
+                        self.c.help("E0401", x.span, msg.as_str(), "`?` takes the value itself: `(*x)?` when it is `Copy`, otherwise `match` the reference");
+                    } else {
+                        self.c.help("E0401", x.span, msg.as_str(), "test the value with `if` or `match` instead");
+                    }
+                }
+                return ast::TypeKind::Error;
+            }
+            let args: Vec<ast::TypeKind> = types::named_args(&xt);
+            if args.len() == 0 {
+                return ast::TypeKind::Error;
+            }
+            let payload: ast::TypeKind = args[0].clone();
+            if !exec_mode(mode) {
+                return payload;
+            }
+            let ret: ast::TypeKind = cx.ret.clone();
+            if try_variants(&ret) == kind {
+                let ra: Vec<ast::TypeKind> = types::named_args(&ret);
+                if kind == 1 || ra.len() < 2 || args.len() < 2 {
+                    return payload;
+                }
+                if types::same(&ra[1], &args[1]) {
+                    return payload;
+                }
+                let want: String = types::text(&ra[1]);
+                self.c.help("E0241", e.span, types::cat5("the error type `", types::text(&args[1]).as_str(), "` of `?` is not the function's `", want.as_str(), "`").as_str(), types::cat3("convert it explicitly: `match` the value and `return Err(..)` with a `", want.as_str(), "`").as_str());
+                return payload;
+            }
+            if types::is_error(&ret) {
+                return payload;
+            }
+            if kind == 1 {
+                self.c.help("E0241", e.span, types::cat5("`?` on `", types::text(&xt).as_str(), "` returns its `None` from a function returning `", types::text(&ret).as_str(), "`").as_str(), "`?` needs the function to return `Option<..>`; otherwise `match` the value");
+            } else {
+                self.c.help("E0241", e.span, types::cat5("`?` on `", types::text(&xt).as_str(), "` returns its `Err` from a function returning `", types::text(&ret).as_str(), "`").as_str(), "`?` needs the function to return `Result<.., E>`; otherwise `match` the value");
+            }
+            payload
+        }
+
+        #[summary("E0301: 범위에 없는 이름. 보이는 이름 가운데 가장 가까운 하나(편집 거리 2 이하)를 고칠 글로 (백로그 2D-18)")]
+        #[effects(alloc)]
+        fn unknown_local(self: &mut Body, cx: &FnCtx, name: &str, span: source::Span) -> () {
+            let msg: String = types::cat3("unknown name `", name, "`");
+            if types::has(cx.for_vars.as_slice(), name) {
+                self.c.help("E0301", span, msg.as_str(), "a `for` variable lives only in its loop; keep what you need in a local declared before it");
+                return;
+            }
+            let mut cands: Vec<String> = Vec::new();
+            for i in 0..cx.scopes.len()
+                invariant 0 <= i && i <= cx.scopes.len(),
+            {
+                let mut names: Vec<String> = Vec::new();
+                for j in 0..cx.scopes[i].len()
+                    invariant 0 <= j && j <= cx.scopes[i].len(),
+                {
+                    types::add(&mut names, cx.scopes[i][j].name.as_str());
+                }
+                let ordered: Vec<String> = decls::sorted(names.as_slice());
+                push_names(&mut cands, ordered.as_slice());
+            }
+            match types::closest(name, cands.as_slice()) {
+                None => self.c.err("E0301", span, msg.as_str()),
+                Some(near) => self.c.fixed("E0301", span, msg.as_str(), types::cat3("did you mean `", near.as_str(), "`?").as_str(), near.as_str()),
+            }
+        }
+
+        #[summary("변수인 자리: 참조면 그 참조가 &mut인가, 아니면 let mut인가")]
+        #[effects(alloc)]
+        fn var_place(self: &mut Body, cx: &mut FnCtx, id: &ast::Ident) -> Place {
+            match lookup(cx, id.name.as_str()) {
+                None => { self.unknown_local(cx, id.name.as_str(), id.span); Place { ty: ast::TypeKind::Error, writable: false } },
+                Some(l) => { let w: bool = if is_ref(&l.ty) { types::is_ref_mut(&l.ty) } else { l.mutable }; Place { ty: l.ty, writable: w } },
+            }
+        }
+
         #[summary("while")]
         #[effects(alloc)]
         fn while_stmt(self: &mut Body, cx: &mut FnCtx, w: &ast::While, mode: Mode, f: usize) -> ()
@@ -1017,6 +1585,12 @@ mod body {
         }
     }
 
+    #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
+    struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
+
+    #[summary("변수가 쓰인 자리 하나. kind 0은 연산의 한 쪽(other는 다른 쪽, literal은 그것이 리터럴인가), 1은 색인, 2는 push의 받는 쪽(other는 넣는 값)")]
+    struct Fact { kind: u8, lo: u32, other: source::Span, literal: bool }
+
     #[summary("struct_fields의 답")]
     struct Fields { found: bool, path: String, fields: Vec<types::FieldSig> }
 
@@ -1041,6 +1615,9 @@ mod body {
     #[summary("타입 없는 let: 이름과, 초기값이 Vec::new()인가")]
     struct OpenLet { name: ast::Ident, vec_new: bool }
 
+    #[summary("자리의 타입과 쓸 수 있는가")]
+    struct Place { ty: ast::TypeKind, writable: bool }
+
     #[summary("한정자를 찾는 손님")]
     struct Quants { found: bool }
 
@@ -1056,6 +1633,63 @@ mod body {
     #[summary("타입을 쓴 let의 초기값 전체로 쓰인 지역 변수: 이름, 자리, 선언한 타입")]
     struct TypedUse { name: String, lo: u32, ty: ast::TypeKind }
 
+    #[summary("타입 없는 let의 변수 name이 after 뒤에서 쓰인 자리를 모으는 손님. spec_at은 명세로 검사한 식의 자리(그 정수는 수학의 것이라 타입을 말하지 않는다)")]
+    struct Uses { name: String, after: u32, vec_new: bool, spec_at: Vec<source::Span>, facts: Vec<Fact>, calls: Vec<CallUse> }
+
+    impl Uses {
+        #[summary("e가 그 변수를 쓴 자리인가")]
+        #[effects(alloc)]
+        fn is_var(self: &Uses, e: &ast::Expr) -> bool {
+            match ast::var_name(e) {
+                None => false,
+                Some(v) => v == self.name && e.span.lo > self.after && !has_span(self.spec_at.as_slice(), e.span),
+            }
+        }
+    }
+
+    impl ast::ExprFn for Uses {
+        #[effects(alloc)]
+        fn expr(self: &mut Uses, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => {},
+                ast::ExprKind::Float(q4_ek_float0) => {},
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => {},
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => {},
+                ast::ExprKind::StrLit(q4_ek_strlit0) => {},
+                ast::ExprKind::CharLit(q4_ek_charlit0) => {},
+                ast::ExprKind::Bool(q4_ek_bool0) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(q4_ek_var0) => {},
+                ast::ExprKind::Call(c) => { for i in 0..c.args.len() invariant 0 <= i && i <= c.args.len(), { if self.is_var(&c.args[i]) { self.calls.push(CallUse { lo: c.args[i].span.lo, path: c.path.clone(), k: i }); } } },
+                ast::ExprKind::Method(m) => { if self.vec_new && m.name.name == "push" && self.is_var(&*m.recv) && m.args.len() == 1 && !is_int_kind(&m.args[0].kind) { self.facts.push(Fact { kind: 2, lo: m.recv.span.lo, other: m.args[0].span, literal: false }); } },
+                ast::ExprKind::Index(q4_ek_index0, index) => { if !self.vec_new && self.is_var(&**index) { self.facts.push(Fact { kind: 1, lo: index.span.lo, other: index.span, literal: false }); } },
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => {},
+                ast::ExprKind::Binary(op, a, b) => { if !self.vec_new && (is_arith(*op) || is_cmp(*op) || is_bit(*op)) { if self.is_var(&**a) { self.facts.push(Fact { kind: 0, lo: a.span.lo, other: b.span, literal: is_int_kind(&b.kind) }); } else if self.is_var(&**b) { self.facts.push(Fact { kind: 0, lo: b.span.lo, other: a.span, literal: is_int_kind(&a.kind) }); } } },
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => {},
+                ast::ExprKind::If(q4_ek_if0) => {},
+                ast::ExprKind::Block(q4_ek_block0) => {},
+                ast::ExprKind::Array(q4_ek_array0) => {},
+                ast::ExprKind::Repeat(q4_ek_repeat0) => {},
+                ast::ExprKind::Old(q4_ek_old0) => {},
+                ast::ExprKind::Quant(q4_ek_quant0) => {},
+                ast::ExprKind::Trigger(q4_ek_trigger0) => {},
+                ast::ExprKind::Closure(q4_ek_closure0) => {},
+                ast::ExprKind::StructLit(q4_ek_structlit0) => {},
+                ast::ExprKind::Path(q4_ek_path0) => {},
+                ast::ExprKind::Deref(q4_ek_deref0) => {},
+                ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => {},
+                ast::ExprKind::Match(q4_ek_match0) => {},
+                ast::ExprKind::Return(q4_ek_return0) => {},
+                ast::ExprKind::Try(q4_ek_try0) => {},
+                ast::ExprKind::Loop(q4_ek_loop0) => {},
+                ast::ExprKind::Break(q4_ek_break0) => {},
+                ast::ExprKind::Continue(q4_ek_continue0) => {},
+                ast::ExprKind::Range(q4_ek_range0) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
     #[summary("구조체의 필드 타입들이나 열거형의 페이로드 타입들")]
     #[effects(alloc)]
     fn adt_parts(k: &types::AdtKind) -> Vec<ast::TypeKind> {
@@ -1065,6 +1699,16 @@ mod body {
             types::AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { out.push(vs[i].tys[j].clone()); } } },
         }
         out
+    }
+
+    #[summary("lo가 더 앞이면 고른 것을 바꾼다")]
+    #[effects(alloc)]
+    fn better(best: &mut Best, lo: u32, t: &ast::TypeKind) -> () {
+        if !best.found || lo < best.lo {
+            best.found = true;
+            best.lo = lo;
+            best.ty = t.clone();
+        }
     }
 
     #[summary("정수 타입의 비트 수")]
@@ -1159,6 +1803,72 @@ mod body {
         }
     }
 
+    #[summary("e가 *x면 x")]
+    #[effects(alloc)]
+    fn deref_inner(e: &ast::Expr) -> Option<ast::Expr> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(x) => Some((**x).clone()),
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("색인한 원소의 타입: 배열, Vec, 그리고 조각이나 Vec의 참조")]
+    #[effects(alloc)]
+    fn elem_of(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, q4_tk_array1) => Some(e.kind.clone()),
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => None,
+            ast::TypeKind::Slice(q4_tk_slice0) => None,
+            ast::TypeKind::Ref(q4_tk_ref0, inner) => ref_elem(&inner.kind),
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => None,
+            ast::TypeKind::Vec(e) => Some(e.kind.clone()),
+            ast::TypeKind::Box(q4_tk_box0) => None,
+            ast::TypeKind::Param(q4_tk_param0) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
     #[effects(pure)]
     fn exec_mode(m: Mode) -> bool {
         match m {
@@ -1175,6 +1885,15 @@ mod body {
             return bits(s) <= bits(t);
         }
         !signed(s) && bits(s) < bits(t)
+    }
+
+    #[summary("타입 없는 let에 맞는 타입인가: Vec::new()면 Vec, 아니면 정수")]
+    #[effects(pure)]
+    fn fits_let(t: &ast::TypeKind, vec_new: bool) -> bool {
+        if vec_new {
+            return is_vec(t);
+        }
+        types::is_int(t)
     }
 
     #[effects(pure)]
@@ -1213,6 +1932,50 @@ mod body {
         let mut v: Quants = Quants { found: false };
         ast::expr_mut::<Quants>(&mut copy, &mut v, true, 1000000000);
         v.found
+    }
+
+    #[effects(pure)]
+    fn has_span(xs: &[source::Span], s: source::Span) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if same_span(xs[i], s) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(pure)]
+    fn has_type(o: &Option<ast::TypeKind>) -> bool {
+        match o {
+            None => false,
+            Some(q4_t) => true,
+        }
+    }
+
+    #[summary("배열, Box, Vec이 담는 타입")]
+    #[effects(alloc)]
+    fn held(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, q4_tk_array1) => Some(e.kind.clone()),
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => None,
+            ast::TypeKind::Slice(q4_tk_slice0) => None,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => None,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => None,
+            ast::TypeKind::Vec(e) => Some(e.kind.clone()),
+            ast::TypeKind::Box(e) => Some(e.kind.clone()),
+            ast::TypeKind::Param(q4_tk_param0) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
     }
 
     #[summary("초기값이 맨 정수 리터럴이나 그 음수인가")]
@@ -1316,6 +2079,29 @@ mod body {
     }
 
     #[effects(pure)]
+    fn is_array(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => true,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
     fn is_bit(op: ast::BinOp) -> bool {
         match op {
             ast::BinOp::Add => false,
@@ -1360,6 +2146,42 @@ mod body {
             ast::TypeKind::Param(q4_tk_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_box(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => true,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("t가 std::process::Child(나 그 참조)인가")]
+    #[effects(alloc)]
+    fn is_child(t: &ast::TypeKind) -> bool {
+        let v: ast::TypeKind = match ref_inner(t) {
+            None => t.clone(),
+            Some(inner) => inner,
+        };
+        match types::named_path(&v) {
+            None => false,
+            Some(p) => p == "std::process::Child" && types::named_args(&v).len() == 0,
         }
     }
 
@@ -1684,6 +2506,29 @@ mod body {
         }
     }
 
+    #[effects(pure)]
+    fn is_vec(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(q4_tk_vec0) => true,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
     #[effects(alloc)]
     fn label_name(l: &Option<ast::Ident>) -> Option<String> {
         match l {
@@ -1801,13 +2646,56 @@ mod body {
         acc
     }
 
+    #[summary("필드, 원소, `*`인가")]
+    #[effects(pure)]
+    fn nested_place(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => true,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => true,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => true,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
     #[summary("빈 표의 검사기: c는 1패스를 마친 것, consts는 평가한 상수")]
     #[effects(alloc)]
     fn new(c: decls::Checker, consts: table::Table<consts::Const>) -> Body {
         let external: Vec<String> = Vec::new();
         let open_lets: Vec<OpenLet> = Vec::new();
         let typed_uses: Vec<TypedUse> = Vec::new();
-        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), spec_widen: false }
+        let spec_at: Vec<source::Span> = Vec::new();
+        Body { c: c, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), spec_widen: false }
     }
 
     #[summary("함수 하나의 빈 문맥: 범위 하나")]
@@ -1822,6 +2710,14 @@ mod body {
         let for_vars: Vec<String> = Vec::new();
         let needs: Vec<Need> = Vec::new();
         FnCtx { path: String::from(path), mod_path: String::from(mp), effect: effect, scopes: scopes, all_names: all_names, reserved: reserved, forall_depth: 0, ret: ast::TypeKind::Error, loops: loops, for_vars: for_vars, ghost: ghost, needs: needs, own: types::pure() }
+    }
+
+    #[effects(pure)]
+    fn no_index(o: &Option<usize>) -> bool {
+        match o {
+            None => true,
+            Some(q4_i) => false,
+        }
     }
 
     #[summary("빠진 효과가 io뿐인가")]
@@ -1874,6 +2770,47 @@ mod body {
         types::Effects { alloc: false, io: false, nondet: false, panic: true }
     }
 
+    #[effects(alloc)]
+    fn push_all(out: &mut Vec<ast::TypeKind>, xs: &[ast::TypeKind]) -> () {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+    }
+
+    #[effects(alloc)]
+    fn push_names(out: &mut Vec<String>, xs: &[String]) -> () {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+    }
+
+    #[effects(alloc)]
+    fn ref_elem(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => None,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => None,
+            ast::TypeKind::Slice(e) => Some(e.kind.clone()),
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => None,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => None,
+            ast::TypeKind::Vec(e) => Some(e.kind.clone()),
+            ast::TypeKind::Box(q4_tk_box0) => None,
+            ast::TypeKind::Param(q4_tk_param0) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
     #[summary("t가 참조면 가리키는 타입")]
     #[effects(alloc)]
     fn ref_inner(t: &ast::TypeKind) -> Option<ast::TypeKind> {
@@ -1901,6 +2838,22 @@ mod body {
     #[effects(pure)]
     fn same_span(a: source::Span, b: source::Span) -> bool {
         a.file == b.file && a.lo == b.lo && a.hi == b.hi
+    }
+
+    #[summary("이름 name의 첫 E0201을 고칠 글 r을 단 것으로 바꾼다")]
+    #[effects(alloc)]
+    fn settle_diag(diags: &mut Vec<diag::Diag>, name: &ast::Ident, r: &str) -> () {
+        let mut at: usize = diags.len();
+        for i in 0..diags.len()
+            invariant 0 <= i && i <= diags.len() && at <= diags.len(),
+        {
+            if at == diags.len() && diags[i].code == "E0201" && same_span(diags[i].span, name.span) {
+                at = i;
+            }
+        }
+        if at < diags.len() {
+            diags[at] = diag::fix(diag::new("E0201", name.span, types::cat3("`let ", name.name.as_str(), "` requires an explicit type").as_str()), types::cat3("write `", r, "`").as_str(), Some(String::from(r)));
+        }
     }
 
     #[effects(pure)]
@@ -1991,6 +2944,23 @@ mod body {
         }
     }
 
+    #[effects(pure)]
+    fn struct_kind(k: &types::AdtKind) -> bool {
+        match k {
+            types::AdtKind::Struct(q4_fs) => true,
+            types::AdtKind::Enum(q4_vs) => false,
+        }
+    }
+
+    #[summary("`?`를 받는 타입인가: 0 아님, 1 Option<T>, 2 Result<T, E>")]
+    #[effects(alloc)]
+    fn try_variants(t: &ast::TypeKind) -> u8 {
+        match types::named_path(t) {
+            None => 0,
+            Some(p) => { let n: usize = types::named_args(t).len(); if p == "Option" && n == 1 { 1 } else if p == "Result" && n == 2 { 2 } else { 0 } },
+        }
+    }
+
     #[summary("t 안에 Error가 있는가: 그 결함은 난 자리에서 알렸다")]
     #[effects(pure)]
     fn ty_has_error(t: &ast::TypeKind, f: usize) -> bool
@@ -2017,6 +2987,30 @@ mod body {
             ast::TypeKind::Param(q4_tk_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => true,
+        }
+    }
+
+    #[summary("Vec, 배열, Box, 조각, 참조의 안쪽 타입")]
+    #[effects(alloc)]
+    fn under(t: &ast::TypeKind) -> Option<ast::TypeKind> {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(e, q4_tk_array1) => Some(e.kind.clone()),
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => None,
+            ast::TypeKind::Slice(e) => Some(e.kind.clone()),
+            ast::TypeKind::Ref(q4_tk_ref0, e) => Some(e.kind.clone()),
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => None,
+            ast::TypeKind::Vec(e) => Some(e.kind.clone()),
+            ast::TypeKind::Box(e) => Some(e.kind.clone()),
+            ast::TypeKind::Param(q4_tk_param0) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
         }
     }
 
