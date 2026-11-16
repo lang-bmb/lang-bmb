@@ -8270,6 +8270,22 @@ impl<'a> Checker<'a> {
                 }
                 let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
                 if let Some(t) = from_call(path) {
+                    // `u32::from()`, `u32::from(a, b)`: there is no operand
+                    // to write the conversion of (backlog 4D-32).
+                    if args.len() != 1 {
+                        self.diags.push(
+                            Diag::new(
+                                "E0405",
+                                e.span,
+                                format!("`{}::from` takes one argument", ty_str(&t)),
+                            )
+                            .fix(
+                                format!("an integer conversion is `x as {}`", ty_str(&t)),
+                                None,
+                            ),
+                        );
+                        return t;
+                    }
                     let c = crate::fmt::cast_text(&args[0], &ty_str(&t));
                     self.diags
                         .push(Diag::new("E0212", e.span, format!("write `{c}`")).fix(

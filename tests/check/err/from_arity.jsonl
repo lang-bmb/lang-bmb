@@ -1,0 +1,2 @@
+{"code":"E0405","severity":"error","message":"`u32::from` takes one argument","file":"err/from_arity.bmb","line":5,"col":9,"end_line":5,"end_col":20,"fix":{"message":"an integer conversion is `x as u32`"}}
+{"code":"E0405","severity":"error","message":"`u32::from` takes one argument","file":"err/from_arity.bmb","line":10,"col":9,"end_line":10,"end_col":24,"fix":{"message":"an integer conversion is `x as u32`"}}

@@ -1,0 +1,12 @@
+#[summary("T::from은 인자 하나를 받는다: 없거나 둘이면 E0405 (백로그 4D-32, 검사기가 멈추던 입력)")]
+mod from_arity {
+    #[effects(pure)]
+    fn none() -> u32 {
+        u32::from()
+    }
+
+    #[effects(pure)]
+    fn two(a: u8, b: u8) -> u32 {
+        u32::from(a, b)
+    }
+}

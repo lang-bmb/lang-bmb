@@ -294,6 +294,10 @@
    "out": "c2f544540a8105c0",
    "src": "15c5f240fdf18ae0"
   },
+  "tests/check/err/from_arity.bmb": {
+   "out": "7bdd2354ef4cfe05",
+   "src": "36dd979d443848ea"
+  },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
    "src": "daeef4dd9e51ca5c"
