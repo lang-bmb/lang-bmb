@@ -30,7 +30,7 @@
 | C1 | 렉서 | P1 | 862 | 2,004 | 139 | 2.2 | 2.3 | 78 | 78/78 | 616 | 18,369,883 | 0 | — | — | — | 고정 |
 | C2 | 파서·구문 트리 | P2 | 5,168 | 5,015 | 255 | 0.9 | 1.0 | 193 | 193/193 | 1,249 | 31,997,838 | 0 | — | 5 | 0 | 고정 |
 | C3 | 정규형·해시·정체성 | P3 | 2,629 | 1,898 | 89 | 1.0 | 1.0 | 69 | 69/69 | 576 | 5,625,298 | 0 | — | — | — | — |
-| C4 | 검사기 | P3 | 17,469 | 15,978 | 470 | 5.0 | 5.2 | 687 | 687/687 | 5,399 | 233,720,132 | 0 | — | 15 | 4 | — |
+| C4 | 검사기 | P3 | 17,469 | 16,642 | 492 | 5.2 | 5.4 | 707 | 707/707 | 5,611 | 247,217,047 | 0 | — | 15 | 4 | — |
 | C5 | 맵·질의 | P5 | 2,654 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C6 | 증명 인코딩 | P6 | 13,734 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C7 | 해법기·도구 연결 | P7 | 1,102 | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -41,7 +41,7 @@
 | C12 | MCP 서버 | P11 | 1,494 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C13 | CLI | P11 | 1,163 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
-stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,931줄(51%), 포트 합계 25,513줄.
+stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,931줄(51%), 포트 합계 26,177줄.
 
 마찰:
 - C0: `const`가 `&str`을 담지 못해 진단 코드 표(185 + 6)는 `Vec<Code>`를 만드는 함수다(부를 때마다 만든다). 그대로 둠
@@ -108,6 +108,7 @@ stage0 합계 66,481줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 33,
 - C4: `4D-03e4`(`match`·변형·구조체 리터럴): `variant_value`, `builtin_variant`, `match_expr`(+`match_variants`·`arm_variant`·`arm_binds`·`match_cover`·`wildcard_arms`·`match_arm`), `struct_lit`(+`expected_args`·`check_slots`·`instance`), `mentions` 계열. 정의 53개. `bmb check`의 진단은 첫 회 5개(E0303 넷: 생성한 갈래의 이름이 두 타입, E0414 하나: 한쪽 길에서만 옮긴 값), 둘째 회 0개. `bmb verify`는 첫 회에 전부 증명(실패 0). 표면이 바꾼 꼴: 조각 `&segs[..n - 1]`이 없어 앞머리를 사본(`head`)으로 만든다. `Vec<(&Expr, TypeKind)>`를 둘 수 없어 `check_slots`는 값을 차례(`Slot.at`)로 가리키고 인자 목록과 필드 목록을 함께 받아 `by_field`로 고른다. 튜플 반환은 구조체(`VariantAt`, `Variants`), 갈래의 지킴이(`Some(t) if ..`)는 술어 함수와 `if`다. stage0의 한 함수 `match_expr`(260줄)는 증명 단위를 줄이려 넷으로 나눴다. 편집: 새 정의를 줄 전체가 맞는 닻(`mod body {`, `    impl Body {`) 뒤에 끼우고 정규형이 자리를 잡게 했다. 잘못 자른 자리 0
 - C4: `4D-03e5a`(연산과 리터럴): `binary`(셋으로 나눔: 피연산자를 보는 `binary`, 타입이 다를 때의 `binary_types`, 같을 때의 `binary_same`), `shift`, `int_lit`, `f64_from`, `bit_vector_terms`, `const_ref`, `literal_elem`, `recursive_with_vec`, `text_operand`. 정의 35개. `bmb check`의 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `u128` 리터럴 값과 `i128` 경계는 `wide::U128`과 `consts::Num`(부호와 크기)으로 견준다. 지킴이가 겹친 `match`(`bit_vector_terms`의 갈래 15개)는 갈래마다 `if`로 풀고 결과를 수(`what: u8`)로 든다: 글을 만드는 갈래와 되부르는 갈래가 한 `match`에 섞여 값으로 내기 어렵다. 재귀 측도는 조각마다 `f - 1`로 내려 부른다: 같은 깊이에서 서로 부르는 함수의 층(3f, 3f+1, 3f+2)이 셋뿐이라 넷째 층이 필요한 자리는 깊이를 하나 쓴다
 - C4: `4D-03e5b`(식의 갈래): `expr`, `expr_inner`, 갈래마다의 검사 23개, `collect_triggers`, `first_index_on`, `settled`. 정의 68개. `bmb check`의 진단 0개. `bmb verify` 2회: `call_expr`와 `path_expr`가 미결정 셋(E0811, 색인의 범위). `builtin_path(p)`나 `vec_builtin(p)`가 참이면 길이가 2(또는 1 이상)라는 것을 증명기는 모른다: 술어 함수의 몸은 호출하는 쪽에 보이지 않는다. 길이 조건을 `if`에 함께 적었다(뜻은 같다). stage0의 `match`가 지킴이 23개로 고르던 호출의 갈림(`call_expr`)은 `if`의 사슬이고, `expr_inner`의 갈래는 메서드 하나씩이다: 한 정의가 커지면 증명이 느려진다. 옮기다 stage0의 결함을 찾았다(`4D-32`: `u32::from()`이 `args[0]`을 길이 확인 없이 읽는다). BMB에서는 그 색인에 증명 의무가 붙어 같은 글을 쓸 수 없다
+- C4: `4D-03e6a`(내장 호출과 내장 메서드): `box_new`, `vec_call`, `mem_call`, `vec_method`, `f64_method`, `copy_within`, `clone_method`. 정의 20개. `bmb check`의 진단 0개, `bmb verify` 첫 회에 전부 증명. 표면이 바꾼 꼴: stage0의 `Option<&'static str>`(까닭의 글이 있거나 없다)은 빈 글이 없음을 뜻하는 `String`이다(`clone_blocked`, `vec_missing`). `match m { "push" => (1, true, Unit), .. }`처럼 이름으로 튜플을 고르던 표는 변수 셋에 `if`의 사슬로 대입한다. 클로저 `place_ty`(두 번 부르고 `self`와 `cx`를 잡는다)는 메서드 `mem_place`다
 
 <!-- ledger:data end -->
 
