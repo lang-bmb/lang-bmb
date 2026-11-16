@@ -1429,7 +1429,8 @@ mod body {
                     types::add(&mut self.external, path);
                 }
                 self.check_effects(d, &cx);
-                self.needs.insert(path, Needs { own: cx.own, body: needed(&cx) });
+                let info: moves::MoveInfo = self.check_moves(d, path);
+                self.needs.insert(path, Needs { own: cx.own, body: needed(&cx), moves: info });
             }
             self.c.tparams = Vec::new();
         }
@@ -1540,6 +1541,25 @@ mod body {
                     Some(found) => { self.c.self_head = Some(decls::SelfHead { head: found.info.head.clone(), text: types::text_in(&found.info.head, mp.as_str()) }); for j in 0..m.trait_impls[i].fns.len() invariant 0 <= j && j <= m.trait_impls[i].fns.len(), { let path: String = types::fn_path(&found.info, m.trait_impls[i].fns[j].name.name.as_str()); if self.declared_at(path.as_str(), m.trait_impls[i].fns[j].span) { self.check_fn(&m.trait_impls[i].fns[j], mp.as_str(), path.as_str()); } } self.c.self_head = None; },
                 }
             }
+        }
+
+        #[summary("함수 d의 이동을 검사한다 (moves): 진단을 더하고 놓는 자리를 적는다. 식의 타입과 데이터 타입의 표는 그동안 빌려준다")]
+        #[effects(alloc)]
+        fn check_moves(self: &mut Body, d: &ast::FnDef, path: &str) -> moves::MoveInfo {
+            let locals: table::Table<ast::TypeKind> = match self.locals.find(path) {
+                None => table::new::<ast::TypeKind>(),
+                Some(at) => self.locals.items[at].clone(),
+            };
+            let env: moves::Env = moves::Env { locals: locals, types: std::mem::replace(&mut self.types, table::new::<ast::TypeKind>()), adts: std::mem::replace(&mut self.c.adts, table::new::<types::Adt>()), moving: self.c.moving_params() };
+            let r: moves::Checked = moves::check(d, &env);
+            self.types = env.types;
+            self.c.adts = env.adts;
+            for i in 0..r.diags.len()
+                invariant 0 <= i && i <= r.diags.len(),
+            {
+                self.c.diags.push(r.diags[i].clone());
+            }
+            r.info
         }
 
         #[summary("매개변수의 타입이 가질 수 있는 꼴. resolved가 거짓이면 타입 안의 결함을 이미 알렸으므로 둘러싼 참조의 꼴을 다시 알리지 않는다 (백로그 2V-22)")]
@@ -2263,19 +2283,14 @@ mod body {
             t
         }
 
-        #[summary("식의 꼴마다의 검사. 유령 코드(ADR-0062 §1)에서 if·match·블록·loop는 유령 문장을 담고 호출은 종류로 보며, 나머지는 명세다")]
+        #[summary("식의 갈래 가운데 앞 묶음 (리터럴부터 배열까지): expr_inner가 early_kind로 가른다. 한 match에 서른다섯 갈래를 두면 증명기의 한도를 넘는다")]
         #[effects(alloc)]
-        fn expr_inner(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, written: Mode, f: usize) -> ast::TypeKind
-            decreases f * 3 + 1,
+        fn expr_early(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
         {
             if f == 0 {
                 return ast::TypeKind::Error;
             }
-            let mode: Mode = if ghost_mode(written) && !self.ghost_keeps(cx, e) {
-                Mode::Spec(true)
-            } else {
-                written
-            };
             let no: Option<ast::TypeKind> = None;
             match &e.kind {
                 ast::ExprKind::Int(v, q4_r) => { if opt_f64(expected) { let mut s: String = String::new(); wide::push_radix(&mut s, *v, 10); self.int_for_float(s.as_str(), e.span) } else { self.int_lit(*v, false, expected, e.span, mode) } },
@@ -2296,6 +2311,74 @@ mod body {
                 ast::ExprKind::If(ife) => self.if_expr(cx, ife, expected, mode, f - 1),
                 ast::ExprKind::Block(blk) => self.block(cx, blk, expected, mode, f - 1),
                 ast::ExprKind::Array(items) => self.array_expr(cx, e, items.as_slice(), expected, mode, f - 1),
+                ast::ExprKind::Repeat(rp) => ast::TypeKind::Error,
+                ast::ExprKind::Old(ox) => ast::TypeKind::Error,
+                ast::ExprKind::Quant(q) => ast::TypeKind::Error,
+                ast::ExprKind::Trigger(tx) => ast::TypeKind::Error,
+                ast::ExprKind::Closure(q4_ek_closure0) => ast::TypeKind::Error,
+                ast::ExprKind::StructLit(sl) => ast::TypeKind::Error,
+                ast::ExprKind::Path(p) => ast::TypeKind::Error,
+                ast::ExprKind::Deref(dx) => ast::TypeKind::Error,
+                ast::ExprKind::Field(fb, name) => ast::TypeKind::Error,
+                ast::ExprKind::Match(ma) => ast::TypeKind::Error,
+                ast::ExprKind::Return(rv) => ast::TypeKind::Error,
+                ast::ExprKind::Try(tr) => ast::TypeKind::Error,
+                ast::ExprKind::Loop(lp) => ast::TypeKind::Error,
+                ast::ExprKind::Break(bk) => ast::TypeKind::Error,
+                ast::ExprKind::Continue(label) => ast::TypeKind::Error,
+                ast::ExprKind::Range(rg) => ast::TypeKind::Error,
+                ast::ExprKind::Error => ast::TypeKind::Error,
+            }
+        }
+
+        #[summary("식의 꼴마다의 검사. 유령 코드(ADR-0062 §1)에서 if·match·블록·loop는 유령 문장을 담고 호출은 종류로 보며, 나머지는 명세다")]
+        #[effects(alloc)]
+        fn expr_inner(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, written: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3 + 1,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let mode: Mode = if ghost_mode(written) && !self.ghost_keeps(cx, e) {
+                Mode::Spec(true)
+            } else {
+                written
+            };
+            if early_kind(&e.kind) {
+                self.expr_early(cx, e, expected, mode, f)
+            } else {
+                self.expr_late(cx, e, expected, mode, f)
+            }
+        }
+
+        #[summary("식의 갈래 가운데 뒤 묶음 (반복부터 범위까지)")]
+        #[effects(alloc)]
+        fn expr_late(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
+            decreases f * 3,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            let no: Option<ast::TypeKind> = None;
+            match &e.kind {
+                ast::ExprKind::Int(v, q4_r) => ast::TypeKind::Error,
+                ast::ExprKind::Float(q4_ek_float0) => ast::TypeKind::Error,
+                ast::ExprKind::ByteLit(b) => ast::TypeKind::Error,
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => ast::TypeKind::Error,
+                ast::ExprKind::StrLit(st) => ast::TypeKind::Error,
+                ast::ExprKind::CharLit(ch) => ast::TypeKind::Error,
+                ast::ExprKind::Bool(q4_ek_bool0) => ast::TypeKind::Error,
+                ast::ExprKind::Unit => ast::TypeKind::Error,
+                ast::ExprKind::Var(id) => ast::TypeKind::Error,
+                ast::ExprKind::Call(c) => ast::TypeKind::Error,
+                ast::ExprKind::Method(m) => ast::TypeKind::Error,
+                ast::ExprKind::Index(base, index) => ast::TypeKind::Error,
+                ast::ExprKind::Unary(op, x) => ast::TypeKind::Error,
+                ast::ExprKind::Binary(bop, l, r) => ast::TypeKind::Error,
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => ast::TypeKind::Error,
+                ast::ExprKind::If(ife) => ast::TypeKind::Error,
+                ast::ExprKind::Block(blk) => ast::TypeKind::Error,
+                ast::ExprKind::Array(items) => ast::TypeKind::Error,
                 ast::ExprKind::Repeat(rp) => self.repeat_expr(cx, rp, expected, mode, f - 1),
                 ast::ExprKind::Old(ox) => self.old_expr(cx, e, &**ox, mode),
                 ast::ExprKind::Quant(q) => self.quant_expr(cx, e, q, mode, f - 1),
@@ -5849,7 +5932,7 @@ mod body {
     struct Need { e: types::Effects, what: String }
 
     #[summary("실행 정의의 효과: 제 연산의 것과 몸이 요구하는 것")]
-    struct Needs { own: types::Effects, body: types::Effects }
+    struct Needs { own: types::Effects, body: types::Effects, moves: moves::MoveInfo }
 
     #[summary("타입 없는 let: 이름과, 초기값이 Vec::new()인가")]
     struct OpenLet { name: ast::Ident, vec_new: bool }
@@ -6835,6 +6918,48 @@ mod body {
             }
         }
         None
+    }
+
+    #[summary("expr_inner의 앞 묶음인가: 리터럴부터 배열까지")]
+    #[effects(pure)]
+    fn early_kind(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => true,
+            ast::ExprKind::Float(q4_ek_float0) => true,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => true,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => true,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => true,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => true,
+            ast::ExprKind::Bool(q4_ek_bool0) => true,
+            ast::ExprKind::Unit => true,
+            ast::ExprKind::Var(q4_ek_var0) => true,
+            ast::ExprKind::Call(q4_ek_call0) => true,
+            ast::ExprKind::Method(q4_ek_method0) => true,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => true,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => true,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => true,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => true,
+            ast::ExprKind::If(q4_ek_if0) => true,
+            ast::ExprKind::Block(q4_ek_block0) => true,
+            ast::ExprKind::Array(q4_ek_array0) => true,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_ek_deref0) => false,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
     }
 
     #[summary("색인한 원소의 타입: 배열, Vec, 그리고 조각이나 Vec의 참조")]

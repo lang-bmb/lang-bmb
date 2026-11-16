@@ -1,0 +1,125 @@
+#[summary("moves: owned values, partial moves, joins, loops, exits")]
+mod mv {
+    struct Buf { data: Vec<u8>, name: Vec<u8>, n: i64 }
+
+    struct Two { a: Buf, b: Buf }
+
+    enum Tree { Leaf(i64), Node(Box<Tree>, Box<Tree>) }
+
+    #[effects(alloc)]
+    fn take(v: Vec<u8>) -> usize {
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn make() -> Buf {
+        Buf { data: Vec::new(), name: Vec::new(), n: 0 }
+    }
+
+    #[effects(alloc)]
+    fn after_move(v: Vec<u8>) -> usize {
+        let n: usize = take(v);
+        n + v.len() + take(v)
+    }
+
+    #[effects(alloc)]
+    fn partial(b: Buf, c: bool) -> usize {
+        let d: Vec<u8> = b.data;
+        let k: usize = b.name.len();
+        let whole: Buf = b;
+        let mut t: Two = Two { a: make(), b: make() };
+        let x: Vec<u8> = t.a.data;
+        t.a.data = Vec::new();
+        let y: Buf = t.a;
+        t.a.n = 1;
+        t.b = make();
+        d.len() + k + x.len() + y.n as usize
+    }
+
+    #[effects(alloc)]
+    fn joins(v: Vec<u8>, w: Vec<u8>, c: bool) -> usize {
+        if c {
+            take(v);
+        }
+        let r: usize = if c { take(w) } else { 0 };
+        let u: Vec<u8> = Vec::new();
+        let ok: bool = c && take(u) > 0;
+        r
+    }
+
+    #[effects(alloc)]
+    fn loops(v: Vec<u8>, n: usize) -> usize {
+        let mut i: usize = 0;
+        let mut acc: Vec<u8> = Vec::new();
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            let local: Vec<u8> = Vec::new();
+            if i == 3 {
+                break;
+            }
+            take(v);
+            acc = Vec::new();
+            i = i + 1;
+        }
+        let w: Vec<u8> = Vec::new();
+        for k in 0..n
+            invariant k <= n,
+        {
+            if k == 1 {
+                continue;
+            }
+            take(w);
+        }
+        acc.len()
+    }
+
+    #[effects(alloc)]
+    fn exits(v: Vec<u8>, b: Buf, o: Option<Vec<u8>>, c: bool) -> Option<usize> {
+        let keep: Vec<u8> = Vec::new();
+        if c {
+            return None;
+        }
+        let got: Vec<u8> = o?;
+        Some(take(v) + got.len() + keep.len())
+    }
+
+    #[effects(alloc)]
+    fn arms(t: Tree, o: Option<Buf>, r: &Option<Buf>, m: &mut Buf) -> i64 {
+        let a: i64 = match t {
+            Tree::Leaf(x) => x,
+            Tree::Node(l, q) => 0,
+        };
+        let b: i64 = match o {
+            None => 0,
+            Some(buf) => { let d: Vec<u8> = buf.data; buf.n },
+        };
+        let c: i64 = match *r {
+            None => 0,
+            Some(inner) => inner.n,
+        };
+        let stolen: Vec<u8> = m.data;
+        let e: Vec<u8> = *r;
+        a + b + c
+    }
+
+    #[effects(alloc)]
+    fn generic<T>(x: T, y: T, c: bool) -> T {
+        let z: T = x;
+        if c { x } else { y }
+    }
+
+    #[effects(alloc)]
+    fn ghost(v: Vec<u8>) -> usize
+        requires v.len() < 10,
+        ensures r == v.len(),
+    {
+        let n: usize = take(v);
+        assert(v.len() < 10);
+        proof {
+            let k: usize = v.len();
+        }
+        n
+    }
+}

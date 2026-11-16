@@ -1,0 +1,82 @@
+#[summary("moves without errors: where owned values are dropped")]
+mod ok {
+    struct Buf { data: Vec<u8>, name: Vec<u8>, n: i64 }
+
+    enum Tree { Leaf(i64), Node(Box<Tree>, Box<Tree>) }
+
+    #[effects(alloc)]
+    fn take(v: Vec<u8>) -> usize {
+        v.len()
+    }
+
+    #[effects(alloc)]
+    fn make() -> Buf {
+        Buf { data: Vec::new(), name: Vec::new(), n: 0 }
+    }
+
+    #[effects(alloc)]
+    fn partial(b: Buf) -> usize {
+        let d: Vec<u8> = b.data;
+        let mut t: Buf = make();
+        let x: Vec<u8> = t.data;
+        t.data = Vec::new();
+        t.name = Vec::new();
+        t = make();
+        d.len() + x.len() + b.name.len()
+    }
+
+    #[effects(alloc)]
+    fn branches(v: Vec<u8>, w: Vec<u8>, c: bool) -> usize {
+        let r: usize = if c { take(v) } else { take(w) };
+        r
+    }
+
+    #[effects(alloc)]
+    fn loops(n: usize) -> usize {
+        let mut i: usize = 0;
+        let mut acc: Vec<u8> = Vec::new();
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            let local: Vec<u8> = Vec::new();
+            if i == 3 {
+                break;
+            }
+            if i == 5 {
+                i = i + 1;
+                continue;
+            }
+            acc = Vec::new();
+            i = i + 1;
+        }
+        acc.len()
+    }
+
+    #[effects(alloc)]
+    fn exits(v: Vec<u8>, o: Option<Vec<u8>>, c: bool) -> Option<usize> {
+        let keep: Vec<u8> = Vec::new();
+        if c {
+            return None;
+        }
+        let got: Vec<u8> = o?;
+        Some(take(v) + got.len() + keep.len())
+    }
+
+    #[effects(alloc)]
+    fn arms(t: Tree, o: Option<Buf>, r: &Option<Buf>) -> i64 {
+        let a: i64 = match t {
+            Tree::Leaf(x) => x,
+            Tree::Node(l, q) => 0,
+        };
+        let b: i64 = match o {
+            None => 0,
+            Some(buf) => { let d: Vec<u8> = buf.data; buf.n },
+        };
+        let c: i64 = match r {
+            None => 0,
+            Some(inner) => inner.n,
+        };
+        a + b + c
+    }
+}

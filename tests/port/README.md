@@ -17,7 +17,7 @@
 | `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
 | `types/` | 검사기 2패스(몸 검사)의 경계 입력(같은 이유로 `.txt`) |
 
-포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `types`와 `check`는 `moves`의 진단(E0239·E0413·E0414·E0433)이 나는 파일(35개, 37개)을 `except`로 뺀다: 포트에 `moves`가 들어오면(백로그 `4D-03e9`) 그 목록을 없앤다.
+포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `moves`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `dump moves`로: 함수마다 소유 값이 놓이는 자리), `moves-together`.
 
 `lexer/`의 파일:
 
@@ -77,4 +77,5 @@
 | `calls.txt` | 호출: 모르는 함수(E0304), 부르는 곳과 함수의 종류(E0258·E0504·E0505), 효과(E0606), 쓴 타입 인자와 추론(E0237·E0429), trait 메서드의 `Self`, 조각·구조체의 참조 인자(E0401·E0408·E0409·E0410), 정수 변환(E0412·E0213) |
 | `whole.txt` | 프로그램 전체의 검사: `decreases` 없는 재귀(E0507), 경계 있는 `Self`를 지나는 재귀(E0207), 타입 매개변수를 싸서 넘기는 재귀(E0430), `main`의 꼴과 수(E0701·E0702) |
 
-네 파일의 진단 137개에 `moves`의 것은 없다.
+| `moves.txt` | 이동의 진단: 옮긴 뒤의 사용(E0413), 일부가 옮겨진 값의 사용(E0433), 한 길에서만 옮김(E0414: `else` 없는 `if`, `&&`의 오른쪽, 루프의 몸), `&mut` 뒤나 참조에서 꺼냄(E0239·E0413), 참조를 `match`해서 소유 페이로드를 묶음 |
+| `moves-ok.txt` | 오류 없는 이동: 놓는 자리의 종류마다(`drops`, `arm_drops`, `branch_drops`, `consumed`, `exits`, `replaces`) |

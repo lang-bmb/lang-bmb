@@ -1,0 +1,1491 @@
+#[summary("움직이는 값의 소유 (stage0 compiler/src/moves.rs의 포트, 백로그 4D-03e9; ADR-0031 §2, ADR-0047 §2): Vec, Box, 그것을 담은 데이터 타입의 지역 변수는 값으로 쓰면 옮겨지고, 옮긴 뒤의 사용은 E0413이다. 구조체 지역 변수의 필드는 따로 옮겨진다(경로 s.buf마다 상태). 길이 만나는 곳마다 모든 길에서 가졌거나 모든 길에서 옮겼어야 한다(E0414). 그래서 값이 놓이는 자리가 글로 정해지고, 이 패스가 그것을 코드 생성에 적어 준다")]
+mod moves {
+    #[summary("check의 결과: 진단과 놓는 자리")]
+    struct Checked { diags: Vec<diag::Diag>, info: MoveInfo }
+
+    #[summary("if나 match의 가지 하나의 끝: 상태, 함수를 떠났는가, 끝나는 자리의 열쇠")]
+    struct End { state: State, dead: bool, key: String }
+
+    #[summary("함수 하나를 볼 때 읽는 것: 매개변수와 지역 변수의 타입(이름은 함수 안에서 하나다, E0303), 식의 타입, 데이터 타입, Copy 없는 타입 매개변수")]
+    struct Env { locals: table::Table<ast::TypeKind>, types: table::Table<ast::TypeKind>, adts: table::Table<types::Adt>, moving: Vec<String> }
+
+    #[summary("자리의 열쇠와 거기서 놓는 경로들")]
+    struct Keyed { key: String, names: Vec<String> }
+
+    #[summary("함수 하나의 소유 값이 놓이는 자리 (열쇠는 자리). drops: 블록마다 그 끝에서 아직 가진 지역 변수(함수의 몸은 매개변수도). replaces: 가진 값을 바꾸는 대입. arm_drops: match 갈래마다 끝에서 아직 가진 묶음(필드가 옮겨졌으면 남은 필드). consumed: 살필 값을 옮기는 match와 ?. partial_replaces: 일부가 옮겨진 자리의 대입이 놓는 남은 필드. exits: return·break·continue·?가 놓는 것. branch_drops: 다른 가지가 옮긴 것을 이 가지의 끝에서 놓는다 (ADR-0081)")]
+    struct MoveInfo { drops: table::Table<Vec<String>>, replaces: Vec<String>, arm_drops: table::Table<Vec<String>>, consumed: Vec<String>, partial_replaces: table::Table<Vec<String>>, exits: table::Table<Vec<String>>, branch_drops: table::Table<Vec<String>> }
+
+    #[summary("걷는 동안의 상태. dead: 지금의 길이 함수나 루프를 떠났다(뒤는 돌지 않고 만남은 이 길을 빼고 본다). ghost: proof 블록 안(값을 읽기만 한다). spec: 명세 자리(옮긴 지역 변수를 옮길 때의 값으로 읽는다, ADR-0098)")]
+    struct Mv { state: State, dead: bool, loops: Vec<MvLoop>, diags: Vec<diag::Diag>, info: MoveInfo, ghost: bool, in_spec: bool }
+
+    #[summary("break나 continue가 떠날 수 있는 루프: 레이블, 그 앞에 살아 있던 이름들, break들이 떠나며 남긴 상태, continue들이 돌아가며 남긴 상태")]
+    struct MvLoop { labelled: bool, label: String, outer: Vec<String>, breaks: Vec<State>, continues: Vec<State> }
+
+    #[summary("경로마다 가졌는가 옮겼는가. 이름의 순서로 둔다 (stage0의 BTreeMap<String, St>)")]
+    struct State { names: Vec<String>, moved: Vec<bool> }
+
+    #[summary("x = e")]
+    #[effects(alloc)]
+    fn assign(m: &mut Mv, env: &Env, a: &ast::Assign, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        expr(m, env, &a.value, true, f - 1);
+        let owned: bool = moves_ty(env, &a.target);
+        match &a.target.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => {},
+            ast::ExprKind::Float(q4_ek_float0) => {},
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => {},
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => {},
+            ast::ExprKind::StrLit(q4_ek_strlit0) => {},
+            ast::ExprKind::CharLit(q4_ek_charlit0) => {},
+            ast::ExprKind::Bool(q4_ek_bool0) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(id) => { if owns(env, id.name.as_str()) { replace_at(m, env, id.name.as_str(), a.span); clear(&mut m.state, id.name.as_str()); st_set(&mut m.state, id.name.as_str(), false); } },
+            ast::ExprKind::Call(q4_ek_call0) => {},
+            ast::ExprKind::Method(q4_ek_method0) => {},
+            ast::ExprKind::Index(x, ix) => { if owned { types::add(&mut m.info.replaces, key(a.span).as_str()); } expr(m, env, &**x, false, f - 1); expr(m, env, &**ix, true, f - 1); },
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => {},
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => {},
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => {},
+            ast::ExprKind::If(q4_ek_if0) => {},
+            ast::ExprKind::Block(q4_ek_block0) => {},
+            ast::ExprKind::Array(q4_ek_array0) => {},
+            ast::ExprKind::Repeat(q4_ek_repeat0) => {},
+            ast::ExprKind::Old(q4_ek_old0) => {},
+            ast::ExprKind::Quant(q4_ek_quant0) => {},
+            ast::ExprKind::Trigger(q4_ek_trigger0) => {},
+            ast::ExprKind::Closure(q4_ek_closure0) => {},
+            ast::ExprKind::StructLit(q4_ek_structlit0) => {},
+            ast::ExprKind::Path(q4_ek_path0) => {},
+            ast::ExprKind::Deref(x) => { if owned { types::add(&mut m.info.replaces, key(a.span).as_str()); } expr(m, env, &**x, false, f - 1); },
+            ast::ExprKind::Field(x, q4_name) => assign_field(m, env, a, &**x, owned, f - 1),
+            ast::ExprKind::Match(q4_ek_match0) => {},
+            ast::ExprKind::Return(q4_ek_return0) => {},
+            ast::ExprKind::Try(q4_ek_try0) => {},
+            ast::ExprKind::Loop(q4_ek_loop0) => {},
+            ast::ExprKind::Break(q4_ek_break0) => {},
+            ast::ExprKind::Continue(q4_ek_continue0) => {},
+            ast::ExprKind::Range(q4_ek_range0) => {},
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("필드에 대입: 지역 변수의 필드는 제 상태가 있다(옮겨졌을 수 있고 구조체는 아닐 수 있다). 그 밖의 필드는 참조 뒤나 Box 안의 값이다")]
+    #[effects(alloc)]
+    fn assign_field(m: &mut Mv, env: &Env, a: &ast::Assign, base: &ast::Expr, owned: bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match local_field(m, env, &a.target) {
+            None => { if owned { types::add(&mut m.info.replaces, key(a.span).as_str()); } expr(m, env, base, false, f - 1); },
+            Some(p) => { let parent: String = parent_of(p.as_str()); if status_in(&m.state, parent.as_str()) == 2 { m.diags.push(diag::fix(diag::new("E0413", a.target.span, types::cat3("`", parent.as_str(), "` is moved: its field cannot be assigned").as_str()), types::cat3("assign `", parent.as_str(), "` whole").as_str(), None)); } else if owned { replace_at(m, env, p.as_str(), a.span); clear(&mut m.state, p.as_str()); st_remove(&mut m.state, p.as_str()); } },
+        }
+    }
+
+    #[summary("자리 e가 &mut 매개변수를 지나 닿는가 (지역 변수의 Box를 지나는 것은 아니다: 그것은 통째로 옮겨진다)")]
+    #[effects(alloc)]
+    fn behind_mut(env: &Env, e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => { match env.locals.find(id.name.as_str()) { None => false, Some(at) => types::is_ref_mut(&env.locals.items[at]), } },
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(x, q4_ix) => behind_mut(env, &**x, f - 1),
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(x) => behind_mut(env, &**x, f - 1),
+            ast::ExprKind::Field(x, q4_name) => behind_mut(env, &**x, f - 1),
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("블록: 그 값(꼬리)은 Rust처럼 옮겨져 나간다. 끝에서 이 블록이 선언한 지역 변수 가운데 아직 가진 것을 놓는다")]
+    #[effects(alloc)]
+    fn block(m: &mut Mv, env: &Env, b: &ast::Block, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let outer: Vec<String> = m.state.names.clone();
+        for k in 0..b.stmts.len()
+            invariant 0 <= k && k <= b.stmts.len(),
+        {
+            if !m.dead {
+                stmt(m, env, &b.stmts[k], f - 1);
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => { if !m.dead { expr(m, env, &**t, true, f - 1); } },
+        }
+        let mut inner: Vec<String> = Vec::new();
+        for k in 0..m.state.names.len()
+            invariant 0 <= k && k <= m.state.names.len(),
+        {
+            if !has_dot(m.state.names[k].as_str()) && !types::has(outer.as_slice(), m.state.names[k].as_str()) {
+                inner.push(m.state.names[k].clone());
+            }
+        }
+        let mut owned: Vec<String> = Vec::new();
+        for k in 0..inner.len()
+            invariant 0 <= k && k <= inner.len(),
+        {
+            extend(&mut owned, drop_paths(m, env, inner[k].as_str(), 100000).as_slice());
+            clear(&mut m.state, inner[k].as_str());
+            st_remove(&mut m.state, inner[k].as_str());
+        }
+        if owned.len() > 0 && !m.dead {
+            m.info.drops.insert(key(b.span).as_str(), owned.clone());
+        }
+    }
+
+    #[summary("실행 함수의 이동을 검사하고 진단과 놓는 자리를 돌려준다")]
+    #[effects(alloc)]
+    fn check(d: &ast::FnDef, env: &Env) -> Checked {
+        let mut m: Mv = Mv { state: empty(), dead: false, loops: Vec::new(), diags: Vec::new(), info: MoveInfo { drops: table::new::<Vec<String>>(), replaces: Vec::new(), arm_drops: table::new::<Vec<String>>(), consumed: Vec::new(), partial_replaces: table::new::<Vec<String>>(), exits: table::new::<Vec<String>>(), branch_drops: table::new::<Vec<String>>() }, ghost: false, in_spec: false };
+        for k in 0..d.params.len()
+            invariant 0 <= k && k <= d.params.len(),
+        {
+            if owns(env, d.params[k].name.name.as_str()) {
+                st_set(&mut m.state, d.params[k].name.name.as_str(), false);
+            }
+        }
+        block(&mut m, env, &d.body, 1000000000);
+        if !m.dead {
+            let params: Vec<String> = owned_now(&m, env);
+            if params.len() > 0 {
+                table_extend(&mut m.info.drops, key(d.body.span).as_str(), params.as_slice());
+            }
+        }
+        Checked { diags: m.diags, info: m.info }
+    }
+
+    #[summary("p 아래의 필드 상태를 잊는다 (통째로 대입된다)")]
+    #[effects(alloc)]
+    fn clear(s: &mut State, p: &str) -> () {
+        let pre: String = types::cat2(p, ".");
+        let mut names: Vec<String> = Vec::new();
+        let mut moved: Vec<bool> = Vec::new();
+        for k in 0..s.names.len()
+            invariant 0 <= k && k <= s.names.len(),
+        {
+            if k < s.moved.len() && !starts_with(s.names[k].as_str(), pre.as_str()) {
+                names.push(s.names[k].clone());
+                moved.push(s.moved[k]);
+            }
+        }
+        s.names = names;
+        s.moved = moved;
+    }
+
+    #[summary("값에 clone이 있는가 (String, 복사되는 원소의 Vec)")]
+    #[effects(alloc)]
+    fn clonable(env: &Env, t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => false,
+            ast::TypeKind::Vec(el) => !types::is_move_in(&el.kind, &env.adts, env.moving.as_slice()),
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("*x: 옮기는 값을 참조나 Box에서 꺼낼 수 없다 (&mut 뒤면 E0239, 아니면 E0413)")]
+    #[effects(alloc)]
+    fn deref_expr(m: &mut Mv, env: &Env, e: &ast::Expr, x: &ast::Expr, moves: bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        if moves && moves_ty(env, e) {
+            if behind_mut(env, e, 1000000000) {
+                out_of_mut(m, env, e);
+            } else {
+                let can_clone: bool = match env.types.find(key(e.span).as_str()) {
+                    None => false,
+                    Some(at) => clonable(env, &env.types.items[at]),
+                };
+                let fix: String = if can_clone {
+                    types::cat3("move `", fmt::expr_text(x).as_str(), ".clone()` instead")
+                } else {
+                    String::from("read through it (`*b` of a copyable value, `b.f`) or move the whole value")
+                };
+                m.diags.push(diag::fix(diag::new("E0413", e.span, types::cat3("cannot move out of `", fmt::expr_text(e).as_str(), "`").as_str()), fix.as_str(), None));
+            }
+        }
+        expr(m, env, x, false, f - 1);
+    }
+
+    #[summary("가진 지역 변수나 필드 p에서 놓을 경로들: 그것 자신, 또는 일부가 옮겨졌으면 아직 가진 필드 가운데 메모리를 가진 것들")]
+    #[effects(alloc)]
+    fn drop_paths(m: &Mv, env: &Env, p: &str, f: usize) -> Vec<String>
+        decreases f,
+    {
+        let mut out: Vec<String> = Vec::new();
+        if f == 0 || status_in(&m.state, p) != 1 {
+            return out;
+        }
+        if !has_moved_part(&m.state, p) {
+            out.push(String::from(p));
+            return out;
+        }
+        let names: Vec<String> = match path_ty(env, p) {
+            None => Vec::new(),
+            Some(t) => struct_fields(env, &t),
+        };
+        for k in 0..names.len()
+            invariant 0 <= k && k <= names.len(),
+        {
+            let q: String = types::cat3(p, ".", names[k].as_str());
+            let moving: bool = match path_ty(env, q.as_str()) {
+                None => false,
+                Some(t) => types::is_move_in(&t, &env.adts, env.moving.as_slice()),
+            };
+            if moving {
+                extend(&mut out, drop_paths(m, env, q.as_str(), f - 1).as_slice());
+            }
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn empty() -> State {
+        State { names: Vec::new(), moved: Vec::new() }
+    }
+
+    #[summary("식: moves면 그 값이 옮겨져 나간다 (let의 초기값, 대입의 오른쪽, 호출의 인자, 블록의 값). 지나서 읽는 것(v.len(), v[i], &v, *b, b.f)은 옮기지 않는다")]
+    #[effects(alloc)]
+    fn expr(m: &mut Mv, env: &Env, e: &ast::Expr, moves: bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => {},
+            ast::ExprKind::Float(q4_ek_float0) => {},
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => {},
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => {},
+            ast::ExprKind::StrLit(q4_ek_strlit0) => {},
+            ast::ExprKind::CharLit(q4_ek_charlit0) => {},
+            ast::ExprKind::Bool(q4_ek_bool0) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(id) => { if owns(env, id.name.as_str()) { use_var(m, env, id, e.span, moves); } },
+            ast::ExprKind::Call(c) => exprs(m, env, c.args.as_slice(), true, f - 1),
+            ast::ExprKind::Method(mc) => { expr(m, env, &*mc.recv, false, f - 1); exprs(m, env, mc.args.as_slice(), true, f - 1); },
+            ast::ExprKind::Index(x, ix) => { if moves && moves_ty(env, e) { m.diags.push(diag::fix(diag::new("E0413", e.span, types::cat3("cannot move out of `", fmt::expr_text(e).as_str(), "`").as_str()), "read through it (`v[i].len()`, `&v[i]`), take it with `pop`, or exchange it with `std::mem::replace(&mut v[i], new)`", None)); } expr(m, env, &**x, false, f - 1); expr(m, env, &**ix, true, f - 1); },
+            ast::ExprKind::Unary(q4_op, x) => expr(m, env, &**x, true, f - 1),
+            ast::ExprKind::Binary(bop, x, ix) => { if shorts(bop) { short_circuit(m, env, e, &**x, &**ix, f - 1); } else { expr(m, env, &**x, false, f - 1); expr(m, env, &**ix, false, f - 1); } },
+            ast::ExprKind::Ref(q4_m, x) => expr(m, env, &**x, false, f - 1),
+            ast::ExprKind::If(ife) => if_expr(m, env, e, ife, f - 1),
+            ast::ExprKind::Block(blk) => block(m, env, blk, f - 1),
+            ast::ExprKind::Array(xs) => exprs(m, env, xs.as_slice(), true, f - 1),
+            ast::ExprKind::Repeat(rp) => expr(m, env, &*rp.value, true, f - 1),
+            ast::ExprKind::Old(x) => expr(m, env, &**x, false, f - 1),
+            ast::ExprKind::Quant(qt) => expr(m, env, &*qt.body, false, f - 1),
+            ast::ExprKind::Trigger(x) => expr(m, env, &**x, false, f - 1),
+            ast::ExprKind::Closure(q4_ek_closure0) => {},
+            ast::ExprKind::StructLit(sl) => { for k in 0..sl.fields.len() invariant 0 <= k && k <= sl.fields.len(), { expr(m, env, &sl.fields[k].value, true, f - 1); } match &sl.rest { None => {}, Some(rest) => { expr(m, env, &**rest, false, f - 1); }, } },
+            ast::ExprKind::Path(q4_ek_path0) => {},
+            ast::ExprKind::Deref(x) => deref_expr(m, env, e, &**x, moves, f - 1),
+            ast::ExprKind::Field(x, q4_name) => field_expr(m, env, e, &**x, moves, f - 1),
+            ast::ExprKind::Match(mt) => match_expr(m, env, e, mt, f - 1),
+            ast::ExprKind::Return(ret) => { match ret { None => {}, Some(v) => { expr(m, env, &**v, true, f - 1); }, } leave(m, env, e.span); m.dead = true; },
+            ast::ExprKind::Try(x) => { if moves_ty(env, &**x) { types::add(&mut m.info.consumed, key(e.span).as_str()); } expr(m, env, &**x, true, f - 1); leave(m, env, e.span); },
+            ast::ExprKind::Loop(lp) => loop_expr(m, env, e, lp, f - 1),
+            ast::ExprKind::Break(br) => { match &br.value { None => {}, Some(v) => { expr(m, env, &**v, true, f - 1); }, } jump(m, env, e.span, &br.label, true); },
+            ast::ExprKind::Continue(label) => jump(m, env, e.span, label, false),
+            ast::ExprKind::Range(rg) => { expr(m, env, &*rg.lo, false, f - 1); expr(m, env, &*rg.hi, false, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[effects(alloc)]
+    fn exprs(m: &mut Mv, env: &Env, xs: &[ast::Expr], moves: bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for k in 0..xs.len()
+            invariant 0 <= k && k <= xs.len(),
+        {
+            expr(m, env, &xs[k], moves, f - 1);
+        }
+    }
+
+    #[effects(alloc)]
+    fn extend(out: &mut Vec<String>, xs: &[String]) -> () {
+        for k in 0..xs.len()
+            invariant 0 <= k && k <= xs.len(),
+        {
+            out.push(xs[k].clone());
+        }
+    }
+
+    #[summary("x.f: 지역 구조체의 필드는 따로 옮겨지거나 읽힌다. 그 밖의 필드는 참조 뒤나 Box 안이라 꺼낼 수 없다")]
+    #[effects(alloc)]
+    fn field_expr(m: &mut Mv, env: &Env, e: &ast::Expr, base: &ast::Expr, moves: bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let owned: bool = moves_ty(env, e);
+        match local_field(m, env, e) {
+            None => { if moves && owned { if behind_mut(env, e, 1000000000) { out_of_mut(m, env, e); } else { m.diags.push(diag::fix(diag::new("E0413", e.span, types::cat3("cannot move the field `", fmt::expr_text(e).as_str(), "` out of a place behind a shared reference or in a `Box`").as_str()), "read through it, or move the whole value", None)); } } expr(m, env, base, false, f - 1); },
+            Some(p) => { use_path(m, p.as_str(), e.span, moves && owned); },
+        }
+    }
+
+    #[summary("구조체 타입 t의 필드 name의 타입")]
+    #[effects(alloc)]
+    fn field_ty(env: &Env, t: &ast::TypeKind, name: &str) -> Option<ast::TypeKind> {
+        let path: String = match types::named_path(t) {
+            None => { return None; },
+            Some(p) => p,
+        };
+        if !is_named(t) {
+            return None;
+        }
+        match env.adts.find(path.as_str()) {
+            None => None,
+            Some(at) => { let sub: types::Subst = types::adt_subst(&env.adts.items[at], t); match &env.adts.items[at].kind { types::AdtKind::Struct(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if fs[k].name.as_str() == name { return Some(types::subst(&fs[k].ty, &sub)); } } None }, types::AdtKind::Enum(q4_vs) => None, } },
+        }
+    }
+
+    #[summary("for: while처럼 (ADR-0049 §2), 끝은 정수다")]
+    #[effects(alloc)]
+    fn for_stmt(m: &mut Mv, env: &Env, fr: &ast::For, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        expr(m, env, &fr.lo, false, f - 1);
+        expr(m, env, &fr.hi, false, f - 1);
+        let head: State = m.state.clone();
+        for k in 0..fr.invariants.len()
+            invariant 0 <= k && k <= fr.invariants.len(),
+        {
+            spec_expr(m, env, &fr.invariants[k], f - 1);
+        }
+        push_loop(m, &fr.label, &head);
+        block(m, env, &fr.body, f - 1);
+        let done: MvLoop = match m.loops.pop() {
+            None => { return; },
+            Some(top) => top,
+        };
+        let mut out: State = head.clone();
+        loop_backs(m, &head, done.continues.as_slice(), &mut out, fr.span);
+        m.state = out;
+        for k in 0..done.breaks.len()
+            invariant 0 <= k && k <= done.breaks.len(),
+        {
+            let cur: State = std::mem::replace(&mut m.state, empty());
+            merge(m, &cur, &done.breaks[k], fr.span);
+        }
+    }
+
+    #[summary("그 자리에 둘 새 값: Vec은 Vec::new(), Option은 None, 그 밖에는 없다")]
+    #[effects(alloc)]
+    fn fresh_value(t: &ast::TypeKind) -> String {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => String::new(),
+            ast::TypeKind::F64 => String::new(),
+            ast::TypeKind::Bool => String::new(),
+            ast::TypeKind::Unit => String::new(),
+            ast::TypeKind::Char => String::new(),
+            ast::TypeKind::String => String::new(),
+            ast::TypeKind::Str => String::new(),
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => String::new(),
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => String::new(),
+            ast::TypeKind::Slice(q4_tk_slice0) => String::new(),
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => String::new(),
+            ast::TypeKind::Named(path, q4_args) => { if path.len() == 1 && path[0] == "Option" { String::from("None") } else { String::new() } },
+            ast::TypeKind::Vec(q4_el) => String::from("Vec::new()"),
+            ast::TypeKind::Box(q4_tk_box0) => String::new(),
+            ast::TypeKind::Param(q4_tk_param0) => String::new(),
+            ast::TypeKind::Never => String::new(),
+            ast::TypeKind::Error => String::new(),
+        }
+    }
+
+    #[effects(pure)]
+    fn has_dot(n: &str) -> bool {
+        for k in 0..n.len()
+            invariant 0 <= k && k <= n.len(),
+        {
+            if n.as_bytes()[k] == 46 {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[effects(alloc)]
+    fn has_moved_part(s: &State, p: &str) -> bool {
+        match moved_part(s, p) {
+            None => false,
+            Some(q4_k) => true,
+        }
+    }
+
+    #[summary("if: 조건, 그리고 두 가지의 만남. else가 없으면 다른 길은 if 자신이라, then이 옮긴 것을 거기서 놓을 수 없다 (E0414)")]
+    #[effects(alloc)]
+    fn if_expr(m: &mut Mv, env: &Env, e: &ast::Expr, i: &ast::If, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        expr(m, env, &*i.cond, true, f - 1);
+        let before: State = m.state.clone();
+        block(m, env, &i.then, f - 1);
+        let after_then: State = std::mem::replace(&mut m.state, before);
+        let then_dead: bool = m.dead;
+        m.dead = false;
+        match &i.els {
+            None => { let after_else: State = std::mem::replace(&mut m.state, empty()); join(m, after_then, then_dead, after_else, false, e.span); },
+            Some(el) => { expr(m, env, &**el, true, f - 1); let after_else: State = std::mem::replace(&mut m.state, empty()); let else_dead: bool = m.dead; m.dead = false; let mut ends: Vec<End> = Vec::new(); ends.push(End { state: after_then, dead: then_dead, key: key(i.then.span) }); ends.push(End { state: after_else, dead: else_dead, key: key(el.span) }); join_branches(m, env, ends.as_slice()); },
+        }
+    }
+
+    #[summary("e가 *x나 x.f면 x")]
+    #[effects(alloc)]
+    fn inner_of(e: &ast::Expr) -> Option<ast::Expr> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(x) => Some((**x).clone()),
+            ast::ExprKind::Field(x, q4_name) => Some((**x).clone()),
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("자식 프로세스인가 (또는 그 참조): 주인이 하나이고 clone이 없다 (ADR-0091 §2)")]
+    #[effects(alloc)]
+    fn is_child(t: &ast::TypeKind) -> bool {
+        let v: ast::TypeKind = types::value(t);
+        match types::named_path(&v) {
+            None => false,
+            Some(p) => is_named(&v) && p == "std::process::Child",
+        }
+    }
+
+    #[effects(pure)]
+    fn is_deref(k: &ast::ExprKind) -> bool {
+        match k {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => false,
+            ast::ExprKind::Float(q4_ek_float0) => false,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => false,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => false,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => false,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => false,
+            ast::ExprKind::Bool(q4_ek_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(q4_ek_var0) => false,
+            ast::ExprKind::Call(q4_ek_call0) => false,
+            ast::ExprKind::Method(q4_ek_method0) => false,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => false,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => false,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => false,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => false,
+            ast::ExprKind::If(q4_ek_if0) => false,
+            ast::ExprKind::Block(q4_ek_block0) => false,
+            ast::ExprKind::Array(q4_ek_array0) => false,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => false,
+            ast::ExprKind::Old(q4_ek_old0) => false,
+            ast::ExprKind::Quant(q4_ek_quant0) => false,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => false,
+            ast::ExprKind::Closure(q4_ek_closure0) => false,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => false,
+            ast::ExprKind::Path(q4_ek_path0) => false,
+            ast::ExprKind::Deref(q4_x) => true,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => false,
+            ast::ExprKind::Match(q4_ek_match0) => false,
+            ast::ExprKind::Return(q4_ek_return0) => false,
+            ast::ExprKind::Try(q4_ek_try0) => false,
+            ast::ExprKind::Loop(q4_ek_loop0) => false,
+            ast::ExprKind::Break(q4_ek_break0) => false,
+            ast::ExprKind::Continue(q4_ek_continue0) => false,
+            ast::ExprKind::Range(q4_ek_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_named(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(q4_p, q4_a) => true,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(q4_tk_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("두 길의 만남: 떠난 길은 만남에 닿지 않는다")]
+    #[effects(alloc)]
+    fn join(m: &mut Mv, a: State, a_dead: bool, b: State, b_dead: bool, span: source::Span) -> () {
+        if a_dead && b_dead {
+            m.state = a;
+            m.dead = true;
+        } else if a_dead {
+            m.state = b;
+            m.dead = false;
+        } else if b_dead {
+            m.state = a;
+            m.dead = false;
+        } else {
+            m.dead = false;
+            merge(m, &a, &b, span);
+        }
+    }
+
+    #[summary("if나 match의 가지들의 만남. 어떤 가지에서는 가졌고 다른 가지에서는 옮긴 경로는, 가진 가지마다 그 끝에서 놓고(branch_drops) 만남 뒤에는 옮긴 것이다 (ADR-0081)")]
+    #[effects(alloc)]
+    fn join_branches(m: &mut Mv, env: &Env, paths: &[End]) -> () {
+        let mut reaching: Vec<usize> = Vec::new();
+        for k in 0..paths.len()
+            invariant 0 <= k && k <= paths.len(),
+        {
+            if !paths[k].dead {
+                reaching.push(k);
+            }
+        }
+        if reaching.len() == 0 {
+            if paths.len() > 0 {
+                m.state = paths[0].state.clone();
+            } else {
+                m.state = empty();
+            }
+            m.dead = true;
+            return;
+        }
+        m.dead = false;
+        if reaching.len() == 1 {
+            if reaching[0] < paths.len() {
+                m.state = paths[reaching[0]].state.clone();
+            }
+            return;
+        }
+        let mut all: Vec<String> = Vec::new();
+        for k in 0..reaching.len()
+            invariant 0 <= k && k <= reaching.len(),
+        {
+            if reaching[k] < paths.len() {
+                extend(&mut all, paths[reaching[k]].state.names.as_slice());
+            }
+        }
+        let keys: Vec<String> = sorted_set(all.as_slice());
+        let mut out: State = empty();
+        let mut drops: Vec<Keyed> = Vec::new();
+        for n in 0..keys.len()
+            invariant 0 <= n && n <= keys.len(),
+        {
+            let root: String = root_of(keys[n].as_str());
+            let mut known: bool = true;
+            let mut same: bool = true;
+            let mut first: u8 = 0;
+            for k in 0..reaching.len()
+                invariant 0 <= k && k <= reaching.len(),
+            {
+                if reaching[k] < paths.len() {
+                    let st: u8 = status_in(&paths[reaching[k]].state, keys[n].as_str());
+                    if !st_has(&paths[reaching[k]].state, root.as_str()) || st == 0 {
+                        known = false;
+                    }
+                    if k == 0 {
+                        first = st;
+                    } else if st != first {
+                        same = false;
+                    }
+                }
+            }
+            if known {
+                let mut moved: bool = first == 2;
+                if !same {
+                    for k in 0..reaching.len()
+                        invariant 0 <= k && k <= reaching.len(),
+                    {
+                        if reaching[k] < paths.len() && status_in(&paths[reaching[k]].state, keys[n].as_str()) == 1 {
+                            let saved: State = std::mem::replace(&mut m.state, paths[reaching[k]].state.clone());
+                            let ps: Vec<String> = drop_paths(m, env, keys[n].as_str(), 100000);
+                            m.state = saved;
+                            drops.push(Keyed { key: paths[reaching[k]].key.clone(), names: ps });
+                        }
+                    }
+                    moved = true;
+                }
+                if !has_dot(keys[n].as_str()) || moved {
+                    st_set(&mut out, keys[n].as_str(), moved);
+                }
+            }
+        }
+        for k in 0..drops.len()
+            invariant 0 <= k && k <= drops.len(),
+        {
+            table_extend(&mut m.info.branch_drops, drops[k].key.as_str(), drops[k].names.as_slice());
+        }
+        m.state = out;
+    }
+
+    #[summary("break나 continue: 루프 안에서 선언되어 아직 가진 지역 변수는 이 나가는 길에서 놓고, 나머지의 상태는 루프의 출구나 머리로 간다")]
+    #[effects(alloc)]
+    fn jump(m: &mut Mv, env: &Env, span: source::Span, label: &Option<ast::Ident>, brk: bool) -> () {
+        let mut found: bool = false;
+        let mut at: usize = 0;
+        match label {
+            None => { if m.loops.len() > 0 { found = true; at = m.loops.len() - 1; } },
+            Some(l) => { for k in 0..m.loops.len() invariant 0 <= k && k <= m.loops.len() && (!found || at < m.loops.len()), { if m.loops[k].labelled && m.loops[k].label == l.name { found = true; at = k; } } },
+        }
+        if !found || at >= m.loops.len() {
+            return;
+        }
+        let outer: Vec<String> = m.loops[at].outer.clone();
+        let names: Vec<String> = m.state.names.clone();
+        let flags: Vec<bool> = m.state.moved.clone();
+        let mut owned: Vec<String> = Vec::new();
+        let mut kept: State = empty();
+        for k in 0..names.len()
+            invariant 0 <= k && k <= names.len(),
+        {
+            if !has_dot(names[k].as_str()) && !types::has(outer.as_slice(), names[k].as_str()) {
+                extend(&mut owned, drop_paths(m, env, names[k].as_str(), 100000).as_slice());
+            }
+            if k < flags.len() && types::has(outer.as_slice(), root_of(names[k].as_str()).as_str()) {
+                st_set(&mut kept, names[k].as_str(), flags[k]);
+            }
+        }
+        if owned.len() > 0 {
+            m.info.exits.insert(key(span).as_str(), owned.clone());
+        }
+        m.dead = true;
+        if at < m.loops.len() {
+            if brk {
+                m.loops[at].breaks.push(kept.clone());
+            } else {
+                m.loops[at].continues.push(kept.clone());
+            }
+        }
+    }
+
+    #[summary("자리의 열쇠: 파일, 시작, 끝을 열 자리씩 (body::span_key와 같다: 표의 열쇠 순서가 stage0의 (file, lo, hi) 순서다)")]
+    #[effects(alloc)]
+    fn key(s: source::Span) -> String {
+        let mut out: String = String::new();
+        pad10(&mut out, s.file);
+        pad10(&mut out, s.lo);
+        pad10(&mut out, s.hi);
+        out
+    }
+
+    #[summary("x?와 return: 값이 나가고, 아직 가진 나머지는 이 나가는 길에서 놓는다")]
+    #[effects(alloc)]
+    fn leave(m: &mut Mv, env: &Env, span: source::Span) -> () {
+        let owned: Vec<String> = owned_now(m, env);
+        if owned.len() > 0 {
+            m.info.exits.insert(key(span).as_str(), owned.clone());
+        }
+    }
+
+    #[summary("e가 값으로 지역 구조체의 일부를 이름하고 그 지역 변수가 살펴지고 있으면 그 경로")]
+    #[effects(alloc)]
+    fn local_field(m: &Mv, env: &Env, e: &ast::Expr) -> Option<String> {
+        match path_of(env, e, 1000000000) {
+            None => None,
+            Some(p) => { if status_in(&m.state, root_of(p.as_str()).as_str()) != 0 { Some(p) } else { None } },
+        }
+    }
+
+    #[summary("루프의 머리로 돌아가는 상태들(몸의 끝에 닿았으면 그것, 그리고 continue마다)을 머리와 견준다: 한쪽에서 가졌고 다른 쪽에서 옮긴 지역 변수는 E0414이고 루프 뒤에는 옮긴 것이다")]
+    #[effects(alloc)]
+    fn loop_backs(m: &mut Mv, head: &State, continues: &[State], out: &mut State, span: source::Span) -> () {
+        let end: State = std::mem::replace(&mut m.state, empty());
+        let mut backs: Vec<State> = Vec::new();
+        for k in 0..continues.len()
+            invariant 0 <= k && k <= continues.len(),
+        {
+            backs.push(continues[k].clone());
+        }
+        if !m.dead {
+            backs.push(end.clone());
+        }
+        m.dead = false;
+        for b in 0..backs.len()
+            invariant 0 <= b && b <= backs.len(),
+        {
+            let mut all: Vec<String> = head.names.clone();
+            extend(&mut all, backs[b].names.as_slice());
+            let keys: Vec<String> = sorted_set(all.as_slice());
+            for n in 0..keys.len()
+                invariant 0 <= n && n <= keys.len(),
+            {
+                if st_has(head, root_of(keys[n].as_str()).as_str()) {
+                    let s0: u8 = status_in(head, keys[n].as_str());
+                    let s1: u8 = status_in(&backs[b], keys[n].as_str());
+                    if s0 != 0 && s1 != 0 && s0 != s1 {
+                        if s0 == 1 {
+                            maybe_moved(m, keys[n].as_str(), span, "in the loop and not assigned again before the next iteration");
+                        } else {
+                            maybe_moved(m, keys[n].as_str(), span, "before the loop and assigned only inside it");
+                        }
+                        st_set(out, keys[n].as_str(), true);
+                    }
+                }
+            }
+        }
+    }
+
+    #[summary("loop: break만이 떠난다. 하나도 없으면 끝나지 않는다")]
+    #[effects(alloc)]
+    fn loop_expr(m: &mut Mv, env: &Env, e: &ast::Expr, lp: &ast::Loop, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let head: State = m.state.clone();
+        for k in 0..lp.invariants.len()
+            invariant 0 <= k && k <= lp.invariants.len(),
+        {
+            spec_expr(m, env, &lp.invariants[k], f - 1);
+        }
+        push_loop(m, &lp.label, &head);
+        block(m, env, &lp.body, f - 1);
+        let done: MvLoop = match m.loops.pop() {
+            None => { return; },
+            Some(top) => top,
+        };
+        let mut ignored: State = head.clone();
+        loop_backs(m, &head, done.continues.as_slice(), &mut ignored, e.span);
+        if done.breaks.len() == 0 {
+            m.state = ignored;
+            m.dead = true;
+            return;
+        }
+        m.state = done.breaks[0].clone();
+        for k in 0..ignored.names.len()
+            invariant 0 <= k && k <= ignored.names.len(),
+        {
+            if k < ignored.moved.len() && ignored.moved[k] && st_has(&m.state, root_of(ignored.names[k].as_str()).as_str()) {
+                st_set(&mut m.state, ignored.names[k].as_str(), true);
+            }
+        }
+        for k in 1..done.breaks.len()
+            invariant 1 <= k && k <= done.breaks.len(),
+        {
+            let cur: State = std::mem::replace(&mut m.state, empty());
+            merge(m, &cur, &done.breaks[k], e.span);
+        }
+    }
+
+    #[summary("match: 갈래가 소유 페이로드를 묶으면 살필 값이 옮겨진다. 참조 뒤나 필드에서 묶어 내는 것은 꺼내는 것이다 (E0413, 참조를 match하라). 갈래마다 묶음을 가진 채 시작하고, 끝에서 아직 가진 것을 놓는다")]
+    #[effects(alloc)]
+    fn match_expr(m: &mut Mv, env: &Env, e: &ast::Expr, mt: &ast::Match, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mut binds_owned: bool = false;
+        for a in 0..mt.arms.len()
+            invariant 0 <= a && a <= mt.arms.len(),
+        {
+            if owned_binds(env, &mt.arms[a].pat).len() > 0 {
+                binds_owned = true;
+            }
+        }
+        if binds_owned {
+            types::add(&mut m.info.consumed, key(e.span).as_str());
+        }
+        let scrut_local: bool = match local_field(m, env, &*mt.scrut) {
+            None => false,
+            Some(q4_p) => true,
+        };
+        let under: Option<ast::Expr> = inner_of(&*mt.scrut);
+        let mut reported: bool = false;
+        match under {
+            None => {},
+            Some(x) => { if binds_owned && moves_ty(env, &*mt.scrut) && !scrut_local { let by_ref: bool = is_deref(&mt.scrut.kind) && (match env.types.find(key(x.span).as_str()) { None => false, Some(at) => types::is_ref(&env.types.items[at]), }); let fix: String = if by_ref { fmt::expr_text(&x) } else { types::cat2("&", fmt::expr_text(&*mt.scrut).as_str()) }; m.diags.push(diag::fix(diag::new("E0413", mt.scrut.span, types::cat3("the patterns move owned payloads out of `", fmt::expr_text(&*mt.scrut).as_str(), "`").as_str()), types::cat3("match a reference, `match ", fix.as_str(), "`: each binding refers to its payload").as_str(), Some(fix.clone()))); expr(m, env, &*mt.scrut, false, f - 1); reported = true; } },
+        }
+        if !reported {
+            expr(m, env, &*mt.scrut, binds_owned, f - 1);
+        }
+        let before: State = m.state.clone();
+        let mut ends: Vec<End> = Vec::new();
+        for a in 0..mt.arms.len()
+            invariant 0 <= a && a <= mt.arms.len(),
+        {
+            m.state = before.clone();
+            let binds: Vec<String> = owned_binds(env, &mt.arms[a].pat);
+            for k in 0..binds.len()
+                invariant 0 <= k && k <= binds.len(),
+            {
+                st_set(&mut m.state, binds[k].as_str(), false);
+            }
+            expr(m, env, &mt.arms[a].body, true, f - 1);
+            let mut owned: Vec<String> = Vec::new();
+            for k in 0..binds.len()
+                invariant 0 <= k && k <= binds.len(),
+            {
+                extend(&mut owned, drop_paths(m, env, binds[k].as_str(), 100000).as_slice());
+                clear(&mut m.state, binds[k].as_str());
+                st_remove(&mut m.state, binds[k].as_str());
+            }
+            let dead: bool = m.dead;
+            m.dead = false;
+            let place: String = key(mt.arms[a].body.span);
+            if owned.len() > 0 && !dead {
+                m.info.arm_drops.insert(place.as_str(), owned.clone());
+            }
+            let after: State = std::mem::replace(&mut m.state, empty());
+            ends.push(End { state: after, dead: dead, key: place });
+        }
+        if ends.len() == 0 {
+            m.state = before;
+        } else {
+            join_branches(m, env, ends.as_slice());
+        }
+    }
+
+    #[summary("E0414: 어떤 길에서는 옮겼고 다른 길에서는 아니다")]
+    #[effects(alloc)]
+    fn maybe_moved(m: &mut Mv, name: &str, span: source::Span, how: &str) -> () {
+        m.diags.push(diag::fix(diag::new("E0414", span, types::cat4("`", name, "` is moved ", how).as_str()), types::cat3("move or assign `", name, "` on every path: an owned value is dropped at a point fixed by the program text (ADR-0031 §2)").as_str(), None));
+    }
+
+    #[summary("두 상태의 만남: 한 길에서 가졌고 다른 길에서 옮긴 지역 변수는 E0414다 (그리고 여기부터 옮긴 것). 필드는 옮긴 것만 남긴다 (가진 것은 물려받는다)")]
+    #[effects(alloc)]
+    fn merge(m: &mut Mv, a: &State, b: &State, span: source::Span) -> () {
+        let mut all: Vec<String> = a.names.clone();
+        extend(&mut all, b.names.as_slice());
+        let keys: Vec<String> = sorted_set(all.as_slice());
+        let mut out: State = empty();
+        for n in 0..keys.len()
+            invariant 0 <= n && n <= keys.len(),
+        {
+            let root: String = root_of(keys[n].as_str());
+            if st_has(a, root.as_str()) && st_has(b, root.as_str()) {
+                let sa: u8 = status_in(a, keys[n].as_str());
+                let sb: u8 = status_in(b, keys[n].as_str());
+                if sa != 0 && sb != 0 {
+                    let mut moved: bool = sa == 2;
+                    if sa != sb {
+                        maybe_moved(m, keys[n].as_str(), span, "on one path and not on another");
+                        moved = true;
+                    }
+                    if !has_dot(keys[n].as_str()) || moved {
+                        st_set(&mut out, keys[n].as_str(), moved);
+                    }
+                }
+            }
+        }
+        m.state = out;
+    }
+
+    #[summary("p 아래에서 옮겨진 필드 경로 (p.f..), 이름의 순서로 첫 것")]
+    #[effects(alloc)]
+    fn moved_part(s: &State, p: &str) -> Option<String> {
+        let pre: String = types::cat2(p, ".");
+        for k in 0..s.names.len()
+            invariant 0 <= k && k <= s.names.len(),
+        {
+            if k < s.moved.len() && s.moved[k] && starts_with(s.names[k].as_str(), pre.as_str()) {
+                return Some(s.names[k].clone());
+            }
+        }
+        None
+    }
+
+    #[summary("식 e의 값이 움직이는가")]
+    #[effects(alloc)]
+    fn moves_ty(env: &Env, e: &ast::Expr) -> bool {
+        match env.types.find(key(e.span).as_str()) {
+            None => false,
+            Some(at) => types::is_move_in(&env.types.items[at], &env.adts, env.moving.as_slice()),
+        }
+    }
+
+    #[summary("E0239: &mut 뒤에서 소유 값을 꺼냈다. 고침은 std::mem::replace로 새 값을 그 자리에 둔다 (ADR-0047 §2)")]
+    #[effects(alloc)]
+    fn out_of_mut(m: &mut Mv, env: &Env, e: &ast::Expr) -> () {
+        let place: String = fmt::expr_text(e);
+        let fresh: String = match env.types.find(key(e.span).as_str()) {
+            None => String::new(),
+            Some(at) => fresh_value(&env.types.items[at]),
+        };
+        let msg: String = types::cat3("cannot move `", place.as_str(), "` out from behind a `&mut`");
+        if fresh.len() > 0 {
+            m.diags.push(diag::fix(diag::new("E0239", e.span, msg.as_str()), types::cat3("take it and leave `", fresh.as_str(), "` in its place").as_str(), Some(types::cat5("std::mem::replace(&mut ", place.as_str(), ", ", fresh.as_str(), ")"))));
+        } else {
+            m.diags.push(diag::fix(diag::new("E0239", e.span, msg.as_str()), types::cat3("take it with `std::mem::replace(&mut ", place.as_str(), ", new)`, or exchange it with `std::mem::swap`").as_str(), None));
+        }
+    }
+
+    #[summary("패턴이 묶는 이름 가운데 움직이는 값을 가진 것")]
+    #[effects(alloc)]
+    fn owned_binds(env: &Env, p: &ast::Pat) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for k in 0..p.binds.len()
+            invariant 0 <= k && k <= p.binds.len(),
+        {
+            match &p.binds[k] {
+                None => {},
+                Some(id) => { if owns(env, id.name.as_str()) { out.push(id.name.clone()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("살아 있는 지역 변수와 매개변수마다의 가진 경로 (return)")]
+    #[effects(alloc)]
+    fn owned_now(m: &Mv, env: &Env) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for k in 0..m.state.names.len()
+            invariant 0 <= k && k <= m.state.names.len(),
+        {
+            if !has_dot(m.state.names[k].as_str()) {
+                extend(&mut out, drop_paths(m, env, m.state.names[k].as_str(), 100000).as_slice());
+            }
+        }
+        out
+    }
+
+    #[summary("지역 변수 name이 움직이는 값을 갖는가")]
+    #[effects(alloc)]
+    fn owns(env: &Env, name: &str) -> bool {
+        match env.locals.find(name) {
+            None => false,
+            Some(at) => types::is_move_in(&env.locals.items[at], &env.adts, env.moving.as_slice()),
+        }
+    }
+
+    #[effects(alloc)]
+    fn pad10(out: &mut String, n: u32) -> () {
+        let x: u64 = n as u64;
+        let mut lim: u64 = 1000000000;
+        while lim > x && lim > 1
+            invariant lim <= 1000000000,
+            decreases lim,
+        {
+            out.push_str("0");
+            lim = lim / 10;
+        }
+        std::num::push_u64(out, x);
+    }
+
+    #[summary("경로의 마지막 마디를 뺀 앞")]
+    #[effects(alloc)]
+    fn parent_of(p: &str) -> String {
+        let mut last: usize = 0;
+        for k in 0..p.len()
+            invariant 0 <= k && k <= p.len() && last <= k,
+        {
+            if p.as_bytes()[k] == 46 {
+                last = k;
+            }
+        }
+        lexer::cut(p, 0, last)
+    }
+
+    #[summary("E0433: 필드 part가 옮겨진 뒤에 p를 통째로 썼다. 한 번만 알린다: 여기부터는 통째로 쓴 것으로 친다")]
+    #[effects(alloc)]
+    fn partly_moved(m: &mut Mv, p: &str, part: &str, span: source::Span) -> () {
+        m.diags.push(diag::fix(diag::new("E0433", span, types::cat5("`", p, "` is used after its field `", part, "` was moved").as_str()), types::cat3("assign `", part, "` again before this use, or use the other fields").as_str(), None));
+        clear(&mut m.state, p);
+    }
+
+    #[summary("e가 값으로 지역 구조체의 일부를 이름하면 그 필드 경로: s, s.f, s.f.g (참조나 Box를 지나지 않는다)")]
+    #[effects(alloc)]
+    fn path_of(env: &Env, e: &ast::Expr, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => { if env.locals.has(id.name.as_str()) { Some(id.name.clone()) } else { None } },
+            ast::ExprKind::Call(q4_ek_call0) => None,
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(x, name) => { match path_of(env, &**x, f - 1) { None => None, Some(bp) => { let named: bool = match path_ty(env, bp.as_str()) { None => false, Some(t) => is_named(&t), }; if named { Some(types::cat3(bp.as_str(), ".", name.name.as_str())) } else { None } }, } },
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("필드 경로 p의 타입")]
+    #[effects(alloc)]
+    fn path_ty(env: &Env, p: &str) -> Option<ast::TypeKind> {
+        let parts: Vec<String> = split_dots(p);
+        if parts.len() == 0 {
+            return None;
+        }
+        let mut t: ast::TypeKind = match env.locals.find(parts[0].as_str()) {
+            None => { return None; },
+            Some(at) => env.locals.items[at].clone(),
+        };
+        for k in 1..parts.len()
+            invariant 1 <= k && k <= parts.len(),
+        {
+            match field_ty(env, &t, parts[k].as_str()) {
+                None => { return None; },
+                Some(ft) => { t = ft; },
+            }
+        }
+        Some(t)
+    }
+
+    #[effects(alloc)]
+    fn push_loop(m: &mut Mv, label: &Option<ast::Ident>, head: &State) -> () {
+        let none: Vec<State> = Vec::new();
+        let also: Vec<State> = Vec::new();
+        match label {
+            None => { m.loops.push(MvLoop { labelled: false, label: String::new(), outer: head.names.clone(), breaks: none, continues: also }); },
+            Some(l) => { m.loops.push(MvLoop { labelled: true, label: l.name.clone(), outer: head.names.clone(), breaks: none, continues: also }); },
+        }
+    }
+
+    #[summary("가진 자리 p에 대입할 때 놓는 것: 옛 값 통째, 또는 일부가 옮겨졌으면 아직 가진 필드들")]
+    #[effects(alloc)]
+    fn replace_at(m: &mut Mv, env: &Env, p: &str, span: source::Span) -> () {
+        if status_in(&m.state, p) != 1 {
+            return;
+        }
+        if !has_moved_part(&m.state, p) {
+            types::add(&mut m.info.replaces, key(span).as_str());
+        } else {
+            let rest: Vec<String> = drop_paths(m, env, p, 100000);
+            if rest.len() > 0 {
+                m.info.partial_replaces.insert(key(span).as_str(), rest.clone());
+            }
+        }
+    }
+
+    #[summary("경로의 첫 마디")]
+    #[effects(alloc)]
+    fn root_of(n: &str) -> String {
+        for k in 0..n.len()
+            invariant 0 <= k && k <= n.len(),
+        {
+            if n.as_bytes()[k] == 46 {
+                return lexer::cut(n, 0, k);
+            }
+        }
+        String::from(n)
+    }
+
+    #[summary("&&, ||, ==>의 오른쪽은 돌지 않을 수 있다: 건너뛴 길과 만난다")]
+    #[effects(alloc)]
+    fn short_circuit(m: &mut Mv, env: &Env, e: &ast::Expr, l: &ast::Expr, r: &ast::Expr, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        expr(m, env, l, true, f - 1);
+        let skip: State = m.state.clone();
+        expr(m, env, r, true, f - 1);
+        let taken: State = std::mem::replace(&mut m.state, empty());
+        let dead: bool = m.dead;
+        m.dead = false;
+        join(m, skip, false, taken, dead, e.span);
+    }
+
+    #[effects(pure)]
+    fn shorts(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => true,
+            ast::BinOp::Or => true,
+            ast::BinOp::Implies => true,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("xs를 바이트 순서로, 같은 것은 하나만")]
+    #[effects(alloc)]
+    fn sorted_set(xs: &[String]) -> Vec<String> {
+        let s: Vec<String> = decls::sorted(xs);
+        let mut out: Vec<String> = Vec::new();
+        for k in 0..s.len()
+            invariant 0 <= k && k <= s.len(),
+        {
+            if k == 0 || s[k - 1] != s[k] {
+                out.push(s[k].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("명세 식 (ADR-0098): 옮긴 지역 변수를 읽는다")]
+    #[effects(alloc)]
+    fn spec_expr(m: &mut Mv, env: &Env, e: &ast::Expr, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let was: bool = m.in_spec;
+        m.in_spec = true;
+        expr(m, env, e, false, f - 1);
+        m.in_spec = was;
+    }
+
+    #[summary("a.b.c를 점으로 나눈 마디들")]
+    #[effects(alloc)]
+    fn split_dots(p: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        for k in 0..p.len()
+            invariant 0 <= k && k <= p.len() && start <= k,
+        {
+            if p.as_bytes()[k] == 46 {
+                out.push(lexer::cut(p, start, k));
+                start = k + 1;
+            }
+        }
+        out.push(lexer::cut(p, start, p.len()));
+        out
+    }
+
+    #[summary("n의 자리 (이름의 순서)")]
+    #[effects(pure)]
+    fn st_at(s: &State, n: &str) -> (r: Option<usize>)
+        ensures match r { None => true, Some(i) => i < s.names.len() && i < s.moved.len(), },
+    {
+        for k in 0..s.names.len()
+            invariant 0 <= k && k <= s.names.len(),
+        {
+            if k < s.moved.len() && s.names[k].as_str() == n {
+                return Some(k);
+            }
+        }
+        None
+    }
+
+    #[effects(pure)]
+    fn st_has(s: &State, n: &str) -> bool {
+        match st_at(s, n) {
+            None => false,
+            Some(q4_k) => true,
+        }
+    }
+
+    #[effects(alloc)]
+    fn st_remove(s: &mut State, n: &str) -> () {
+        let mut names: Vec<String> = Vec::new();
+        let mut moved: Vec<bool> = Vec::new();
+        for k in 0..s.names.len()
+            invariant 0 <= k && k <= s.names.len(),
+        {
+            if k < s.moved.len() && s.names[k].as_str() != n {
+                names.push(s.names[k].clone());
+                moved.push(s.moved[k]);
+            }
+        }
+        s.names = names;
+        s.moved = moved;
+    }
+
+    #[summary("n을 가졌다(false)거나 옮겼다(true)로. 이름의 순서를 지킨다")]
+    #[effects(alloc)]
+    fn st_set(s: &mut State, n: &str, moved: bool) -> () {
+        match st_at(s, n) {
+            None => { let mut names: Vec<String> = Vec::new(); let mut flags: Vec<bool> = Vec::new(); let mut placed: bool = false; for k in 0..s.names.len() invariant 0 <= k && k <= s.names.len(), { if k < s.moved.len() { if !placed && n < s.names[k].as_str() { names.push(String::from(n)); flags.push(moved); placed = true; } names.push(s.names[k].clone()); flags.push(s.moved[k]); } } if !placed { names.push(String::from(n)); flags.push(moved); } s.names = names; s.moved = flags; },
+            Some(i) => { s.moved[i] = moved; },
+        }
+    }
+
+    #[effects(pure)]
+    fn starts_with(s: &str, pre: &str) -> bool {
+        if pre.len() > s.len() {
+            return false;
+        }
+        for k in 0..pre.len()
+            invariant 0 <= k && k <= pre.len(),
+        {
+            if s.as_bytes()[k] != pre.as_bytes()[k] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("필드 경로 p의 상태: 0은 살피지 않는 지역 변수, 1은 가졌다, 2는 옮겼다 (그것이나 앞 마디가 옮겨졌으면)")]
+    #[effects(alloc)]
+    fn status_in(s: &State, p: &str) -> u8 {
+        let mut found: u8 = 0;
+        let mut first: bool = true;
+        for k in 0..p.len()
+            invariant 0 <= k && k <= p.len(),
+        {
+            if p.as_bytes()[k] == 46 {
+                match st_at(s, lexer::cut(p, 0, k).as_str()) {
+                    None => { if first { return 0; } },
+                    Some(i) => { if s.moved[i] { return 2; } found = 1; },
+                }
+                first = false;
+            }
+        }
+        match st_at(s, p) {
+            None => { if first { return 0; } },
+            Some(i) => { if s.moved[i] { return 2; } found = 1; },
+        }
+        found
+    }
+
+    #[summary("문장")]
+    #[effects(alloc)]
+    fn stmt(m: &mut Mv, env: &Env, s: &ast::Stmt, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match s {
+            ast::Stmt::Let(l) => { expr(m, env, &l.init, true, f - 1); if owns(env, l.name.name.as_str()) { st_set(&mut m.state, l.name.name.as_str(), false); } },
+            ast::Stmt::Assign(a) => assign(m, env, a, f - 1),
+            ast::Stmt::While(w) => while_stmt(m, env, w, f - 1),
+            ast::Stmt::For(fr) => for_stmt(m, env, fr, f - 1),
+            ast::Stmt::Assert(sa) => spec_expr(m, env, &sa.cond, f - 1),
+            ast::Stmt::Assume(su) => spec_expr(m, env, &su.cond, f - 1),
+            ast::Stmt::Proof(pb) => { let ghost: bool = m.ghost; m.ghost = true; block(m, env, &pb.body, f - 1); m.ghost = ghost; },
+            ast::Stmt::LetFields(lf) => expr(m, env, &lf.init, false, f - 1),
+            ast::Stmt::Expr(x) => expr(m, env, x, true, f - 1),
+        }
+    }
+
+    #[summary("구조체 타입 t의 필드 이름들 (구조체가 아니면 없다)")]
+    #[effects(alloc)]
+    fn struct_fields(env: &Env, t: &ast::TypeKind) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        if !is_named(t) {
+            return out;
+        }
+        match types::named_path(t) {
+            None => {},
+            Some(p) => { match env.adts.find(p.as_str()) { None => {}, Some(at) => { match &env.adts.items[at].kind { types::AdtKind::Struct(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { out.push(fs[k].name.clone()); } }, types::AdtKind::Enum(q4_vs) => {}, } }, } },
+        }
+        out
+    }
+
+    #[summary("표의 k에 xs를 덧붙인다 (없으면 만든다)")]
+    #[effects(alloc)]
+    fn table_extend(t: &mut table::Table<Vec<String>>, k: &str, xs: &[String]) -> () {
+        let mut all: Vec<String> = match t.find(k) {
+            None => Vec::new(),
+            Some(at) => t.items[at].clone(),
+        };
+        extend(&mut all, xs);
+        t.insert(k, all);
+    }
+
+    #[summary("필드 경로 p의 사용 (지역 변수나 그 필드). moves면 옮긴다")]
+    #[effects(alloc)]
+    fn use_path(m: &mut Mv, p: &str, span: source::Span, moves: bool) -> () {
+        if m.in_spec || m.ghost {
+            return;
+        }
+        let st: u8 = status_in(&m.state, p);
+        if st == 1 {
+            match moved_part(&m.state, p) {
+                None => {},
+                Some(part) => { partly_moved(m, p, part.as_str(), span); },
+            }
+            if moves {
+                st_set(&mut m.state, p, true);
+            }
+        } else if st == 2 {
+            m.diags.push(diag::fix(diag::new("E0413", span, types::cat3("`", p, "` is used after it was moved").as_str()), types::cat3("assign `", p, "` again before this use").as_str(), None));
+            st_set(&mut m.state, p, moves);
+        }
+    }
+
+    #[summary("지역 변수의 사용. 옮긴 뒤면 E0413 (한 번 알리고 여기부터 가진 것으로 친다)")]
+    #[effects(alloc)]
+    fn use_var(m: &mut Mv, env: &Env, id: &ast::Ident, span: source::Span, moves: bool) -> () {
+        if m.in_spec || m.ghost {
+            return;
+        }
+        let name: String = id.name.clone();
+        if status_in(&m.state, name.as_str()) == 1 {
+            match moved_part(&m.state, name.as_str()) {
+                None => {},
+                Some(part) => { partly_moved(m, name.as_str(), part.as_str(), span); },
+            }
+        }
+        match st_at(&m.state, name.as_str()) {
+            None => {},
+            Some(i) => { if !m.state.moved[i] { if moves { st_set(&mut m.state, name.as_str(), true); } } else { let mut child: bool = false; let mut can_clone: bool = false; match env.types.find(key(span).as_str()) { None => {}, Some(at) => { child = is_child(&env.types.items[at]); can_clone = clonable(env, &env.types.items[at]); }, } let help: String = if child { types::cat5("a child process has one owner: lend it as `&mut ", name.as_str(), "` where it is still needed, and move it last (`", name.as_str(), ".wait()`)") } else if can_clone { types::cat5("move `", name.as_str(), ".clone()` instead, or assign `", name.as_str(), "` again before this use") } else { types::cat5("lend it as `&", name.as_str(), "` where it is still needed and move it last, or assign `", name.as_str(), "` again before this use") }; m.diags.push(diag::fix(diag::new("E0413", span, types::cat3("`", name.as_str(), "` is used after it was moved").as_str()), help.as_str(), None)); st_set(&mut m.state, name.as_str(), moves); } },
+        }
+    }
+
+    #[summary("while: 머리의 상태, 조건, 몸, 그리고 돌아가는 길과 break들의 만남")]
+    #[effects(alloc)]
+    fn while_stmt(m: &mut Mv, env: &Env, w: &ast::While, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let head: State = m.state.clone();
+        for k in 0..w.invariants.len()
+            invariant 0 <= k && k <= w.invariants.len(),
+        {
+            spec_expr(m, env, &w.invariants[k], f - 1);
+        }
+        expr(m, env, &w.cond, true, f - 1);
+        let exit: State = m.state.clone();
+        push_loop(m, &w.label, &head);
+        block(m, env, &w.body, f - 1);
+        let done: MvLoop = match m.loops.pop() {
+            None => { return; },
+            Some(top) => top,
+        };
+        let mut out: State = exit;
+        loop_backs(m, &head, done.continues.as_slice(), &mut out, w.span);
+        m.state = out;
+        for k in 0..done.breaks.len()
+            invariant 0 <= k && k <= done.breaks.len(),
+        {
+            let cur: State = std::mem::replace(&mut m.state, empty());
+            merge(m, &cur, &done.breaks[k], w.span);
+        }
+    }
+}

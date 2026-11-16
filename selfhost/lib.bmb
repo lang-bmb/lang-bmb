@@ -1,4 +1,4 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, check (moves의 진단은 아직 없다)")]
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, check")]
 mod lib {
     #[summary("소스 파일 하나: 이름과 글")]
     struct Input { name: String, text: String }
@@ -72,6 +72,9 @@ mod lib {
         } else if stage == "types" {
             let ck: body::Checked = body::check_resolved(program.clone(), &mut diags);
             push_tables(&mut body, &ck, &sm);
+        } else if stage == "moves" {
+            let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            push_moves(&mut body, &mk, &sm);
         } else {
             let lowered: closures::Lowered = closures::lower(&mut program, &mut diags);
             let consts: table::Table<consts::Const> = consts::resolve(&mut program, &mut diags);
@@ -181,6 +184,20 @@ mod lib {
         }
     }
 
+    #[summary("놓는 자리의 표 하나를 줄마다: {\"moves\":경로,\"kind\":종류,자리,\"names\":[..]} (이름은 적힌 순서)")]
+    #[effects(alloc)]
+    fn push_drops(out: &mut String, path: &str, kind: &str, t: &table::Table<Vec<String>>, sm: &source::SourceMap) -> () {
+        let total: usize = t.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match t.nth(n) {
+                None => {},
+                Some(at) => { push_move_head(out, path, kind, t.key(n).as_str(), sm); out.push_str(",\"names\":["); for i in 0..t.items[at].len() invariant 0 <= i && i <= t.items[at].len(), { if i > 0 { out.push_str(","); } std::json::push_string(out, t.items[at][i].as_str()); } out.push_str("]}\n"); },
+            }
+        }
+    }
+
     #[summary("\"file\":..,\"lo\":..,\"hi\":.. (표의 열쇠 k의 자리)")]
     #[effects(alloc)]
     fn push_key(out: &mut String, k: &str, sm: &source::SourceMap) -> () {
@@ -228,6 +245,31 @@ mod lib {
         }
     }
 
+    #[summary("{\"moves\":경로,\"kind\":종류,자리")]
+    #[effects(alloc)]
+    fn push_move_head(out: &mut String, path: &str, kind: &str, k: &str, sm: &source::SourceMap) -> () {
+        out.push_str("{\"moves\":");
+        std::json::push_string(out, path);
+        out.push_str(",\"kind\":\"");
+        out.push_str(kind);
+        out.push_str("\",");
+        push_key(out, k, sm);
+    }
+
+    #[summary("함수마다 놓는 자리를 줄마다 (stage0 check::dump_tables의 moves, bmb dump moves)")]
+    #[effects(alloc)]
+    fn push_moves(out: &mut String, ck: &body::Checked, sm: &source::SourceMap) -> () {
+        let total: usize = ck.b.needs.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match ck.b.needs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = ck.b.needs.key(n); push_drops(out, path.as_str(), "drops", &ck.b.needs.items[at].moves.drops, sm); push_drops(out, path.as_str(), "arm_drops", &ck.b.needs.items[at].moves.arm_drops, sm); push_drops(out, path.as_str(), "partial_replaces", &ck.b.needs.items[at].moves.partial_replaces, sm); push_drops(out, path.as_str(), "exits", &ck.b.needs.items[at].moves.exits, sm); push_drops(out, path.as_str(), "branch_drops", &ck.b.needs.items[at].moves.branch_drops, sm); push_places(out, path.as_str(), "replaces", ck.b.needs.items[at].moves.replaces.as_slice(), sm); push_places(out, path.as_str(), "consumed", ck.b.needs.items[at].moves.consumed.as_slice(), sm); },
+            }
+        }
+    }
+
     #[summary("이름들을 순서대로 JSON 배열로")]
     #[effects(alloc)]
     fn push_names(out: &mut String, xs: &[String]) -> () {
@@ -242,6 +284,18 @@ mod lib {
             std::json::push_string(out, sorted[i].as_str());
         }
         out.push_str("]");
+    }
+
+    #[summary("자리의 집합을 자리의 순서로 줄마다")]
+    #[effects(alloc)]
+    fn push_places(out: &mut String, path: &str, kind: &str, keys: &[String], sm: &source::SourceMap) -> () {
+        let sorted: Vec<String> = decls::sorted(keys);
+        for i in 0..sorted.len()
+            invariant 0 <= i && i <= sorted.len(),
+        {
+            push_move_head(out, path, kind, sorted[i].as_str(), sm);
+            out.push_str("}\n");
+        }
     }
 
     #[summary("몸 검사가 계산한 표를 글로 (stage0 check::dump_tables, bmb dump types): 풀린 프로그램의 정규형, 이어서 지역 변수, 식의 타입, 타입 인자, 호출, 효과, 재귀, 외부 몸, 신뢰되지 않을 수 있는 정의, 읽는 상수를 줄마다")]
