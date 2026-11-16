@@ -344,11 +344,24 @@ fn ids(files: &Files, rn: impl Fn(&str) -> String) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// The call edges the checker computed (`bmb dump types`), in order.
+fn calls(files: &Files) -> Vec<String> {
+    let (_, out) = cli::run(&["dump", "types"], files);
+    let mut v: Vec<String> = out
+        .lines()
+        .filter(|l| l.starts_with("{\"calls\":"))
+        .map(String::from)
+        .collect();
+    v.sort();
+    v
+}
+
 /// Renaming any one name (ADR-0059 §1) leaves every identity, body hash and
 /// interface hash as it was; the renamed definition keeps its own under its
 /// new path. Returns how many renames were checked.
 fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
     let want = ids(base, str::to_string);
+    let base_calls = calls(base);
     let mut words: Vec<String> = base.iter().flat_map(|(_, t)| tokens(t)).collect();
     words.sort();
     words.dedup();
@@ -358,13 +371,6 @@ fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
         if checked == max {
             break;
         }
-        // A built-in method's name is not the program's to rename: a trait
-        // method of that name on a built-in type is shadowed by the built-in
-        // (`u.wrapping_add(1)`, `tests/run/method_order.bmb`), so the renamed
-        // program still checks and its call names another function.
-        if bmb::check::builtin_method_name(w) {
-            continue;
-        }
         let to = format!("{w}_rn{k}");
         let files: Files = base
             .iter()
@@ -372,6 +378,19 @@ fn check_renames(rng: &mut Rng, what: &str, base: &Files, max: usize) -> usize {
             .collect();
         // Built-in names and keywords do not rename (the program stops checking).
         if !cli::run(&["check"], &files).0 {
+            continue;
+        }
+        // A rename that changes which function a call names is not a
+        // rename of the program: a trait method with a built-in method's
+        // name on a built-in type is shadowed by the built-in
+        // (`u.wrapping_add(1)`, `tests/run/method_order.bmb`), and under
+        // another name the call is the trait's.
+        let mut renamed_calls: Vec<String> = base_calls
+            .iter()
+            .map(|l| rename_word(l, w, &to, &mut Vec::new()))
+            .collect();
+        renamed_calls.sort();
+        if calls(&files) != renamed_calls {
             continue;
         }
         let got = ids(&files, str::to_string);
