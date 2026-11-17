@@ -1,0 +1,128 @@
+{
+ "id": "t17-replay-e0252",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0252",
+  "commit": "c36ed11af",
+  "subject": "2K-01d: range for, encoded as its while expansion (ADR-0049 §2)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0252 yet: `for` over something other than an integer range. It came with the commit \"2K-01d: range for, encoded as its while expansion (ADR-0049 §2)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    for x in v.iter() {\n    {\"code\": \"E0252\", \"severity\": \"error\", \"message\": \"`for` runs over a range of integers only\", \"file\": \"err/ranges.bmb\", \"line\": 6, \"col\": 18, \"end_line\": 6, \"end_col\": 26, \"fix\": {\"message\": \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "            self.diags.push(\n                Diag::new(\n                    \"E0252\",\n                    start.to(lo.span),\n                    \"`for` runs over a range of integers only\",\n                )\n                .fix(\n                    \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\",\n                    None,\n                ),\n            );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_for(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 35,\n        {\n            let lo_span: source::Span = match &label {\n                None => self.span(),\n                Some(l) => l.span,\n            };\n            self.bump();\n            let var: ast::Ident = self.ident(\"loop variable\")?;\n            if !self.eat_kw(\"in\") {\n                self.err_expected(\"`in`\");\n                return None;\n            }\n            let start: source::Span = self.span();\n            let lo: ast::Expr = self.range_bound(d)?;\n            let mut inclusive: bool = false;\n            if self.eat_p(\"..=\") {\n                inclusive = true;\n            } else if !self.eat_p(\"..\") {\n                self.recover_loop_body();\n                return None;\n            }\n            let hi: ast::Expr = self.range_bound(d)?;\n            let mut invariants: Vec<ast::Expr> = Vec::new();\n            self.invariant_lists(&mut invariants, false, d)?;\n            if self.is_kw(\"decreases\") {\n                let sp: source::Span = self.bump();\n                self.err_fix(\"E0253\", sp, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\");\n                self.parse_expr(d);\n                self.eat_p(\",\");\n            }\n            let lead: Lead = self.body_clauses(lo_span, &mut invariants, false, d)?;\n            let body: ast::Block = match lead.open {\n                None => self.parse_block(d)?,\n                Some(open) => self.parse_block_rest(open, d)?,\n            };\n            match lead.measure {\n                None => {},\n                Some(m) => self.err_fix(\"E0253\", m.span, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\"),\n            }\n            let span: source::Span = lo_span.to(body.span);\n            Some(ast::Stmt::For(ast::For { label: label, var: var, lo: lo, hi: hi, inclusive: inclusive, invariants: invariants, body: body, span: span }))\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-ranges",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/ranges.bmb"
+   ]
+  },
+  {
+   "name": "replay-rust_habits",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rust_habits.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "            self.recover_loop_body();\n            return Err(());\n        };",
+     "new": "            self.diags.push(\n                Diag::new(\n                    \"E0252\",\n                    start.to(lo.span),\n                    \"`for` runs over a range of integers only\",\n                )\n                .fix(\n                    \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\",\n                    None,\n                ),\n            );\n            self.recover_loop_body();\n            return Err(());\n        };"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_for(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 35,\n        {\n            let lo_span: source::Span = match &label {\n                None => self.span(),\n                Some(l) => l.span,\n            };\n            self.bump();\n            let var: ast::Ident = self.ident(\"loop variable\")?;\n            if !self.eat_kw(\"in\") {\n                self.err_expected(\"`in`\");\n                return None;\n            }\n            let start: source::Span = self.span();\n            let lo: ast::Expr = self.range_bound(d)?;\n            let mut inclusive: bool = false;\n            if self.eat_p(\"..=\") {\n                inclusive = true;\n            } else if !self.eat_p(\"..\") {\n                self.err_fix(\"E0252\", start.to(lo.span), \"`for` runs over a range of integers only\", \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\");\n                self.recover_loop_body();\n                return None;\n            }\n            let hi: ast::Expr = self.range_bound(d)?;\n            let mut invariants: Vec<ast::Expr> = Vec::new();\n            self.invariant_lists(&mut invariants, false, d)?;\n            if self.is_kw(\"decreases\") {\n                let sp: source::Span = self.bump();\n                self.err_fix(\"E0253\", sp, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\");\n                self.parse_expr(d);\n                self.eat_p(\",\");\n            }\n            let lead: Lead = self.body_clauses(lo_span, &mut invariants, false, d)?;\n            let body: ast::Block = match lead.open {\n                None => self.parse_block(d)?,\n                Some(open) => self.parse_block_rest(open, d)?,\n            };\n            match lead.measure {\n                None => {},\n                Some(m) => self.err_fix(\"E0253\", m.span, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\"),\n            }\n            let span: source::Span = lo_span.to(body.span);\n            Some(ast::Stmt::For(ast::For { label: label, var: var, lo: lo, hi: hi, inclusive: inclusive, invariants: invariants, body: body, span: span }))\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_for(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 35,\n        {\n            let lo_span: source::Span = match &label {\n                None => self.span(),\n                Some(l) => l.span,\n            };\n            self.bump();\n            let var: ast::Ident = self.ident(\"loop variable\")?;\n            if !self.eat_kw(\"in\") {\n                self.err_expected(\"`in`\");\n                return None;\n            }\n            let start: source::Span = self.span();\n            let lo: ast::Expr = self.range_bound(d)?;\n            let mut inclusive: bool = false;\n            if self.eat_p(\"..=\") {\n                inclusive = true;\n            } else if !self.eat_p(\"..\") {\n                self.err_fix(\"E0252\", start.to(lo.span), \"`for` runs over a range of integers only\", \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\");\n                self.recover_loop_body();\n                return None;\n            }\n            let hi: ast::Expr = self.range_bound(d)?;\n            let mut invariants: Vec<ast::Expr> = Vec::new();\n            self.invariant_lists(&mut invariants, false, d)?;\n            if self.is_kw(\"decreases\") {\n                let sp: source::Span = self.bump();\n                self.err_fix(\"E0253\", sp, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\");\n                self.parse_expr(d);\n                self.eat_p(\",\");\n            }\n            let lead: Lead = self.body_clauses(lo_span, &mut invariants, false, d)?;\n            let body: ast::Block = match lead.open {\n                None => self.parse_block(d)?,\n                Some(open) => self.parse_block_rest(open, d)?,\n            };\n            match lead.measure {\n                None => {},\n                Some(m) => self.err_fix(\"E0253\", m.span, \"a `for` loop's measure is automatic\", \"remove the `decreases` clause: the range bounds the loop\"),\n            }\n            let span: source::Span = lo_span.to(body.span);\n            Some(ast::Stmt::For(ast::For { label: label, var: var, lo: lo, hi: hi, inclusive: inclusive, invariants: invariants, body: body, span: span }))\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "            self.recover_loop_body();\n            return Err(());\n        };",
+      "new": "            self.diags.push(\n                Diag::new(\n                    \"E0252\",\n                    start.to(lo.span),\n                    \"`for` runs over a range of integers only\",\n                )\n                .fix(\n                    \"iterate over the indices: `for i in 0..v.len()` and read `v[i]`\",\n                    None,\n                ),\n            );\n            self.recover_loop_body();\n            return Err(());\n        };"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -45,6 +45,7 @@ Cost as in BNB: every tool response counts, tokens = ceil(bytes/4) (ADR-0021).
 Python 3 standard library only.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -180,9 +181,19 @@ def strip_crate(crate, docs=False):
 #   none     no definition documentation in either arm (the unit summaries
 #            and `//!` stay)
 #   all      the control: the Rust crate as written, the BMB arm as `summary`
+#
+# The port twin's measured condition is `none` (ADR-0144: its summaries and
+# stage0's `///` are not the same text); `PAIR_DOCS` overrides either.
 DOCS = os.environ.get("PAIR_DOCS", "summary")
 if DOCS not in ("summary", "none", "all"):
     raise SystemExit(f"PAIR_DOCS={DOCS!r}: summary, none or all")
+
+
+def docs_of(fixture):
+    """The documentation condition of a session on `fixture`."""
+    if "PAIR_DOCS" not in os.environ and repo_fixture(fixture):
+        return "none"
+    return DOCS
 
 
 def strip_summaries(text):
@@ -252,6 +263,7 @@ def materialize_repo(task, arm, dest, spec):
     """The arm's copy of a repository fixture at the task's commit: the
     BMB directory imported as a workspace, or the listed files of the Rust
     crate under `dest/src`."""
+    docs = docs_of(task["fixture"])
     tmp = tempfile.mkdtemp(prefix="pair-src-")
     try:
         tar = subprocess.run(["git", "archive", task["commit"], spec["dir"]], cwd=ROOT, capture_output=True,
@@ -259,14 +271,15 @@ def materialize_repo(task, arm, dest, spec):
         subprocess.run(["tar", "-x", "-C", tmp], input=tar, check=True)
         src = os.path.join(tmp, spec["dir"])
         if arm == "bmb":
-            files = bmb_sources(src, os.path.join(tmp, "stripped"), DOCS)
+            files = bmb_sources(src, os.path.join(tmp, "stripped"), docs)
             r = subprocess.run([bmb_bin(), "import", dest, *files], capture_output=True, text=True)
             if r.returncode != 0:
                 raise RuntimeError(f"bmb import failed: {r.stdout}{r.stderr}")
-            if task["kind"] == "change":
-                # Every definition proved, so a session pays for what it
-                # changes (the tools and the judge read `.bmb-cache`).
-                shutil.copytree(proof_cache(task["commit"], spec), os.path.join(dest, ".bmb-cache"))
+            # Every definition proved, so a session pays for what it
+            # changes (the tools and the judge read `.bmb-cache`), and a
+            # question's session that asks for the proof status does not
+            # prove the port first (twenty minutes).
+            shutil.copytree(proof_cache(task["commit"], spec), os.path.join(dest, ".bmb-cache"))
         elif task["kind"] == "change":
             # The whole crate (it must build), with what its build reads
             # from outside it, beside it.
@@ -275,14 +288,14 @@ def materialize_repo(task, arm, dest, spec):
                 tar = subprocess.run(["git", "archive", task["commit"], rel], cwd=ROOT, capture_output=True,
                                      check=True).stdout
                 subprocess.run(["tar", "-x", "-C", os.path.dirname(dest)], input=tar, check=True)
-            if DOCS != "all":
-                strip_crate(dest, docs=DOCS == "summary")
+            if docs != "all":
+                strip_crate(dest, docs=docs == "summary")
         else:
             for f in spec["files"]:
                 os.makedirs(os.path.dirname(os.path.join(dest, f)), exist_ok=True)
                 shutil.copy(os.path.join(src, f), os.path.join(dest, f))
-            if DOCS != "all":
-                strip_crate(dest, docs=DOCS == "summary")
+            if docs != "all":
+                strip_crate(dest, docs=docs == "summary")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return dest
@@ -351,7 +364,7 @@ def repo_cases(task, spec):
     the repository at the task's commit; its expected output is the
     reference's, computed once."""
     commit = task["commit"]
-    cases = spec["corpus"] + task.get("cases", [])
+    cases = ([] if task.get("own_cases_only") else spec["corpus"]) + task.get("cases", [])
     if len({c["name"] for c in cases}) != len(cases):
         raise RuntimeError("two corpus cases have one name")
     tree = commit_tree(commit, sorted({f for c in cases for f in c.get("files", [])}))
@@ -405,11 +418,21 @@ def ws_files(ws):
 
 # ---------- the BMB arm ----------
 
-class BmbTools:
-    """`bmb mcp --write-tool DIR`, the official write surface (ADR-0101)."""
+# The server's flags. `--write-tool` is the official write surface (ADR-0101).
+# The port twin is measured with `--write-tool --compact` (ADR-0144, backlog
+# 3P-10; `PAIR_MCP` overrides): a `write` then returns the definitions that failed and a count of
+# the proved ones, not one line per definition of the workspace.
+def mcp_flags(fixture):
+    if "PAIR_MCP" in os.environ:
+        return os.environ["PAIR_MCP"].split()
+    return ["--write-tool", "--compact"] if repo_fixture(fixture) else ["--write-tool"]
 
-    def __init__(self, ws):
-        self.p = subprocess.Popen([bmb_bin(), "mcp", "--write-tool", ws], stdin=subprocess.PIPE,
+
+class BmbTools:
+    """`bmb mcp FLAGS DIR` (`mcp_flags`)."""
+
+    def __init__(self, ws, flags=("--write-tool",)):
+        self.p = subprocess.Popen([bmb_bin(), "mcp", *flags, ws], stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, text=True)
         self.next = 1
         self.request("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -691,6 +714,8 @@ def changed(before, after):
 
 def out_of_scope(task, arm, before, after):
     sc = task.get("scope", {})
+    if sc == "any":  # a replayed commit: what it takes is the session's to find
+        return []
     allowed = set(sc.get(arm, []))
     new_ok = sc.get("new", False)
     return [k for k in changed(before, after)
@@ -785,50 +810,98 @@ def make_agent(kind, arm, task, script=None):
 
 # ---------- sessions ----------
 
+def set_up(task, arm, dest, work):
+    """The arm's starting copy with the task's `setup` applied: the tool
+    calls that take the code back to the state the task starts from (a
+    replayed commit undone, backlog 3P-04). A BMB setup proves the
+    workspace, so its result is kept per commit, task and condition."""
+    calls = task.get("setup", {}).get(arm)
+    if not calls:
+        return materialize(task, arm, dest)
+
+    def apply(root):
+        tools = BmbTools(root, mcp_flags(task["fixture"])) if arm == "bmb" else RustTools(root, os.path.join(work, "setup-target"))
+        try:
+            for name, args in calls:
+                text, err = tools.call(name, args)
+                if err:
+                    raise RuntimeError(f"{task['id']} {arm}: setup call failed: {text[-2000:]}")
+        finally:
+            tools.close()
+
+    if arm == "rust":
+        materialize(task, arm, dest)
+        apply(dest)
+        return dest
+    key = hashlib.sha256(json.dumps([docs_of(task["fixture"]), calls], sort_keys=True).encode()).hexdigest()[:16]
+    kept = twin_dir(task["commit"], "setup", f"{task['id']}-{key}")
+    if not os.path.exists(kept):
+        tmp = os.path.join(work, "setup")
+        materialize(task, arm, tmp)
+        apply(tmp)
+        os.makedirs(os.path.dirname(kept), exist_ok=True)
+        part = f"{kept}.{os.getpid()}"
+        shutil.copytree(tmp, part, symlinks=True)
+        if os.path.exists(kept):
+            shutil.rmtree(part)
+        else:
+            os.replace(part, kept)
+        shutil.rmtree(tmp)
+    shutil.copytree(kept, dest, symlinks=True)
+    return dest
+
+
+def drive(agent, tools, comprehend):
+    """One session: the agent's calls against `tools` until it stops or
+    reaches the call limit. Returns the counts and the answer."""
+    if hasattr(agent, "set_tools"):
+        agent.set_tools(tools.tools + ([harness.ANSWER_TOOL] if comprehend else []))
+    m = {"tool_calls": 0, "resp_bytes": 0, "req_bytes": 0, "limit_hit": False, "calls_by_tool": {},
+         "tool_errors": 0}
+    answer, last = None, []
+    t0 = time.perf_counter()
+    while True:
+        calls = agent.next_calls(last)
+        if not calls:
+            break
+        last = []
+        for name, args in calls:
+            if m["tool_calls"] >= MAX_TOOL_CALLS:
+                m["limit_hit"] = True
+                break
+            m["tool_calls"] += 1
+            m["calls_by_tool"][name] = m["calls_by_tool"].get(name, 0) + 1
+            m["req_bytes"] += len(json.dumps(args, ensure_ascii=False).encode())
+            if name == "answer" and comprehend:
+                answer = args.get("defs", [])
+                text, err = '{"answered":true}', False
+            else:
+                text, err = tools.call(name, args)
+                m["resp_bytes"] += len(text.encode())
+            m["tool_errors"] += int(bool(err))
+            last.append((name, args, text, err))
+        if m["limit_hit"]:
+            break
+    return {**m, "tokens": math.ceil(m["resp_bytes"] / 4), "req_tokens": math.ceil(m["req_bytes"] / 4),
+            "wall_s": round(time.perf_counter() - t0, 3), "model_usage": agent.usage,
+            "stop": getattr(agent, "stop", None)}, answer
+
+
 def run_task(task, arm, agent_kind, script=None):
+    if "steps" in task:
+        return run_history(task, arm, agent_kind, script)
     work = tempfile.mkdtemp(prefix=f"pair-{task['id']}-{arm}-")
     try:
-        root = materialize(task, arm, os.path.join(work, "code"))
+        root = set_up(task, arm, os.path.join(work, "code"), work)
         before = defs_of(task, arm, root)
-        tools = BmbTools(root) if arm == "bmb" else RustTools(root, os.path.join(work, "target"))
-        agent = make_agent(agent_kind, arm, task, script)
+        tools = BmbTools(root, mcp_flags(task["fixture"])) if arm == "bmb" else RustTools(root, os.path.join(work, "target"))
         comprehend = task["kind"] == "comprehend"
-        if hasattr(agent, "set_tools"):
-            agent.set_tools(tools.tools + ([harness.ANSWER_TOOL] if comprehend else []))
-        m = {"tool_calls": 0, "resp_bytes": 0, "req_bytes": 0, "limit_hit": False, "calls_by_tool": {},
-             "tool_errors": 0}
-        answer, last = None, []
-        t0 = time.perf_counter()
         try:
-            while True:
-                calls = agent.next_calls(last)
-                if not calls:
-                    break
-                last = []
-                for name, args in calls:
-                    if m["tool_calls"] >= MAX_TOOL_CALLS:
-                        m["limit_hit"] = True
-                        break
-                    m["tool_calls"] += 1
-                    m["calls_by_tool"][name] = m["calls_by_tool"].get(name, 0) + 1
-                    m["req_bytes"] += len(json.dumps(args, ensure_ascii=False).encode())
-                    if name == "answer" and comprehend:
-                        answer = args.get("defs", [])
-                        text, err = '{"answered":true}', False
-                    else:
-                        text, err = tools.call(name, args)
-                        m["resp_bytes"] += len(text.encode())
-                    m["tool_errors"] += int(bool(err))
-                    last.append((name, args, text, err))
-                if m["limit_hit"]:
-                    break
+            m, answer = drive(make_agent(agent_kind, arm, task, script), tools, comprehend)
         finally:
             tools.close()
         row = {"id": task["id"], "kind": task["kind"], "fixture": task["fixture"], "arm": arm, "agent": agent_kind,
-               "docs": DOCS,
-               **m, "tokens": math.ceil(m["resp_bytes"] / 4), "req_tokens": math.ceil(m["req_bytes"] / 4),
-               "wall_s": round(time.perf_counter() - t0, 3), "model_usage": agent.usage,
-               "stop": getattr(agent, "stop", None)}
+               "docs": docs_of(task["fixture"]), "mcp": " ".join(mcp_flags(task["fixture"])) if arm == "bmb" else None, **m}
         if comprehend:
             truth = task["truth"]
             want, got = set(truth[arm] if isinstance(truth, dict) else truth), set(answer or [])
@@ -839,6 +912,49 @@ def run_task(task, arm, agent_kind, script=None):
         else:
             row.update(judge_change(task, arm, root, before, work))
         return row
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+SUMS = ("tool_calls", "resp_bytes", "req_bytes", "tool_errors", "tokens", "req_tokens", "wall_s")
+
+
+def run_history(task, arm, agent_kind, script=None):
+    """A history task (ADR-0102, G5-L): the task's `steps` one after the
+    other in one copy of the code, each a session of its own that finds
+    the code as the one before left it. A step is judged when it ends, on
+    its cases and those of the steps before; the row has the steps and
+    their sums, and succeeds when the last step's judgement does.
+    `script` is one list of calls per step."""
+    work = tempfile.mkdtemp(prefix=f"pair-{task['id']}-{arm}-")
+    try:
+        root = set_up(task, arm, os.path.join(work, "code"), work)
+        steps, cases = [], []
+        for k, step in enumerate(task["steps"]):
+            # Before the last step the fixture's corpus may still show what
+            # later steps bring: a step is judged on the history's own cases.
+            sub = {**task, "prompt": step["prompt"], "oracle": step["oracle"], "cases": cases + step["cases"],
+                   "own_cases_only": k + 1 < len(task["steps"])}
+            cases = sub["cases"]
+            before = defs_of(task, arm, root)
+            tools = BmbTools(root, mcp_flags(task["fixture"])) if arm == "bmb" else RustTools(root, os.path.join(work, "target"))
+            try:
+                m, _ = drive(make_agent(agent_kind, arm, sub, None if script is None else script[k]), tools, False)
+            finally:
+                tools.close()
+            steps.append({"step": k, **m, **judge_change(sub, arm, root, before, work)})
+        usage = {}
+        for st in steps:
+            for key, v in st["model_usage"].items():
+                if isinstance(v, (int, float)):
+                    usage[key] = usage.get(key, 0) + v
+        return {"id": task["id"], "kind": task["kind"], "fixture": task["fixture"], "arm": arm, "agent": agent_kind,
+                "docs": docs_of(task["fixture"]), "mcp": " ".join(mcp_flags(task["fixture"])) if arm == "bmb" else None,
+                **{key: round(sum(st[key] for st in steps), 3) for key in SUMS}, "model_usage": usage,
+                "steps_passed": sum(1 for st in steps if st["success"]),
+                **{key: steps[-1][key] for key in ("built", "tests", "corpus_passed", "corpus_total",
+                                                   "corpus_failures", "success")},
+                "steps": steps}
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -999,20 +1115,22 @@ def cmd_check(a):
         # differential tests (tests/port/cases.json).
         if not repo_fixture(fx):
             problems += check_twins(fx)
+    def problem(text):
+        problems.append(text)
+        print(text, file=sys.stderr, flush=True)
+
     for t in tasks:
         for arm in ("bmb", "rust"):
             r = run_task(t, arm, "oracle")
             if not r["success"]:
-                problems.append(f"{t['id']} {arm}: oracle failed: {json.dumps(r, ensure_ascii=False)[:1500]}")
+                problem(f"{t['id']} {arm}: oracle failed: {json.dumps(r, ensure_ascii=False)[:1500]}")
             for k, weak in enumerate(t.get("weak", [])):
                 w = run_task(t, arm, f"weak{k}", weak[arm])
                 why = weak["fails"]
                 if w["success"] or not WEAK_CHECKS[why](w):
-                    problems.append(f"{t['id']} {arm}: weak control {k} did not fail its {why} check: "
-                                    f"{json.dumps(w, ensure_ascii=False)[:1500]}")
-            print(f"{t['id']} {arm}: oracle {'ok' if r['success'] else 'FAILED'}", file=sys.stderr)
-    for p in problems:
-        print(p, file=sys.stderr)
+                    problem(f"{t['id']} {arm}: weak control {k} did not fail its {why} check: "
+                            f"{json.dumps(w, ensure_ascii=False)[:1500]}")
+            print(f"{t['id']} {arm}: oracle {'ok' if r['success'] else 'FAILED'}", file=sys.stderr, flush=True)
     if problems:
         sys.exit(1)
     print(f"ok: {len(tasks)} tasks, both arms")
@@ -1020,9 +1138,17 @@ def cmd_check(a):
 
 def cmd_run(a):
     tasks = [t for t in load_tasks(a.tasks) if not a.only or t["id"] in a.only]
+    # A run that was cut goes on where it stopped: a session whose row is
+    # in `--out` is not run again (no session is retried, ADR-0021 §3).
+    done = set()
+    if a.out and os.path.exists(a.out):
+        with open(a.out, encoding="utf-8") as h:
+            done = {(r["id"], r["arm"]) for r in map(json.loads, h)}
     out = open(a.out, "a", encoding="utf-8") if a.out else sys.stdout
     for t in tasks:
         for arm in a.arms:
+            if (t["id"], arm) in done:
+                continue
             r = run_task(t, arm, a.agent)
             out.write(json.dumps(r, ensure_ascii=False) + "\n")
             out.flush()

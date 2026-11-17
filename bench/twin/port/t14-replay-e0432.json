@@ -1,0 +1,119 @@
+{
+ "id": "t14-replay-e0432",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0432",
+  "commit": "de81979c1",
+  "subject": "2O-03d: struct-only recursion as Int handles (ADR-0056)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0432 yet: a value of a recursive struct is built in a specification. It came with the commit \"2O-03d: struct-only recursion as Int handles (ADR-0056)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    spec fn is_leaf(n: &Node) -> bool { n.kids.len() == 0 && n.v == Node { v: 0, kids: n.kids }.v }\n    {\"code\": \"E0432\", \"severity\": \"error\", \"message\": \"a value of the recursive struct `rc::Node` is built in a specification\", \"file\": \"err/rec_structs.bmb\", \"line\": 12, \"col\": 69, \"end_line\": 12, \"end_col\": 96, \"fix\": {\"message\": \"state its fields instead (`r.v == x && r.kids.len() == 0`)\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.diags.push(\n                        Diag::new(\n                            \"E0432\",\n                            e.span,\n                            format!(\n                                \"a value of the recursive struct `{}` is built in a specification\",\n                                ty_str(&t)\n                            ),\n                        )\n                        .fix(\n                            \"state its fields instead (`r.v == x && r.kids.len() == 0`)\",\n                            None,\n                        ),\n                    );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    impl Body {\n        #[effects(alloc)]\n        fn struct_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, sl: &ast::StructLit, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3 + 1,\n        {\n            let t: ast::TypeKind = self.struct_lit(cx, sl, expected, e.span, mode, f);\n            if is_child(&t) {\n                self.child_by_hand(e.span);\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) && self.struct_cycle(&t) {\n            }\n            t\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-rec_structs",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rec_structs.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                }\n                t\n            }\n            ExprKind::Path(path) if Self::builtin_path(path) => {",
+     "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0432\",\n                            e.span,\n                            format!(\n                                \"a value of the recursive struct `{}` is built in a specification\",\n                                ty_str(&t)\n                            ),\n                        )\n                        .fix(\n                            \"state its fields instead (`r.v == x && r.kids.len() == 0`)\",\n                            None,\n                        ),\n                    );\n                }\n                t\n            }\n            ExprKind::Path(path) if Self::builtin_path(path) => {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    impl Body {\n        #[effects(alloc)]\n        fn struct_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, sl: &ast::StructLit, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3 + 1,\n        {\n            let t: ast::TypeKind = self.struct_lit(cx, sl, expected, e.span, mode, f);\n            if is_child(&t) {\n                self.child_by_hand(e.span);\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) && self.struct_cycle(&t) {\n                self.c.help(\"E0432\", e.span, types::cat3(\"a value of the recursive struct `\", types::text(&t).as_str(), \"` is built in a specification\").as_str(), \"state its fields instead (`r.v == x && r.kids.len() == 0`)\");\n            }\n            t\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "body",
+      "code": "    impl Body {\n        #[effects(alloc)]\n        fn struct_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, sl: &ast::StructLit, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3 + 1,\n        {\n            let t: ast::TypeKind = self.struct_lit(cx, sl, expected, e.span, mode, f);\n            if is_child(&t) {\n                self.child_by_hand(e.span);\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) && self.struct_cycle(&t) {\n                self.c.help(\"E0432\", e.span, types::cat3(\"a value of the recursive struct `\", types::text(&t).as_str(), \"` is built in a specification\").as_str(), \"state its fields instead (`r.v == x && r.kids.len() == 0`)\");\n            }\n            t\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                }\n                t\n            }\n            ExprKind::Path(path) if Self::builtin_path(path) => {",
+      "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0432\",\n                            e.span,\n                            format!(\n                                \"a value of the recursive struct `{}` is built in a specification\",\n                                ty_str(&t)\n                            ),\n                        )\n                        .fix(\n                            \"state its fields instead (`r.v == x && r.kids.len() == 0`)\",\n                            None,\n                        ),\n                    );\n                }\n                t\n            }\n            ExprKind::Path(path) if Self::builtin_path(path) => {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

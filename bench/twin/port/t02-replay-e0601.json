@@ -1,0 +1,128 @@
+{
+ "id": "t02-replay-e0601",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0601",
+  "commit": "d3949466e",
+  "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0601 yet: function requires an `#[effects(..)]` attribute. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    pub fn exposed() -> () {}\n    {\"code\": \"E0601\", \"severity\": \"error\", \"message\": \"`exposed` has no `#[effects(..)]` attribute\", \"file\": \"err/items.bmb\", \"line\": 16, \"col\": 9, \"end_line\": 16, \"end_col\": 11, \"fix\": {\"message\": \"add `#[effects(pure)]` above the function\", \"replacement\": \"#[effects(pure)]\\nfn\"}}\n\n    fn no_effects(x: i64) -> i64 { x }\n    {\"code\": \"E0601\", \"severity\": \"error\", \"message\": \"`no_effects` has no `#[effects(..)]` attribute\", \"file\": \"err/rust_habits.bmb\", \"line\": 3, \"col\": 5, \"end_line\": 3, \"end_col\": 7, \"fix\": {\"message\": \"add `#[effects(pure)]` above the function\", \"replacement\": \"#[effects(pure)]\\nfn\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(\n                Diag::new(\n                    \"E0601\",\n                    Span {\n                        hi: f.span.lo + 2,\n                        ..f.span\n                    },\n                    format!(\"`{}` has no `#[effects(..)]` attribute\", f.name.name),\n                )\n                .fix(\n                    \"add `#[effects(pure)]` above the function\",\n                    Some(\"#[effects(pure)]\\nfn\".into()),\n                ),\n            );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn fn_effect(self: &mut Checker, f: &ast::FnDef) -> types::Effects {\n            let mut effect: types::Effects = types::pure();\n            let mut have: bool = false;\n            for i in 0..f.attrs.len()\n                invariant 0 <= i && i <= f.attrs.len(),\n            {\n                let an: String = f.attrs[i].name.name.clone();\n                let span: source::Span = f.attrs[i].span;\n                if an.as_str() == \"effects\" {\n                    if is_proof(&f.kind) {\n                        self.fixed(\"E0256\", span, \"a `proof fn` has no effect: it is ghost code, erased before it runs\", \"remove the attribute\", \"\");\n                    } else if is_spec(&f.kind) {\n                        self.fixed(\"E0604\", span, \"spec functions are pure by definition\", \"remove the attribute\", \"\");\n                    } else if have {\n                        self.fixed(\"E0605\", span, \"duplicate `#[effects(..)]` attribute\", \"remove the attribute\", \"\");\n                    } else {\n                        effect = self.effects_attr(&f.attrs[i]);\n                        have = true;\n                    }\n                } else if an.as_str() == \"uses\" {} else if an.as_str() == \"external_body\" {\n                    if !is_exec(&f.kind) || f.name.name.as_str() == \"main\" {\n                        self.fixed(\"E1004\", span, \"`#[external_body]` is for an executable function other than `main`\", \"remove the attribute\", \"\");\n                    } else if !has_attr(f.attrs.as_slice(), \"rationale\") {\n                        self.missing_rationale(span, \"`#[external_body]`\");\n                    }\n                } else if an.as_str() == \"rationale\" {\n                    if !has_attr(f.attrs.as_slice(), \"external_body\") {\n                        self.fixed(\"E1002\", span, \"a rationale on a function that is not `#[external_body]`\", \"remove it: a rationale stands before `#[external_body]` or an `assume`\", \"\");\n                    } else {\n                        self.check_rationale(&f.attrs[i]);\n                    }\n                } else if an.as_str() == \"summary\" {\n                    self.check_summary(&f.attrs[i], f.attrs.as_slice());\n                } else {\n                    self.fixed(\"E0605\", span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a function\").as_str(), \"remove it: functions take `#[summary(\\\"..\\\")]`, `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`\", \"\");\n                }\n            }\n            if is_exec(&f.kind) && !have {\n                let hi: u32 = if f.span.lo < 4294967293 {\n                    f.span.lo + 2\n                } else {\n                    f.span.lo\n                };\n            }\n            effect\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-items",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/items.bmb"
+   ]
+  },
+  {
+   "name": "replay-rust_habits",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rust_habits.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "        }\n        effect.unwrap_or(Effects::PURE)",
+     "new": "            self.diags.push(\n                Diag::new(\n                    \"E0601\",\n                    Span {\n                        hi: f.span.lo + 2,\n                        ..f.span\n                    },\n                    format!(\"`{}` has no `#[effects(..)]` attribute\", f.name.name),\n                )\n                .fix(\n                    \"add `#[effects(pure)]` above the function\",\n                    Some(\"#[effects(pure)]\\nfn\".into()),\n                ),\n            );\n        }\n        effect.unwrap_or(Effects::PURE)"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn fn_effect(self: &mut Checker, f: &ast::FnDef) -> types::Effects {\n            let mut effect: types::Effects = types::pure();\n            let mut have: bool = false;\n            for i in 0..f.attrs.len()\n                invariant 0 <= i && i <= f.attrs.len(),\n            {\n                let an: String = f.attrs[i].name.name.clone();\n                let span: source::Span = f.attrs[i].span;\n                if an.as_str() == \"effects\" {\n                    if is_proof(&f.kind) {\n                        self.fixed(\"E0256\", span, \"a `proof fn` has no effect: it is ghost code, erased before it runs\", \"remove the attribute\", \"\");\n                    } else if is_spec(&f.kind) {\n                        self.fixed(\"E0604\", span, \"spec functions are pure by definition\", \"remove the attribute\", \"\");\n                    } else if have {\n                        self.fixed(\"E0605\", span, \"duplicate `#[effects(..)]` attribute\", \"remove the attribute\", \"\");\n                    } else {\n                        effect = self.effects_attr(&f.attrs[i]);\n                        have = true;\n                    }\n                } else if an.as_str() == \"uses\" {} else if an.as_str() == \"external_body\" {\n                    if !is_exec(&f.kind) || f.name.name.as_str() == \"main\" {\n                        self.fixed(\"E1004\", span, \"`#[external_body]` is for an executable function other than `main`\", \"remove the attribute\", \"\");\n                    } else if !has_attr(f.attrs.as_slice(), \"rationale\") {\n                        self.missing_rationale(span, \"`#[external_body]`\");\n                    }\n                } else if an.as_str() == \"rationale\" {\n                    if !has_attr(f.attrs.as_slice(), \"external_body\") {\n                        self.fixed(\"E1002\", span, \"a rationale on a function that is not `#[external_body]`\", \"remove it: a rationale stands before `#[external_body]` or an `assume`\", \"\");\n                    } else {\n                        self.check_rationale(&f.attrs[i]);\n                    }\n                } else if an.as_str() == \"summary\" {\n                    self.check_summary(&f.attrs[i], f.attrs.as_slice());\n                } else {\n                    self.fixed(\"E0605\", span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a function\").as_str(), \"remove it: functions take `#[summary(\\\"..\\\")]`, `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`\", \"\");\n                }\n            }\n            if is_exec(&f.kind) && !have {\n                let hi: u32 = if f.span.lo < 4294967293 {\n                    f.span.lo + 2\n                } else {\n                    f.span.lo\n                };\n                self.fixed(\"E0601\", source::Span { file: f.span.file, lo: f.span.lo, hi: hi }, types::cat3(\"`\", f.name.name.as_str(), \"` has no `#[effects(..)]` attribute\").as_str(), \"add `#[effects(pure)]` above the function\", \"#[effects(pure)]\\nfn\");\n            }\n            effect\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn fn_effect(self: &mut Checker, f: &ast::FnDef) -> types::Effects {\n            let mut effect: types::Effects = types::pure();\n            let mut have: bool = false;\n            for i in 0..f.attrs.len()\n                invariant 0 <= i && i <= f.attrs.len(),\n            {\n                let an: String = f.attrs[i].name.name.clone();\n                let span: source::Span = f.attrs[i].span;\n                if an.as_str() == \"effects\" {\n                    if is_proof(&f.kind) {\n                        self.fixed(\"E0256\", span, \"a `proof fn` has no effect: it is ghost code, erased before it runs\", \"remove the attribute\", \"\");\n                    } else if is_spec(&f.kind) {\n                        self.fixed(\"E0604\", span, \"spec functions are pure by definition\", \"remove the attribute\", \"\");\n                    } else if have {\n                        self.fixed(\"E0605\", span, \"duplicate `#[effects(..)]` attribute\", \"remove the attribute\", \"\");\n                    } else {\n                        effect = self.effects_attr(&f.attrs[i]);\n                        have = true;\n                    }\n                } else if an.as_str() == \"uses\" {} else if an.as_str() == \"external_body\" {\n                    if !is_exec(&f.kind) || f.name.name.as_str() == \"main\" {\n                        self.fixed(\"E1004\", span, \"`#[external_body]` is for an executable function other than `main`\", \"remove the attribute\", \"\");\n                    } else if !has_attr(f.attrs.as_slice(), \"rationale\") {\n                        self.missing_rationale(span, \"`#[external_body]`\");\n                    }\n                } else if an.as_str() == \"rationale\" {\n                    if !has_attr(f.attrs.as_slice(), \"external_body\") {\n                        self.fixed(\"E1002\", span, \"a rationale on a function that is not `#[external_body]`\", \"remove it: a rationale stands before `#[external_body]` or an `assume`\", \"\");\n                    } else {\n                        self.check_rationale(&f.attrs[i]);\n                    }\n                } else if an.as_str() == \"summary\" {\n                    self.check_summary(&f.attrs[i], f.attrs.as_slice());\n                } else {\n                    self.fixed(\"E0605\", span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a function\").as_str(), \"remove it: functions take `#[summary(\\\"..\\\")]`, `#[effects(..)]`, `#[uses(..)]`, `#[external_body]` and `#[rationale(..)]`\", \"\");\n                }\n            }\n            if is_exec(&f.kind) && !have {\n                let hi: u32 = if f.span.lo < 4294967293 {\n                    f.span.lo + 2\n                } else {\n                    f.span.lo\n                };\n                self.fixed(\"E0601\", source::Span { file: f.span.file, lo: f.span.lo, hi: hi }, types::cat3(\"`\", f.name.name.as_str(), \"` has no `#[effects(..)]` attribute\").as_str(), \"add `#[effects(pure)]` above the function\", \"#[effects(pure)]\\nfn\");\n            }\n            effect\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        }\n        effect.unwrap_or(Effects::PURE)",
+      "new": "            self.diags.push(\n                Diag::new(\n                    \"E0601\",\n                    Span {\n                        hi: f.span.lo + 2,\n                        ..f.span\n                    },\n                    format!(\"`{}` has no `#[effects(..)]` attribute\", f.name.name),\n                )\n                .fix(\n                    \"add `#[effects(pure)]` above the function\",\n                    Some(\"#[effects(pure)]\\nfn\".into()),\n                ),\n            );\n        }\n        effect.unwrap_or(Effects::PURE)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

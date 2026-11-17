@@ -1,0 +1,119 @@
+{
+ "id": "t21-replay-e0105",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0105",
+  "commit": "d3949466e",
+  "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0105 yet: integer literal too large. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn g() -> i64 { 340282366920938463463374607431768211456 }\n    {\"code\": \"E0105\", \"severity\": \"error\", \"message\": \"integer literal does not fit in 128 bits\", \"file\": \"err/lexing.bmb\", \"line\": 7, \"col\": 21, \"end_line\": 7, \"end_col\": 60}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/lexer.rs",
+     "old": "                diags.push(Diag::new(\n                    \"E0105\",\n                    sp(lo, i),\n                    \"integer literal does not fit in 128 bits\",\n                ));",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "lexer",
+     "code": "    #[effects(alloc)]\n    #[uses(wide::small)]\n    fn int_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let c1: u32 = at(text, start, 1);\n        let mut base: u64 = 10;\n        if at(text, start, 0) == 48 {\n            if c1 == 120 {\n                base = 16;\n            } else if c1 == 111 {\n                base = 8;\n            } else if c1 == 98 {\n                base = 2;\n            }\n        }\n        let mut i: usize = start;\n        if base != 10 {\n            i = fwd(start, 2, n);\n        }\n        let mut v: wide::U128 = wide::zero();\n        let mut overflow: bool = false;\n        let mut any: bool = false;\n        let mut bad: bool = false;\n        let mut bad_at: usize = 0;\n        while i < n && (digit(at(text, i, 0)) || at(text, i, 0) == 95 || base == 16 && hexval(at(text, i, 0)) < 16)\n            invariant i <= n, base == 10 || base == 16 || base == 8 || base == 2,\n            decreases n - i,\n        {\n            let c: u32 = at(text, i, 0);\n            if c != 95 {\n                any = true;\n                let d: u64 = hexval(c) as u64;\n                if d >= base {\n                    if !bad {\n                        bad = true;\n                        bad_at = i;\n                    }\n                } else {\n                    match wide::mul_add(v, base, d) {\n                        None => { overflow = true; },\n                        Some(x) => { v = x; },\n                    }\n                }\n            }\n            i = i + 1;\n        }\n        let digits_end: usize = i;\n        let mut name: String = String::from(\"decimal\");\n        let mut radix: ast::Radix = ast::Radix::Dec;\n        if base == 16 {\n            name = String::from(\"hexadecimal\");\n            radix = ast::Radix::Hex;\n        } else if base == 8 {\n            name = String::from(\"octal\");\n            radix = ast::Radix::Oct;\n        } else if base == 2 {\n            name = String::from(\"binary\");\n            radix = ast::Radix::Bin;\n        }\n        if bad {\n            let mut m: String = joined(\"`\", cut(text, bad_at, bad_at.saturating_add(1)).as_str(), \"` is not \");\n            if base == 8 {\n                m.push_str(\"an \");\n            } else {\n                m.push_str(\"a \");\n            }\n            m.push_str(name.as_str());\n            m.push_str(\" digit\");\n            let mut h: String = String::from(name.as_str());\n            if base == 2 {\n                h.push_str(\" digits are `0` and `1`\");\n            } else {\n                h.push_str(\" digits are `0` to `7`\");\n            }\n            h.push_str(\"; write the value in another base (`0x` hexadecimal, or decimal)\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, bad_at, bad_at.saturating_add(1)), m.as_str()), h.as_str(), None));\n        }\n        let no_digits: bool = !any && base != 10;\n        if no_digits {\n            let mut m: String = joined(\"`\", cut(text, start, digits_end).as_str(), \"` has no \");\n            m.push_str(name.as_str());\n            m.push_str(\" digits\");\n            let h: String = joined(\"write the digits after the prefix: `\", ast::radix_text(radix, wide::zero()).as_str(), \"`\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, start, digits_end), m.as_str()), h.as_str(), None));\n        }\n        if word(at(text, i, 0)) {\n            let slo: usize = i;\n            while i < n && word(at(text, i, 0))\n                decreases n - i,\n            {\n                i = i + 1;\n            }\n            let suffix: String = cut(text, slo, i);\n            if !no_digits {\n                let g: diag::Diag = diag::new(\"E0104\", span(file, start, i), joined(\"literal suffix `\", suffix.as_str(), \"` is not allowed\").as_str());\n                if int_type(suffix.as_str()) {\n                    diags.push(diag::fix(g, \"remove the suffix\", Some(cut(text, start, digits_end))));\n                } else {\n                    diags.push(diag::fix(g, \"integer literals are digits in base 10, or after `0x`, `0o` or `0b`\", None));\n                }\n            }\n        }\n        if overflow {\n        }\n        out.push(Token { tok: Tok::Int(v, radix), span: span(file, start, i) });\n        i\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-lexing",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/lexing.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/lexer.rs",
+     "old": "            }\n            out.push(Token {\n                tok: Tok::Int(v, radix),",
+     "new": "                diags.push(Diag::new(\n                    \"E0105\",\n                    sp(lo, i),\n                    \"integer literal does not fit in 128 bits\",\n                ));\n            }\n            out.push(Token {\n                tok: Tok::Int(v, radix),"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "lexer",
+     "code": "    #[effects(alloc)]\n    #[uses(wide::small)]\n    fn int_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let c1: u32 = at(text, start, 1);\n        let mut base: u64 = 10;\n        if at(text, start, 0) == 48 {\n            if c1 == 120 {\n                base = 16;\n            } else if c1 == 111 {\n                base = 8;\n            } else if c1 == 98 {\n                base = 2;\n            }\n        }\n        let mut i: usize = start;\n        if base != 10 {\n            i = fwd(start, 2, n);\n        }\n        let mut v: wide::U128 = wide::zero();\n        let mut overflow: bool = false;\n        let mut any: bool = false;\n        let mut bad: bool = false;\n        let mut bad_at: usize = 0;\n        while i < n && (digit(at(text, i, 0)) || at(text, i, 0) == 95 || base == 16 && hexval(at(text, i, 0)) < 16)\n            invariant i <= n, base == 10 || base == 16 || base == 8 || base == 2,\n            decreases n - i,\n        {\n            let c: u32 = at(text, i, 0);\n            if c != 95 {\n                any = true;\n                let d: u64 = hexval(c) as u64;\n                if d >= base {\n                    if !bad {\n                        bad = true;\n                        bad_at = i;\n                    }\n                } else {\n                    match wide::mul_add(v, base, d) {\n                        None => { overflow = true; },\n                        Some(x) => { v = x; },\n                    }\n                }\n            }\n            i = i + 1;\n        }\n        let digits_end: usize = i;\n        let mut name: String = String::from(\"decimal\");\n        let mut radix: ast::Radix = ast::Radix::Dec;\n        if base == 16 {\n            name = String::from(\"hexadecimal\");\n            radix = ast::Radix::Hex;\n        } else if base == 8 {\n            name = String::from(\"octal\");\n            radix = ast::Radix::Oct;\n        } else if base == 2 {\n            name = String::from(\"binary\");\n            radix = ast::Radix::Bin;\n        }\n        if bad {\n            let mut m: String = joined(\"`\", cut(text, bad_at, bad_at.saturating_add(1)).as_str(), \"` is not \");\n            if base == 8 {\n                m.push_str(\"an \");\n            } else {\n                m.push_str(\"a \");\n            }\n            m.push_str(name.as_str());\n            m.push_str(\" digit\");\n            let mut h: String = String::from(name.as_str());\n            if base == 2 {\n                h.push_str(\" digits are `0` and `1`\");\n            } else {\n                h.push_str(\" digits are `0` to `7`\");\n            }\n            h.push_str(\"; write the value in another base (`0x` hexadecimal, or decimal)\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, bad_at, bad_at.saturating_add(1)), m.as_str()), h.as_str(), None));\n        }\n        let no_digits: bool = !any && base != 10;\n        if no_digits {\n            let mut m: String = joined(\"`\", cut(text, start, digits_end).as_str(), \"` has no \");\n            m.push_str(name.as_str());\n            m.push_str(\" digits\");\n            let h: String = joined(\"write the digits after the prefix: `\", ast::radix_text(radix, wide::zero()).as_str(), \"`\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, start, digits_end), m.as_str()), h.as_str(), None));\n        }\n        if word(at(text, i, 0)) {\n            let slo: usize = i;\n            while i < n && word(at(text, i, 0))\n                decreases n - i,\n            {\n                i = i + 1;\n            }\n            let suffix: String = cut(text, slo, i);\n            if !no_digits {\n                let g: diag::Diag = diag::new(\"E0104\", span(file, start, i), joined(\"literal suffix `\", suffix.as_str(), \"` is not allowed\").as_str());\n                if int_type(suffix.as_str()) {\n                    diags.push(diag::fix(g, \"remove the suffix\", Some(cut(text, start, digits_end))));\n                } else {\n                    diags.push(diag::fix(g, \"integer literals are digits in base 10, or after `0x`, `0o` or `0b`\", None));\n                }\n            }\n        }\n        if overflow {\n            diags.push(diag::new(\"E0105\", span(file, start, i), \"integer literal does not fit in 128 bits\"));\n        }\n        out.push(Token { tok: Tok::Int(v, radix), span: span(file, start, i) });\n        i\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "lexer",
+      "code": "    #[effects(alloc)]\n    #[uses(wide::small)]\n    fn int_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let c1: u32 = at(text, start, 1);\n        let mut base: u64 = 10;\n        if at(text, start, 0) == 48 {\n            if c1 == 120 {\n                base = 16;\n            } else if c1 == 111 {\n                base = 8;\n            } else if c1 == 98 {\n                base = 2;\n            }\n        }\n        let mut i: usize = start;\n        if base != 10 {\n            i = fwd(start, 2, n);\n        }\n        let mut v: wide::U128 = wide::zero();\n        let mut overflow: bool = false;\n        let mut any: bool = false;\n        let mut bad: bool = false;\n        let mut bad_at: usize = 0;\n        while i < n && (digit(at(text, i, 0)) || at(text, i, 0) == 95 || base == 16 && hexval(at(text, i, 0)) < 16)\n            invariant i <= n, base == 10 || base == 16 || base == 8 || base == 2,\n            decreases n - i,\n        {\n            let c: u32 = at(text, i, 0);\n            if c != 95 {\n                any = true;\n                let d: u64 = hexval(c) as u64;\n                if d >= base {\n                    if !bad {\n                        bad = true;\n                        bad_at = i;\n                    }\n                } else {\n                    match wide::mul_add(v, base, d) {\n                        None => { overflow = true; },\n                        Some(x) => { v = x; },\n                    }\n                }\n            }\n            i = i + 1;\n        }\n        let digits_end: usize = i;\n        let mut name: String = String::from(\"decimal\");\n        let mut radix: ast::Radix = ast::Radix::Dec;\n        if base == 16 {\n            name = String::from(\"hexadecimal\");\n            radix = ast::Radix::Hex;\n        } else if base == 8 {\n            name = String::from(\"octal\");\n            radix = ast::Radix::Oct;\n        } else if base == 2 {\n            name = String::from(\"binary\");\n            radix = ast::Radix::Bin;\n        }\n        if bad {\n            let mut m: String = joined(\"`\", cut(text, bad_at, bad_at.saturating_add(1)).as_str(), \"` is not \");\n            if base == 8 {\n                m.push_str(\"an \");\n            } else {\n                m.push_str(\"a \");\n            }\n            m.push_str(name.as_str());\n            m.push_str(\" digit\");\n            let mut h: String = String::from(name.as_str());\n            if base == 2 {\n                h.push_str(\" digits are `0` and `1`\");\n            } else {\n                h.push_str(\" digits are `0` to `7`\");\n            }\n            h.push_str(\"; write the value in another base (`0x` hexadecimal, or decimal)\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, bad_at, bad_at.saturating_add(1)), m.as_str()), h.as_str(), None));\n        }\n        let no_digits: bool = !any && base != 10;\n        if no_digits {\n            let mut m: String = joined(\"`\", cut(text, start, digits_end).as_str(), \"` has no \");\n            m.push_str(name.as_str());\n            m.push_str(\" digits\");\n            let h: String = joined(\"write the digits after the prefix: `\", ast::radix_text(radix, wide::zero()).as_str(), \"`\");\n            diags.push(diag::fix(diag::new(\"E0108\", span(file, start, digits_end), m.as_str()), h.as_str(), None));\n        }\n        if word(at(text, i, 0)) {\n            let slo: usize = i;\n            while i < n && word(at(text, i, 0))\n                decreases n - i,\n            {\n                i = i + 1;\n            }\n            let suffix: String = cut(text, slo, i);\n            if !no_digits {\n                let g: diag::Diag = diag::new(\"E0104\", span(file, start, i), joined(\"literal suffix `\", suffix.as_str(), \"` is not allowed\").as_str());\n                if int_type(suffix.as_str()) {\n                    diags.push(diag::fix(g, \"remove the suffix\", Some(cut(text, start, digits_end))));\n                } else {\n                    diags.push(diag::fix(g, \"integer literals are digits in base 10, or after `0x`, `0o` or `0b`\", None));\n                }\n            }\n        }\n        if overflow {\n            diags.push(diag::new(\"E0105\", span(file, start, i), \"integer literal does not fit in 128 bits\"));\n        }\n        out.push(Token { tok: Tok::Int(v, radix), span: span(file, start, i) });\n        i\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/lexer.rs",
+      "old": "            }\n            out.push(Token {\n                tok: Tok::Int(v, radix),",
+      "new": "                diags.push(Diag::new(\n                    \"E0105\",\n                    sp(lo, i),\n                    \"integer literal does not fit in 128 bits\",\n                ));\n            }\n            out.push(Token {\n                tok: Tok::Int(v, radix),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,230 @@
+{
+ "id": "r06-rename-spec_loop",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `body::Body::spec_loop` to `spec_loop_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `check::Checker::spec_loop` to `spec_loop_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "check::Checker::expr_inner",
+   "check::Checker::spec_loop",
+   "check::Checker::spec_loop_renamed",
+   "check::Checker::stmt"
+  ],
+  "bmb": [
+   "body::Body::for_stmt",
+   "body::Body::loop_expr",
+   "body::Body::spec_loop",
+   "body::Body::spec_loop_renamed",
+   "body::Body::while_stmt"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.spec_loop(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());",
+     "new": "                    self.spec_loop_renamed(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.spec_loop(*span);",
+     "new": "                    self.spec_loop_renamed(*span);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "    fn spec_loop(&mut self, span: Span) {",
+     "new": "    fn spec_loop_renamed(&mut self, span: Span) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.spec_loop(e.span);",
+     "new": "                    self.spec_loop_renamed(e.span);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    impl Body {\n        #[effects(alloc)]\n        fn for_stmt(self: &mut Body, cx: &mut FnCtx, x: &ast::For, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(x.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(x.span);\n            }\n            let m: Mode = operand(mode);\n            let no: Option<ast::TypeKind> = None;\n            let mut lt: ast::TypeKind = ast::TypeKind::Error;\n            let mut ht: ast::TypeKind = ast::TypeKind::Error;\n            if untyped_literal(&x.lo, 1000000000) && !untyped_literal(&x.hi, 1000000000) {\n                ht = self.expr(cx, &x.hi, &no, m, f - 1);\n                let want_lo: Option<ast::TypeKind> = int_want(&ht);\n                lt = self.expr(cx, &x.lo, &want_lo, m, f - 1);\n            } else {\n                lt = self.expr(cx, &x.lo, &no, m, f - 1);\n                let want_hi: Option<ast::TypeKind> = int_want(&lt);\n                ht = self.expr(cx, &x.hi, &want_hi, m, f - 1);\n            }\n            if !types::is_int(&lt) && !types::is_error(&lt) {\n                self.c.help(\"E0401\", x.lo.span, types::cat3(\"a `for` range is of integers, found `\", types::text(&lt).as_str(), \"`\").as_str(), \"loop over integer bounds and index with them\");\n            }\n            if types::is_int(&lt) && types::is_int(&ht) && !types::same(&lt, &ht) {\n                self.c.help(\"E0401\", x.hi.span, types::cat5(\"the ends of a `for` range have one type: `\", types::text(&lt).as_str(), \"` and `\", types::text(&ht).as_str(), \"`\").as_str(), types::cat3(\"convert one end: `.. as \", types::text(&lt).as_str(), \"`\").as_str());\n            } else {\n                self.expect_ty(&ht, &lt, x.hi.span);\n            }\n            let scope: Vec<Local> = Vec::new();\n            cx.scopes.push(scope);\n            self.declare(cx, &x.var, lt, false, false);\n            types::add(&mut cx.for_vars, x.var.name.as_str());\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            for i in 0..x.invariants.len()\n                invariant 0 <= i && i <= x.invariants.len(),\n            {\n                let t: ast::TypeKind = self.expr(cx, &x.invariants[i], &wb, Mode::Spec(true), f - 1);\n                self.expect_ty(&t, &ast::TypeKind::Bool, x.invariants[i].span);\n            }\n            cx.loops.push(LoopCx { label: label_name(&x.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &x.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            cx.scopes.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, x.body.span);\n        }\n\n        #[effects(alloc)]\n        fn loop_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, lp: &ast::Loop, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(e.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(e.span);\n            }\n            let missing: source::Span = source::Span { file: e.span.file, lo: e.span.lo, hi: after4(e.span.lo) };\n            let measure: Option<ast::Expr> = unboxed(&lp.measure);\n            self.loop_clauses(cx, lp.invariants.as_slice(), &measure, missing, \"loop\", f - 1);\n            let value: Option<ast::TypeKind> = match expected {\n                None => None,\n                Some(x) => { if types::is_error(x) || is_never(x) { None } else { Some(x.clone()) } },\n            };\n            cx.loops.push(LoopCx { label: label_name(&lp.label), is_loop: true, value: value });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &lp.body, &wu, mode, f - 1);\n            let lc: Option<LoopCx> = cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, lp.body.span);\n            match lc {\n                None => ast::TypeKind::Never,\n                Some(l) => { match &l.value { None => ast::TypeKind::Never, Some(v) => v.clone(), } },\n            }\n        }\n\n        #[effects(alloc)]\n        fn spec_loop_renamed(self: &mut Body, span: source::Span) -> () {\n            self.c.help(\"E0503\", span, \"loops are not allowed in a specification\", \"state the property with `forall`, or with a recursive spec fn and `decreases`\");\n        }\n\n        #[effects(alloc)]\n        fn while_stmt(self: &mut Body, cx: &mut FnCtx, w: &ast::While, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(w.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(w.span);\n            }\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let ct: ast::TypeKind = self.expr(cx, &w.cond, &wb, operand(mode), f - 1);\n            self.expect_ty(&ct, &ast::TypeKind::Bool, w.cond.span);\n            let missing: source::Span = source::Span { file: w.span.file, lo: w.span.lo, hi: w.cond.span.hi };\n            self.loop_clauses(cx, w.invariants.as_slice(), &w.measure, missing, \"while\", f - 1);\n            cx.loops.push(LoopCx { label: label_name(&w.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &w.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, w.body.span);\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "body",
+     "remove": [
+      "body::Body::spec_loop"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "body",
+      "code": "    impl Body {\n        #[effects(alloc)]\n        fn for_stmt(self: &mut Body, cx: &mut FnCtx, x: &ast::For, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(x.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(x.span);\n            }\n            let m: Mode = operand(mode);\n            let no: Option<ast::TypeKind> = None;\n            let mut lt: ast::TypeKind = ast::TypeKind::Error;\n            let mut ht: ast::TypeKind = ast::TypeKind::Error;\n            if untyped_literal(&x.lo, 1000000000) && !untyped_literal(&x.hi, 1000000000) {\n                ht = self.expr(cx, &x.hi, &no, m, f - 1);\n                let want_lo: Option<ast::TypeKind> = int_want(&ht);\n                lt = self.expr(cx, &x.lo, &want_lo, m, f - 1);\n            } else {\n                lt = self.expr(cx, &x.lo, &no, m, f - 1);\n                let want_hi: Option<ast::TypeKind> = int_want(&lt);\n                ht = self.expr(cx, &x.hi, &want_hi, m, f - 1);\n            }\n            if !types::is_int(&lt) && !types::is_error(&lt) {\n                self.c.help(\"E0401\", x.lo.span, types::cat3(\"a `for` range is of integers, found `\", types::text(&lt).as_str(), \"`\").as_str(), \"loop over integer bounds and index with them\");\n            }\n            if types::is_int(&lt) && types::is_int(&ht) && !types::same(&lt, &ht) {\n                self.c.help(\"E0401\", x.hi.span, types::cat5(\"the ends of a `for` range have one type: `\", types::text(&lt).as_str(), \"` and `\", types::text(&ht).as_str(), \"`\").as_str(), types::cat3(\"convert one end: `.. as \", types::text(&lt).as_str(), \"`\").as_str());\n            } else {\n                self.expect_ty(&ht, &lt, x.hi.span);\n            }\n            let scope: Vec<Local> = Vec::new();\n            cx.scopes.push(scope);\n            self.declare(cx, &x.var, lt, false, false);\n            types::add(&mut cx.for_vars, x.var.name.as_str());\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            for i in 0..x.invariants.len()\n                invariant 0 <= i && i <= x.invariants.len(),\n            {\n                let t: ast::TypeKind = self.expr(cx, &x.invariants[i], &wb, Mode::Spec(true), f - 1);\n                self.expect_ty(&t, &ast::TypeKind::Bool, x.invariants[i].span);\n            }\n            cx.loops.push(LoopCx { label: label_name(&x.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &x.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            cx.scopes.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, x.body.span);\n        }\n\n        #[effects(alloc)]\n        fn loop_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, lp: &ast::Loop, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(e.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(e.span);\n            }\n            let missing: source::Span = source::Span { file: e.span.file, lo: e.span.lo, hi: after4(e.span.lo) };\n            let measure: Option<ast::Expr> = unboxed(&lp.measure);\n            self.loop_clauses(cx, lp.invariants.as_slice(), &measure, missing, \"loop\", f - 1);\n            let value: Option<ast::TypeKind> = match expected {\n                None => None,\n                Some(x) => { if types::is_error(x) || is_never(x) { None } else { Some(x.clone()) } },\n            };\n            cx.loops.push(LoopCx { label: label_name(&lp.label), is_loop: true, value: value });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &lp.body, &wu, mode, f - 1);\n            let lc: Option<LoopCx> = cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, lp.body.span);\n            match lc {\n                None => ast::TypeKind::Never,\n                Some(l) => { match &l.value { None => ast::TypeKind::Never, Some(v) => v.clone(), } },\n            }\n        }\n\n        #[effects(alloc)]\n        fn spec_loop_renamed(self: &mut Body, span: source::Span) -> () {\n            self.c.help(\"E0503\", span, \"loops are not allowed in a specification\", \"state the property with `forall`, or with a recursive spec fn and `decreases`\");\n        }\n\n        #[effects(alloc)]\n        fn while_stmt(self: &mut Body, cx: &mut FnCtx, w: &ast::While, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(w.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(w.span);\n            }\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let ct: ast::TypeKind = self.expr(cx, &w.cond, &wb, operand(mode), f - 1);\n            self.expect_ty(&ct, &ast::TypeKind::Bool, w.cond.span);\n            let missing: source::Span = source::Span { file: w.span.file, lo: w.span.lo, hi: w.cond.span.hi };\n            self.loop_clauses(cx, w.invariants.as_slice(), &w.measure, missing, \"while\", f - 1);\n            cx.loops.push(LoopCx { label: label_name(&w.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &w.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, w.body.span);\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "body",
+      "remove": [
+       "body::Body::spec_loop"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());",
+      "new": "                    self.spec_loop_renamed(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(*span);",
+      "new": "                    self.spec_loop_renamed(*span);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    fn spec_loop(&mut self, span: Span) {",
+      "new": "    fn spec_loop_renamed(&mut self, span: Span) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(e.span);",
+      "new": "                    self.spec_loop_renamed(e.span);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "body",
+      "code": "    impl Body {\n        #[effects(alloc)]\n        fn for_stmt(self: &mut Body, cx: &mut FnCtx, x: &ast::For, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(x.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(x.span);\n            }\n            let m: Mode = operand(mode);\n            let no: Option<ast::TypeKind> = None;\n            let mut lt: ast::TypeKind = ast::TypeKind::Error;\n            let mut ht: ast::TypeKind = ast::TypeKind::Error;\n            if untyped_literal(&x.lo, 1000000000) && !untyped_literal(&x.hi, 1000000000) {\n                ht = self.expr(cx, &x.hi, &no, m, f - 1);\n                let want_lo: Option<ast::TypeKind> = int_want(&ht);\n                lt = self.expr(cx, &x.lo, &want_lo, m, f - 1);\n            } else {\n                lt = self.expr(cx, &x.lo, &no, m, f - 1);\n                let want_hi: Option<ast::TypeKind> = int_want(&lt);\n                ht = self.expr(cx, &x.hi, &want_hi, m, f - 1);\n            }\n            if !types::is_int(&lt) && !types::is_error(&lt) {\n                self.c.help(\"E0401\", x.lo.span, types::cat3(\"a `for` range is of integers, found `\", types::text(&lt).as_str(), \"`\").as_str(), \"loop over integer bounds and index with them\");\n            }\n            if types::is_int(&lt) && types::is_int(&ht) && !types::same(&lt, &ht) {\n                self.c.help(\"E0401\", x.hi.span, types::cat5(\"the ends of a `for` range have one type: `\", types::text(&lt).as_str(), \"` and `\", types::text(&ht).as_str(), \"`\").as_str(), types::cat3(\"convert one end: `.. as \", types::text(&lt).as_str(), \"`\").as_str());\n            } else {\n                self.expect_ty(&ht, &lt, x.hi.span);\n            }\n            let scope: Vec<Local> = Vec::new();\n            cx.scopes.push(scope);\n            self.declare(cx, &x.var, lt, false, false);\n            types::add(&mut cx.for_vars, x.var.name.as_str());\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            for i in 0..x.invariants.len()\n                invariant 0 <= i && i <= x.invariants.len(),\n            {\n                let t: ast::TypeKind = self.expr(cx, &x.invariants[i], &wb, Mode::Spec(true), f - 1);\n                self.expect_ty(&t, &ast::TypeKind::Bool, x.invariants[i].span);\n            }\n            cx.loops.push(LoopCx { label: label_name(&x.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &x.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            cx.scopes.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, x.body.span);\n        }\n\n        #[effects(alloc)]\n        fn loop_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, lp: &ast::Loop, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(e.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(e.span);\n            }\n            let missing: source::Span = source::Span { file: e.span.file, lo: e.span.lo, hi: after4(e.span.lo) };\n            let measure: Option<ast::Expr> = unboxed(&lp.measure);\n            self.loop_clauses(cx, lp.invariants.as_slice(), &measure, missing, \"loop\", f - 1);\n            let value: Option<ast::TypeKind> = match expected {\n                None => None,\n                Some(x) => { if types::is_error(x) || is_never(x) { None } else { Some(x.clone()) } },\n            };\n            cx.loops.push(LoopCx { label: label_name(&lp.label), is_loop: true, value: value });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &lp.body, &wu, mode, f - 1);\n            let lc: Option<LoopCx> = cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, lp.body.span);\n            match lc {\n                None => ast::TypeKind::Never,\n                Some(l) => { match &l.value { None => ast::TypeKind::Never, Some(v) => v.clone(), } },\n            }\n        }\n\n        #[effects(alloc)]\n        fn spec_loop_renamed(self: &mut Body, span: source::Span) -> () {\n            self.c.help(\"E0503\", span, \"loops are not allowed in a specification\", \"state the property with `forall`, or with a recursive spec fn and `decreases`\");\n        }\n\n        #[effects(alloc)]\n        fn while_stmt(self: &mut Body, cx: &mut FnCtx, w: &ast::While, mode: Mode, f: usize) -> ()\n            decreases f * 3,\n        {\n            if f == 0 {\n                return;\n            }\n            if ghost_mode(mode) {\n                self.ghost_loop(w.span);\n            } else if !exec_mode(mode) {\n                self.spec_loop_renamed(w.span);\n            }\n            let wb: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let ct: ast::TypeKind = self.expr(cx, &w.cond, &wb, operand(mode), f - 1);\n            self.expect_ty(&ct, &ast::TypeKind::Bool, w.cond.span);\n            let missing: source::Span = source::Span { file: w.span.file, lo: w.span.lo, hi: w.cond.span.hi };\n            self.loop_clauses(cx, w.invariants.as_slice(), &w.measure, missing, \"while\", f - 1);\n            cx.loops.push(LoopCx { label: label_name(&w.label), is_loop: false, value: None });\n            let wu: Option<ast::TypeKind> = Some(ast::TypeKind::Unit);\n            let bt: ast::TypeKind = self.block(cx, &w.body, &wu, mode, f - 1);\n            cx.loops.pop();\n            self.expect_ty(&bt, &ast::TypeKind::Unit, w.body.span);\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "body",
+      "remove": [
+       "body::Body::spec_loop"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());",
+      "new": "                    self.spec_loop_renamed(*span);\n                }\n                let ct = self.expr(cx, cond, Some(&TypeKind::Bool), mode.operand());"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(*span);",
+      "new": "                    self.spec_loop_renamed(*span);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    fn spec_loop(&mut self, span: Span) {",
+      "new": "    fn spec_loop_renamed(&mut self, span: Span) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    self.spec_loop(e.span);",
+      "new": "                    self.spec_loop_renamed(e.span);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

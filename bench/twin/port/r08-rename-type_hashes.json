@@ -1,5 +1,5 @@
 {
- "id": "r04-rename-type_hashes",
+ "id": "r08-rename-type_hashes",
  "kind": "change",
  "family": "rename",
  "fixture": "port",

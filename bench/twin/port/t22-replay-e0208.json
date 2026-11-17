@@ -1,0 +1,119 @@
+{
+ "id": "t22-replay-e0208",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0208",
+  "commit": "d3949466e",
+  "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0208 yet: lifetime annotations are not allowed. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn lifetimes(a: &'a [i64]) -> i64 { 0 }\n    {\"code\": \"E0208\", \"severity\": \"error\", \"message\": \"lifetime annotations are not allowed\", \"file\": \"err/rust_habits.bmb\", \"line\": 33, \"col\": 22, \"end_line\": 33, \"end_col\": 24, \"fix\": {\"message\": \"remove the lifetime; references are second-class and need none\", \"replacement\": \"\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/lexer.rs",
+     "old": "                diags.push(\n                    Diag::new(\"E0208\", sp(lo, i), \"lifetime annotations are not allowed\").fix(\n                        \"remove the lifetime; references are second-class and need none\",\n                        Some(String::new()),\n                    ),\n                );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "lexer",
+     "code": "    #[effects(alloc)]\n    fn quote(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let mut i: usize = start + 1;\n        while i < n && word(at(text, i, 0))\n            invariant i <= n, i > start,\n            decreases n - i,\n        {\n            i = i + 1;\n        }\n        let j: usize = after_comments(text, i);\n        let before_loop: bool = at(text, j, 0) == 58 && at(text, j, 1) != 58;\n        let closed: bool = at(text, i, 0) == 39;\n        if i > start + 1 && (after_jump(out.as_slice()) || before_loop) && !closed {\n            out.push(Token { tok: Tok::Label(cut(text, start + 1, i)), span: span(file, start, i) });\n            return i;\n        }\n        if closed {\n            i = i + 1;\n            diags.push(diag::fix(diag::new(\"E0101\", span(file, start, i), \"a character literal holds one character\"), \"several characters are a string: `\\\"...\\\"`\", None));\n            out.push(Token { tok: Tok::Char(0), span: span(file, start, i) });\n        } else {\n        }\n        i\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-rust_habits",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rust_habits.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/lexer.rs",
+     "old": "            }\n            continue;\n        }\n        for set in [PUNCT3, PUNCT2, PUNCT1] {",
+     "new": "                diags.push(\n                    Diag::new(\"E0208\", sp(lo, i), \"lifetime annotations are not allowed\").fix(\n                        \"remove the lifetime; references are second-class and need none\",\n                        Some(String::new()),\n                    ),\n                );\n            }\n            continue;\n        }\n        for set in [PUNCT3, PUNCT2, PUNCT1] {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "lexer",
+     "code": "    #[effects(alloc)]\n    fn quote(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let mut i: usize = start + 1;\n        while i < n && word(at(text, i, 0))\n            invariant i <= n, i > start,\n            decreases n - i,\n        {\n            i = i + 1;\n        }\n        let j: usize = after_comments(text, i);\n        let before_loop: bool = at(text, j, 0) == 58 && at(text, j, 1) != 58;\n        let closed: bool = at(text, i, 0) == 39;\n        if i > start + 1 && (after_jump(out.as_slice()) || before_loop) && !closed {\n            out.push(Token { tok: Tok::Label(cut(text, start + 1, i)), span: span(file, start, i) });\n            return i;\n        }\n        if closed {\n            i = i + 1;\n            diags.push(diag::fix(diag::new(\"E0101\", span(file, start, i), \"a character literal holds one character\"), \"several characters are a string: `\\\"...\\\"`\", None));\n            out.push(Token { tok: Tok::Char(0), span: span(file, start, i) });\n        } else {\n            diags.push(diag::fix(diag::new(\"E0208\", span(file, start, i), \"lifetime annotations are not allowed\"), \"remove the lifetime; references are second-class and need none\", Some(String::new())));\n        }\n        i\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "lexer",
+      "code": "    #[effects(alloc)]\n    fn quote(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize\n        requires start < text.len(),\n    {\n        let n: usize = text.len();\n        let mut i: usize = start + 1;\n        while i < n && word(at(text, i, 0))\n            invariant i <= n, i > start,\n            decreases n - i,\n        {\n            i = i + 1;\n        }\n        let j: usize = after_comments(text, i);\n        let before_loop: bool = at(text, j, 0) == 58 && at(text, j, 1) != 58;\n        let closed: bool = at(text, i, 0) == 39;\n        if i > start + 1 && (after_jump(out.as_slice()) || before_loop) && !closed {\n            out.push(Token { tok: Tok::Label(cut(text, start + 1, i)), span: span(file, start, i) });\n            return i;\n        }\n        if closed {\n            i = i + 1;\n            diags.push(diag::fix(diag::new(\"E0101\", span(file, start, i), \"a character literal holds one character\"), \"several characters are a string: `\\\"...\\\"`\", None));\n            out.push(Token { tok: Tok::Char(0), span: span(file, start, i) });\n        } else {\n            diags.push(diag::fix(diag::new(\"E0208\", span(file, start, i), \"lifetime annotations are not allowed\"), \"remove the lifetime; references are second-class and need none\", Some(String::new())));\n        }\n        i\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/lexer.rs",
+      "old": "            }\n            continue;\n        }\n        for set in [PUNCT3, PUNCT2, PUNCT1] {",
+      "new": "                diags.push(\n                    Diag::new(\"E0208\", sp(lo, i), \"lifetime annotations are not allowed\").fix(\n                        \"remove the lifetime; references are second-class and need none\",\n                        Some(String::new()),\n                    ),\n                );\n            }\n            continue;\n        }\n        for set in [PUNCT3, PUNCT2, PUNCT1] {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

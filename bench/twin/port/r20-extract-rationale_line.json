@@ -1,0 +1,150 @@
+{
+ "id": "r20-extract-rationale_line",
+ "kind": "change",
+ "family": "extract",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "In the function `fmt::Printer::rationale_line`, move the building of the line's text (`#[rationale(..)]`) into a new function `fmt::rationale_text` in the same unit and call it from `fmt::Printer::rationale_line`. The program's behaviour must not change; change nothing else.",
+  "rust": "In the function `fmt::Printer::rationale_line`, move the building of the line's text (`#[rationale(..)]`) into a new function `fmt::rationale_text` in the same file and call it from `fmt::Printer::rationale_line`. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "fmt::Printer::rationale_line",
+   "fmt::rationale_text"
+  ],
+  "bmb": [
+   "fmt::Printer::rationale_line",
+   "fmt::rationale_text"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n            self.line(depth, &format!(\"#[rationale({})]\", args.join(\", \")));",
+     "new": "            self.line(depth, &rationale_text(a));"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "fn attr_arg(x: &AttrArg) -> String {",
+     "new": "fn rationale_text(a: &Attr) -> String {\n    let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n    format!(\"#[rationale({})]\", args.join(\", \"))\n}\n\nfn attr_arg(x: &AttrArg) -> String {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "code": "    #[effects(alloc)]\n    fn rationale_text(a: &ast::Attr) -> String {\n        let mut row: String = String::from(\"#[rationale(\");\n        row.push_str(attr_args(a.args.as_slice()).as_str());\n        row.push_str(\")]\");\n        row\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn rationale_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            self.line(depth, rationale_text(a).as_str());\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(alloc)]\n    fn rationale_text(a: &ast::Attr) -> String {\n        let mut row: String = String::from(\"#[rationale(\");\n        row.push_str(attr_args(a.args.as_slice()).as_str());\n        row.push_str(\")]\");\n        row\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn rationale_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            self.line(depth, rationale_text(a).as_str());\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n            self.line(depth, &format!(\"#[rationale({})]\", args.join(\", \")));",
+      "new": "            self.line(depth, &rationale_text(a));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "fn attr_arg(x: &AttrArg) -> String {",
+      "new": "fn rationale_text(a: &Attr) -> String {\n    let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n    format!(\"#[rationale({})]\", args.join(\", \"))\n}\n\nfn attr_arg(x: &AttrArg) -> String {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(alloc)]\n    fn rationale_text(a: &ast::Attr) -> String {\n        let mut row: String = String::from(\"#[rationale(\");\n        row.push_str(attr_args(a.args.as_slice()).as_str());\n        row.push_str(\")]\");\n        row\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn rationale_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            self.line(depth, rationale_text(a).as_str());\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n            self.line(depth, &format!(\"#[rationale({})]\", args.join(\", \")));",
+      "new": "            self.line(depth, &rationale_text(a));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "fn attr_arg(x: &AttrArg) -> String {",
+      "new": "fn rationale_text(a: &Attr) -> String {\n    let args: Vec<String> = a.args.iter().map(attr_arg).collect();\n    format!(\"#[rationale({})]\", args.join(\", \"))\n}\n\nfn attr_arg(x: &AttrArg) -> String {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,119 @@
+{
+ "id": "t13-replay-e0238",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0238",
+  "commit": "870b70497",
+  "subject": "2O-01: Box<T> through checker, moves, prover and code generation"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0238 yet: `Rc`, `RefCell`, `Cell` and `Arc` are not used: values have one owner. It came with the commit \"2O-01: Box<T> through checker, moves, prover and code generation\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    struct Shared { r: Rc<Pt> }\n    {\"code\": \"E0238\", \"severity\": \"error\", \"message\": \"`Rc` is not used: values have one owner\", \"file\": \"err/boxes.bmb\", \"line\": 19, \"col\": 24, \"end_line\": 19, \"end_col\": 30, \"fix\": {\"message\": \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                        self.diags.push(\n                            Diag::new(\n                                \"E0238\",\n                                t.span,\n                                format!(\"`{last}` is not used: values have one owner\"),\n                            )\n                            .fix(\n                                \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\",\n                                None,\n                            ),\n                        );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn canon_named(self: &mut Checker, span: source::Span, path: &[String], args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && types::is_tparam(self.tparams.as_slice(), path[0].as_str()) {\n                if args.len() > 0 && report {\n                    self.fixed(\"E0420\", span, types::cat3(\"type parameter `\", path[0].as_str(), \"` takes no type arguments\").as_str(), types::cat3(\"write `\", path[0].as_str(), \"`\").as_str(), path[0].as_str());\n                }\n                return ast::TypeKind::Param(path[0].clone());\n            }\n            let name: String = types::join(path, \"::\");\n            if name.as_str() == \"Self\" {\n                let head: Option<ast::TypeKind> = match &self.self_head {\n                    None => None,\n                    Some(sh) => Some(sh.head.clone()),\n                };\n                match head {\n                    None => {},\n                    Some(h) => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } return h; },\n                }\n            }\n            if path.len() == 1 && name.as_str() == \"Vec\" {\n                return self.vec_type(span, args, mp, report, f - 1);\n            }\n            if path.len() == 1 && name.as_str() == \"Box\" {\n                return self.box_type(span, args, mp, report, f - 1);\n            }\n            let last_s: String = path[path.len() - 1].clone();\n            let here: String = types::cat3(mp, \"::\", name.as_str());\n            if (path.len() == 1 || path[0].as_str() == \"std\") && (last_s.as_str() == \"Rc\" || last_s.as_str() == \"RefCell\" || last_s.as_str() == \"Cell\" || last_s.as_str() == \"Arc\") && !self.adts.has(here.as_str()) {\n                if report {\n                }\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && name.as_str() == \"String\" && !self.adts.has(here.as_str()) {\n                if args.len() > 0 {\n                    if report {\n                        self.err(\"E0420\", span, \"`String` takes no type arguments\");\n                    }\n                    return ast::TypeKind::Error;\n                }\n                return ast::TypeKind::String;\n            }\n            if path.len() == 1 && (name.as_str() == \"Option\" || name.as_str() == \"Result\") {\n                let want: usize = if name.as_str() == \"Option\" {\n                    1\n                } else {\n                    2\n                };\n                if args.len() != want {\n                    if report {\n                        self.err(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), want, \" type argument(s), found \", args.len(), \"\").as_str());\n                    }\n                    return ast::TypeKind::Error;\n                }\n                let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1);\n                for i in 0..out.len()\n                    invariant 0 <= i && i <= out.len(),\n                {\n                    if is_ref_like(&out[i].kind) {\n                        if report {\n                            self.help(\"E0403\", out[i].span, types::cat5(\"type argument `\", types::text(&out[i].kind).as_str(), \"` of `\", name.as_str(), \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                        }\n                        return ast::TypeKind::Error;\n                    }\n                }\n                let mut p: Vec<String> = Vec::new();\n                p.push(path[0].clone());\n                return ast::TypeKind::Named(p, out);\n            }\n            let full: String = if path.len() == 1 {\n                here\n            } else {\n                let dropped: String = here;\n                name.clone()\n            };\n            match self.adts.find(full.as_str()) {\n                None => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } ast::TypeKind::Error },\n                Some(at) => { let ps: Vec<types::TParam> = self.adts.items[at].generics.clone(); if args.len() != ps.len() { if report { let wanted: String = if ps.len() == 0 { types::cat5(\"`\", name.as_str(), \"` has no type parameters: write `\", name.as_str(), \"`\") } else { types::cat5(\"write one type for each parameter: `\", name.as_str(), \"<\", param_names(ps.as_slice(), \", \").as_str(), \">`\") }; self.help(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), ps.len(), \" type argument(s), found \", args.len(), \"\").as_str(), wanted.as_str()); } return ast::TypeKind::Error; } let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1); let mut ok: bool = true; for i in 0..out.len() invariant 0 <= i && i <= out.len(), { if i < ps.len() { if !self.targ_ok(&out[i].kind, &ps[i], name.as_str(), out[i].span, report) { ok = false; } } } if !ok { return ast::TypeKind::Error; } ast::TypeKind::Named(refs::split_path(full.as_str()), out) },\n            }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-boxes",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/boxes.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    }\n                    return TypeKind::Error;\n                }\n                if path.len() == 1",
+     "new": "                        self.diags.push(\n                            Diag::new(\n                                \"E0238\",\n                                t.span,\n                                format!(\"`{last}` is not used: values have one owner\"),\n                            )\n                            .fix(\n                                \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\",\n                                None,\n                            ),\n                        );\n                    }\n                    return TypeKind::Error;\n                }\n                if path.len() == 1"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn canon_named(self: &mut Checker, span: source::Span, path: &[String], args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && types::is_tparam(self.tparams.as_slice(), path[0].as_str()) {\n                if args.len() > 0 && report {\n                    self.fixed(\"E0420\", span, types::cat3(\"type parameter `\", path[0].as_str(), \"` takes no type arguments\").as_str(), types::cat3(\"write `\", path[0].as_str(), \"`\").as_str(), path[0].as_str());\n                }\n                return ast::TypeKind::Param(path[0].clone());\n            }\n            let name: String = types::join(path, \"::\");\n            if name.as_str() == \"Self\" {\n                let head: Option<ast::TypeKind> = match &self.self_head {\n                    None => None,\n                    Some(sh) => Some(sh.head.clone()),\n                };\n                match head {\n                    None => {},\n                    Some(h) => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } return h; },\n                }\n            }\n            if path.len() == 1 && name.as_str() == \"Vec\" {\n                return self.vec_type(span, args, mp, report, f - 1);\n            }\n            if path.len() == 1 && name.as_str() == \"Box\" {\n                return self.box_type(span, args, mp, report, f - 1);\n            }\n            let last_s: String = path[path.len() - 1].clone();\n            let here: String = types::cat3(mp, \"::\", name.as_str());\n            if (path.len() == 1 || path[0].as_str() == \"std\") && (last_s.as_str() == \"Rc\" || last_s.as_str() == \"RefCell\" || last_s.as_str() == \"Cell\" || last_s.as_str() == \"Arc\") && !self.adts.has(here.as_str()) {\n                if report {\n                    self.help(\"E0238\", span, types::cat3(\"`\", last_s.as_str(), \"` is not used: values have one owner\").as_str(), \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\");\n                }\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && name.as_str() == \"String\" && !self.adts.has(here.as_str()) {\n                if args.len() > 0 {\n                    if report {\n                        self.err(\"E0420\", span, \"`String` takes no type arguments\");\n                    }\n                    return ast::TypeKind::Error;\n                }\n                return ast::TypeKind::String;\n            }\n            if path.len() == 1 && (name.as_str() == \"Option\" || name.as_str() == \"Result\") {\n                let want: usize = if name.as_str() == \"Option\" {\n                    1\n                } else {\n                    2\n                };\n                if args.len() != want {\n                    if report {\n                        self.err(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), want, \" type argument(s), found \", args.len(), \"\").as_str());\n                    }\n                    return ast::TypeKind::Error;\n                }\n                let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1);\n                for i in 0..out.len()\n                    invariant 0 <= i && i <= out.len(),\n                {\n                    if is_ref_like(&out[i].kind) {\n                        if report {\n                            self.help(\"E0403\", out[i].span, types::cat5(\"type argument `\", types::text(&out[i].kind).as_str(), \"` of `\", name.as_str(), \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                        }\n                        return ast::TypeKind::Error;\n                    }\n                }\n                let mut p: Vec<String> = Vec::new();\n                p.push(path[0].clone());\n                return ast::TypeKind::Named(p, out);\n            }\n            let full: String = if path.len() == 1 {\n                here\n            } else {\n                let dropped: String = here;\n                name.clone()\n            };\n            match self.adts.find(full.as_str()) {\n                None => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } ast::TypeKind::Error },\n                Some(at) => { let ps: Vec<types::TParam> = self.adts.items[at].generics.clone(); if args.len() != ps.len() { if report { let wanted: String = if ps.len() == 0 { types::cat5(\"`\", name.as_str(), \"` has no type parameters: write `\", name.as_str(), \"`\") } else { types::cat5(\"write one type for each parameter: `\", name.as_str(), \"<\", param_names(ps.as_slice(), \", \").as_str(), \">`\") }; self.help(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), ps.len(), \" type argument(s), found \", args.len(), \"\").as_str(), wanted.as_str()); } return ast::TypeKind::Error; } let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1); let mut ok: bool = true; for i in 0..out.len() invariant 0 <= i && i <= out.len(), { if i < ps.len() { if !self.targ_ok(&out[i].kind, &ps[i], name.as_str(), out[i].span, report) { ok = false; } } } if !ok { return ast::TypeKind::Error; } ast::TypeKind::Named(refs::split_path(full.as_str()), out) },\n            }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn canon_named(self: &mut Checker, span: source::Span, path: &[String], args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && types::is_tparam(self.tparams.as_slice(), path[0].as_str()) {\n                if args.len() > 0 && report {\n                    self.fixed(\"E0420\", span, types::cat3(\"type parameter `\", path[0].as_str(), \"` takes no type arguments\").as_str(), types::cat3(\"write `\", path[0].as_str(), \"`\").as_str(), path[0].as_str());\n                }\n                return ast::TypeKind::Param(path[0].clone());\n            }\n            let name: String = types::join(path, \"::\");\n            if name.as_str() == \"Self\" {\n                let head: Option<ast::TypeKind> = match &self.self_head {\n                    None => None,\n                    Some(sh) => Some(sh.head.clone()),\n                };\n                match head {\n                    None => {},\n                    Some(h) => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } return h; },\n                }\n            }\n            if path.len() == 1 && name.as_str() == \"Vec\" {\n                return self.vec_type(span, args, mp, report, f - 1);\n            }\n            if path.len() == 1 && name.as_str() == \"Box\" {\n                return self.box_type(span, args, mp, report, f - 1);\n            }\n            let last_s: String = path[path.len() - 1].clone();\n            let here: String = types::cat3(mp, \"::\", name.as_str());\n            if (path.len() == 1 || path[0].as_str() == \"std\") && (last_s.as_str() == \"Rc\" || last_s.as_str() == \"RefCell\" || last_s.as_str() == \"Cell\" || last_s.as_str() == \"Arc\") && !self.adts.has(here.as_str()) {\n                if report {\n                    self.help(\"E0238\", span, types::cat3(\"`\", last_s.as_str(), \"` is not used: values have one owner\").as_str(), \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\");\n                }\n                return ast::TypeKind::Error;\n            }\n            if path.len() == 1 && name.as_str() == \"String\" && !self.adts.has(here.as_str()) {\n                if args.len() > 0 {\n                    if report {\n                        self.err(\"E0420\", span, \"`String` takes no type arguments\");\n                    }\n                    return ast::TypeKind::Error;\n                }\n                return ast::TypeKind::String;\n            }\n            if path.len() == 1 && (name.as_str() == \"Option\" || name.as_str() == \"Result\") {\n                let want: usize = if name.as_str() == \"Option\" {\n                    1\n                } else {\n                    2\n                };\n                if args.len() != want {\n                    if report {\n                        self.err(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), want, \" type argument(s), found \", args.len(), \"\").as_str());\n                    }\n                    return ast::TypeKind::Error;\n                }\n                let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1);\n                for i in 0..out.len()\n                    invariant 0 <= i && i <= out.len(),\n                {\n                    if is_ref_like(&out[i].kind) {\n                        if report {\n                            self.help(\"E0403\", out[i].span, types::cat5(\"type argument `\", types::text(&out[i].kind).as_str(), \"` of `\", name.as_str(), \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                        }\n                        return ast::TypeKind::Error;\n                    }\n                }\n                let mut p: Vec<String> = Vec::new();\n                p.push(path[0].clone());\n                return ast::TypeKind::Named(p, out);\n            }\n            let full: String = if path.len() == 1 {\n                here\n            } else {\n                let dropped: String = here;\n                name.clone()\n            };\n            match self.adts.find(full.as_str()) {\n                None => { if report { let d: diag::Diag = self.unknown_type(path, span, mp); self.diags.push(d); } ast::TypeKind::Error },\n                Some(at) => { let ps: Vec<types::TParam> = self.adts.items[at].generics.clone(); if args.len() != ps.len() { if report { let wanted: String = if ps.len() == 0 { types::cat5(\"`\", name.as_str(), \"` has no type parameters: write `\", name.as_str(), \"`\") } else { types::cat5(\"write one type for each parameter: `\", name.as_str(), \"<\", param_names(ps.as_slice(), \", \").as_str(), \">`\") }; self.help(\"E0420\", span, counts(types::cat3(\"`\", name.as_str(), \"` takes \").as_str(), ps.len(), \" type argument(s), found \", args.len(), \"\").as_str(), wanted.as_str()); } return ast::TypeKind::Error; } let out: Vec<ast::Type> = self.canon_args(args, mp, report, f - 1); let mut ok: bool = true; for i in 0..out.len() invariant 0 <= i && i <= out.len(), { if i < ps.len() { if !self.targ_ok(&out[i].kind, &ps[i], name.as_str(), out[i].span, report) { ok = false; } } } if !ok { return ast::TypeKind::Error; } ast::TypeKind::Named(refs::split_path(full.as_str()), out) },\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                    }\n                    return TypeKind::Error;\n                }\n                if path.len() == 1",
+      "new": "                        self.diags.push(\n                            Diag::new(\n                                \"E0238\",\n                                t.span,\n                                format!(\"`{last}` is not used: values have one owner\"),\n                            )\n                            .fix(\n                                \"hold the value in an owned tree (`Box`, `Vec`) or refer to it by an index into a `Vec` (ADR-0047 §5)\",\n                                None,\n                            ),\n                        );\n                    }\n                    return TypeKind::Error;\n                }\n                if path.len() == 1"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

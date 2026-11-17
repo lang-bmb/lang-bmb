@@ -1,0 +1,441 @@
+{
+ "id": "h02-history-e0501",
+ "family": "history",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                        self.diags.push(\n                            Diag::new(\n                                \"E0255\",\n                                a.span,\n                                format!(\n                                    \"`{}` has more than one `#[invariant(..)]`\",\n                                    t.name.name\n                                ),\n                            )\n                            .fix(\n                                \"state every condition in one predicate joined with `&&`, and keep one attribute\",\n                                None,\n                            ),\n                        );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.diags.push(\n                        Diag::new(\n                            \"E0501\",\n                            e.span,\n                            \"a contract clause with a quantifier is not a named predicate\",\n                        )\n                        .fix(\n                            \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\",\n                            None,\n                        ),\n                    );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(\n                Diag::new(\"E0250\", span, format!(\"`{what}` outside a loop\")).fix(\n                    \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\",\n                    None,\n                ),\n            );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                    self.diags.push(\n                        Diag::new(\n                            \"E0603\",\n                            span,\n                            format!(\"`{name}` has effect `io`, but `{}` is `pure`\", cx.path),\n                        )\n                        .fix(\n                            format!(\n                                \"declare `#[effects(io)]` on `{}`, or move the call out of it\",\n                                cx.path\n                            ),\n                            None,\n                        ),\n                    );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(\n                Diag::new(\"E0513\", span, \"conversions are not used in specifications\").fix(\n                    \"integer types mix in specifications (ADR-0022): write the value\",\n                    Some(x),\n                ),\n            );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    impl Body {\n        #[effects(alloc)]\n        fn call_kind(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], sig: &types::FnSig, target: &str, quoted: &str, span: source::Span, mode: Mode) -> () {\n            let caller: String = cx.path.clone();\n            if is_proof(sig.kind) {\n                if exec_mode(mode) {\n                    let whole: ast::Expr = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: idents(path), targs: targs_copy(targs), args: exprs_copy(args), method: None }), span: span };\n                    let r: String = types::cat3(\"proof { \", fmt::expr_text(&whole).as_str(), \"; }\");\n                    self.c.fixed(\"E0258\", span, types::cat2(quoted, \" is a `proof fn`: executable code calls it in a `proof { .. }` block\").as_str(), types::cat3(\"wrap the call: `\", r.as_str(), \"`\").as_str(), r.as_str());\n                } else if ghost_mode(mode) {\n                    self.add_call(caller.as_str(), target);\n                } else {\n                    self.c.help(\"E0258\", span, types::cat2(quoted, \" is a `proof fn` and has no value in a specification\").as_str(), \"call it as a statement of a `proof { .. }` block or a `proof fn`; its `ensures` then hold after the call\");\n                }\n            } else if is_exec(sig.kind) {\n                if exec_mode(mode) {\n                    need(cx, sig.effect, types::cat2(\"a call of \", quoted).as_str());\n                    if types::is_pure(cx.effect) && sig.effect.io {\n                    }\n                    self.add_call(caller.as_str(), target);\n                } else if ghost_mode(mode) || cx.ghost {\n                    self.ghost_violation(span, types::cat2(\"a call of executable function \", quoted).as_str(), \"call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`\");\n                } else {\n                    self.c.err(\"E0504\", span, types::cat2(quoted, \" is executable and cannot be called from a specification\").as_str());\n                }\n            } else if exec_mode(mode) {\n                self.c.err(\"E0505\", span, types::cat2(quoted, \" is a spec function and cannot be called from executable code\").as_str());\n            } else {\n                self.add_call(caller.as_str(), target);\n            }\n        }\n\n        #[effects(alloc)]\n        fn check_contract(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, post: bool) -> () {\n            let want: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let t: ast::TypeKind = self.expr(cx, e, &want, Mode::Spec(post), 1000000000);\n            self.expect_ty(&t, &ast::TypeKind::Bool, e.span);\n            let named: Option<usize> = match call_of(e) {\n                None => None,\n                Some(call) => { match self.resolve(call.path.as_slice(), cx.mod_path.as_str()) { None => None, Some(p) => self.c.fns.find(p.as_str()), } },\n            };\n            let mut pred: bool = false;\n            match named {\n                None => {},\n                Some(i) => { if is_spec(self.c.fns.items[i].kind) && types::same(&self.c.fns.items[i].ret, &ast::TypeKind::Bool) { pred = true; if self.c.fns.items[i].vacuous { let msg: String = types::cat3(\"`\", self.c.fns.items[i].path.as_str(), \"` is the constant `true`; it states nothing\"); self.c.err(\"E0502\", e.span, msg.as_str()); } } },\n            }\n            if !pred && !types::is_error(&t) && has_quant(e) {\n            }\n        }\n\n        #[effects(alloc)]\n        fn conversion(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, margs: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let c: ast::Call = match call_of(recv) {\n                None => { return ast::TypeKind::Error; },\n                Some(found) => found,\n            };\n            if c.path.len() != 2 {\n                return ast::TypeKind::Error;\n            }\n            let target: ast::TypeKind = match ast::int_of(c.path[0].name.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(it) => ast::TypeKind::Int(it),\n            };\n            if c.args.len() != 1 {\n                self.c.err(\"E0405\", recv.span, \"`try_from` takes one value\");\n                return ast::TypeKind::Error;\n            }\n            let st: ast::TypeKind = self.expr(cx, &c.args[0], &no, mode, f - 1);\n            for i in 0..margs.len()\n                invariant 0 <= i && i <= margs.len(),\n            {\n                self.expr(cx, &margs[i], &no, mode, f - 1);\n            }\n            let x: String = fmt::expr_text(&c.args[0]);\n            let tt: String = types::text(&target);\n            let unwrapped: String = types::cat4(tt.as_str(), \"::try_from(\", x.as_str(), \").unwrap()\");\n            if !exec_mode(mode) && name.name == \"unwrap\" && widens(&st, &target) {\n                let v: String = if fmt::prec(&c.args[0]) < 11 {\n                    types::cat3(\"(\", x.as_str(), \")\")\n                } else {\n                    x.clone()\n                };\n                self.aliases.push(diag::fix(diag::new(\"W0917\", span, types::cat7(\"`\", x.as_str(), \" as \", tt.as_str(), \"` in a specification: every value fits, so it is `\", x.as_str(), \"` (ADR-0099)\").as_str()), \"remove the conversion\", Some(v)));\n                return target;\n            }\n            if !exec_mode(mode) {\n                return st;\n            }\n            if !types::is_int(&st) {\n                if !types::is_error(&st) {\n                    let msg: String = types::cat3(\"`try_from` converts between integer types, found `\", types::text(&st).as_str(), \"`\");\n                    if is_bool(&st) && name.name == \"unwrap\" {\n                        self.c.fixed(\"E0412\", span, msg.as_str(), \"choose the values\", types::cat3(\"if \", x.as_str(), \" { 1 } else { 0 }\").as_str());\n                    } else if is_f64(&st) {\n                        self.c.help(\"E0412\", c.args[0].span, msg.as_str(), \"`f64` does not convert to an integer type yet (ADR-0061 §4, open question 1)\");\n                    } else {\n                        self.c.err(\"E0412\", c.args[0].span, msg.as_str());\n                    }\n                }\n                return ast::TypeKind::Error;\n            }\n            if name.name == \"unwrap\" && margs.len() == 0 {\n                return target;\n            }\n            if name.name == \"ok\" && margs.len() == 0 {\n                return option_of(target);\n            }\n            if name.name == \"expect\" {\n                self.c.fixed(\"E0213\", span, \"write `.unwrap()`\", \"a conversion has one form (its range is proved)\", unwrapped.as_str());\n                return target;\n            }\n            self.c.fixed(\"E0412\", span, \"`T::try_from(x)` is used as `.unwrap()` or `.ok()`\", \"`.unwrap()`: the value, with a range obligation\", unwrapped.as_str());\n            ast::TypeKind::Error\n        }\n\n        #[effects(alloc)]\n        fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {\n            if cx.loops.len() == 0 {\n                return None;\n            }\n            match label {\n                None => Some(cx.loops.len() - 1),\n                Some(l) => { let mut found: Option<usize> = None; let mut known: String = String::new(); for i in 0..cx.loops.len() invariant 0 <= i && i <= cx.loops.len(), { match &cx.loops[i].label { None => {}, Some(n) => { if n.as_str() == l.name.as_str() { found = Some(i); } if known.len() > 0 { known.push_str(\", \"); } known.push_str(\"'\"); known.push_str(n.as_str()); }, } } if no_index(&found) { let msg: String = types::cat3(\"no loop labeled `'\", l.name.as_str(), \"` around this\"); if known.len() == 0 { self.c.help(\"E0317\", l.span, msg.as_str(), \"label the loop: `'name: while ..`\"); } else { self.c.help(\"E0317\", l.span, msg.as_str(), types::cat2(\"the labels in scope are \", known.as_str()).as_str()); } } found },\n            }\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn collect_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mp: String = unit_path(prefix, m);\n            let sub: String = types::cat2(mp.as_str(), \"::\");\n            for s in 0..m.mods.len()\n                invariant 0 <= s && s <= m.mods.len(),\n            {\n                self.collect_types(&m.mods[s], sub.as_str(), f - 1);\n            }\n            for i in 0..m.types.len()\n                invariant 0 <= i && i <= m.types.len(),\n            {\n                let name: String = m.types[i].name.name.clone();\n                let path: String = types::cat3(mp.as_str(), \"::\", name.as_str());\n                if !self.adts.has(path.as_str()) {\n                    let kind: types::AdtKind = match &m.types[i].kind {\n                        ast::TypeDefKind::Struct(fs) => types::AdtKind::Struct(Vec::new()),\n                        ast::TypeDefKind::Enum(vs) => types::AdtKind::Enum(Vec::new()),\n                    };\n                    let generics: Vec<types::TParam> = self.tparams_of(m.types[i].generics.as_slice(), false, mp.as_str());\n                    self.adts.insert(path.as_str(), types::Adt { path: path.clone(), unit: mp.clone(), name: name.clone(), generics: generics, kind: kind, span: m.types[i].name.span, inv: None });\n                    let mut invariants: usize = 0;\n                    for a in 0..m.types[i].attrs.len()\n                        invariant 0 <= a && a <= m.types[i].attrs.len() && i < m.types.len() && invariants <= a,\n                    {\n                        let an: String = m.types[i].attrs[a].name.name.clone();\n                        if an.as_str() == \"invariant\" {\n                            invariants = invariants + 1;\n                            if invariants > 1 {\n                            }\n                        } else if an.as_str() == \"summary\" {\n                            self.check_summary(&m.types[i].attrs[a], m.types[i].attrs.as_slice());\n                        } else if an.as_str() == \"derive\" {\n                            self.fixed(\"E0220\", m.types[i].attrs[a].span, \"`#[derive(..)]` is not used\", \"remove it: data types copy by value and `==` is built in for specifications\", \"\");\n                        } else {\n                            self.fixed(\"E0605\", m.types[i].attrs[a].span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a type\").as_str(), \"types take no attributes\", \"\");\n                        }\n                    }\n                }\n            }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "steps": [
+  {
+   "source": {
+    "code": "E0501",
+    "commit": "d3949466e",
+    "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0501 yet: a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2). It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    ensures forall |i: usize| i < a.len() ==> #[trigger] a[i] == a[i],\n    {\"code\": \"E0501\", \"severity\": \"error\", \"message\": \"a contract clause with a quantifier is not a named predicate\", \"file\": \"err/proofs.bmb\", \"line\": 67, \"col\": 17, \"end_line\": 67, \"end_col\": 74, \"fix\": {\"message\": \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-proofs",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/proofs.bmb"
+     ]
+    },
+    {
+     "name": "replay-specs",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/specs.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                }\n            }\n        }\n    }\n\n    fn declare(",
+       "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0501\",\n                            e.span,\n                            \"a contract clause with a quantifier is not a named predicate\",\n                        )\n                        .fix(\n                            \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\",\n                            None,\n                        ),\n                    );\n                }\n            }\n        }\n    }\n\n    fn declare("
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn check_contract(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, post: bool) -> () {\n            let want: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let t: ast::TypeKind = self.expr(cx, e, &want, Mode::Spec(post), 1000000000);\n            self.expect_ty(&t, &ast::TypeKind::Bool, e.span);\n            let named: Option<usize> = match call_of(e) {\n                None => None,\n                Some(call) => { match self.resolve(call.path.as_slice(), cx.mod_path.as_str()) { None => None, Some(p) => self.c.fns.find(p.as_str()), } },\n            };\n            let mut pred: bool = false;\n            match named {\n                None => {},\n                Some(i) => { if is_spec(self.c.fns.items[i].kind) && types::same(&self.c.fns.items[i].ret, &ast::TypeKind::Bool) { pred = true; if self.c.fns.items[i].vacuous { let msg: String = types::cat3(\"`\", self.c.fns.items[i].path.as_str(), \"` is the constant `true`; it states nothing\"); self.c.err(\"E0502\", e.span, msg.as_str()); } } },\n            }\n            if !pred && !types::is_error(&t) && has_quant(e) {\n                self.c.help(\"E0501\", e.span, \"a contract clause with a quantifier is not a named predicate\", \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\");\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0255",
+    "commit": "1e649110e",
+    "subject": "T1-11: type invariants (ADR-0060 tasks 1-5)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0255 yet: more than one `#[invariant(..)]` on a type: join the conditions with `&&` in one predicate. It came with the commit \"T1-11: type invariants (ADR-0060 tasks 1-5)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    #[invariant(small_k)]\n    {\"code\": \"E0255\", \"severity\": \"error\", \"message\": \"`K` has more than one `#[invariant(..)]`\", \"file\": \"err/invariants.bmb\", \"line\": 82, \"col\": 5, \"end_line\": 82, \"end_col\": 26, \"fix\": {\"message\": \"state every condition in one predicate joined with `&&`, and keep one attribute\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-invariants",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/invariants.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                    }\n                    continue;\n                }\n                if a.name.name == \"summary\" {",
+       "new": "                        self.diags.push(\n                            Diag::new(\n                                \"E0255\",\n                                a.span,\n                                format!(\n                                    \"`{}` has more than one `#[invariant(..)]`\",\n                                    t.name.name\n                                ),\n                            )\n                            .fix(\n                                \"state every condition in one predicate joined with `&&`, and keep one attribute\",\n                                None,\n                            ),\n                        );\n                    }\n                    continue;\n                }\n                if a.name.name == \"summary\" {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "decls",
+       "code": "    impl Checker {\n        #[effects(alloc)]\n        fn collect_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mp: String = unit_path(prefix, m);\n            let sub: String = types::cat2(mp.as_str(), \"::\");\n            for s in 0..m.mods.len()\n                invariant 0 <= s && s <= m.mods.len(),\n            {\n                self.collect_types(&m.mods[s], sub.as_str(), f - 1);\n            }\n            for i in 0..m.types.len()\n                invariant 0 <= i && i <= m.types.len(),\n            {\n                let name: String = m.types[i].name.name.clone();\n                let path: String = types::cat3(mp.as_str(), \"::\", name.as_str());\n                if !self.adts.has(path.as_str()) {\n                    let kind: types::AdtKind = match &m.types[i].kind {\n                        ast::TypeDefKind::Struct(fs) => types::AdtKind::Struct(Vec::new()),\n                        ast::TypeDefKind::Enum(vs) => types::AdtKind::Enum(Vec::new()),\n                    };\n                    let generics: Vec<types::TParam> = self.tparams_of(m.types[i].generics.as_slice(), false, mp.as_str());\n                    self.adts.insert(path.as_str(), types::Adt { path: path.clone(), unit: mp.clone(), name: name.clone(), generics: generics, kind: kind, span: m.types[i].name.span, inv: None });\n                    let mut invariants: usize = 0;\n                    for a in 0..m.types[i].attrs.len()\n                        invariant 0 <= a && a <= m.types[i].attrs.len() && i < m.types.len() && invariants <= a,\n                    {\n                        let an: String = m.types[i].attrs[a].name.name.clone();\n                        if an.as_str() == \"invariant\" {\n                            invariants = invariants + 1;\n                            if invariants > 1 {\n                                self.help(\"E0255\", m.types[i].attrs[a].span, types::cat3(\"`\", name.as_str(), \"` has more than one `#[invariant(..)]`\").as_str(), \"state every condition in one predicate joined with `&&`, and keep one attribute\");\n                            }\n                        } else if an.as_str() == \"summary\" {\n                            self.check_summary(&m.types[i].attrs[a], m.types[i].attrs.as_slice());\n                        } else if an.as_str() == \"derive\" {\n                            self.fixed(\"E0220\", m.types[i].attrs[a].span, \"`#[derive(..)]` is not used\", \"remove it: data types copy by value and `==` is built in for specifications\", \"\");\n                        } else {\n                            self.fixed(\"E0605\", m.types[i].attrs[a].span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a type\").as_str(), \"types take no attributes\", \"\");\n                        }\n                    }\n                }\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0250",
+    "commit": "7e68041ba",
+    "subject": "2K-01b/c: break, continue, labels and loop with a value (ADR-0049)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0250 yet: `break` or `continue` outside a loop. It came with the commit \"2K-01b/c: break, continue, labels and loop with a value (ADR-0049)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    break;\n    {\"code\": \"E0250\", \"severity\": \"error\", \"message\": \"`break` outside a loop\", \"file\": \"err/loop_exits.bmb\", \"line\": 6, \"col\": 13, \"end_line\": 6, \"end_col\": 18, \"fix\": {\"message\": \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\"}}\n\n    continue;\n    {\"code\": \"E0250\", \"severity\": \"error\", \"message\": \"`continue` outside a loop\", \"file\": \"err/loop_exits.bmb\", \"line\": 13, \"col\": 9, \"end_line\": 13, \"end_col\": 17, \"fix\": {\"message\": \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-loop_exits",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/loop_exits.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            return None;\n        }\n        let Some(l) = label else {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0250\", span, format!(\"`{what}` outside a loop\")).fix(\n                    \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\",\n                    None,\n                ),\n            );\n            return None;\n        }\n        let Some(l) = label else {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {\n            if cx.loops.len() == 0 {\n                self.c.help(\"E0250\", span, types::cat3(\"`\", what, \"` outside a loop\").as_str(), \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\");\n                return None;\n            }\n            match label {\n                None => Some(cx.loops.len() - 1),\n                Some(l) => { let mut found: Option<usize> = None; let mut known: String = String::new(); for i in 0..cx.loops.len() invariant 0 <= i && i <= cx.loops.len(), { match &cx.loops[i].label { None => {}, Some(n) => { if n.as_str() == l.name.as_str() { found = Some(i); } if known.len() > 0 { known.push_str(\", \"); } known.push_str(\"'\"); known.push_str(n.as_str()); }, } } if no_index(&found) { let msg: String = types::cat3(\"no loop labeled `'\", l.name.as_str(), \"` around this\"); if known.len() == 0 { self.c.help(\"E0317\", l.span, msg.as_str(), \"label the loop: `'name: while ..`\"); } else { self.c.help(\"E0317\", l.span, msg.as_str(), types::cat2(\"the labels in scope are \", known.as_str()).as_str()); } } found },\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0603",
+    "commit": "d3949466e",
+    "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0603 yet: `pure` function calls a function with effect `io`. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn prints() -> () { print_i64(1) }\n    {\"code\": \"E0603\", \"severity\": \"error\", \"message\": \"`print_i64` has effect `io`, but `effects::prints` is `pure`\", \"file\": \"err/effects.bmb\", \"line\": 4, \"col\": 25, \"end_line\": 4, \"end_col\": 37, \"fix\": {\"message\": \"declare `#[effects(io)]` on `effects::prints`, or move the call out of it\"}}\n\n    print_i64(*b)\n    {\"code\": \"E0603\", \"severity\": \"error\", \"message\": \"`print_i64` has effect `io`, but `sets::both` is `pure`\", \"file\": \"err/effects.bmb\", \"line\": 63, \"col\": 9, \"end_line\": 63, \"end_col\": 22, \"fix\": {\"message\": \"declare `#[effects(io)]` on `sets::both`, or move the call out of it\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-effects",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/effects.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                }\n                self.calls",
+       "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0603\",\n                            span,\n                            format!(\"`{name}` has effect `io`, but `{}` is `pure`\", cx.path),\n                        )\n                        .fix(\n                            format!(\n                                \"declare `#[effects(io)]` on `{}`, or move the call out of it\",\n                                cx.path\n                            ),\n                            None,\n                        ),\n                    );\n                }\n                self.calls"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn call_kind(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], sig: &types::FnSig, target: &str, quoted: &str, span: source::Span, mode: Mode) -> () {\n            let caller: String = cx.path.clone();\n            if is_proof(sig.kind) {\n                if exec_mode(mode) {\n                    let whole: ast::Expr = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: idents(path), targs: targs_copy(targs), args: exprs_copy(args), method: None }), span: span };\n                    let r: String = types::cat3(\"proof { \", fmt::expr_text(&whole).as_str(), \"; }\");\n                    self.c.fixed(\"E0258\", span, types::cat2(quoted, \" is a `proof fn`: executable code calls it in a `proof { .. }` block\").as_str(), types::cat3(\"wrap the call: `\", r.as_str(), \"`\").as_str(), r.as_str());\n                } else if ghost_mode(mode) {\n                    self.add_call(caller.as_str(), target);\n                } else {\n                    self.c.help(\"E0258\", span, types::cat2(quoted, \" is a `proof fn` and has no value in a specification\").as_str(), \"call it as a statement of a `proof { .. }` block or a `proof fn`; its `ensures` then hold after the call\");\n                }\n            } else if is_exec(sig.kind) {\n                if exec_mode(mode) {\n                    need(cx, sig.effect, types::cat2(\"a call of \", quoted).as_str());\n                    if types::is_pure(cx.effect) && sig.effect.io {\n                        self.c.help(\"E0603\", span, types::cat5(quoted, \" has effect `io`, but `\", caller.as_str(), \"` is `pure`\", \"\").as_str(), types::cat3(\"declare `#[effects(io)]` on `\", caller.as_str(), \"`, or move the call out of it\").as_str());\n                    }\n                    self.add_call(caller.as_str(), target);\n                } else if ghost_mode(mode) || cx.ghost {\n                    self.ghost_violation(span, types::cat2(\"a call of executable function \", quoted).as_str(), \"call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`\");\n                } else {\n                    self.c.err(\"E0504\", span, types::cat2(quoted, \" is executable and cannot be called from a specification\").as_str());\n                }\n            } else if exec_mode(mode) {\n                self.c.err(\"E0505\", span, types::cat2(quoted, \" is a spec function and cannot be called from executable code\").as_str());\n            } else {\n                self.add_call(caller.as_str(), target);\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0513",
+    "commit": "12f4a94ba",
+    "subject": "2C-02: integer conversions — T::try_from(x).unwrap() with the E0815 range obligation, .ok() as Option<T>, print_u64"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0513 yet: conversions are not used in specifications (integer types mix there). It came with the commit \"2C-02: integer conversions — T::try_from(x).unwrap() with the E0815 range obligation, .ok() as Option<T>, print_u64\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    spec fn in_spec(x: u64) -> bool { i64::try_from(x).unwrap() > 0 }\n    {\"code\": \"E0513\", \"severity\": \"error\", \"message\": \"conversions are not used in specifications\", \"file\": \"err/conversions.bmb\", \"line\": 36, \"col\": 39, \"end_line\": 36, \"end_col\": 64, \"fix\": {\"message\": \"integer types mix in specifications (ADR-0022): write the value\", \"replacement\": \"x\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-conversions",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/conversions.bmb"
+     ]
+    },
+    {
+     "name": "replay-fn_values",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/fn_values.bmb"
+     ]
+    },
+    {
+     "name": "replay-spec_widening",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/spec_widening.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            return st;",
+       "new": "            self.diags.push(\n                Diag::new(\"E0513\", span, \"conversions are not used in specifications\").fix(\n                    \"integer types mix in specifications (ADR-0022): write the value\",\n                    Some(x),\n                ),\n            );\n            return st;"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn conversion(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, margs: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let c: ast::Call = match call_of(recv) {\n                None => { return ast::TypeKind::Error; },\n                Some(found) => found,\n            };\n            if c.path.len() != 2 {\n                return ast::TypeKind::Error;\n            }\n            let target: ast::TypeKind = match ast::int_of(c.path[0].name.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(it) => ast::TypeKind::Int(it),\n            };\n            if c.args.len() != 1 {\n                self.c.err(\"E0405\", recv.span, \"`try_from` takes one value\");\n                return ast::TypeKind::Error;\n            }\n            let st: ast::TypeKind = self.expr(cx, &c.args[0], &no, mode, f - 1);\n            for i in 0..margs.len()\n                invariant 0 <= i && i <= margs.len(),\n            {\n                self.expr(cx, &margs[i], &no, mode, f - 1);\n            }\n            let x: String = fmt::expr_text(&c.args[0]);\n            let tt: String = types::text(&target);\n            let unwrapped: String = types::cat4(tt.as_str(), \"::try_from(\", x.as_str(), \").unwrap()\");\n            if !exec_mode(mode) && name.name == \"unwrap\" && widens(&st, &target) {\n                let v: String = if fmt::prec(&c.args[0]) < 11 {\n                    types::cat3(\"(\", x.as_str(), \")\")\n                } else {\n                    x.clone()\n                };\n                self.aliases.push(diag::fix(diag::new(\"W0917\", span, types::cat7(\"`\", x.as_str(), \" as \", tt.as_str(), \"` in a specification: every value fits, so it is `\", x.as_str(), \"` (ADR-0099)\").as_str()), \"remove the conversion\", Some(v)));\n                return target;\n            }\n            if !exec_mode(mode) {\n                self.c.fixed(\"E0513\", span, \"conversions are not used in specifications\", \"integer types mix in specifications (ADR-0022): write the value\", x.as_str());\n                return st;\n            }\n            if !types::is_int(&st) {\n                if !types::is_error(&st) {\n                    let msg: String = types::cat3(\"`try_from` converts between integer types, found `\", types::text(&st).as_str(), \"`\");\n                    if is_bool(&st) && name.name == \"unwrap\" {\n                        self.c.fixed(\"E0412\", span, msg.as_str(), \"choose the values\", types::cat3(\"if \", x.as_str(), \" { 1 } else { 0 }\").as_str());\n                    } else if is_f64(&st) {\n                        self.c.help(\"E0412\", c.args[0].span, msg.as_str(), \"`f64` does not convert to an integer type yet (ADR-0061 §4, open question 1)\");\n                    } else {\n                        self.c.err(\"E0412\", c.args[0].span, msg.as_str());\n                    }\n                }\n                return ast::TypeKind::Error;\n            }\n            if name.name == \"unwrap\" && margs.len() == 0 {\n                return target;\n            }\n            if name.name == \"ok\" && margs.len() == 0 {\n                return option_of(target);\n            }\n            if name.name == \"expect\" {\n                self.c.fixed(\"E0213\", span, \"write `.unwrap()`\", \"a conversion has one form (its range is proved)\", unwrapped.as_str());\n                return target;\n            }\n            self.c.fixed(\"E0412\", span, \"`T::try_from(x)` is used as `.unwrap()` or `.ok()`\", \"`.unwrap()`: the value, with a range obligation\", unwrapped.as_str());\n            ast::TypeKind::Error\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  }
+ ],
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ],
+   "rust": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn check_contract(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, post: bool) -> () {\n            let want: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);\n            let t: ast::TypeKind = self.expr(cx, e, &want, Mode::Spec(post), 1000000000);\n            self.expect_ty(&t, &ast::TypeKind::Bool, e.span);\n            let named: Option<usize> = match call_of(e) {\n                None => None,\n                Some(call) => { match self.resolve(call.path.as_slice(), cx.mod_path.as_str()) { None => None, Some(p) => self.c.fns.find(p.as_str()), } },\n            };\n            let mut pred: bool = false;\n            match named {\n                None => {},\n                Some(i) => { if is_spec(self.c.fns.items[i].kind) && types::same(&self.c.fns.items[i].ret, &ast::TypeKind::Bool) { pred = true; if self.c.fns.items[i].vacuous { let msg: String = types::cat3(\"`\", self.c.fns.items[i].path.as_str(), \"` is the constant `true`; it states nothing\"); self.c.err(\"E0502\", e.span, msg.as_str()); } } },\n            }\n            if !pred && !types::is_error(&t) && has_quant(e) {\n                self.c.help(\"E0501\", e.span, \"a contract clause with a quantifier is not a named predicate\", \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\");\n            }\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "decls",
+       "code": "    impl Checker {\n        #[effects(alloc)]\n        fn collect_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mp: String = unit_path(prefix, m);\n            let sub: String = types::cat2(mp.as_str(), \"::\");\n            for s in 0..m.mods.len()\n                invariant 0 <= s && s <= m.mods.len(),\n            {\n                self.collect_types(&m.mods[s], sub.as_str(), f - 1);\n            }\n            for i in 0..m.types.len()\n                invariant 0 <= i && i <= m.types.len(),\n            {\n                let name: String = m.types[i].name.name.clone();\n                let path: String = types::cat3(mp.as_str(), \"::\", name.as_str());\n                if !self.adts.has(path.as_str()) {\n                    let kind: types::AdtKind = match &m.types[i].kind {\n                        ast::TypeDefKind::Struct(fs) => types::AdtKind::Struct(Vec::new()),\n                        ast::TypeDefKind::Enum(vs) => types::AdtKind::Enum(Vec::new()),\n                    };\n                    let generics: Vec<types::TParam> = self.tparams_of(m.types[i].generics.as_slice(), false, mp.as_str());\n                    self.adts.insert(path.as_str(), types::Adt { path: path.clone(), unit: mp.clone(), name: name.clone(), generics: generics, kind: kind, span: m.types[i].name.span, inv: None });\n                    let mut invariants: usize = 0;\n                    for a in 0..m.types[i].attrs.len()\n                        invariant 0 <= a && a <= m.types[i].attrs.len() && i < m.types.len() && invariants <= a,\n                    {\n                        let an: String = m.types[i].attrs[a].name.name.clone();\n                        if an.as_str() == \"invariant\" {\n                            invariants = invariants + 1;\n                            if invariants > 1 {\n                                self.help(\"E0255\", m.types[i].attrs[a].span, types::cat3(\"`\", name.as_str(), \"` has more than one `#[invariant(..)]`\").as_str(), \"state every condition in one predicate joined with `&&`, and keep one attribute\");\n                            }\n                        } else if an.as_str() == \"summary\" {\n                            self.check_summary(&m.types[i].attrs[a], m.types[i].attrs.as_slice());\n                        } else if an.as_str() == \"derive\" {\n                            self.fixed(\"E0220\", m.types[i].attrs[a].span, \"`#[derive(..)]` is not used\", \"remove it: data types copy by value and `==` is built in for specifications\", \"\");\n                        } else {\n                            self.fixed(\"E0605\", m.types[i].attrs[a].span, types::cat3(\"unknown attribute `\", an.as_str(), \"` on a type\").as_str(), \"types take no attributes\", \"\");\n                        }\n                    }\n                }\n            }\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {\n            if cx.loops.len() == 0 {\n                self.c.help(\"E0250\", span, types::cat3(\"`\", what, \"` outside a loop\").as_str(), \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\");\n                return None;\n            }\n            match label {\n                None => Some(cx.loops.len() - 1),\n                Some(l) => { let mut found: Option<usize> = None; let mut known: String = String::new(); for i in 0..cx.loops.len() invariant 0 <= i && i <= cx.loops.len(), { match &cx.loops[i].label { None => {}, Some(n) => { if n.as_str() == l.name.as_str() { found = Some(i); } if known.len() > 0 { known.push_str(\", \"); } known.push_str(\"'\"); known.push_str(n.as_str()); }, } } if no_index(&found) { let msg: String = types::cat3(\"no loop labeled `'\", l.name.as_str(), \"` around this\"); if known.len() == 0 { self.c.help(\"E0317\", l.span, msg.as_str(), \"label the loop: `'name: while ..`\"); } else { self.c.help(\"E0317\", l.span, msg.as_str(), types::cat2(\"the labels in scope are \", known.as_str()).as_str()); } } found },\n            }\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn call_kind(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], sig: &types::FnSig, target: &str, quoted: &str, span: source::Span, mode: Mode) -> () {\n            let caller: String = cx.path.clone();\n            if is_proof(sig.kind) {\n                if exec_mode(mode) {\n                    let whole: ast::Expr = ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: idents(path), targs: targs_copy(targs), args: exprs_copy(args), method: None }), span: span };\n                    let r: String = types::cat3(\"proof { \", fmt::expr_text(&whole).as_str(), \"; }\");\n                    self.c.fixed(\"E0258\", span, types::cat2(quoted, \" is a `proof fn`: executable code calls it in a `proof { .. }` block\").as_str(), types::cat3(\"wrap the call: `\", r.as_str(), \"`\").as_str(), r.as_str());\n                } else if ghost_mode(mode) {\n                    self.add_call(caller.as_str(), target);\n                } else {\n                    self.c.help(\"E0258\", span, types::cat2(quoted, \" is a `proof fn` and has no value in a specification\").as_str(), \"call it as a statement of a `proof { .. }` block or a `proof fn`; its `ensures` then hold after the call\");\n                }\n            } else if is_exec(sig.kind) {\n                if exec_mode(mode) {\n                    need(cx, sig.effect, types::cat2(\"a call of \", quoted).as_str());\n                    if types::is_pure(cx.effect) && sig.effect.io {\n                        self.c.help(\"E0603\", span, types::cat5(quoted, \" has effect `io`, but `\", caller.as_str(), \"` is `pure`\", \"\").as_str(), types::cat3(\"declare `#[effects(io)]` on `\", caller.as_str(), \"`, or move the call out of it\").as_str());\n                    }\n                    self.add_call(caller.as_str(), target);\n                } else if ghost_mode(mode) || cx.ghost {\n                    self.ghost_violation(span, types::cat2(\"a call of executable function \", quoted).as_str(), \"call it outside the `proof` block, or state the fact with a spec fn or a `proof fn`\");\n                } else {\n                    self.c.err(\"E0504\", span, types::cat2(quoted, \" is executable and cannot be called from a specification\").as_str());\n                }\n            } else if exec_mode(mode) {\n                self.c.err(\"E0505\", span, types::cat2(quoted, \" is a spec function and cannot be called from executable code\").as_str());\n            } else {\n                self.add_call(caller.as_str(), target);\n            }\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn conversion(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, margs: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let c: ast::Call = match call_of(recv) {\n                None => { return ast::TypeKind::Error; },\n                Some(found) => found,\n            };\n            if c.path.len() != 2 {\n                return ast::TypeKind::Error;\n            }\n            let target: ast::TypeKind = match ast::int_of(c.path[0].name.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(it) => ast::TypeKind::Int(it),\n            };\n            if c.args.len() != 1 {\n                self.c.err(\"E0405\", recv.span, \"`try_from` takes one value\");\n                return ast::TypeKind::Error;\n            }\n            let st: ast::TypeKind = self.expr(cx, &c.args[0], &no, mode, f - 1);\n            for i in 0..margs.len()\n                invariant 0 <= i && i <= margs.len(),\n            {\n                self.expr(cx, &margs[i], &no, mode, f - 1);\n            }\n            let x: String = fmt::expr_text(&c.args[0]);\n            let tt: String = types::text(&target);\n            let unwrapped: String = types::cat4(tt.as_str(), \"::try_from(\", x.as_str(), \").unwrap()\");\n            if !exec_mode(mode) && name.name == \"unwrap\" && widens(&st, &target) {\n                let v: String = if fmt::prec(&c.args[0]) < 11 {\n                    types::cat3(\"(\", x.as_str(), \")\")\n                } else {\n                    x.clone()\n                };\n                self.aliases.push(diag::fix(diag::new(\"W0917\", span, types::cat7(\"`\", x.as_str(), \" as \", tt.as_str(), \"` in a specification: every value fits, so it is `\", x.as_str(), \"` (ADR-0099)\").as_str()), \"remove the conversion\", Some(v)));\n                return target;\n            }\n            if !exec_mode(mode) {\n                self.c.fixed(\"E0513\", span, \"conversions are not used in specifications\", \"integer types mix in specifications (ADR-0022): write the value\", x.as_str());\n                return st;\n            }\n            if !types::is_int(&st) {\n                if !types::is_error(&st) {\n                    let msg: String = types::cat3(\"`try_from` converts between integer types, found `\", types::text(&st).as_str(), \"`\");\n                    if is_bool(&st) && name.name == \"unwrap\" {\n                        self.c.fixed(\"E0412\", span, msg.as_str(), \"choose the values\", types::cat3(\"if \", x.as_str(), \" { 1 } else { 0 }\").as_str());\n                    } else if is_f64(&st) {\n                        self.c.help(\"E0412\", c.args[0].span, msg.as_str(), \"`f64` does not convert to an integer type yet (ADR-0061 §4, open question 1)\");\n                    } else {\n                        self.c.err(\"E0412\", c.args[0].span, msg.as_str());\n                    }\n                }\n                return ast::TypeKind::Error;\n            }\n            if name.name == \"unwrap\" && margs.len() == 0 {\n                return target;\n            }\n            if name.name == \"ok\" && margs.len() == 0 {\n                return option_of(target);\n            }\n            if name.name == \"expect\" {\n                self.c.fixed(\"E0213\", span, \"write `.unwrap()`\", \"a conversion has one form (its range is proved)\", unwrapped.as_str());\n                return target;\n            }\n            self.c.fixed(\"E0412\", span, \"`T::try_from(x)` is used as `.unwrap()` or `.ok()`\", \"`.unwrap()`: the value, with a range obligation\", unwrapped.as_str());\n            ast::TypeKind::Error\n        }\n    }\n"
+      }
+     ],
+     [
+      "write",
+      {
+       "unit": "diag",
+       "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+      }
+     ]
+    ]
+   ],
+   "rust": [
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                }\n            }\n        }\n    }\n\n    fn declare(",
+       "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0501\",\n                            e.span,\n                            \"a contract clause with a quantifier is not a named predicate\",\n                        )\n                        .fix(\n                            \"move the quantified condition into `spec fn name(..) -> bool { .. }` and call it here\",\n                            None,\n                        ),\n                    );\n                }\n            }\n        }\n    }\n\n    fn declare("
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                    }\n                    continue;\n                }\n                if a.name.name == \"summary\" {",
+       "new": "                        self.diags.push(\n                            Diag::new(\n                                \"E0255\",\n                                a.span,\n                                format!(\n                                    \"`{}` has more than one `#[invariant(..)]`\",\n                                    t.name.name\n                                ),\n                            )\n                            .fix(\n                                \"state every condition in one predicate joined with `&&`, and keep one attribute\",\n                                None,\n                            ),\n                        );\n                    }\n                    continue;\n                }\n                if a.name.name == \"summary\" {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            return None;\n        }\n        let Some(l) = label else {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0250\", span, format!(\"`{what}` outside a loop\")).fix(\n                    \"use it inside a `while`, `for` or `loop`; to leave the function, `return`\",\n                    None,\n                ),\n            );\n            return None;\n        }\n        let Some(l) = label else {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                }\n                self.calls",
+       "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0603\",\n                            span,\n                            format!(\"`{name}` has effect `io`, but `{}` is `pure`\", cx.path),\n                        )\n                        .fix(\n                            format!(\n                                \"declare `#[effects(io)]` on `{}`, or move the call out of it\",\n                                cx.path\n                            ),\n                            None,\n                        ),\n                    );\n                }\n                self.calls"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            return st;",
+       "new": "            self.diags.push(\n                Diag::new(\"E0513\", span, \"conversions are not used in specifications\").fix(\n                    \"integer types mix in specifications (ADR-0022): write the value\",\n                    Some(x),\n                ),\n            );\n            return st;"
+      }
+     ],
+     [
+      "edit_file",
+      {
+       "path": "src/diag.rs",
+       "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+       "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+      }
+     ],
+     [
+      "edit_file",
+      {
+       "path": "src/diag.rs",
+       "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+       "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+      }
+     ]
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,176 @@
+{
+ "id": "r11-swap-clone_blocked",
+ "kind": "change",
+ "family": "swap",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Change the signature of the function `body::clone_blocked`: its first two parameters change places (`t` and `adts`). Update every call of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Change the signature of the function `check::clone_blocked`: its first two parameters change places (`t` and `adts`). Update every call of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "check::Checker::clone_method",
+   "check::Checker::vec_method",
+   "check::clone_blocked"
+  ],
+  "bmb": [
+   "body::Body::clone_method",
+   "body::Body::vec_method",
+   "body::clone_blocked"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "    t: &TypeKind,\n    adts: &BTreeMap<String, Adt>,",
+     "new": "    adts: &BTreeMap<String,\n    t: &TypeKind, Adt>,"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "        if let Some(why) = clone_blocked(&value, &self.adts, &self.moving_params()) {",
+     "new": "        if let Some(why) = clone_blocked(&self.adts, &value, &self.moving_params()) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            \"clone\" if clone_blocked(&et, &self.adts, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&et, &self.adts, &self.moving_params()).expect(\"a reason\");",
+     "new": "            \"clone\" if clone_blocked(&self.adts, &et, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&self.adts, &et, &self.moving_params()).expect(\"a reason\");"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    #[effects(alloc)]\n    fn clone_blocked(adts: &table::Table<types::Adt>, t: &ast::TypeKind, moving: &[String]) -> String {\n        if names_moving(t, moving, 100000) {\n            return String::from(\"a type parameter without `Copy` may own memory: copy the value where its type is known, or bound the parameter with `Copy`\");\n        }\n        let mut seen: Vec<String> = Vec::new();\n        if holds_child(t, adts, &mut seen, 100000) {\n            return String::from(\"a child process is one resource with one owner; it is not copied\");\n        }\n        String::new()\n    }\n\n    impl Body {\n        #[effects(alloc)]\n        fn clone_method(self: &mut Body, cx: &mut FnCtx, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.expr(cx, &args[i], &no, mode, f - 1);\n            }\n            let value: ast::TypeKind = match ref_inner(rt) {\n                None => rt.clone(),\n                Some(inner) => inner,\n            };\n            let moving: Vec<String> = self.c.moving_params();\n            let why: String = clone_blocked(&self.c.adts, &value, moving.as_slice());\n            if why.len() > 0 {\n                self.no_clone(name.span, &value, why.as_str());\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 0 {\n                self.c.help(\"E0405\", name.span, decls::count1(\"`clone` takes 0 argument(s), found \", args.len()).as_str(), \"write `x.clone()`\");\n            }\n            if exec_mode(mode) {\n                need_own(cx, alloc_effect(), types::cat3(\"`\", types::text(&value).as_str(), \"::clone`\").as_str());\n            } else {\n                self.c.help(\"E0503\", span, \"`.clone()` is not allowed in a specification\", \"a specification reads the value itself: remove `.clone()`\");\n            }\n            value\n        }\n\n        #[effects(alloc)]\n        fn vec_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, et: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            if name.name == \"copy_within\" {\n                return self.copy_within(cx, recv, rt, et, name, args, span, mode, f - 1);\n            }\n            let push: bool = name.name == \"push\";\n            let cloned: bool = name.name == \"clone\";\n            if exec_mode(mode) && (push || cloned) {\n                need_own(cx, alloc_effect(), types::cat3(\"`Vec::\", name.name.as_str(), \"`\").as_str());\n            }\n            let mut arity: usize = 0;\n            let mut mutates: bool = false;\n            let mut ret: ast::TypeKind = ast::TypeKind::Unit;\n            if push {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"pop\" {\n                mutates = true;\n                ret = option_of(et.clone());\n            } else if name.name == \"truncate\" {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"len\" {\n                ret = ast::TypeKind::Int(ast::IntTy::Usize);\n            } else if cloned {\n                let whole: ast::TypeKind = ast::TypeKind::Vec(types::boxed(et.clone()));\n                let moving: Vec<String> = self.c.moving_params();\n                let why: String = clone_blocked(&self.c.adts, et, moving.as_slice());\n                if why.len() > 0 {\n                    self.no_clone(name.span, &whole, why.as_str());\n                    return ast::TypeKind::Error;\n                }\n                ret = whole;\n            } else {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    self.expr(cx, &args[i], &no, mode, f - 1);\n                }\n                if name.name == \"as_slice\" || name.name == \"as_mut_slice\" {\n                    self.c.help(\"E0409\", span, types::cat3(\"`.\", name.name.as_str(), \"()` may only appear directly as a call argument\").as_str(), \"pass it to a `&[T]` / `&mut [T]` parameter\");\n                    return ast::TypeKind::Error;\n                }\n                let msg: String = types::cat3(\"unknown method `\", name.name.as_str(), \"`\");\n                let fix: String = vec_missing(name.name.as_str());\n                if fix.len() > 0 {\n                    self.c.help(\"E0404\", name.span, msg.as_str(), fix.as_str());\n                } else {\n                    self.c.err(\"E0404\", name.span, msg.as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let call: String = types::cat3(\"`.\", name.name.as_str(), \"()`\");\n            if !exec_mode(mode) && name.name != \"len\" {\n                if cx.ghost && mutates {\n                    self.ghost_violation(span, call.as_str(), \"change the value outside the `proof` block\");\n                } else {\n                    self.c.err(\"E0503\", span, types::cat2(call.as_str(), \" is not allowed in a specification\").as_str());\n                }\n            }\n            if args.len() != arity {\n                self.c.err(\"E0405\", name.span, decls::counts(types::cat3(\"`\", name.name.as_str(), \"` takes \").as_str(), arity, \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            let want: ast::TypeKind = if push {\n                et.clone()\n            } else {\n                ast::TypeKind::Int(ast::IntTy::Usize)\n            };\n            let hint: Option<ast::TypeKind> = Some(want.clone());\n            for j in 0..args.len()\n                invariant 0 <= j && j <= args.len(),\n            {\n                let at: ast::TypeKind = self.expr(cx, &args[j], &hint, mode, f - 1);\n                self.expect_ty(&at, &want, args[j].span);\n            }\n            if mutates && exec_mode(mode) && !writable(cx, recv, 1000000000) && !types::is_error(rt) {\n                let need: String = types::cat2(call.as_str(), \" needs a mutable `Vec`\");\n                if is_ref(rt) {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"take the parameter as `&mut Vec<T>`\");\n                } else {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"declare it with `let mut`\");\n                }\n            }\n            ret\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "body",
+      "code": "    #[effects(alloc)]\n    fn clone_blocked(adts: &table::Table<types::Adt>, t: &ast::TypeKind, moving: &[String]) -> String {\n        if names_moving(t, moving, 100000) {\n            return String::from(\"a type parameter without `Copy` may own memory: copy the value where its type is known, or bound the parameter with `Copy`\");\n        }\n        let mut seen: Vec<String> = Vec::new();\n        if holds_child(t, adts, &mut seen, 100000) {\n            return String::from(\"a child process is one resource with one owner; it is not copied\");\n        }\n        String::new()\n    }\n\n    impl Body {\n        #[effects(alloc)]\n        fn clone_method(self: &mut Body, cx: &mut FnCtx, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.expr(cx, &args[i], &no, mode, f - 1);\n            }\n            let value: ast::TypeKind = match ref_inner(rt) {\n                None => rt.clone(),\n                Some(inner) => inner,\n            };\n            let moving: Vec<String> = self.c.moving_params();\n            let why: String = clone_blocked(&self.c.adts, &value, moving.as_slice());\n            if why.len() > 0 {\n                self.no_clone(name.span, &value, why.as_str());\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 0 {\n                self.c.help(\"E0405\", name.span, decls::count1(\"`clone` takes 0 argument(s), found \", args.len()).as_str(), \"write `x.clone()`\");\n            }\n            if exec_mode(mode) {\n                need_own(cx, alloc_effect(), types::cat3(\"`\", types::text(&value).as_str(), \"::clone`\").as_str());\n            } else {\n                self.c.help(\"E0503\", span, \"`.clone()` is not allowed in a specification\", \"a specification reads the value itself: remove `.clone()`\");\n            }\n            value\n        }\n\n        #[effects(alloc)]\n        fn vec_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, et: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            if name.name == \"copy_within\" {\n                return self.copy_within(cx, recv, rt, et, name, args, span, mode, f - 1);\n            }\n            let push: bool = name.name == \"push\";\n            let cloned: bool = name.name == \"clone\";\n            if exec_mode(mode) && (push || cloned) {\n                need_own(cx, alloc_effect(), types::cat3(\"`Vec::\", name.name.as_str(), \"`\").as_str());\n            }\n            let mut arity: usize = 0;\n            let mut mutates: bool = false;\n            let mut ret: ast::TypeKind = ast::TypeKind::Unit;\n            if push {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"pop\" {\n                mutates = true;\n                ret = option_of(et.clone());\n            } else if name.name == \"truncate\" {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"len\" {\n                ret = ast::TypeKind::Int(ast::IntTy::Usize);\n            } else if cloned {\n                let whole: ast::TypeKind = ast::TypeKind::Vec(types::boxed(et.clone()));\n                let moving: Vec<String> = self.c.moving_params();\n                let why: String = clone_blocked(&self.c.adts, et, moving.as_slice());\n                if why.len() > 0 {\n                    self.no_clone(name.span, &whole, why.as_str());\n                    return ast::TypeKind::Error;\n                }\n                ret = whole;\n            } else {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    self.expr(cx, &args[i], &no, mode, f - 1);\n                }\n                if name.name == \"as_slice\" || name.name == \"as_mut_slice\" {\n                    self.c.help(\"E0409\", span, types::cat3(\"`.\", name.name.as_str(), \"()` may only appear directly as a call argument\").as_str(), \"pass it to a `&[T]` / `&mut [T]` parameter\");\n                    return ast::TypeKind::Error;\n                }\n                let msg: String = types::cat3(\"unknown method `\", name.name.as_str(), \"`\");\n                let fix: String = vec_missing(name.name.as_str());\n                if fix.len() > 0 {\n                    self.c.help(\"E0404\", name.span, msg.as_str(), fix.as_str());\n                } else {\n                    self.c.err(\"E0404\", name.span, msg.as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let call: String = types::cat3(\"`.\", name.name.as_str(), \"()`\");\n            if !exec_mode(mode) && name.name != \"len\" {\n                if cx.ghost && mutates {\n                    self.ghost_violation(span, call.as_str(), \"change the value outside the `proof` block\");\n                } else {\n                    self.c.err(\"E0503\", span, types::cat2(call.as_str(), \" is not allowed in a specification\").as_str());\n                }\n            }\n            if args.len() != arity {\n                self.c.err(\"E0405\", name.span, decls::counts(types::cat3(\"`\", name.name.as_str(), \"` takes \").as_str(), arity, \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            let want: ast::TypeKind = if push {\n                et.clone()\n            } else {\n                ast::TypeKind::Int(ast::IntTy::Usize)\n            };\n            let hint: Option<ast::TypeKind> = Some(want.clone());\n            for j in 0..args.len()\n                invariant 0 <= j && j <= args.len(),\n            {\n                let at: ast::TypeKind = self.expr(cx, &args[j], &hint, mode, f - 1);\n                self.expect_ty(&at, &want, args[j].span);\n            }\n            if mutates && exec_mode(mode) && !writable(cx, recv, 1000000000) && !types::is_error(rt) {\n                let need: String = types::cat2(call.as_str(), \" needs a mutable `Vec`\");\n                if is_ref(rt) {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"take the parameter as `&mut Vec<T>`\");\n                } else {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"declare it with `let mut`\");\n                }\n            }\n            ret\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    t: &TypeKind,\n    adts: &BTreeMap<String, Adt>,",
+      "new": "    adts: &BTreeMap<String,\n    t: &TypeKind, Adt>,"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        if let Some(why) = clone_blocked(&value, &self.adts, &self.moving_params()) {",
+      "new": "        if let Some(why) = clone_blocked(&self.adts, &value, &self.moving_params()) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            \"clone\" if clone_blocked(&et, &self.adts, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&et, &self.adts, &self.moving_params()).expect(\"a reason\");",
+      "new": "            \"clone\" if clone_blocked(&self.adts, &et, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&self.adts, &et, &self.moving_params()).expect(\"a reason\");"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "body",
+      "code": "    #[effects(alloc)]\n    fn clone_blocked(adts: &table::Table<types::Adt>, t: &ast::TypeKind, moving: &[String]) -> String {\n        if names_moving(t, moving, 100000) {\n            return String::from(\"a type parameter without `Copy` may own memory: copy the value where its type is known, or bound the parameter with `Copy`\");\n        }\n        let mut seen: Vec<String> = Vec::new();\n        if holds_child(t, adts, &mut seen, 100000) {\n            return String::from(\"a child process is one resource with one owner; it is not copied\");\n        }\n        String::new()\n    }\n\n    impl Body {\n        #[effects(alloc)]\n        fn clone_method(self: &mut Body, cx: &mut FnCtx, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.expr(cx, &args[i], &no, mode, f - 1);\n            }\n            let value: ast::TypeKind = match ref_inner(rt) {\n                None => rt.clone(),\n                Some(inner) => inner,\n            };\n            let moving: Vec<String> = self.c.moving_params();\n            let why: String = clone_blocked(&self.c.adts, &value, moving.as_slice());\n            if why.len() > 0 {\n                self.no_clone(name.span, &value, why.as_str());\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 0 {\n                self.c.help(\"E0405\", name.span, decls::count1(\"`clone` takes 0 argument(s), found \", args.len()).as_str(), \"write `x.clone()`\");\n            }\n            if exec_mode(mode) {\n                need_own(cx, alloc_effect(), types::cat3(\"`\", types::text(&value).as_str(), \"::clone`\").as_str());\n            } else {\n                self.c.help(\"E0503\", span, \"`.clone()` is not allowed in a specification\", \"a specification reads the value itself: remove `.clone()`\");\n            }\n            value\n        }\n\n        #[effects(alloc)]\n        fn vec_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, et: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            if name.name == \"copy_within\" {\n                return self.copy_within(cx, recv, rt, et, name, args, span, mode, f - 1);\n            }\n            let push: bool = name.name == \"push\";\n            let cloned: bool = name.name == \"clone\";\n            if exec_mode(mode) && (push || cloned) {\n                need_own(cx, alloc_effect(), types::cat3(\"`Vec::\", name.name.as_str(), \"`\").as_str());\n            }\n            let mut arity: usize = 0;\n            let mut mutates: bool = false;\n            let mut ret: ast::TypeKind = ast::TypeKind::Unit;\n            if push {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"pop\" {\n                mutates = true;\n                ret = option_of(et.clone());\n            } else if name.name == \"truncate\" {\n                arity = 1;\n                mutates = true;\n            } else if name.name == \"len\" {\n                ret = ast::TypeKind::Int(ast::IntTy::Usize);\n            } else if cloned {\n                let whole: ast::TypeKind = ast::TypeKind::Vec(types::boxed(et.clone()));\n                let moving: Vec<String> = self.c.moving_params();\n                let why: String = clone_blocked(&self.c.adts, et, moving.as_slice());\n                if why.len() > 0 {\n                    self.no_clone(name.span, &whole, why.as_str());\n                    return ast::TypeKind::Error;\n                }\n                ret = whole;\n            } else {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    self.expr(cx, &args[i], &no, mode, f - 1);\n                }\n                if name.name == \"as_slice\" || name.name == \"as_mut_slice\" {\n                    self.c.help(\"E0409\", span, types::cat3(\"`.\", name.name.as_str(), \"()` may only appear directly as a call argument\").as_str(), \"pass it to a `&[T]` / `&mut [T]` parameter\");\n                    return ast::TypeKind::Error;\n                }\n                let msg: String = types::cat3(\"unknown method `\", name.name.as_str(), \"`\");\n                let fix: String = vec_missing(name.name.as_str());\n                if fix.len() > 0 {\n                    self.c.help(\"E0404\", name.span, msg.as_str(), fix.as_str());\n                } else {\n                    self.c.err(\"E0404\", name.span, msg.as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let call: String = types::cat3(\"`.\", name.name.as_str(), \"()`\");\n            if !exec_mode(mode) && name.name != \"len\" {\n                if cx.ghost && mutates {\n                    self.ghost_violation(span, call.as_str(), \"change the value outside the `proof` block\");\n                } else {\n                    self.c.err(\"E0503\", span, types::cat2(call.as_str(), \" is not allowed in a specification\").as_str());\n                }\n            }\n            if args.len() != arity {\n                self.c.err(\"E0405\", name.span, decls::counts(types::cat3(\"`\", name.name.as_str(), \"` takes \").as_str(), arity, \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            let want: ast::TypeKind = if push {\n                et.clone()\n            } else {\n                ast::TypeKind::Int(ast::IntTy::Usize)\n            };\n            let hint: Option<ast::TypeKind> = Some(want.clone());\n            for j in 0..args.len()\n                invariant 0 <= j && j <= args.len(),\n            {\n                let at: ast::TypeKind = self.expr(cx, &args[j], &hint, mode, f - 1);\n                self.expect_ty(&at, &want, args[j].span);\n            }\n            if mutates && exec_mode(mode) && !writable(cx, recv, 1000000000) && !types::is_error(rt) {\n                let need: String = types::cat2(call.as_str(), \" needs a mutable `Vec`\");\n                if is_ref(rt) {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"take the parameter as `&mut Vec<T>`\");\n                } else {\n                    self.c.help(\"E0408\", recv.span, need.as_str(), \"declare it with `let mut`\");\n                }\n            }\n            ret\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    t: &TypeKind,\n    adts: &BTreeMap<String, Adt>,",
+      "new": "    adts: &BTreeMap<String,\n    t: &TypeKind, Adt>,"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        if let Some(why) = clone_blocked(&value, &self.adts, &self.moving_params()) {",
+      "new": "        if let Some(why) = clone_blocked(&self.adts, &value, &self.moving_params()) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            \"clone\" if clone_blocked(&et, &self.adts, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&et, &self.adts, &self.moving_params()).expect(\"a reason\");",
+      "new": "            \"clone\" if clone_blocked(&self.adts, &et, &self.moving_params()).is_some() => {\n                let why = clone_blocked(&self.adts, &et, &self.moving_params()).expect(\"a reason\");"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

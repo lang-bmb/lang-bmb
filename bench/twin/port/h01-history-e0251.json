@@ -1,0 +1,425 @@
+{
+ "id": "h01-history-e0251",
+ "family": "history",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "        self.diags.push(\n            Diag::new(\n                \"E0411\",\n                span,\n                format!(\"cannot negate a value of type `{}`\", ty_str(t)),\n            )\n            .fix(\n                \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\",\n                None,\n            ),\n        );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(\n                Diag::new(\"E0231\", e.span, format!(\"write `{r}`\"))\n                    .fix(\"fields are read through a reference directly\", Some(r)),\n            );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                        self.diags.push(\n                            Diag::new(\"E0251\", e.span, \"`break` with a value leaves only a `loop`\")\n                                .fix(\n                                    \"assign the value to a variable declared before the `while`, then `break`\",\n                                    None,\n                                ),\n                        );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(\n                Diag::new(\"E0304\", span, format!(\"unknown function `{name}`\")).fix(hint, None),\n            );",
+     "new": ""
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                self.diags.push(\n                    Diag::new(\n                        \"E0430\",\n                        span,\n                        format!(\n                            \"the recursive call of `{callee}` wraps a type parameter in `{}`: its instances would never end\",\n                            ty_str(a)\n                        ),\n                    )\n                    .fix(\n                        \"pass a type parameter itself or a type without parameters\",\n                        None,\n                    ),\n                );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "body",
+     "code": "    impl Body {\n        #[effects(alloc)]\n        fn break_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, b: &ast::Break, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) {\n                self.c.help(\"E0503\", e.span, \"`break` is not allowed in a specification\", \"a specification is one expression: it has no loop to leave\");\n            }\n            let target: Option<usize> = self.jump_target(cx, &b.label, e.span, \"break\");\n            let want: Option<ast::TypeKind> = match target {\n                None => None,\n                Some(k) => { if k < cx.loops.len() { cx.loops[k].value.clone() } else { None } },\n            };\n            let mut has_value: bool = false;\n            let mut sp: source::Span = e.span;\n            let t: ast::TypeKind = match &b.value {\n                None => ast::TypeKind::Unit,\n                Some(v) => { has_value = true; sp = v.span; self.expr(cx, &**v, &want, mode, f - 1) },\n            };\n            match target {\n                None => {},\n                Some(k2) => { if k2 < cx.loops.len() { if !cx.loops[k2].is_loop && has_value { } else if cx.loops[k2].is_loop { match &want { None => { if !is_never(&t) { cx.loops[k2].value = Some(t.clone()); } }, Some(w) => { let mark: usize = self.c.diags.len(); self.expect_ty(&t, w, sp); if self.c.diags.len() > mark { loop_fix(&mut self.c.diags, types::cat3(\"every `break` of this `loop` carries its value, a `\", types::text(w).as_str(), \"`\").as_str()); } }, } } } },\n            }\n            ast::TypeKind::Never\n        }\n\n        #[effects(alloc)]\n        fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let name: String = decls::path_text(path);\n            let quoted: String = types::cat3(\"`\", name.as_str(), \"`\");\n            let target: String = match self.resolve(path, cx.mod_path.as_str()) {\n                None => { let segs: Vec<String> = names_of(path); let pspan: source::Span = decls::span_to(path[0].span, path[path.len() - 1].span); match self.c.import_text(segs.as_slice(), cx.mod_path.as_str()) { None => { let tip: String = if path.len() == 1 { types::cat7(\"no `\", name.as_str(), \"` in unit `\", cx.mod_path.as_str(), \"`; other units are reached by full path `unit::\", name.as_str(), \"`\") } else { types::cat2(\"no function \", quoted.as_str()) }; }, Some(text) => { self.c.fixed(\"E0214\", pspan, types::cat2(quoted.as_str(), \" comes from a `use`\").as_str(), types::cat3(\"write `\", text.as_str(), \"`\").as_str(), text.as_str()); }, } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if !is_ref_expr(&args[i].kind) { self.expr(cx, &args[i], &no, mode, f - 1); } } return ast::TypeKind::Error; },\n                Some(t) => t,\n            };\n            let sig: types::FnSig = match self.c.fns.find(target.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(at) => self.c.fns.items[at].clone(),\n            };\n            self.call_kind(cx, path, targs, args, &sig, target.as_str(), quoted.as_str(), span, mode);\n            let no_value: bool = !exec_mode(mode) && !ghost_mode(mode) && is_proof(sig.kind);\n            let amode: Mode = operand(mode);\n            if ghost_mode(mode) {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    if ref_mutable(&args[i]) {\n                        self.ghost_violation(args[i].span, \"`&mut`\", \"pass the value or `&` it\");\n                    }\n                }\n            }\n            if args.len() != sig.params.len() {\n                self.c.err(\"E0405\", span, decls::counts(types::cat2(quoted.as_str(), \" takes \").as_str(), sig.params.len(), \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            if sig.generics.len() == 0 && targs.len() > 0 {\n                self.c.fixed(\"E0429\", targs[0].span, types::cat2(quoted.as_str(), \" takes no type arguments\").as_str(), \"remove them\", \"\");\n            }\n            let mut tm: types::Subst = empty_subst();\n            let mut missing: bool = false;\n            if sig.generics.len() > 0 {\n                missing = self.written_targs(cx, path, targs, &sig, &mut tm);\n            }\n            let is_trait: bool = !no_text(&sig.trait_of);\n            let infer: bool = missing || is_trait;\n            if infer {\n                match expected {\n                    None => {},\n                    Some(want) => { types::unify(&sig.ret, want, sig.generics.as_slice(), &mut tm, 100000); },\n                }\n            }\n            let mut deferred: Vec<usize> = Vec::new();\n            let mut mut_roots: Vec<MutRoot> = Vec::new();\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.call_arg(cx, &sig, &mut tm, &args[i], i, infer, is_trait, amode, &mut deferred, &mut mut_roots, f - 1);\n            }\n            self.call_deferred(cx, &sig, &tm, args, deferred.as_slice(), amode, f - 1);\n            if !self.call_bound(cx, path, targs, &sig, &tm, name.as_str(), missing, span) {\n                return ast::TypeKind::Error;\n            }\n            if !self.call_record(cx, &sig, &tm, target.as_str(), span) {\n                return ast::TypeKind::Error;\n            }\n            self.alias_check(&sig, args, mut_roots.as_slice());\n            if no_value {\n                return ast::TypeKind::Error;\n            }\n            types::subst(&sig.ret, &tm)\n        }\n\n        #[effects(alloc)]\n        fn check_recursion(self: &mut Body, p: &ast::Program) -> () {\n            let rows: Vec<DefRow> = defs_of(p, &self.c.fns);\n            let mut defs: table::Table<DefRow> = table::new::<DefRow>();\n            for i in 0..rows.len()\n                invariant 0 <= i && i <= rows.len(),\n            {\n                if !defs.has(rows[i].path.as_str()) {\n                    defs.insert(rows[i].path.as_str(), rows[i].clone());\n                }\n            }\n            let comps: Vec<Vec<String>> = sccs_with_cycles(&self.calls);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    self.recursive.insert(comps[i][j].as_str(), i);\n                }\n            }\n            let through_trait: Vec<String> = self.trait_cycles(&defs);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    match defs.find(comps[i][j].as_str()) {\n                        None => {},\n                        Some(at) => { if !defs.items[at].has_dec && !types::has(through_trait.as_slice(), comps[i][j].as_str()) { self.c.help(\"E0507\", defs.items[at].span, types::cat3(\"`\", comps[i][j].as_str(), \"` is recursive and has no `decreases` clause\").as_str(), \"add `decreases <expr>,` after `ensures`\"); } },\n                    }\n                }\n            }\n            let calls: Vec<GCall> = self.gcalls.clone();\n            self.gcalls = Vec::new();\n            for i in 0..calls.len()\n                invariant 0 <= i && i <= calls.len(),\n            {\n                let same: bool = match self.recursive.find(calls[i].caller.as_str()) {\n                    None => false,\n                    Some(a) => { match self.recursive.find(calls[i].callee.as_str()) { None => false, Some(b) => self.recursive.items[a] == self.recursive.items[b], } },\n                };\n                if same {\n                    match wrapped_param(calls[i].args.as_slice()) {\n                        None => {},\n                        Some(t) => { },\n                    }\n                }\n            }\n        }\n\n        #[effects(alloc)]\n        fn deref_field(self: &mut Body, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident) -> () {\n            match deref_inner(base) {\n                None => {},\n                Some(x) => { let r: String = types::cat3(fmt::expr_text(&x).as_str(), \".\", name.name.as_str()); },\n            }\n        }\n\n        #[effects(alloc)]\n        fn unsigned_negation(self: &mut Body, span: source::Span, t: &ast::TypeKind) -> () {\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "steps": [
+  {
+   "source": {
+    "code": "E0251",
+    "commit": "7e68041ba",
+    "subject": "2K-01b/c: break, continue, labels and loop with a value (ADR-0049)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0251 yet: `break` with a value outside a `loop`. It came with the commit \"2K-01b/c: break, continue, labels and loop with a value (ADR-0049)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    break 5;\n    {\"code\": \"E0251\", \"severity\": \"error\", \"message\": \"`break` with a value leaves only a `loop`\", \"file\": \"err/loop_exits.bmb\", \"line\": 39, \"col\": 13, \"end_line\": 39, \"end_col\": 20, \"fix\": {\"message\": \"assign the value to a variable declared before the `while`, then `break`\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-loop_exits",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/loop_exits.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                    } else if cx.loops[k].is_loop {",
+       "new": "                        self.diags.push(\n                            Diag::new(\"E0251\", e.span, \"`break` with a value leaves only a `loop`\")\n                                .fix(\n                                    \"assign the value to a variable declared before the `while`, then `break`\",\n                                    None,\n                                ),\n                        );\n                    } else if cx.loops[k].is_loop {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn break_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, b: &ast::Break, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) {\n                self.c.help(\"E0503\", e.span, \"`break` is not allowed in a specification\", \"a specification is one expression: it has no loop to leave\");\n            }\n            let target: Option<usize> = self.jump_target(cx, &b.label, e.span, \"break\");\n            let want: Option<ast::TypeKind> = match target {\n                None => None,\n                Some(k) => { if k < cx.loops.len() { cx.loops[k].value.clone() } else { None } },\n            };\n            let mut has_value: bool = false;\n            let mut sp: source::Span = e.span;\n            let t: ast::TypeKind = match &b.value {\n                None => ast::TypeKind::Unit,\n                Some(v) => { has_value = true; sp = v.span; self.expr(cx, &**v, &want, mode, f - 1) },\n            };\n            match target {\n                None => {},\n                Some(k2) => { if k2 < cx.loops.len() { if !cx.loops[k2].is_loop && has_value { self.c.help(\"E0251\", e.span, \"`break` with a value leaves only a `loop`\", \"assign the value to a variable declared before the `while`, then `break`\"); } else if cx.loops[k2].is_loop { match &want { None => { if !is_never(&t) { cx.loops[k2].value = Some(t.clone()); } }, Some(w) => { let mark: usize = self.c.diags.len(); self.expect_ty(&t, w, sp); if self.c.diags.len() > mark { loop_fix(&mut self.c.diags, types::cat3(\"every `break` of this `loop` carries its value, a `\", types::text(w).as_str(), \"`\").as_str()); } }, } } } },\n            }\n            ast::TypeKind::Never\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0304",
+    "commit": "d3949466e",
+    "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0304 yet: unknown function. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    let n: usize = len(&s[0..=absent(1)]);\n    {\"code\": \"E0304\", \"severity\": \"error\", \"message\": \"unknown function `absent`\", \"file\": \"err/inclusive_ranges.bmb\", \"line\": 20, \"col\": 35, \"end_line\": 20, \"end_col\": 44, \"fix\": {\"message\": \"no `absent` in unit `t`; other units are reached by full path `unit::absent`\"}}\n\n    nosuch(1)\n    {\"code\": \"E0304\", \"severity\": \"error\", \"message\": \"unknown function `nosuch`\", \"file\": \"err/rejected_impls.bmb\", \"line\": 22, \"col\": 13, \"end_line\": 22, \"end_col\": 22, \"fix\": {\"message\": \"no `nosuch` in unit `t`; other units are reached by full path `unit::nosuch`\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-inclusive_ranges",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/inclusive_ranges.bmb"
+     ]
+    },
+    {
+     "name": "replay-rejected_impls",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/rejected_impls.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            for a in args {\n                if !matches!(a.kind, ExprKind::Ref { .. }) {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0304\", span, format!(\"unknown function `{name}`\")).fix(hint, None),\n            );\n            for a in args {\n                if !matches!(a.kind, ExprKind::Ref { .. }) {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let name: String = decls::path_text(path);\n            let quoted: String = types::cat3(\"`\", name.as_str(), \"`\");\n            let target: String = match self.resolve(path, cx.mod_path.as_str()) {\n                None => { let segs: Vec<String> = names_of(path); let pspan: source::Span = decls::span_to(path[0].span, path[path.len() - 1].span); match self.c.import_text(segs.as_slice(), cx.mod_path.as_str()) { None => { let tip: String = if path.len() == 1 { types::cat7(\"no `\", name.as_str(), \"` in unit `\", cx.mod_path.as_str(), \"`; other units are reached by full path `unit::\", name.as_str(), \"`\") } else { types::cat2(\"no function \", quoted.as_str()) }; self.c.help(\"E0304\", span, types::cat2(\"unknown function \", quoted.as_str()).as_str(), tip.as_str()); }, Some(text) => { self.c.fixed(\"E0214\", pspan, types::cat2(quoted.as_str(), \" comes from a `use`\").as_str(), types::cat3(\"write `\", text.as_str(), \"`\").as_str(), text.as_str()); }, } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if !is_ref_expr(&args[i].kind) { self.expr(cx, &args[i], &no, mode, f - 1); } } return ast::TypeKind::Error; },\n                Some(t) => t,\n            };\n            let sig: types::FnSig = match self.c.fns.find(target.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(at) => self.c.fns.items[at].clone(),\n            };\n            self.call_kind(cx, path, targs, args, &sig, target.as_str(), quoted.as_str(), span, mode);\n            let no_value: bool = !exec_mode(mode) && !ghost_mode(mode) && is_proof(sig.kind);\n            let amode: Mode = operand(mode);\n            if ghost_mode(mode) {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    if ref_mutable(&args[i]) {\n                        self.ghost_violation(args[i].span, \"`&mut`\", \"pass the value or `&` it\");\n                    }\n                }\n            }\n            if args.len() != sig.params.len() {\n                self.c.err(\"E0405\", span, decls::counts(types::cat2(quoted.as_str(), \" takes \").as_str(), sig.params.len(), \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            if sig.generics.len() == 0 && targs.len() > 0 {\n                self.c.fixed(\"E0429\", targs[0].span, types::cat2(quoted.as_str(), \" takes no type arguments\").as_str(), \"remove them\", \"\");\n            }\n            let mut tm: types::Subst = empty_subst();\n            let mut missing: bool = false;\n            if sig.generics.len() > 0 {\n                missing = self.written_targs(cx, path, targs, &sig, &mut tm);\n            }\n            let is_trait: bool = !no_text(&sig.trait_of);\n            let infer: bool = missing || is_trait;\n            if infer {\n                match expected {\n                    None => {},\n                    Some(want) => { types::unify(&sig.ret, want, sig.generics.as_slice(), &mut tm, 100000); },\n                }\n            }\n            let mut deferred: Vec<usize> = Vec::new();\n            let mut mut_roots: Vec<MutRoot> = Vec::new();\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.call_arg(cx, &sig, &mut tm, &args[i], i, infer, is_trait, amode, &mut deferred, &mut mut_roots, f - 1);\n            }\n            self.call_deferred(cx, &sig, &tm, args, deferred.as_slice(), amode, f - 1);\n            if !self.call_bound(cx, path, targs, &sig, &tm, name.as_str(), missing, span) {\n                return ast::TypeKind::Error;\n            }\n            if !self.call_record(cx, &sig, &tm, target.as_str(), span) {\n                return ast::TypeKind::Error;\n            }\n            self.alias_check(&sig, args, mut_roots.as_slice());\n            if no_value {\n                return ast::TypeKind::Error;\n            }\n            types::subst(&sig.ret, &tm)\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0411",
+    "commit": "d3949466e",
+    "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0411 yet: cannot negate an unsigned value. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn neg(x: u64) -> u64 { -x }\n    {\"code\": \"E0411\", \"severity\": \"error\", \"message\": \"cannot negate a value of type `u64`\", \"file\": \"err/types.bmb\", \"line\": 53, \"col\": 29, \"end_line\": 53, \"end_col\": 31, \"fix\": {\"message\": \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\"}}\n\n    -x\n    {\"code\": \"E0411\", \"severity\": \"error\", \"message\": \"cannot negate a value of type `u32`\", \"file\": \"err/widths.bmb\", \"line\": 5, \"col\": 9, \"end_line\": 5, \"end_col\": 11, \"fix\": {\"message\": \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-widths",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/widths.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "    }\n\n    fn spec_loop(&mut self, span: Span) {",
+       "new": "        self.diags.push(\n            Diag::new(\n                \"E0411\",\n                span,\n                format!(\"cannot negate a value of type `{}`\", ty_str(t)),\n            )\n            .fix(\n                \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\",\n                None,\n            ),\n        );\n    }\n\n    fn spec_loop(&mut self, span: Span) {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn unsigned_negation(self: &mut Body, span: source::Span, t: &ast::TypeKind) -> () {\n            self.c.help(\"E0411\", span, types::cat3(\"cannot negate a value of type `\", types::text(t).as_str(), \"`\").as_str(), \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\");\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0231",
+    "commit": "58573af29",
+    "subject": "2B-04d: Rust habits around data types, with mechanical fixes (E0220-E0233)"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0231 yet: `(*p).x` is written `p.x`. It came with the commit \"2B-04d: Rust habits around data types, with mechanical fixes (E0220-E0233)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    (*p).x = 1;\n    {\"code\": \"E0231\", \"severity\": \"error\", \"message\": \"write `p.x`\", \"file\": \"err/habits.bmb\", \"line\": 101, \"col\": 9, \"end_line\": 101, \"end_col\": 15, \"fix\": {\"message\": \"fields are read through a reference directly\", \"replacement\": \"p.x\"}}\n\n    (*p).y\n    {\"code\": \"E0231\", \"severity\": \"error\", \"message\": \"write `p.y`\", \"file\": \"err/habits.bmb\", \"line\": 102, \"col\": 9, \"end_line\": 102, \"end_col\": 15, \"fix\": {\"message\": \"fields are read through a reference directly\", \"replacement\": \"p.y\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-habits",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/habits.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "        }\n    }\n\n    fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0231\", e.span, format!(\"write `{r}`\"))\n                    .fix(\"fields are read through a reference directly\", Some(r)),\n            );\n        }\n    }\n\n    fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn deref_field(self: &mut Body, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident) -> () {\n            match deref_inner(base) {\n                None => {},\n                Some(x) => { let r: String = types::cat3(fmt::expr_text(&x).as_str(), \".\", name.name.as_str()); self.c.fixed(\"E0231\", e.span, types::cat3(\"write `\", r.as_str(), \"`\").as_str(), \"fields are read through a reference directly\", r.as_str()); },\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  },
+  {
+   "source": {
+    "code": "E0430",
+    "commit": "2f4b09b4a",
+    "subject": "2T-01: generic functions and data types, proved once, monomorphized"
+   },
+   "prompt": "`bmb check` does not report the diagnostic E0430 yet: a recursive generic call wraps a type parameter in a larger type. It came with the commit \"2T-01: generic functions and data types, proved once, monomorphized\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    if n == 0 { 0 } else { grow::<[T; 2]>([x, x], n - 1) }\n    {\"code\": \"E0430\", \"severity\": \"error\", \"message\": \"the recursive call of `generics::grow` wraps a type parameter in `[T; 2]`: its instances would never end\", \"file\": \"err/generics.bmb\", \"line\": 43, \"col\": 32, \"end_line\": 43, \"end_col\": 61, \"fix\": {\"message\": \"pass a type parameter itself or a type without parameters\"}}\n\nEverything else the program prints must stay as it is.",
+   "cases": [
+    {
+     "name": "replay-generics",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/generics.bmb"
+     ]
+    },
+    {
+     "name": "replay-types",
+     "args": [
+      "check"
+     ],
+     "files": [
+      "tests/check/err/types.bmb"
+     ]
+    }
+   ],
+   "oracle": {
+    "rust": [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            }\n        }\n    }\n\n    fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {",
+       "new": "                self.diags.push(\n                    Diag::new(\n                        \"E0430\",\n                        span,\n                        format!(\n                            \"the recursive call of `{callee}` wraps a type parameter in `{}`: its instances would never end\",\n                            ty_str(a)\n                        ),\n                    )\n                    .fix(\n                        \"pass a type parameter itself or a type without parameters\",\n                        None,\n                    ),\n                );\n            }\n        }\n    }\n\n    fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {"
+      }
+     ]
+    ],
+    "bmb": [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn check_recursion(self: &mut Body, p: &ast::Program) -> () {\n            let rows: Vec<DefRow> = defs_of(p, &self.c.fns);\n            let mut defs: table::Table<DefRow> = table::new::<DefRow>();\n            for i in 0..rows.len()\n                invariant 0 <= i && i <= rows.len(),\n            {\n                if !defs.has(rows[i].path.as_str()) {\n                    defs.insert(rows[i].path.as_str(), rows[i].clone());\n                }\n            }\n            let comps: Vec<Vec<String>> = sccs_with_cycles(&self.calls);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    self.recursive.insert(comps[i][j].as_str(), i);\n                }\n            }\n            let through_trait: Vec<String> = self.trait_cycles(&defs);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    match defs.find(comps[i][j].as_str()) {\n                        None => {},\n                        Some(at) => { if !defs.items[at].has_dec && !types::has(through_trait.as_slice(), comps[i][j].as_str()) { self.c.help(\"E0507\", defs.items[at].span, types::cat3(\"`\", comps[i][j].as_str(), \"` is recursive and has no `decreases` clause\").as_str(), \"add `decreases <expr>,` after `ensures`\"); } },\n                    }\n                }\n            }\n            let calls: Vec<GCall> = self.gcalls.clone();\n            self.gcalls = Vec::new();\n            for i in 0..calls.len()\n                invariant 0 <= i && i <= calls.len(),\n            {\n                let same: bool = match self.recursive.find(calls[i].caller.as_str()) {\n                    None => false,\n                    Some(a) => { match self.recursive.find(calls[i].callee.as_str()) { None => false, Some(b) => self.recursive.items[a] == self.recursive.items[b], } },\n                };\n                if same {\n                    match wrapped_param(calls[i].args.as_slice()) {\n                        None => {},\n                        Some(t) => { self.c.help(\"E0430\", calls[i].span, types::cat5(\"the recursive call of `\", calls[i].callee.as_str(), \"` wraps a type parameter in `\", types::text(&t).as_str(), \"`: its instances would never end\").as_str(), \"pass a type parameter itself or a type without parameters\"); },\n                    }\n                }\n            }\n        }\n    }\n"
+      }
+     ]
+    ]
+   }
+  }
+ ],
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ],
+   "rust": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn break_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, b: &ast::Break, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if !exec_mode(mode) {\n                self.c.help(\"E0503\", e.span, \"`break` is not allowed in a specification\", \"a specification is one expression: it has no loop to leave\");\n            }\n            let target: Option<usize> = self.jump_target(cx, &b.label, e.span, \"break\");\n            let want: Option<ast::TypeKind> = match target {\n                None => None,\n                Some(k) => { if k < cx.loops.len() { cx.loops[k].value.clone() } else { None } },\n            };\n            let mut has_value: bool = false;\n            let mut sp: source::Span = e.span;\n            let t: ast::TypeKind = match &b.value {\n                None => ast::TypeKind::Unit,\n                Some(v) => { has_value = true; sp = v.span; self.expr(cx, &**v, &want, mode, f - 1) },\n            };\n            match target {\n                None => {},\n                Some(k2) => { if k2 < cx.loops.len() { if !cx.loops[k2].is_loop && has_value { self.c.help(\"E0251\", e.span, \"`break` with a value leaves only a `loop`\", \"assign the value to a variable declared before the `while`, then `break`\"); } else if cx.loops[k2].is_loop { match &want { None => { if !is_never(&t) { cx.loops[k2].value = Some(t.clone()); } }, Some(w) => { let mark: usize = self.c.diags.len(); self.expect_ty(&t, w, sp); if self.c.diags.len() > mark { loop_fix(&mut self.c.diags, types::cat3(\"every `break` of this `loop` carries its value, a `\", types::text(w).as_str(), \"`\").as_str()); } }, } } } },\n            }\n            ast::TypeKind::Never\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind\n            decreases f * 3,\n        {\n            if f == 0 || path.len() == 0 {\n                return ast::TypeKind::Error;\n            }\n            let no: Option<ast::TypeKind> = None;\n            let name: String = decls::path_text(path);\n            let quoted: String = types::cat3(\"`\", name.as_str(), \"`\");\n            let target: String = match self.resolve(path, cx.mod_path.as_str()) {\n                None => { let segs: Vec<String> = names_of(path); let pspan: source::Span = decls::span_to(path[0].span, path[path.len() - 1].span); match self.c.import_text(segs.as_slice(), cx.mod_path.as_str()) { None => { let tip: String = if path.len() == 1 { types::cat7(\"no `\", name.as_str(), \"` in unit `\", cx.mod_path.as_str(), \"`; other units are reached by full path `unit::\", name.as_str(), \"`\") } else { types::cat2(\"no function \", quoted.as_str()) }; self.c.help(\"E0304\", span, types::cat2(\"unknown function \", quoted.as_str()).as_str(), tip.as_str()); }, Some(text) => { self.c.fixed(\"E0214\", pspan, types::cat2(quoted.as_str(), \" comes from a `use`\").as_str(), types::cat3(\"write `\", text.as_str(), \"`\").as_str(), text.as_str()); }, } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if !is_ref_expr(&args[i].kind) { self.expr(cx, &args[i], &no, mode, f - 1); } } return ast::TypeKind::Error; },\n                Some(t) => t,\n            };\n            let sig: types::FnSig = match self.c.fns.find(target.as_str()) {\n                None => { return ast::TypeKind::Error; },\n                Some(at) => self.c.fns.items[at].clone(),\n            };\n            self.call_kind(cx, path, targs, args, &sig, target.as_str(), quoted.as_str(), span, mode);\n            let no_value: bool = !exec_mode(mode) && !ghost_mode(mode) && is_proof(sig.kind);\n            let amode: Mode = operand(mode);\n            if ghost_mode(mode) {\n                for i in 0..args.len()\n                    invariant 0 <= i && i <= args.len(),\n                {\n                    if ref_mutable(&args[i]) {\n                        self.ghost_violation(args[i].span, \"`&mut`\", \"pass the value or `&` it\");\n                    }\n                }\n            }\n            if args.len() != sig.params.len() {\n                self.c.err(\"E0405\", span, decls::counts(types::cat2(quoted.as_str(), \" takes \").as_str(), sig.params.len(), \" argument(s), found \", args.len(), \"\").as_str());\n            }\n            if sig.generics.len() == 0 && targs.len() > 0 {\n                self.c.fixed(\"E0429\", targs[0].span, types::cat2(quoted.as_str(), \" takes no type arguments\").as_str(), \"remove them\", \"\");\n            }\n            let mut tm: types::Subst = empty_subst();\n            let mut missing: bool = false;\n            if sig.generics.len() > 0 {\n                missing = self.written_targs(cx, path, targs, &sig, &mut tm);\n            }\n            let is_trait: bool = !no_text(&sig.trait_of);\n            let infer: bool = missing || is_trait;\n            if infer {\n                match expected {\n                    None => {},\n                    Some(want) => { types::unify(&sig.ret, want, sig.generics.as_slice(), &mut tm, 100000); },\n                }\n            }\n            let mut deferred: Vec<usize> = Vec::new();\n            let mut mut_roots: Vec<MutRoot> = Vec::new();\n            for i in 0..args.len()\n                invariant 0 <= i && i <= args.len(),\n            {\n                self.call_arg(cx, &sig, &mut tm, &args[i], i, infer, is_trait, amode, &mut deferred, &mut mut_roots, f - 1);\n            }\n            self.call_deferred(cx, &sig, &tm, args, deferred.as_slice(), amode, f - 1);\n            if !self.call_bound(cx, path, targs, &sig, &tm, name.as_str(), missing, span) {\n                return ast::TypeKind::Error;\n            }\n            if !self.call_record(cx, &sig, &tm, target.as_str(), span) {\n                return ast::TypeKind::Error;\n            }\n            self.alias_check(&sig, args, mut_roots.as_slice());\n            if no_value {\n                return ast::TypeKind::Error;\n            }\n            types::subst(&sig.ret, &tm)\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn unsigned_negation(self: &mut Body, span: source::Span, t: &ast::TypeKind) -> () {\n            self.c.help(\"E0411\", span, types::cat3(\"cannot negate a value of type `\", types::text(t).as_str(), \"`\").as_str(), \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\");\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn deref_field(self: &mut Body, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident) -> () {\n            match deref_inner(base) {\n                None => {},\n                Some(x) => { let r: String = types::cat3(fmt::expr_text(&x).as_str(), \".\", name.name.as_str()); self.c.fixed(\"E0231\", e.span, types::cat3(\"write `\", r.as_str(), \"`\").as_str(), \"fields are read through a reference directly\", r.as_str()); },\n            }\n        }\n    }\n"
+      }
+     ]
+    ],
+    [
+     [
+      "write",
+      {
+       "unit": "body",
+       "code": "    impl Body {\n        #[effects(alloc)]\n        fn check_recursion(self: &mut Body, p: &ast::Program) -> () {\n            let rows: Vec<DefRow> = defs_of(p, &self.c.fns);\n            let mut defs: table::Table<DefRow> = table::new::<DefRow>();\n            for i in 0..rows.len()\n                invariant 0 <= i && i <= rows.len(),\n            {\n                if !defs.has(rows[i].path.as_str()) {\n                    defs.insert(rows[i].path.as_str(), rows[i].clone());\n                }\n            }\n            let comps: Vec<Vec<String>> = sccs_with_cycles(&self.calls);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    self.recursive.insert(comps[i][j].as_str(), i);\n                }\n            }\n            let through_trait: Vec<String> = self.trait_cycles(&defs);\n            for i in 0..comps.len()\n                invariant 0 <= i && i <= comps.len(),\n            {\n                for j in 0..comps[i].len()\n                    invariant 0 <= j && j <= comps[i].len(),\n                {\n                    match defs.find(comps[i][j].as_str()) {\n                        None => {},\n                        Some(at) => { if !defs.items[at].has_dec && !types::has(through_trait.as_slice(), comps[i][j].as_str()) { self.c.help(\"E0507\", defs.items[at].span, types::cat3(\"`\", comps[i][j].as_str(), \"` is recursive and has no `decreases` clause\").as_str(), \"add `decreases <expr>,` after `ensures`\"); } },\n                    }\n                }\n            }\n            let calls: Vec<GCall> = self.gcalls.clone();\n            self.gcalls = Vec::new();\n            for i in 0..calls.len()\n                invariant 0 <= i && i <= calls.len(),\n            {\n                let same: bool = match self.recursive.find(calls[i].caller.as_str()) {\n                    None => false,\n                    Some(a) => { match self.recursive.find(calls[i].callee.as_str()) { None => false, Some(b) => self.recursive.items[a] == self.recursive.items[b], } },\n                };\n                if same {\n                    match wrapped_param(calls[i].args.as_slice()) {\n                        None => {},\n                        Some(t) => { self.c.help(\"E0430\", calls[i].span, types::cat5(\"the recursive call of `\", calls[i].callee.as_str(), \"` wraps a type parameter in `\", types::text(&t).as_str(), \"`: its instances would never end\").as_str(), \"pass a type parameter itself or a type without parameters\"); },\n                    }\n                }\n            }\n        }\n    }\n"
+      }
+     ],
+     [
+      "write",
+      {
+       "unit": "diag",
+       "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+      }
+     ]
+    ]
+   ],
+   "rust": [
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "                    } else if cx.loops[k].is_loop {",
+       "new": "                        self.diags.push(\n                            Diag::new(\"E0251\", e.span, \"`break` with a value leaves only a `loop`\")\n                                .fix(\n                                    \"assign the value to a variable declared before the `while`, then `break`\",\n                                    None,\n                                ),\n                        );\n                    } else if cx.loops[k].is_loop {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            for a in args {\n                if !matches!(a.kind, ExprKind::Ref { .. }) {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0304\", span, format!(\"unknown function `{name}`\")).fix(hint, None),\n            );\n            for a in args {\n                if !matches!(a.kind, ExprKind::Ref { .. }) {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "    }\n\n    fn spec_loop(&mut self, span: Span) {",
+       "new": "        self.diags.push(\n            Diag::new(\n                \"E0411\",\n                span,\n                format!(\"cannot negate a value of type `{}`\", ty_str(t)),\n            )\n            .fix(\n                \"an unsigned type has no negative values: use a signed type, or subtract from a larger value\",\n                None,\n            ),\n        );\n    }\n\n    fn spec_loop(&mut self, span: Span) {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "        }\n    }\n\n    fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {",
+       "new": "            self.diags.push(\n                Diag::new(\"E0231\", e.span, format!(\"write `{r}`\"))\n                    .fix(\"fields are read through a reference directly\", Some(r)),\n            );\n        }\n    }\n\n    fn struct_fields(&self, t: &TypeKind) -> Option<(String, Vec<(String, TypeKind)>)> {"
+      }
+     ]
+    ],
+    [
+     [
+      "edit_file",
+      {
+       "path": "src/check.rs",
+       "old": "            }\n        }\n    }\n\n    fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {",
+       "new": "                self.diags.push(\n                    Diag::new(\n                        \"E0430\",\n                        span,\n                        format!(\n                            \"the recursive call of `{callee}` wraps a type parameter in `{}`: its instances would never end\",\n                            ty_str(a)\n                        ),\n                    )\n                    .fix(\n                        \"pass a type parameter itself or a type without parameters\",\n                        None,\n                    ),\n                );\n            }\n        }\n    }\n\n    fn trait_cycles(&mut self, defs: &BTreeMap<String, (Span, bool)>) -> BTreeSet<String> {"
+      }
+     ],
+     [
+      "edit_file",
+      {
+       "path": "src/diag.rs",
+       "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+       "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+      }
+     ],
+     [
+      "edit_file",
+      {
+       "path": "src/diag.rs",
+       "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+       "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+      }
+     ]
+    ]
+   ]
+  }
+ ]
+}

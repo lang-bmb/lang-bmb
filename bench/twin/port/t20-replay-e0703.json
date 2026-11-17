@@ -1,0 +1,119 @@
+{
+ "id": "t20-replay-e0703",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0703",
+  "commit": "d3949466e",
+  "subject": "compiler: M1 front end (parse, check, JSONL diagnostics)"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0703 yet: items must be declared inside a `mod`. It came with the commit \"compiler: M1 front end (parse, check, JSONL diagnostics)\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn top_level() -> () {}\n    {\"code\": \"E0703\", \"severity\": \"error\", \"message\": \"items must be declared inside a `mod`\", \"file\": \"err/items.bmb\", \"line\": 1, \"col\": 1, \"end_line\": 1, \"end_col\": 3, \"fix\": {\"message\": \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "                    self.diags.push(\n                        Diag::new(\n                            \"E0703\",\n                            self.span(),\n                            \"items must be declared inside a `mod`\",\n                        )\n                        .fix(\n                            \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\",\n                            None,\n                        ),\n                    );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_program(self: &mut Parser) -> ast::Program {\n            let mut mods: Vec<ast::Mod> = Vec::new();\n            let mut n: usize = self.left();\n            while n > 0 && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let start: usize = self.t.pos;\n                let attrs: Vec<ast::Attr> = self.attrs();\n                if self.is_kw(\"mod\") {\n                    match self.parse_mod(attrs, 0) {\n                        None => self.recover_item(),\n                        Some(m) => mods.push(m),\n                    }\n                } else {\n                    if self.is_kw(\"fn\") || self.is_kw(\"spec\") || self.is_kw(\"proof\") {\n                    } else {\n                        self.err_expected(\"`mod`\");\n                    }\n                    self.bump();\n                    self.recover_item();\n                }\n                if self.t.pos == start {\n                    self.bump();\n                }\n            }\n            ast::Program { mods: mods }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-items",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/items.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "                } else {\n                    self.err_expected(\"`mod`\");",
+     "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0703\",\n                            self.span(),\n                            \"items must be declared inside a `mod`\",\n                        )\n                        .fix(\n                            \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\",\n                            None,\n                        ),\n                    );\n                } else {\n                    self.err_expected(\"`mod`\");"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_program(self: &mut Parser) -> ast::Program {\n            let mut mods: Vec<ast::Mod> = Vec::new();\n            let mut n: usize = self.left();\n            while n > 0 && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let start: usize = self.t.pos;\n                let attrs: Vec<ast::Attr> = self.attrs();\n                if self.is_kw(\"mod\") {\n                    match self.parse_mod(attrs, 0) {\n                        None => self.recover_item(),\n                        Some(m) => mods.push(m),\n                    }\n                } else {\n                    if self.is_kw(\"fn\") || self.is_kw(\"spec\") || self.is_kw(\"proof\") {\n                        self.err_fix_here(\"E0703\", \"items must be declared inside a `mod`\", \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\");\n                    } else {\n                        self.err_expected(\"`mod`\");\n                    }\n                    self.bump();\n                    self.recover_item();\n                }\n                if self.t.pos == start {\n                    self.bump();\n                }\n            }\n            ast::Program { mods: mods }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(alloc)]\n        fn parse_program(self: &mut Parser) -> ast::Program {\n            let mut mods: Vec<ast::Mod> = Vec::new();\n            let mut n: usize = self.left();\n            while n > 0 && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let start: usize = self.t.pos;\n                let attrs: Vec<ast::Attr> = self.attrs();\n                if self.is_kw(\"mod\") {\n                    match self.parse_mod(attrs, 0) {\n                        None => self.recover_item(),\n                        Some(m) => mods.push(m),\n                    }\n                } else {\n                    if self.is_kw(\"fn\") || self.is_kw(\"spec\") || self.is_kw(\"proof\") {\n                        self.err_fix_here(\"E0703\", \"items must be declared inside a `mod`\", \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\");\n                    } else {\n                        self.err_expected(\"`mod`\");\n                    }\n                    self.bump();\n                    self.recover_item();\n                }\n                if self.t.pos == start {\n                    self.bump();\n                }\n            }\n            ast::Program { mods: mods }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "                } else {\n                    self.err_expected(\"`mod`\");",
+      "new": "                    self.diags.push(\n                        Diag::new(\n                            \"E0703\",\n                            self.span(),\n                            \"items must be declared inside a `mod`\",\n                        )\n                        .fix(\n                            \"wrap the item in `#[summary(\\\"..\\\")] mod name { .. }`\",\n                            None,\n                        ),\n                    );\n                } else {\n                    self.err_expected(\"`mod`\");"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

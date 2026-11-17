@@ -155,6 +155,31 @@ class Port(unittest.TestCase):
             text = text.replace(o, n, 1)
         self.assertEqual(text, "z(1)\ny\nz(1)")
 
+    def test_replay_tasks_are_generated(self):
+        r = subprocess.run([sys.executable, os.path.join(HERE, "port_replay.py"), "check"], capture_output=True,
+                           text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_statement_that_reports_a_code_is_cut_out(self):
+        import port_replay
+        rust = ('fn f(&mut self) {\n    if bad {\n        self.diags.push(\n            Diag::new("E0001", sp, "a; b")\n'
+                '                .fix("c", None),\n        );\n        return None;\n    }\n}')
+        self.assertEqual(port_replay.without(rust, "E0001"), 'fn f(&mut self) {\n    if bad {\n        return None;\n    }\n}')
+        bmb = 'Some(o) => { self.err("E0001", "a {"); self.bump(); },'
+        self.assertEqual(port_replay.without(bmb, "E0001"), 'Some(o) => { self.bump(); },')
+        # Not a statement of its own: a `let`, an arm's value, a code reported twice.
+        self.assertIsNone(port_replay.without('let d = Diag::new("E0001", sp);', "E0001"))
+        self.assertIsNone(port_replay.without('match x { None => self.err("E0001", sp), }', "E0001"))
+        self.assertIsNone(port_replay.without('a("E0001"); b("E0001");', "E0001"))
+
+    def test_a_history_runs_its_steps_in_one_copy(self):
+        tasks = [t for t in pair.load_tasks(os.path.join(HERE, "port")) if t.get("family") == "history"]
+        self.assertGreaterEqual(len(tasks), 4)
+        for t in tasks:
+            names = [c["name"] for st in t["steps"] for c in st["cases"]]
+            self.assertEqual(len(names), len(set(names)), t["id"])
+            self.assertTrue(all(st["cases"] for st in t["steps"]), t["id"])
+
     def test_oracles_pass_and_weak_controls_fail(self):
         tasks = {t["id"]: t for t in pair.load_tasks(os.path.join(HERE, "port"))}
         self.assertGreaterEqual(len(tasks), 20)

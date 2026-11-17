@@ -19,7 +19,8 @@ Families:
              change places, in its declaration and in every call
 
 Each task carries a reference solution per arm (`oracle`, generated here,
-not written by hand) and two weak solutions that must fail: one also edits
+not written by hand; the families of `port_hand.py` are, as replacements of
+text that must fit the commit) and two weak solutions that must fail: one also edits
 a function outside the scope, one also changes the program's output.
 
 The choice of targets is mechanical, as in `port_tasks.py`: the candidates
@@ -40,6 +41,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import index  # noqa: E402
 import pair  # noqa: E402
+import port_hand  # noqa: E402
 import port_tasks  # noqa: E402
 
 OUT = port_tasks.OUT
@@ -222,20 +224,32 @@ class Twin:
         self.b = index.bmb_index(self.tree, rest=True, heads=self.heads)
         self.bf = {p: t for p, t in self.b.items() if not p.endswith("::<rest>")}
         # The crate as the Rust arm gets it in the measured documentation
-        # condition (`summary`: `///` stays).
+        # condition (`none`, ADR-0144: no comment but `//!`).
         src = os.path.join(self.tree, "compiler", "src")
         self.files = {}
         for f in index.rust_files(src):
             with open(os.path.join(src, f), encoding="utf-8") as h:
-                self.files[f] = pair.strip_comments(h.read(), docs=True)
+                self.files[f] = pair.strip_comments(h.read())
         self.rall = index.rust_index(self.tree, index.rust_files(src), rest=True)
+        # The words of each text: a name is looked for only where it occurs.
+        words = lambda texts: {k: set(re.findall(r"\w+", t)) for k, t in texts.items()}  # noqa: E731
+        self.fwords, self.rwords, self.bwords = words(self.files), words(self.rall), words(self.b)
+
+    def scopes(self, name):
+        """The definitions of each side that have the word `name`."""
+        return (sorted(p for p in self.rall if name in self.rwords[p]),
+                sorted(p for p in self.b if name in self.bwords[p]))
+
+    def files_with(self, name):
+        return [(f, self.files[f]) for f in sorted(self.files) if name in self.fwords[f]]
 
     def clean(self, name):
         """Every occurrence of the word `name`, on both sides, is the
         function's declaration or a call of it: a rename is then the
         replacement of the word."""
         call = index.call_pattern(name)
-        for text in ("\n".join(self.files.values()), "\n".join(self.b.values())):
+        for text in ("\n".join(t for _, t in self.files_with(name)),
+                     "\n".join(self.b[p] for p in self.b if name in self.bwords[p])):
             words = len(re.findall(word(name), text))
             calls = len(re.findall(call, text))
             decls = len(re.findall(r"fn " + re.escape(name) + r"\s*(?:<[^>]*>)?\(", text))
@@ -263,15 +277,14 @@ def weak(arm, twin, kind):
 def rename(twin, name, rk, bk):
     new = name + "_renamed"
     sub = lambda t: re.sub(word(name), new, t)  # noqa: E731
-    r_scope = sorted(p for p, t in twin.rall.items() if re.search(word(name), t))
-    b_scope = sorted(p for p, t in twin.b.items() if re.search(word(name), t))
+    r_scope, b_scope = twin.scopes(name)
     if any(p.endswith("::<rest>") for p in r_scope + b_scope):
         return None
     if not (USES[0] <= len(r_scope) <= USES[1] and USES[0] <= len(b_scope) <= USES[1]):
         return None
     r_new, b_new = rk[:-len(name)] + new, bk[:-len(name)] + new
     r_calls = []
-    for f, text in sorted(twin.files.items()):
+    for f, text in twin.files_with(name):
         r_calls += [["edit_file", {"path": "src/" + f, "old": o, "new": n}]
                     for o, n in edits_for(text, word(name), new)]
     # BMB: the unit of the function first (the new name is added and the
@@ -294,17 +307,14 @@ def rename(twin, name, rk, bk):
 
 
 def swap(twin, name, rk, bk):
-    r_scope = sorted(p for p, t in twin.rall.items() if re.search(word(name), t))
-    b_scope = sorted(p for p, t in twin.b.items() if re.search(word(name), t))
+    r_scope, b_scope = twin.scopes(name)
     if any(p.endswith("::<rest>") for p in r_scope + b_scope):
         return None
     if not (USES[0] <= len(r_scope) <= USES[1] and USES[0] <= len(b_scope) <= USES[1]):
         return None
     # Rust: the files as they are afterwards, as edits.
     r_calls, r_names = [], None
-    for f, text in sorted(twin.files.items()):
-        if not re.search(word(name), text):
-            continue
+    for f, text in twin.files_with(name):
         got = swapped(text, name)
         if got is None:
             # A file with calls only has no declaration: the names come
@@ -426,6 +436,14 @@ def make(commit):
                          for k in ("scope", "corpus")],
             }
             out[tid + ".json"] = json.dumps(task, indent=1, ensure_ascii=False) + "\n"
+    me = sys.modules[__name__]
+    for t in port_hand.tasks(twin, me):
+        tid = f"r{len(out) + 1:02d}-{t['family']}-{t['name']}"
+        task = {"id": tid, "kind": "change", "family": t["family"], "fixture": "port", "commit": commit,
+                "prompt": t["prompt"], "scope": t["scope"], "oracle": t["oracle"],
+                "weak": [{"fails": k, **{arm: t["oracle"][arm] + weak(arm, twin, k) for arm in ("bmb", "rust")}}
+                         for k in ("scope", "corpus")]}
+        out[tid + ".json"] = json.dumps(task, indent=1, ensure_ascii=False) + "\n"
     return out
 
 

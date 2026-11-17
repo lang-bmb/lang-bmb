@@ -1,0 +1,128 @@
+{
+ "id": "t06-replay-e0235",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0235",
+  "commit": "61304be45",
+  "subject": "2T-07a: user traits, impls, bounds and static trait calls"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0235 yet: a blanket impl `impl<T> Trait for T` is not used. It came with the commit \"2T-07a: user traits, impls, bounds and static trait calls\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    impl<T> Tr for T {\n    {\"code\": \"E0235\", \"severity\": \"error\", \"message\": \"`impl<T> Tr for T` implements `Tr` for every type (a blanket impl)\", \"file\": \"err/rejected_impls.bmb\", \"line\": 12, \"col\": 20, \"end_line\": 12, \"end_col\": 21, \"fix\": {\"message\": \"implement it for each type: `impl Tr for Point { .. }`, or bound a type parameter `T: Tr` where it is used\"}}\n\n    impl<T: Copy> Shape for T {\n    {\"code\": \"E0235\", \"severity\": \"error\", \"message\": \"`impl<T> Shape for T` implements `Shape` for every type (a blanket impl)\", \"file\": \"err/traits.bmb\", \"line\": 27, \"col\": 29, \"end_line\": 27, \"end_col\": 30, \"fix\": {\"message\": \"implement it for each type: `impl Shape for Point { .. }`, or bound a type parameter `T: Shape` where it is used\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                self.diags.push(\n                    Diag::new(\n                        \"E0235\",\n                        span,\n                        format!(\n                            \"`impl<{n}> {name} for {n}` implements `{name}` for every type (a blanket impl)\"\n                        ),\n                    )\n                    .fix(\n                        format!(\"implement it for each type: `impl {name} for Point {{ .. }}`, or bound a type parameter `T: {name}` where it is used\"),\n                        None,\n                    ),\n                );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn impl_head(self: &mut Checker, i: &ast::TraitImpl, mp: &str) -> () {\n            if i.trait_path.len() == 0 {\n                return;\n            }\n            let name: String = path_text(i.trait_path.as_slice());\n            let tspan: source::Span = span_to(i.trait_path[0].span, i.trait_path[i.trait_path.len() - 1].span);\n            let found: Option<String> = self.trait_path(i.trait_path.as_slice(), mp);\n            let tr: String = match found {\n                None => { let help: String = match self.type_path(i.trait_path.as_slice(), mp) { None => String::from(\"a trait of another unit is named by full path, e.g. `unit::Shape`\"), Some(tp) => types::cat5(\"`\", name.as_str(), \"` is a type; its own functions go in `impl \", name.as_str(), \" { .. }`\"), }; let d: diag::Diag = self.unknown_trait(name.as_str(), tspan, mp, help.as_str()); self.diags.push(d); return; },\n                Some(x) => x,\n            };\n            let gens: Vec<types::TParam> = self.tparams_of(i.generics.as_slice(), true, mp);\n            self.tparams = gens.clone();\n            let head: ast::TypeKind = self.canon(&i.self_ty, mp, true, 100000);\n            self.tparams = Vec::new();\n            let span: source::Span = i.self_ty.span;\n            if types::is_error(&head) {\n                return;\n            }\n            let info: types::TraitImplInfo = types::TraitImplInfo { trait_path: tr.clone(), generics: gens.clone(), head: head.clone(), unit: String::from(mp), span: i.span };\n            match types::param_name(&head) {\n                None => {},\n                Some(n) => { self.rejected_impls.push(info); return; },\n            }\n            let mut cb: Vec<String> = Vec::new();\n            cb.push(String::from(\"Copy\"));\n            let copy: types::TParam = types::TParam { name: String::from(\"Self\"), bounds: cb };\n            if !self.targ_ok(&head, &copy, tr.as_str(), span, true) {\n                return;\n            }\n            let ht: String = types::text_in(&head, mp);\n            for g in 0..gens.len()\n                invariant 0 <= g && g <= gens.len(),\n            {\n                if !types::mentions_param(&head, gens[g].name.as_str(), 100000) {\n                    let at: source::Span = if g < i.generics.len() {\n                        i.generics[g].span\n                    } else {\n                        span\n                    };\n                    self.help(\"E0420\", at, types::cat5(\"type parameter `\", gens[g].name.as_str(), \"` of the impl does not appear in `\", ht.as_str(), \"`\").as_str(), \"remove it, or use it in the implemented type\");\n                    self.rejected_impls.push(info);\n                    return;\n                }\n            }\n            let mut seen: Vec<String> = Vec::new();\n            types::params_in(&head, &mut seen, 100000);\n            if !same_names(seen.as_slice(), gens.as_slice()) {\n                self.help(\"E0420\", span, types::cat3(\"the `impl` for `\", ht.as_str(), \"` takes its type parameters in order\").as_str(), types::cat3(\"declare them in the order the type names them: `\", types::join(seen.as_slice(), \"`, `\").as_str(), \"`\").as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let trait_unit: String = unit_of(tr.as_str());\n            let type_unit: Option<String> = match types::named_path(&head) {\n                None => None,\n                Some(hp) => { if self.adts.has(hp.as_str()) { Some(unit_of(hp.as_str())) } else { None } },\n            };\n            let in_type_unit: bool = match &type_unit {\n                None => false,\n                Some(u) => u.as_str() == mp,\n            };\n            if mp != trait_unit.as_str() && !in_type_unit {\n                let help: String = match &type_unit {\n                    None => types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\"),\n                    Some(u) => { if u.as_str() != trait_unit.as_str() { types::cat5(\"move it to unit `\", trait_unit.as_str(), \"` or unit `\", u.as_str(), \"`\") } else { types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\") } },\n                };\n                self.help(\"E0312\", span, types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` is in neither the unit of the trait nor the unit of the type\").as_str(), help.as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let mut prev: Option<String> = None;\n            for p in 0..self.trait_impls.len()\n                invariant 0 <= p && p <= self.trait_impls.len(),\n            {\n                if !has_text(&prev) && self.trait_impls[p].trait_path.as_str() == tr.as_str() && types::overlaps(&self.trait_impls[p].head, &head, 100000) {\n                    prev = Some(types::text_in(&self.trait_impls[p].head, mp));\n                }\n            }\n            match prev {\n                None => {},\n                Some(pt) => { self.help(\"E0311\", span, types::cat4(types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` overlaps `impl \").as_str(), name.as_str(), \" for \", types::cat2(pt.as_str(), \"`\").as_str()).as_str(), \"a trait has one impl for a type: remove one of them, or make their types differ\"); self.overlapping_impls.push(info.span); self.rejected_impls.push(info); return; },\n            }\n            self.trait_impls.push(info);\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-rejected_impls",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rejected_impls.bmb"
+   ]
+  },
+  {
+   "name": "replay-traits",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/traits.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "                self.rejected_impls.push(info);\n                continue;\n            }\n            let copy = TParam {",
+     "new": "                self.diags.push(\n                    Diag::new(\n                        \"E0235\",\n                        span,\n                        format!(\n                            \"`impl<{n}> {name} for {n}` implements `{name}` for every type (a blanket impl)\"\n                        ),\n                    )\n                    .fix(\n                        format!(\"implement it for each type: `impl {name} for Point {{ .. }}`, or bound a type parameter `T: {name}` where it is used\"),\n                        None,\n                    ),\n                );\n                self.rejected_impls.push(info);\n                continue;\n            }\n            let copy = TParam {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn impl_head(self: &mut Checker, i: &ast::TraitImpl, mp: &str) -> () {\n            if i.trait_path.len() == 0 {\n                return;\n            }\n            let name: String = path_text(i.trait_path.as_slice());\n            let tspan: source::Span = span_to(i.trait_path[0].span, i.trait_path[i.trait_path.len() - 1].span);\n            let found: Option<String> = self.trait_path(i.trait_path.as_slice(), mp);\n            let tr: String = match found {\n                None => { let help: String = match self.type_path(i.trait_path.as_slice(), mp) { None => String::from(\"a trait of another unit is named by full path, e.g. `unit::Shape`\"), Some(tp) => types::cat5(\"`\", name.as_str(), \"` is a type; its own functions go in `impl \", name.as_str(), \" { .. }`\"), }; let d: diag::Diag = self.unknown_trait(name.as_str(), tspan, mp, help.as_str()); self.diags.push(d); return; },\n                Some(x) => x,\n            };\n            let gens: Vec<types::TParam> = self.tparams_of(i.generics.as_slice(), true, mp);\n            self.tparams = gens.clone();\n            let head: ast::TypeKind = self.canon(&i.self_ty, mp, true, 100000);\n            self.tparams = Vec::new();\n            let span: source::Span = i.self_ty.span;\n            if types::is_error(&head) {\n                return;\n            }\n            let info: types::TraitImplInfo = types::TraitImplInfo { trait_path: tr.clone(), generics: gens.clone(), head: head.clone(), unit: String::from(mp), span: i.span };\n            match types::param_name(&head) {\n                None => {},\n                Some(n) => { self.help(\"E0235\", span, types::cat4(types::cat5(\"`impl<\", n.as_str(), \"> \", name.as_str(), \" for \").as_str(), n.as_str(), types::cat3(\"` implements `\", name.as_str(), \"` for every type (a blanket impl)\").as_str(), \"\").as_str(), types::cat5(\"implement it for each type: `impl \", name.as_str(), \" for Point { .. }`, or bound a type parameter `T: \", name.as_str(), \"` where it is used\").as_str()); self.rejected_impls.push(info); return; },\n            }\n            let mut cb: Vec<String> = Vec::new();\n            cb.push(String::from(\"Copy\"));\n            let copy: types::TParam = types::TParam { name: String::from(\"Self\"), bounds: cb };\n            if !self.targ_ok(&head, &copy, tr.as_str(), span, true) {\n                return;\n            }\n            let ht: String = types::text_in(&head, mp);\n            for g in 0..gens.len()\n                invariant 0 <= g && g <= gens.len(),\n            {\n                if !types::mentions_param(&head, gens[g].name.as_str(), 100000) {\n                    let at: source::Span = if g < i.generics.len() {\n                        i.generics[g].span\n                    } else {\n                        span\n                    };\n                    self.help(\"E0420\", at, types::cat5(\"type parameter `\", gens[g].name.as_str(), \"` of the impl does not appear in `\", ht.as_str(), \"`\").as_str(), \"remove it, or use it in the implemented type\");\n                    self.rejected_impls.push(info);\n                    return;\n                }\n            }\n            let mut seen: Vec<String> = Vec::new();\n            types::params_in(&head, &mut seen, 100000);\n            if !same_names(seen.as_slice(), gens.as_slice()) {\n                self.help(\"E0420\", span, types::cat3(\"the `impl` for `\", ht.as_str(), \"` takes its type parameters in order\").as_str(), types::cat3(\"declare them in the order the type names them: `\", types::join(seen.as_slice(), \"`, `\").as_str(), \"`\").as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let trait_unit: String = unit_of(tr.as_str());\n            let type_unit: Option<String> = match types::named_path(&head) {\n                None => None,\n                Some(hp) => { if self.adts.has(hp.as_str()) { Some(unit_of(hp.as_str())) } else { None } },\n            };\n            let in_type_unit: bool = match &type_unit {\n                None => false,\n                Some(u) => u.as_str() == mp,\n            };\n            if mp != trait_unit.as_str() && !in_type_unit {\n                let help: String = match &type_unit {\n                    None => types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\"),\n                    Some(u) => { if u.as_str() != trait_unit.as_str() { types::cat5(\"move it to unit `\", trait_unit.as_str(), \"` or unit `\", u.as_str(), \"`\") } else { types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\") } },\n                };\n                self.help(\"E0312\", span, types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` is in neither the unit of the trait nor the unit of the type\").as_str(), help.as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let mut prev: Option<String> = None;\n            for p in 0..self.trait_impls.len()\n                invariant 0 <= p && p <= self.trait_impls.len(),\n            {\n                if !has_text(&prev) && self.trait_impls[p].trait_path.as_str() == tr.as_str() && types::overlaps(&self.trait_impls[p].head, &head, 100000) {\n                    prev = Some(types::text_in(&self.trait_impls[p].head, mp));\n                }\n            }\n            match prev {\n                None => {},\n                Some(pt) => { self.help(\"E0311\", span, types::cat4(types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` overlaps `impl \").as_str(), name.as_str(), \" for \", types::cat2(pt.as_str(), \"`\").as_str()).as_str(), \"a trait has one impl for a type: remove one of them, or make their types differ\"); self.overlapping_impls.push(info.span); self.rejected_impls.push(info); return; },\n            }\n            self.trait_impls.push(info);\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn impl_head(self: &mut Checker, i: &ast::TraitImpl, mp: &str) -> () {\n            if i.trait_path.len() == 0 {\n                return;\n            }\n            let name: String = path_text(i.trait_path.as_slice());\n            let tspan: source::Span = span_to(i.trait_path[0].span, i.trait_path[i.trait_path.len() - 1].span);\n            let found: Option<String> = self.trait_path(i.trait_path.as_slice(), mp);\n            let tr: String = match found {\n                None => { let help: String = match self.type_path(i.trait_path.as_slice(), mp) { None => String::from(\"a trait of another unit is named by full path, e.g. `unit::Shape`\"), Some(tp) => types::cat5(\"`\", name.as_str(), \"` is a type; its own functions go in `impl \", name.as_str(), \" { .. }`\"), }; let d: diag::Diag = self.unknown_trait(name.as_str(), tspan, mp, help.as_str()); self.diags.push(d); return; },\n                Some(x) => x,\n            };\n            let gens: Vec<types::TParam> = self.tparams_of(i.generics.as_slice(), true, mp);\n            self.tparams = gens.clone();\n            let head: ast::TypeKind = self.canon(&i.self_ty, mp, true, 100000);\n            self.tparams = Vec::new();\n            let span: source::Span = i.self_ty.span;\n            if types::is_error(&head) {\n                return;\n            }\n            let info: types::TraitImplInfo = types::TraitImplInfo { trait_path: tr.clone(), generics: gens.clone(), head: head.clone(), unit: String::from(mp), span: i.span };\n            match types::param_name(&head) {\n                None => {},\n                Some(n) => { self.help(\"E0235\", span, types::cat4(types::cat5(\"`impl<\", n.as_str(), \"> \", name.as_str(), \" for \").as_str(), n.as_str(), types::cat3(\"` implements `\", name.as_str(), \"` for every type (a blanket impl)\").as_str(), \"\").as_str(), types::cat5(\"implement it for each type: `impl \", name.as_str(), \" for Point { .. }`, or bound a type parameter `T: \", name.as_str(), \"` where it is used\").as_str()); self.rejected_impls.push(info); return; },\n            }\n            let mut cb: Vec<String> = Vec::new();\n            cb.push(String::from(\"Copy\"));\n            let copy: types::TParam = types::TParam { name: String::from(\"Self\"), bounds: cb };\n            if !self.targ_ok(&head, &copy, tr.as_str(), span, true) {\n                return;\n            }\n            let ht: String = types::text_in(&head, mp);\n            for g in 0..gens.len()\n                invariant 0 <= g && g <= gens.len(),\n            {\n                if !types::mentions_param(&head, gens[g].name.as_str(), 100000) {\n                    let at: source::Span = if g < i.generics.len() {\n                        i.generics[g].span\n                    } else {\n                        span\n                    };\n                    self.help(\"E0420\", at, types::cat5(\"type parameter `\", gens[g].name.as_str(), \"` of the impl does not appear in `\", ht.as_str(), \"`\").as_str(), \"remove it, or use it in the implemented type\");\n                    self.rejected_impls.push(info);\n                    return;\n                }\n            }\n            let mut seen: Vec<String> = Vec::new();\n            types::params_in(&head, &mut seen, 100000);\n            if !same_names(seen.as_slice(), gens.as_slice()) {\n                self.help(\"E0420\", span, types::cat3(\"the `impl` for `\", ht.as_str(), \"` takes its type parameters in order\").as_str(), types::cat3(\"declare them in the order the type names them: `\", types::join(seen.as_slice(), \"`, `\").as_str(), \"`\").as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let trait_unit: String = unit_of(tr.as_str());\n            let type_unit: Option<String> = match types::named_path(&head) {\n                None => None,\n                Some(hp) => { if self.adts.has(hp.as_str()) { Some(unit_of(hp.as_str())) } else { None } },\n            };\n            let in_type_unit: bool = match &type_unit {\n                None => false,\n                Some(u) => u.as_str() == mp,\n            };\n            if mp != trait_unit.as_str() && !in_type_unit {\n                let help: String = match &type_unit {\n                    None => types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\"),\n                    Some(u) => { if u.as_str() != trait_unit.as_str() { types::cat5(\"move it to unit `\", trait_unit.as_str(), \"` or unit `\", u.as_str(), \"`\") } else { types::cat3(\"move it to unit `\", trait_unit.as_str(), \"`\") } },\n                };\n                self.help(\"E0312\", span, types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` is in neither the unit of the trait nor the unit of the type\").as_str(), help.as_str());\n                self.rejected_impls.push(info);\n                return;\n            }\n            let mut prev: Option<String> = None;\n            for p in 0..self.trait_impls.len()\n                invariant 0 <= p && p <= self.trait_impls.len(),\n            {\n                if !has_text(&prev) && self.trait_impls[p].trait_path.as_str() == tr.as_str() && types::overlaps(&self.trait_impls[p].head, &head, 100000) {\n                    prev = Some(types::text_in(&self.trait_impls[p].head, mp));\n                }\n            }\n            match prev {\n                None => {},\n                Some(pt) => { self.help(\"E0311\", span, types::cat4(types::cat5(\"`impl \", name.as_str(), \" for \", ht.as_str(), \"` overlaps `impl \").as_str(), name.as_str(), \" for \", types::cat2(pt.as_str(), \"`\").as_str()).as_str(), \"a trait has one impl for a type: remove one of them, or make their types differ\"); self.overlapping_impls.push(info.span); self.rejected_impls.push(info); return; },\n            }\n            self.trait_impls.push(info);\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "                self.rejected_impls.push(info);\n                continue;\n            }\n            let copy = TParam {",
+      "new": "                self.diags.push(\n                    Diag::new(\n                        \"E0235\",\n                        span,\n                        format!(\n                            \"`impl<{n}> {name} for {n}` implements `{name}` for every type (a blanket impl)\"\n                        ),\n                    )\n                    .fix(\n                        format!(\"implement it for each type: `impl {name} for Point {{ .. }}`, or bound a type parameter `T: {name}` where it is used\"),\n                        None,\n                    ),\n                );\n                self.rejected_impls.push(info);\n                continue;\n            }\n            let copy = TParam {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

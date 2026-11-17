@@ -1,0 +1,119 @@
+{
+ "id": "t12-replay-e0607",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0607",
+  "commit": "5644c8404",
+  "subject": "2F-02, 2F-03 (ADR-0030), 2E-02..2E-04 (ADR-0029): effect sets with alloc and panic; escapes with rationales and trust levels"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0607 yet: `pure` listed with another effect, or an effect listed twice. It came with the commit \"2F-02, 2F-03 (ADR-0030), 2E-02..2E-04 (ADR-0029): effect sets with alloc and panic; escapes with rationales and trust levels\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    #[effects(pure, io)]\n    {\"code\": \"E0607\", \"severity\": \"error\", \"message\": \"`pure` means no effect: it cannot be listed with `io`\", \"file\": \"err/effects.bmb\", \"line\": 9, \"col\": 5, \"end_line\": 9, \"end_col\": 25, \"fix\": {\"message\": \"write `#[effects(io)]`\", \"replacement\": \"#[effects(io)]\"}}\n\n    #[effects(io, io)]\n    {\"code\": \"E0607\", \"severity\": \"error\", \"message\": \"an effect is listed twice\", \"file\": \"err/effects.bmb\", \"line\": 66, \"col\": 5, \"end_line\": 66, \"end_col\": 23, \"fix\": {\"message\": \"write `#[effects(io)]`\", \"replacement\": \"#[effects(io)]\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            self.diags.push(Diag::new(\"E0607\", a.span, msg).fix(\n                format!(\"write `#[effects({})]`\", e.text()),\n                Some(format!(\"#[effects({})]\", e.text())),\n            ));",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn effects_attr(self: &mut Checker, a: &ast::Attr) -> types::Effects {\n            let mut e: types::Effects = types::pure();\n            let mut pure: bool = false;\n            let mut repeated: bool = false;\n            if a.args.len() == 0 {\n                self.help(\"E0602\", a.span, \"`#[effects(..)]` names no effect\", \"write `#[effects(pure)]`, or the effects the function has\");\n            }\n            for i in 0..a.args.len()\n                invariant 0 <= i && i <= a.args.len(),\n            {\n                match &a.args[i] {\n                    ast::AttrArg::Ident(id) => { if id.name.as_str() == \"pure\" { if pure { repeated = true; } pure = true; } else { match types::atom(id.name.as_str()) { None => { self.help(\"E0602\", id.span, types::cat3(\"unknown effect `\", id.name.as_str(), \"`\").as_str(), \"effects are `pure` (none), `alloc` (the function allocates: `Vec`, `Box`), `io` (it prints or touches the system), `nondet` (it reads a value from outside: arguments, input) and `panic` (it has an escape: `assume`, `#[external_body]`)\"); }, Some(at) => { if types::e_contains(e, at) { repeated = true; } e = types::e_union(e, at); }, } } },\n                    ast::AttrArg::Str(s, sp) => self.err(\"E0602\", *sp, \"effect must be an identifier\"),\n                    ast::AttrArg::Pair(k, v) => self.err(\"E0602\", k.span, \"effect must be an identifier\"),\n                }\n            }\n            if pure && !types::is_pure(e) || repeated {\n                let et: String = types::e_text(e);\n                let msg: String = if pure && !types::is_pure(e) {\n                    types::cat3(\"`pure` means no effect: it cannot be listed with `\", et.as_str(), \"`\")\n                } else {\n                    String::from(\"an effect is listed twice\")\n                };\n            }\n            e\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-effects",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/effects.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "        }\n        e\n    }",
+     "new": "            self.diags.push(Diag::new(\"E0607\", a.span, msg).fix(\n                format!(\"write `#[effects({})]`\", e.text()),\n                Some(format!(\"#[effects({})]\", e.text())),\n            ));\n        }\n        e\n    }"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn effects_attr(self: &mut Checker, a: &ast::Attr) -> types::Effects {\n            let mut e: types::Effects = types::pure();\n            let mut pure: bool = false;\n            let mut repeated: bool = false;\n            if a.args.len() == 0 {\n                self.help(\"E0602\", a.span, \"`#[effects(..)]` names no effect\", \"write `#[effects(pure)]`, or the effects the function has\");\n            }\n            for i in 0..a.args.len()\n                invariant 0 <= i && i <= a.args.len(),\n            {\n                match &a.args[i] {\n                    ast::AttrArg::Ident(id) => { if id.name.as_str() == \"pure\" { if pure { repeated = true; } pure = true; } else { match types::atom(id.name.as_str()) { None => { self.help(\"E0602\", id.span, types::cat3(\"unknown effect `\", id.name.as_str(), \"`\").as_str(), \"effects are `pure` (none), `alloc` (the function allocates: `Vec`, `Box`), `io` (it prints or touches the system), `nondet` (it reads a value from outside: arguments, input) and `panic` (it has an escape: `assume`, `#[external_body]`)\"); }, Some(at) => { if types::e_contains(e, at) { repeated = true; } e = types::e_union(e, at); }, } } },\n                    ast::AttrArg::Str(s, sp) => self.err(\"E0602\", *sp, \"effect must be an identifier\"),\n                    ast::AttrArg::Pair(k, v) => self.err(\"E0602\", k.span, \"effect must be an identifier\"),\n                }\n            }\n            if pure && !types::is_pure(e) || repeated {\n                let et: String = types::e_text(e);\n                let msg: String = if pure && !types::is_pure(e) {\n                    types::cat3(\"`pure` means no effect: it cannot be listed with `\", et.as_str(), \"`\")\n                } else {\n                    String::from(\"an effect is listed twice\")\n                };\n                self.fixed(\"E0607\", a.span, msg.as_str(), types::cat3(\"write `#[effects(\", et.as_str(), \")]`\").as_str(), types::cat3(\"#[effects(\", et.as_str(), \")]\").as_str());\n            }\n            e\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn effects_attr(self: &mut Checker, a: &ast::Attr) -> types::Effects {\n            let mut e: types::Effects = types::pure();\n            let mut pure: bool = false;\n            let mut repeated: bool = false;\n            if a.args.len() == 0 {\n                self.help(\"E0602\", a.span, \"`#[effects(..)]` names no effect\", \"write `#[effects(pure)]`, or the effects the function has\");\n            }\n            for i in 0..a.args.len()\n                invariant 0 <= i && i <= a.args.len(),\n            {\n                match &a.args[i] {\n                    ast::AttrArg::Ident(id) => { if id.name.as_str() == \"pure\" { if pure { repeated = true; } pure = true; } else { match types::atom(id.name.as_str()) { None => { self.help(\"E0602\", id.span, types::cat3(\"unknown effect `\", id.name.as_str(), \"`\").as_str(), \"effects are `pure` (none), `alloc` (the function allocates: `Vec`, `Box`), `io` (it prints or touches the system), `nondet` (it reads a value from outside: arguments, input) and `panic` (it has an escape: `assume`, `#[external_body]`)\"); }, Some(at) => { if types::e_contains(e, at) { repeated = true; } e = types::e_union(e, at); }, } } },\n                    ast::AttrArg::Str(s, sp) => self.err(\"E0602\", *sp, \"effect must be an identifier\"),\n                    ast::AttrArg::Pair(k, v) => self.err(\"E0602\", k.span, \"effect must be an identifier\"),\n                }\n            }\n            if pure && !types::is_pure(e) || repeated {\n                let et: String = types::e_text(e);\n                let msg: String = if pure && !types::is_pure(e) {\n                    types::cat3(\"`pure` means no effect: it cannot be listed with `\", et.as_str(), \"`\")\n                } else {\n                    String::from(\"an effect is listed twice\")\n                };\n                self.fixed(\"E0607\", a.span, msg.as_str(), types::cat3(\"write `#[effects(\", et.as_str(), \")]`\").as_str(), types::cat3(\"#[effects(\", et.as_str(), \")]\").as_str());\n            }\n            e\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        }\n        e\n    }",
+      "new": "            self.diags.push(Diag::new(\"E0607\", a.span, msg).fix(\n                format!(\"write `#[effects({})]`\", e.text()),\n                Some(format!(\"#[effects({})]\", e.text())),\n            ));\n        }\n        e\n    }"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

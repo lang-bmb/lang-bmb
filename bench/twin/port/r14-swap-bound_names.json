@@ -1,0 +1,176 @@
+{
+ "id": "r14-swap-bound_names",
+ "kind": "change",
+ "family": "swap",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Change the signature of the function `closures::bound_names`: its first two parameters change places (`b` and `out`). Update every call of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Change the signature of the function `closures::bound_names`: its first two parameters change places (`b` and `out`). Update every call of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "closures::bound_names",
+   "closures::captures",
+   "closures::local_types"
+  ],
+  "bmb": [
+   "closures::bound_names",
+   "closures::captures",
+   "closures::local_types"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "fn bound_names(b: &Block, out: &mut std::collections::BTreeSet<String>) {",
+     "new": "fn bound_names(out: &mut std::collections::BTreeSet<String>, b: &Block) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "    bound_names(&c.body, &mut own);",
+     "new": "    bound_names(&mut own, &c.body);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "    bound_names(&f.body, &mut names);",
+     "new": "    bound_names(&mut names, &f.body);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "closures",
+     "code": "    #[effects(alloc)]\n    fn bound_names(out: &mut Vec<String>, b: &ast::Block) -> () {\n        stmt_names(b, out, 1000000000);\n        let mut c: ast::Block = b.clone();\n        let mut v: Binds = Binds { names: std::mem::replace(out, Vec::new()) };\n        ast::block_mut::<Binds>(&mut c, &mut v, true, 1000000000);\n        std::mem::replace(out, v.names);\n    }\n\n    #[effects(alloc)]\n    fn captures(c: &ast::Closure, decls: &table::Table<Option<ast::Type>>) -> Vec<String> {\n        let mut own: Vec<String> = Vec::new();\n        for i in 0..c.params.len() {\n            own.push(c.params[i].name.name.clone());\n        }\n        bound_names(&mut own, &c.body);\n        match &c.ret.name {\n            None => {},\n            Some(n) => own.push(n.name.clone()),\n        }\n        let mut probe: ast::Closure = c.clone();\n        let mut v: Vars = Vars { used: Vec::new() };\n        ast::exprs_each::<Vars>(&mut probe.pre, &mut v, true, 1000000000);\n        ast::exprs_each::<Vars>(&mut probe.post, &mut v, true, 1000000000);\n        ast::block_mut::<Vars>(&mut probe.body, &mut v, true, 1000000000);\n        let mut out: Vec<String> = Vec::new();\n        for j in 0..v.used.len() {\n            if decls.has(v.used[j].as_str()) && !has(own.as_slice(), v.used[j].as_str()) {\n                out.push(v.used[j].clone());\n            }\n        }\n        out\n    }\n\n    #[effects(alloc)]\n    fn local_types(d: &ast::FnDef) -> table::Table<Option<ast::Type>> {\n        let mut out: table::Table<Option<ast::Type>> = table::new::<Option<ast::Type>>();\n        let mut names: Vec<String> = Vec::new();\n        bound_names(&mut names, &d.body);\n        for i in 0..names.len() {\n            out.insert(names[i].as_str(), None);\n        }\n        let mut v: Lets = Lets { names: Vec::new(), tys: Vec::new() };\n        stmt_lets(&d.body, &mut v, 1000000000);\n        let mut g: ast::FnDef = d.clone();\n        ast::fn_exprs_mut::<Lets>(&mut g, &mut v, true, 1000000000);\n        for j in 0..v.names.len() {\n            if j < v.tys.len() {\n                out.insert(v.names[j].as_str(), Some(v.tys[j].clone()));\n            }\n        }\n        for k in 0..d.params.len() {\n            out.insert(d.params[k].name.name.as_str(), Some(d.params[k].ty.clone()));\n        }\n        out\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn bound_names(out: &mut Vec<String>, b: &ast::Block) -> () {\n        stmt_names(b, out, 1000000000);\n        let mut c: ast::Block = b.clone();\n        let mut v: Binds = Binds { names: std::mem::replace(out, Vec::new()) };\n        ast::block_mut::<Binds>(&mut c, &mut v, true, 1000000000);\n        std::mem::replace(out, v.names);\n    }\n\n    #[effects(alloc)]\n    fn captures(c: &ast::Closure, decls: &table::Table<Option<ast::Type>>) -> Vec<String> {\n        let mut own: Vec<String> = Vec::new();\n        for i in 0..c.params.len() {\n            own.push(c.params[i].name.name.clone());\n        }\n        bound_names(&mut own, &c.body);\n        match &c.ret.name {\n            None => {},\n            Some(n) => own.push(n.name.clone()),\n        }\n        let mut probe: ast::Closure = c.clone();\n        let mut v: Vars = Vars { used: Vec::new() };\n        ast::exprs_each::<Vars>(&mut probe.pre, &mut v, true, 1000000000);\n        ast::exprs_each::<Vars>(&mut probe.post, &mut v, true, 1000000000);\n        ast::block_mut::<Vars>(&mut probe.body, &mut v, true, 1000000000);\n        let mut out: Vec<String> = Vec::new();\n        for j in 0..v.used.len() {\n            if decls.has(v.used[j].as_str()) && !has(own.as_slice(), v.used[j].as_str()) {\n                out.push(v.used[j].clone());\n            }\n        }\n        out\n    }\n\n    #[effects(alloc)]\n    fn local_types(d: &ast::FnDef) -> table::Table<Option<ast::Type>> {\n        let mut out: table::Table<Option<ast::Type>> = table::new::<Option<ast::Type>>();\n        let mut names: Vec<String> = Vec::new();\n        bound_names(&mut names, &d.body);\n        for i in 0..names.len() {\n            out.insert(names[i].as_str(), None);\n        }\n        let mut v: Lets = Lets { names: Vec::new(), tys: Vec::new() };\n        stmt_lets(&d.body, &mut v, 1000000000);\n        let mut g: ast::FnDef = d.clone();\n        ast::fn_exprs_mut::<Lets>(&mut g, &mut v, true, 1000000000);\n        for j in 0..v.names.len() {\n            if j < v.tys.len() {\n                out.insert(v.names[j].as_str(), Some(v.tys[j].clone()));\n            }\n        }\n        for k in 0..d.params.len() {\n            out.insert(d.params[k].name.name.as_str(), Some(d.params[k].ty.clone()));\n        }\n        out\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "fn bound_names(b: &Block, out: &mut std::collections::BTreeSet<String>) {",
+      "new": "fn bound_names(out: &mut std::collections::BTreeSet<String>, b: &Block) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    bound_names(&c.body, &mut own);",
+      "new": "    bound_names(&mut own, &c.body);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    bound_names(&f.body, &mut names);",
+      "new": "    bound_names(&mut names, &f.body);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn bound_names(out: &mut Vec<String>, b: &ast::Block) -> () {\n        stmt_names(b, out, 1000000000);\n        let mut c: ast::Block = b.clone();\n        let mut v: Binds = Binds { names: std::mem::replace(out, Vec::new()) };\n        ast::block_mut::<Binds>(&mut c, &mut v, true, 1000000000);\n        std::mem::replace(out, v.names);\n    }\n\n    #[effects(alloc)]\n    fn captures(c: &ast::Closure, decls: &table::Table<Option<ast::Type>>) -> Vec<String> {\n        let mut own: Vec<String> = Vec::new();\n        for i in 0..c.params.len() {\n            own.push(c.params[i].name.name.clone());\n        }\n        bound_names(&mut own, &c.body);\n        match &c.ret.name {\n            None => {},\n            Some(n) => own.push(n.name.clone()),\n        }\n        let mut probe: ast::Closure = c.clone();\n        let mut v: Vars = Vars { used: Vec::new() };\n        ast::exprs_each::<Vars>(&mut probe.pre, &mut v, true, 1000000000);\n        ast::exprs_each::<Vars>(&mut probe.post, &mut v, true, 1000000000);\n        ast::block_mut::<Vars>(&mut probe.body, &mut v, true, 1000000000);\n        let mut out: Vec<String> = Vec::new();\n        for j in 0..v.used.len() {\n            if decls.has(v.used[j].as_str()) && !has(own.as_slice(), v.used[j].as_str()) {\n                out.push(v.used[j].clone());\n            }\n        }\n        out\n    }\n\n    #[effects(alloc)]\n    fn local_types(d: &ast::FnDef) -> table::Table<Option<ast::Type>> {\n        let mut out: table::Table<Option<ast::Type>> = table::new::<Option<ast::Type>>();\n        let mut names: Vec<String> = Vec::new();\n        bound_names(&mut names, &d.body);\n        for i in 0..names.len() {\n            out.insert(names[i].as_str(), None);\n        }\n        let mut v: Lets = Lets { names: Vec::new(), tys: Vec::new() };\n        stmt_lets(&d.body, &mut v, 1000000000);\n        let mut g: ast::FnDef = d.clone();\n        ast::fn_exprs_mut::<Lets>(&mut g, &mut v, true, 1000000000);\n        for j in 0..v.names.len() {\n            if j < v.tys.len() {\n                out.insert(v.names[j].as_str(), Some(v.tys[j].clone()));\n            }\n        }\n        for k in 0..d.params.len() {\n            out.insert(d.params[k].name.name.as_str(), Some(d.params[k].ty.clone()));\n        }\n        out\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "fn bound_names(b: &Block, out: &mut std::collections::BTreeSet<String>) {",
+      "new": "fn bound_names(out: &mut std::collections::BTreeSet<String>, b: &Block) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    bound_names(&c.body, &mut own);",
+      "new": "    bound_names(&mut own, &c.body);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    bound_names(&f.body, &mut names);",
+      "new": "    bound_names(&mut names, &f.body);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,119 @@
+{
+ "id": "t09-replay-e0242",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0242",
+  "commit": "086bfcd4a",
+  "subject": "T1-48 (ADR-0063), 2O-07 (ADR-0081), 2D-29: canonical query symbols; static drops at branch joins; Rust path and closure diagnostics"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0242 yet: `crate::`, `super::` or `self::` path: a path names a unit from the root. It came with the commit \"T1-48 (ADR-0063), 2O-07 (ADR-0081), 2D-29: canonical query symbols; static drops at branch joins; Rust path and closure diagnostics\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    fn from_super(x: i64) -> i64 { super::g(x) }\n    {\"code\": \"E0242\", \"severity\": \"error\", \"message\": \"`super::` is not used: a path names a unit from the root (`unit::f`)\", \"file\": \"err/rust_paths.bmb\", \"line\": 9, \"col\": 40, \"end_line\": 9, \"end_col\": 47, \"fix\": {\"message\": \"replace `super::` with `outer::`\", \"replacement\": \"outer::\"}}\n\n    fn from_crate(x: i64) -> i64 { crate::outer::g(x) }\n    {\"code\": \"E0242\", \"severity\": \"error\", \"message\": \"`crate::` is not used: a path names a unit from the root (`unit::f`)\", \"file\": \"err/rust_paths.bmb\", \"line\": 13, \"col\": 36, \"end_line\": 13, \"end_col\": 43, \"fix\": {\"message\": \"replace `crate::` with nothing\", \"replacement\": \"\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "        self.diags.push(\n            Diag::new(\n                \"E0242\",\n                at.to(self.prev_span()),\n                format!(\"`{kw}::` is not used: a path names a unit from the root (`unit::f`)\"),\n            )\n            .fix(format!(\"replace `{kw}::` with {shown}\"), Some(replacement)),\n        );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn relative_path_prefix(self: &mut Parser) -> Vec<ast::Ident> {\n            let mut out: Vec<ast::Ident> = Vec::new();\n            let kw: String = text_of(self.t.ident(0));\n            if !(kw == \"crate\" || kw == \"super\" || kw == \"self\") || !self.t.is_p(1, \"::\") {\n                return out;\n            }\n            let at: source::Span = self.bump();\n            self.bump();\n            let mut count: usize = 0;\n            if kw == \"super\" {\n                count = self.units.len().saturating_sub(1);\n            } else if kw == \"self\" {\n                count = self.units.len();\n            }\n            let mut replacement: String = String::new();\n            let mut k: usize = 0;\n            while k < count && k < self.units.len()\n                decreases count - k,\n            {\n                if k > 0 {\n                    replacement.push_str(\"::\");\n                }\n                replacement.push_str(self.units[k].as_str());\n                k = k + 1;\n            }\n            if count > 0 {\n                replacement.push_str(\"::\");\n            }\n            let shown: String = if replacement.len() == 0 {\n                String::from(\"nothing\")\n            } else {\n                tick(replacement.as_str())\n            };\n            let span: source::Span = at.to(self.prev_span());\n            let msg: String = cat3(\"`\", kw.as_str(), \"::` is not used: a path names a unit from the root (`unit::f`)\");\n            let mut fx: String = cat3(\"replace `\", kw.as_str(), \"::` with \");\n            fx.push_str(shown.as_str());\n            let mut j: usize = 0;\n            while j < count && j < self.units.len()\n                decreases count - j,\n            {\n                out.push(ast::Ident { name: self.units[j].clone(), span: span });\n                j = j + 1;\n            }\n            out\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-rust_paths",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/rust_paths.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "        let span = at.to(self.prev_span());",
+     "new": "        self.diags.push(\n            Diag::new(\n                \"E0242\",\n                at.to(self.prev_span()),\n                format!(\"`{kw}::` is not used: a path names a unit from the root (`unit::f`)\"),\n            )\n            .fix(format!(\"replace `{kw}::` with {shown}\"), Some(replacement)),\n        );\n        let span = at.to(self.prev_span());"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn relative_path_prefix(self: &mut Parser) -> Vec<ast::Ident> {\n            let mut out: Vec<ast::Ident> = Vec::new();\n            let kw: String = text_of(self.t.ident(0));\n            if !(kw == \"crate\" || kw == \"super\" || kw == \"self\") || !self.t.is_p(1, \"::\") {\n                return out;\n            }\n            let at: source::Span = self.bump();\n            self.bump();\n            let mut count: usize = 0;\n            if kw == \"super\" {\n                count = self.units.len().saturating_sub(1);\n            } else if kw == \"self\" {\n                count = self.units.len();\n            }\n            let mut replacement: String = String::new();\n            let mut k: usize = 0;\n            while k < count && k < self.units.len()\n                decreases count - k,\n            {\n                if k > 0 {\n                    replacement.push_str(\"::\");\n                }\n                replacement.push_str(self.units[k].as_str());\n                k = k + 1;\n            }\n            if count > 0 {\n                replacement.push_str(\"::\");\n            }\n            let shown: String = if replacement.len() == 0 {\n                String::from(\"nothing\")\n            } else {\n                tick(replacement.as_str())\n            };\n            let span: source::Span = at.to(self.prev_span());\n            let msg: String = cat3(\"`\", kw.as_str(), \"::` is not used: a path names a unit from the root (`unit::f`)\");\n            let mut fx: String = cat3(\"replace `\", kw.as_str(), \"::` with \");\n            fx.push_str(shown.as_str());\n            self.diags.push(diag::fix(diag::new(\"E0242\", span, msg.as_str()), fx.as_str(), Some(replacement)));\n            let mut j: usize = 0;\n            while j < count && j < self.units.len()\n                decreases count - j,\n            {\n                out.push(ast::Ident { name: self.units[j].clone(), span: span });\n                j = j + 1;\n            }\n            out\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(alloc)]\n        fn relative_path_prefix(self: &mut Parser) -> Vec<ast::Ident> {\n            let mut out: Vec<ast::Ident> = Vec::new();\n            let kw: String = text_of(self.t.ident(0));\n            if !(kw == \"crate\" || kw == \"super\" || kw == \"self\") || !self.t.is_p(1, \"::\") {\n                return out;\n            }\n            let at: source::Span = self.bump();\n            self.bump();\n            let mut count: usize = 0;\n            if kw == \"super\" {\n                count = self.units.len().saturating_sub(1);\n            } else if kw == \"self\" {\n                count = self.units.len();\n            }\n            let mut replacement: String = String::new();\n            let mut k: usize = 0;\n            while k < count && k < self.units.len()\n                decreases count - k,\n            {\n                if k > 0 {\n                    replacement.push_str(\"::\");\n                }\n                replacement.push_str(self.units[k].as_str());\n                k = k + 1;\n            }\n            if count > 0 {\n                replacement.push_str(\"::\");\n            }\n            let shown: String = if replacement.len() == 0 {\n                String::from(\"nothing\")\n            } else {\n                tick(replacement.as_str())\n            };\n            let span: source::Span = at.to(self.prev_span());\n            let msg: String = cat3(\"`\", kw.as_str(), \"::` is not used: a path names a unit from the root (`unit::f`)\");\n            let mut fx: String = cat3(\"replace `\", kw.as_str(), \"::` with \");\n            fx.push_str(shown.as_str());\n            self.diags.push(diag::fix(diag::new(\"E0242\", span, msg.as_str()), fx.as_str(), Some(replacement)));\n            let mut j: usize = 0;\n            while j < count && j < self.units.len()\n                decreases count - j,\n            {\n                out.push(ast::Ident { name: self.units[j].clone(), span: span });\n                j = j + 1;\n            }\n            out\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "        let span = at.to(self.prev_span());",
+      "new": "        self.diags.push(\n            Diag::new(\n                \"E0242\",\n                at.to(self.prev_span()),\n                format!(\"`{kw}::` is not used: a path names a unit from the root (`unit::f`)\"),\n            )\n            .fix(format!(\"replace `{kw}::` with {shown}\"), Some(replacement)),\n        );\n        let span = at.to(self.prev_span());"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

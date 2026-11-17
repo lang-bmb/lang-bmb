@@ -1,0 +1,179 @@
+{
+ "id": "r03-rename-attr_impl_path",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `parser::Parser::attr_impl_path` to `attr_impl_path_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `parser::Parser::attr_impl_path` to `attr_impl_path_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "parser::Parser::attr_impl_path",
+   "parser::Parser::attr_impl_path_renamed",
+   "parser::Parser::attrs"
+  ],
+  "bmb": [
+   "parser::Parser::attr_args",
+   "parser::Parser::attr_impl_path",
+   "parser::Parser::attr_impl_path_renamed"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "                            match self.attr_impl_path() {",
+     "new": "                            match self.attr_impl_path_renamed() {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "    fn attr_impl_path(&mut self) -> Option<Ident> {",
+     "new": "    fn attr_impl_path_renamed(&mut self) -> Option<Ident> {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(alloc)]\n        fn attr_args(self: &mut Parser, args: &mut Vec<ast::AttrArg>) -> () {\n            let mut n: usize = self.left();\n            while n > 0 && !self.is_p(\")\") && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let k: u8 = self.t.kind(0);\n                let mut skip: bool = false;\n                if k == 0 && self.t.is_p(1, \"=\") {\n                    let key: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                    self.bump();\n                    if self.t.kind(0) == 0 {\n                        let v: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Ident(v))));\n                    } else if self.t.kind(0) == 3 {\n                        let sv: String = text_of(self.t.string());\n                        let svp: source::Span = self.bump();\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Str(sv, svp))));\n                    } else {\n                        self.err_expected(\"a name or a string\");\n                        self.bump();\n                        skip = true;\n                    }\n                } else if k == 0 {\n                    let mut nm: String = text_of(self.t.ident(0));\n                    let mut sp: source::Span = self.bump();\n                    let mut m: usize = self.left();\n                    while m > 0 && self.is_p(\"::\") && self.t.kind(1) == 0\n                        decreases m,\n                    {\n                        m = m - 1;\n                        self.bump();\n                        nm.push_str(\"::\");\n                        nm.push_str(text_of(self.t.ident(0)).as_str());\n                        sp = sp.to(self.bump());\n                    }\n                    args.push(ast::AttrArg::Ident(ast::Ident { name: nm, span: sp }));\n                } else if self.is_p(\"<\") {\n                    match self.attr_impl_path_renamed() {\n                        None => self.err_expected(\"`<Type as Trait>::name`\"),\n                        Some(i) => args.push(ast::AttrArg::Ident(i)),\n                    }\n                } else if k == 3 {\n                    let st: String = text_of(self.t.string());\n                    let stp: source::Span = self.bump();\n                    args.push(ast::AttrArg::Str(st, stp));\n                } else {\n                    self.err_expected(\"attribute argument\");\n                    self.bump();\n                }\n                if !skip {\n                    if !self.eat_p(\",\") {\n                        n = 0;\n                    }\n                }\n            }\n        }\n\n        #[effects(alloc)]\n        fn attr_impl_path_renamed(self: &mut Parser) -> Option<ast::Ident> {\n            let lo: source::Span = self.bump();\n            let ty: String = self.plain_path()?;\n            if !self.is_kw(\"as\") {\n                return None;\n            }\n            self.bump();\n            let tr: String = self.plain_path()?;\n            if !self.eat_p(\">\") {\n                return None;\n            }\n            if !self.eat_p(\"::\") {\n                return None;\n            }\n            let m: String = self.t.ident(0)?;\n            let hi: source::Span = self.bump();\n            let mut name: String = String::from(\"<\");\n            name.push_str(ty.as_str());\n            name.push_str(\" as \");\n            name.push_str(tr.as_str());\n            name.push_str(\">::\");\n            name.push_str(m.as_str());\n            Some(ast::Ident { name: name, span: lo.to(hi) })\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "parser",
+     "remove": [
+      "parser::Parser::attr_impl_path"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(alloc)]\n        fn attr_args(self: &mut Parser, args: &mut Vec<ast::AttrArg>) -> () {\n            let mut n: usize = self.left();\n            while n > 0 && !self.is_p(\")\") && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let k: u8 = self.t.kind(0);\n                let mut skip: bool = false;\n                if k == 0 && self.t.is_p(1, \"=\") {\n                    let key: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                    self.bump();\n                    if self.t.kind(0) == 0 {\n                        let v: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Ident(v))));\n                    } else if self.t.kind(0) == 3 {\n                        let sv: String = text_of(self.t.string());\n                        let svp: source::Span = self.bump();\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Str(sv, svp))));\n                    } else {\n                        self.err_expected(\"a name or a string\");\n                        self.bump();\n                        skip = true;\n                    }\n                } else if k == 0 {\n                    let mut nm: String = text_of(self.t.ident(0));\n                    let mut sp: source::Span = self.bump();\n                    let mut m: usize = self.left();\n                    while m > 0 && self.is_p(\"::\") && self.t.kind(1) == 0\n                        decreases m,\n                    {\n                        m = m - 1;\n                        self.bump();\n                        nm.push_str(\"::\");\n                        nm.push_str(text_of(self.t.ident(0)).as_str());\n                        sp = sp.to(self.bump());\n                    }\n                    args.push(ast::AttrArg::Ident(ast::Ident { name: nm, span: sp }));\n                } else if self.is_p(\"<\") {\n                    match self.attr_impl_path_renamed() {\n                        None => self.err_expected(\"`<Type as Trait>::name`\"),\n                        Some(i) => args.push(ast::AttrArg::Ident(i)),\n                    }\n                } else if k == 3 {\n                    let st: String = text_of(self.t.string());\n                    let stp: source::Span = self.bump();\n                    args.push(ast::AttrArg::Str(st, stp));\n                } else {\n                    self.err_expected(\"attribute argument\");\n                    self.bump();\n                }\n                if !skip {\n                    if !self.eat_p(\",\") {\n                        n = 0;\n                    }\n                }\n            }\n        }\n\n        #[effects(alloc)]\n        fn attr_impl_path_renamed(self: &mut Parser) -> Option<ast::Ident> {\n            let lo: source::Span = self.bump();\n            let ty: String = self.plain_path()?;\n            if !self.is_kw(\"as\") {\n                return None;\n            }\n            self.bump();\n            let tr: String = self.plain_path()?;\n            if !self.eat_p(\">\") {\n                return None;\n            }\n            if !self.eat_p(\"::\") {\n                return None;\n            }\n            let m: String = self.t.ident(0)?;\n            let hi: source::Span = self.bump();\n            let mut name: String = String::from(\"<\");\n            name.push_str(ty.as_str());\n            name.push_str(\" as \");\n            name.push_str(tr.as_str());\n            name.push_str(\">::\");\n            name.push_str(m.as_str());\n            Some(ast::Ident { name: name, span: lo.to(hi) })\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "parser",
+      "remove": [
+       "parser::Parser::attr_impl_path"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "                            match self.attr_impl_path() {",
+      "new": "                            match self.attr_impl_path_renamed() {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "    fn attr_impl_path(&mut self) -> Option<Ident> {",
+      "new": "    fn attr_impl_path_renamed(&mut self) -> Option<Ident> {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(alloc)]\n        fn attr_args(self: &mut Parser, args: &mut Vec<ast::AttrArg>) -> () {\n            let mut n: usize = self.left();\n            while n > 0 && !self.is_p(\")\") && !self.eof()\n                decreases n,\n            {\n                n = n - 1;\n                let k: u8 = self.t.kind(0);\n                let mut skip: bool = false;\n                if k == 0 && self.t.is_p(1, \"=\") {\n                    let key: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                    self.bump();\n                    if self.t.kind(0) == 0 {\n                        let v: ast::Ident = ast::Ident { name: text_of(self.t.ident(0)), span: self.bump() };\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Ident(v))));\n                    } else if self.t.kind(0) == 3 {\n                        let sv: String = text_of(self.t.string());\n                        let svp: source::Span = self.bump();\n                        args.push(ast::AttrArg::Pair(key, Box::new(ast::AttrArg::Str(sv, svp))));\n                    } else {\n                        self.err_expected(\"a name or a string\");\n                        self.bump();\n                        skip = true;\n                    }\n                } else if k == 0 {\n                    let mut nm: String = text_of(self.t.ident(0));\n                    let mut sp: source::Span = self.bump();\n                    let mut m: usize = self.left();\n                    while m > 0 && self.is_p(\"::\") && self.t.kind(1) == 0\n                        decreases m,\n                    {\n                        m = m - 1;\n                        self.bump();\n                        nm.push_str(\"::\");\n                        nm.push_str(text_of(self.t.ident(0)).as_str());\n                        sp = sp.to(self.bump());\n                    }\n                    args.push(ast::AttrArg::Ident(ast::Ident { name: nm, span: sp }));\n                } else if self.is_p(\"<\") {\n                    match self.attr_impl_path_renamed() {\n                        None => self.err_expected(\"`<Type as Trait>::name`\"),\n                        Some(i) => args.push(ast::AttrArg::Ident(i)),\n                    }\n                } else if k == 3 {\n                    let st: String = text_of(self.t.string());\n                    let stp: source::Span = self.bump();\n                    args.push(ast::AttrArg::Str(st, stp));\n                } else {\n                    self.err_expected(\"attribute argument\");\n                    self.bump();\n                }\n                if !skip {\n                    if !self.eat_p(\",\") {\n                        n = 0;\n                    }\n                }\n            }\n        }\n\n        #[effects(alloc)]\n        fn attr_impl_path_renamed(self: &mut Parser) -> Option<ast::Ident> {\n            let lo: source::Span = self.bump();\n            let ty: String = self.plain_path()?;\n            if !self.is_kw(\"as\") {\n                return None;\n            }\n            self.bump();\n            let tr: String = self.plain_path()?;\n            if !self.eat_p(\">\") {\n                return None;\n            }\n            if !self.eat_p(\"::\") {\n                return None;\n            }\n            let m: String = self.t.ident(0)?;\n            let hi: source::Span = self.bump();\n            let mut name: String = String::from(\"<\");\n            name.push_str(ty.as_str());\n            name.push_str(\" as \");\n            name.push_str(tr.as_str());\n            name.push_str(\">::\");\n            name.push_str(m.as_str());\n            Some(ast::Ident { name: name, span: lo.to(hi) })\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "parser",
+      "remove": [
+       "parser::Parser::attr_impl_path"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "                            match self.attr_impl_path() {",
+      "new": "                            match self.attr_impl_path_renamed() {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "    fn attr_impl_path(&mut self) -> Option<Ident> {",
+      "new": "    fn attr_impl_path_renamed(&mut self) -> Option<Ident> {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

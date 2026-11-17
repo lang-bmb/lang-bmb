@@ -1,0 +1,299 @@
+{
+ "id": "r02-rename-has_struct_lit",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `fmt::has_struct_lit` to `has_struct_lit_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `fmt::has_struct_lit` to `has_struct_lit_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "fmt::Printer::cond",
+   "fmt::has_struct_lit",
+   "fmt::has_struct_lit_renamed"
+  ],
+  "bmb": [
+   "fmt::Printer::cond",
+   "fmt::has_struct_lit",
+   "fmt::has_struct_lit_renamed"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "        if has_struct_lit(e) {",
+     "new": "        if has_struct_lit_renamed(e) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "fn has_struct_lit(e: &Expr) -> bool {",
+     "new": "fn has_struct_lit_renamed(e: &Expr) -> bool {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "        ExprKind::Binary(_, l, r) => has_struct_lit(l) || has_struct_lit(r),",
+     "new": "        ExprKind::Binary(_, l, r) => has_struct_lit_renamed(l) || has_struct_lit_renamed(r),"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            has_struct_lit(x)",
+     "new": "            has_struct_lit_renamed(x)"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit(base),",
+     "new": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit_renamed(base),"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "        ExprKind::Method { recv, .. } => has_struct_lit(recv),",
+     "new": "        ExprKind::Method { recv, .. } => has_struct_lit_renamed(recv),"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "        ExprKind::Index { base, .. } => has_struct_lit(base),",
+     "new": "        ExprKind::Index { base, .. } => has_struct_lit_renamed(base),"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "code": "    #[effects(pure)]\n    fn has_struct_lit_renamed(e: &ast::Expr, f: usize) -> bool\n        decreases f,\n    {\n        if f == 0 {\n            return false;\n        }\n        match &e.kind {\n            ast::ExprKind::Int(iv, ir) => false,\n            ast::ExprKind::Float(fb) => false,\n            ast::ExprKind::ByteLit(by) => false,\n            ast::ExprKind::ByteStr(bys) => false,\n            ast::ExprKind::StrLit(st) => false,\n            ast::ExprKind::CharLit(ch) => false,\n            ast::ExprKind::Bool(bo) => false,\n            ast::ExprKind::Unit => false,\n            ast::ExprKind::Var(id) => false,\n            ast::ExprKind::Call(ca) => false,\n            ast::ExprKind::Method(me) => has_struct_lit_renamed(&*me.recv, f - 1),\n            ast::ExprKind::Index(ib, ii) => has_struct_lit_renamed(&**ib, f - 1),\n            ast::ExprKind::Unary(uo, ux) => has_struct_lit_renamed(&**ux, f - 1),\n            ast::ExprKind::Binary(bop, bl, br) => has_struct_lit_renamed(&**bl, f - 1) || has_struct_lit_renamed(&**br, f - 1),\n            ast::ExprKind::Ref(rm, rx) => has_struct_lit_renamed(&**rx, f - 1),\n            ast::ExprKind::If(ife) => false,\n            ast::ExprKind::Block(blk) => false,\n            ast::ExprKind::Array(ar) => false,\n            ast::ExprKind::Repeat(rp) => false,\n            ast::ExprKind::Old(ox) => false,\n            ast::ExprKind::Quant(qu) => false,\n            ast::ExprKind::Trigger(tx) => false,\n            ast::ExprKind::Closure(cl) => false,\n            ast::ExprKind::StructLit(sl) => true,\n            ast::ExprKind::Path(pa) => false,\n            ast::ExprKind::Deref(dx) => has_struct_lit_renamed(&**dx, f - 1),\n            ast::ExprKind::Field(fx, fnm) => has_struct_lit_renamed(&**fx, f - 1),\n            ast::ExprKind::Match(ma) => false,\n            ast::ExprKind::Return(rv) => false,\n            ast::ExprKind::Try(tr) => has_struct_lit_renamed(&**tr, f - 1),\n            ast::ExprKind::Loop(lp) => false,\n            ast::ExprKind::Break(bk) => false,\n            ast::ExprKind::Continue(co) => false,\n            ast::ExprKind::Range(rg) => false,\n            ast::ExprKind::Error => false,\n        }\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn cond(self: &mut Printer, e: &ast::Expr, f: usize) -> String\n            decreases f,\n        {\n            if f == 0 {\n                return String::new();\n            }\n            let s: String = self.expr(e, 0, f - 1);\n            if has_struct_lit_renamed(e, f - 1) {\n                paren(s.as_str())\n            } else {\n                s\n            }\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "remove": [
+      "fmt::has_struct_lit"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(pure)]\n    fn has_struct_lit_renamed(e: &ast::Expr, f: usize) -> bool\n        decreases f,\n    {\n        if f == 0 {\n            return false;\n        }\n        match &e.kind {\n            ast::ExprKind::Int(iv, ir) => false,\n            ast::ExprKind::Float(fb) => false,\n            ast::ExprKind::ByteLit(by) => false,\n            ast::ExprKind::ByteStr(bys) => false,\n            ast::ExprKind::StrLit(st) => false,\n            ast::ExprKind::CharLit(ch) => false,\n            ast::ExprKind::Bool(bo) => false,\n            ast::ExprKind::Unit => false,\n            ast::ExprKind::Var(id) => false,\n            ast::ExprKind::Call(ca) => false,\n            ast::ExprKind::Method(me) => has_struct_lit_renamed(&*me.recv, f - 1),\n            ast::ExprKind::Index(ib, ii) => has_struct_lit_renamed(&**ib, f - 1),\n            ast::ExprKind::Unary(uo, ux) => has_struct_lit_renamed(&**ux, f - 1),\n            ast::ExprKind::Binary(bop, bl, br) => has_struct_lit_renamed(&**bl, f - 1) || has_struct_lit_renamed(&**br, f - 1),\n            ast::ExprKind::Ref(rm, rx) => has_struct_lit_renamed(&**rx, f - 1),\n            ast::ExprKind::If(ife) => false,\n            ast::ExprKind::Block(blk) => false,\n            ast::ExprKind::Array(ar) => false,\n            ast::ExprKind::Repeat(rp) => false,\n            ast::ExprKind::Old(ox) => false,\n            ast::ExprKind::Quant(qu) => false,\n            ast::ExprKind::Trigger(tx) => false,\n            ast::ExprKind::Closure(cl) => false,\n            ast::ExprKind::StructLit(sl) => true,\n            ast::ExprKind::Path(pa) => false,\n            ast::ExprKind::Deref(dx) => has_struct_lit_renamed(&**dx, f - 1),\n            ast::ExprKind::Field(fx, fnm) => has_struct_lit_renamed(&**fx, f - 1),\n            ast::ExprKind::Match(ma) => false,\n            ast::ExprKind::Return(rv) => false,\n            ast::ExprKind::Try(tr) => has_struct_lit_renamed(&**tr, f - 1),\n            ast::ExprKind::Loop(lp) => false,\n            ast::ExprKind::Break(bk) => false,\n            ast::ExprKind::Continue(co) => false,\n            ast::ExprKind::Range(rg) => false,\n            ast::ExprKind::Error => false,\n        }\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn cond(self: &mut Printer, e: &ast::Expr, f: usize) -> String\n            decreases f,\n        {\n            if f == 0 {\n                return String::new();\n            }\n            let s: String = self.expr(e, 0, f - 1);\n            if has_struct_lit_renamed(e, f - 1) {\n                paren(s.as_str())\n            } else {\n                s\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::has_struct_lit"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        if has_struct_lit(e) {",
+      "new": "        if has_struct_lit_renamed(e) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "fn has_struct_lit(e: &Expr) -> bool {",
+      "new": "fn has_struct_lit_renamed(e: &Expr) -> bool {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Binary(_, l, r) => has_struct_lit(l) || has_struct_lit(r),",
+      "new": "        ExprKind::Binary(_, l, r) => has_struct_lit_renamed(l) || has_struct_lit_renamed(r),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            has_struct_lit(x)",
+      "new": "            has_struct_lit_renamed(x)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit(base),",
+      "new": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit_renamed(base),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Method { recv, .. } => has_struct_lit(recv),",
+      "new": "        ExprKind::Method { recv, .. } => has_struct_lit_renamed(recv),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Index { base, .. } => has_struct_lit(base),",
+      "new": "        ExprKind::Index { base, .. } => has_struct_lit_renamed(base),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(pure)]\n    fn has_struct_lit_renamed(e: &ast::Expr, f: usize) -> bool\n        decreases f,\n    {\n        if f == 0 {\n            return false;\n        }\n        match &e.kind {\n            ast::ExprKind::Int(iv, ir) => false,\n            ast::ExprKind::Float(fb) => false,\n            ast::ExprKind::ByteLit(by) => false,\n            ast::ExprKind::ByteStr(bys) => false,\n            ast::ExprKind::StrLit(st) => false,\n            ast::ExprKind::CharLit(ch) => false,\n            ast::ExprKind::Bool(bo) => false,\n            ast::ExprKind::Unit => false,\n            ast::ExprKind::Var(id) => false,\n            ast::ExprKind::Call(ca) => false,\n            ast::ExprKind::Method(me) => has_struct_lit_renamed(&*me.recv, f - 1),\n            ast::ExprKind::Index(ib, ii) => has_struct_lit_renamed(&**ib, f - 1),\n            ast::ExprKind::Unary(uo, ux) => has_struct_lit_renamed(&**ux, f - 1),\n            ast::ExprKind::Binary(bop, bl, br) => has_struct_lit_renamed(&**bl, f - 1) || has_struct_lit_renamed(&**br, f - 1),\n            ast::ExprKind::Ref(rm, rx) => has_struct_lit_renamed(&**rx, f - 1),\n            ast::ExprKind::If(ife) => false,\n            ast::ExprKind::Block(blk) => false,\n            ast::ExprKind::Array(ar) => false,\n            ast::ExprKind::Repeat(rp) => false,\n            ast::ExprKind::Old(ox) => false,\n            ast::ExprKind::Quant(qu) => false,\n            ast::ExprKind::Trigger(tx) => false,\n            ast::ExprKind::Closure(cl) => false,\n            ast::ExprKind::StructLit(sl) => true,\n            ast::ExprKind::Path(pa) => false,\n            ast::ExprKind::Deref(dx) => has_struct_lit_renamed(&**dx, f - 1),\n            ast::ExprKind::Field(fx, fnm) => has_struct_lit_renamed(&**fx, f - 1),\n            ast::ExprKind::Match(ma) => false,\n            ast::ExprKind::Return(rv) => false,\n            ast::ExprKind::Try(tr) => has_struct_lit_renamed(&**tr, f - 1),\n            ast::ExprKind::Loop(lp) => false,\n            ast::ExprKind::Break(bk) => false,\n            ast::ExprKind::Continue(co) => false,\n            ast::ExprKind::Range(rg) => false,\n            ast::ExprKind::Error => false,\n        }\n    }\n\n    impl Printer {\n        #[effects(alloc)]\n        fn cond(self: &mut Printer, e: &ast::Expr, f: usize) -> String\n            decreases f,\n        {\n            if f == 0 {\n                return String::new();\n            }\n            let s: String = self.expr(e, 0, f - 1);\n            if has_struct_lit_renamed(e, f - 1) {\n                paren(s.as_str())\n            } else {\n                s\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::has_struct_lit"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        if has_struct_lit(e) {",
+      "new": "        if has_struct_lit_renamed(e) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "fn has_struct_lit(e: &Expr) -> bool {",
+      "new": "fn has_struct_lit_renamed(e: &Expr) -> bool {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Binary(_, l, r) => has_struct_lit(l) || has_struct_lit(r),",
+      "new": "        ExprKind::Binary(_, l, r) => has_struct_lit_renamed(l) || has_struct_lit_renamed(r),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            has_struct_lit(x)",
+      "new": "            has_struct_lit_renamed(x)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit(base),",
+      "new": "        ExprKind::Field { base, .. } | ExprKind::Try(base) => has_struct_lit_renamed(base),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Method { recv, .. } => has_struct_lit(recv),",
+      "new": "        ExprKind::Method { recv, .. } => has_struct_lit_renamed(recv),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "        ExprKind::Index { base, .. } => has_struct_lit(base),",
+      "new": "        ExprKind::Index { base, .. } => has_struct_lit_renamed(base),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

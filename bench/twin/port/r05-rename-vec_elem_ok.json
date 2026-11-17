@@ -1,0 +1,229 @@
+{
+ "id": "r05-rename-vec_elem_ok",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `decls::Checker::vec_elem_ok` to `vec_elem_ok_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `check::Checker::vec_elem_ok` to `vec_elem_ok_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "check::Checker::targ_ok",
+   "check::Checker::vec_elem_ok",
+   "check::Checker::vec_elem_ok_renamed",
+   "check::Checker::vec_type"
+  ],
+  "bmb": [
+   "decls::Checker::targ_ok",
+   "decls::Checker::vec_elem_ok",
+   "decls::Checker::vec_elem_ok_renamed",
+   "decls::Checker::vec_type"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok(t) => {",
+     "new": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok_renamed(t) => {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "        let ok = self.vec_elem_ok(&e);",
+     "new": "        let ok = self.vec_elem_ok_renamed(&e);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "    fn vec_elem_ok(&self, e: &TypeKind) -> bool {",
+     "new": "    fn vec_elem_ok_renamed(&self, e: &TypeKind) -> bool {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/check.rs",
+     "old": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),",
+     "new": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok_renamed(&inner.kind),"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "decls",
+     "code": "    impl Checker {\n        #[effects(alloc)]\n        fn targ_ok(self: &mut Checker, t: &ast::TypeKind, p: &types::TParam, of: &str, span: source::Span, report: bool) -> bool {\n            if types::is_error(t) {\n                return false;\n            }\n            let tt: String = types::text(t);\n            if not_value(t) {\n                if report {\n                    self.help(\"E0403\", span, types::cat7(\"type argument `\", tt.as_str(), \"` for `\", p.name.as_str(), \"` of `\", of, \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                }\n                return false;\n            }\n            for i in 0..p.bounds.len()\n                invariant 0 <= i && i <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[i].clone();\n                if (b_s.as_str() == \"Eq\" || b_s.as_str() == \"Ord\") && !self.has_builtin(t, b_s.as_str()) {\n                    if report {\n                        let fix: String = if is_f64(t) {\n                            types::cat3(\"`f64` is not `\", b_s.as_str(), \"`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound\")\n                        } else {\n                            types::cat3(\"`\", b_s.as_str(), \"` holds for the integer types, `bool`, `char`, `String` and type parameters bounded by it; for data types it is ADR-0046 open question 4\")\n                        };\n                        self.help(\"E0428\", span, types::cat4(types::cat4(\"`\", tt.as_str(), \"` is not `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str()).as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            for j in 0..p.bounds.len()\n                invariant 0 <= j && j <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[j].clone();\n                if is_path(b_s.as_str()) && !self.has_trait(t, b_s.as_str(), 100000) {\n                    if report {\n                        let what: String = if p.name.as_str() == \"Self\" {\n                            types::cat5(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat4(types::cat4(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str())\n                        };\n                        let fix: String = if types::is_param(t) {\n                            types::cat5(\"bound the type parameter: `\", tt.as_str(), \": \", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat5(\"write `impl \", b_s.as_str(), \" for \", tt.as_str(), \" { .. }`\")\n                        };\n                        self.help(\"E0428\", span, what.as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            if types::has(p.bounds.as_slice(), \"elem\") && !self.vec_elem_ok_renamed(t, 100000) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` cannot be a `Vec` element, which `\", p.name.as_str(), \"` is in `\", of, \"`\").as_str(), \"pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)\");\n                }\n                return false;\n            }\n            if types::has(p.bounds.as_slice(), \"Copy\") && !self.is_copy(t) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` is not `Copy`, a bound of `\", p.name.as_str(), \"` in `\", of, \"`\").as_str(), \"pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)\");\n                }\n                return false;\n            }\n            true\n        }\n\n        #[effects(alloc)]\n        fn vec_elem_ok_renamed(self: &Checker, e: &ast::TypeKind, f: usize) -> bool\n            decreases f,\n        {\n            if f == 0 {\n                return false;\n            }\n            match e {\n                ast::TypeKind::Int(it) => true,\n                ast::TypeKind::F64 => true,\n                ast::TypeKind::Bool => true,\n                ast::TypeKind::Unit => false,\n                ast::TypeKind::Char => true,\n                ast::TypeKind::String => true,\n                ast::TypeKind::Str => false,\n                ast::TypeKind::Array(q2_ae, q2_an) => false,\n                ast::TypeKind::ArrayN(q2_ne, q2_nn) => false,\n                ast::TypeKind::Slice(q2_se) => false,\n                ast::TypeKind::Ref(q2_rm, q2_ri) => false,\n                ast::TypeKind::Named(path, args) => { let mut seen: Vec<String> = Vec::new(); !self.holds_array(e, &mut seen, 100000) },\n                ast::TypeKind::Vec(ve) => self.vec_elem_ok_renamed(&ve.kind, f - 1),\n                ast::TypeKind::Box(be) => self.vec_elem_ok_renamed(&be.kind, f - 1),\n                ast::TypeKind::Param(pn) => true,\n                ast::TypeKind::Never => false,\n                ast::TypeKind::Error => false,\n            }\n        }\n\n        #[effects(alloc)]\n        fn vec_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 1 {\n                if report {\n                    self.err(\"E0420\", span, count1(\"`Vec` takes 1 type argument, found \", args.len()).as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let e: ast::TypeKind = self.canon(&args[0], mp, report, f - 1);\n            if types::is_error(&e) {\n                return ast::TypeKind::Error;\n            }\n            if !self.vec_elem_ok_renamed(&e, 100000) {\n                if report {\n                    self.err(\"E0402\", args[0].span, types::cat3(\"`Vec` elements are scalars, structs and enums without arrays, or `Vec`s and `Box`es of them, found `\", types::text(&e).as_str(), \"`\").as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            ast::TypeKind::Vec(Box::new(ast::Type { kind: e, span: args[0].span }))\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "decls",
+     "remove": [
+      "decls::Checker::vec_elem_ok"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn targ_ok(self: &mut Checker, t: &ast::TypeKind, p: &types::TParam, of: &str, span: source::Span, report: bool) -> bool {\n            if types::is_error(t) {\n                return false;\n            }\n            let tt: String = types::text(t);\n            if not_value(t) {\n                if report {\n                    self.help(\"E0403\", span, types::cat7(\"type argument `\", tt.as_str(), \"` for `\", p.name.as_str(), \"` of `\", of, \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                }\n                return false;\n            }\n            for i in 0..p.bounds.len()\n                invariant 0 <= i && i <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[i].clone();\n                if (b_s.as_str() == \"Eq\" || b_s.as_str() == \"Ord\") && !self.has_builtin(t, b_s.as_str()) {\n                    if report {\n                        let fix: String = if is_f64(t) {\n                            types::cat3(\"`f64` is not `\", b_s.as_str(), \"`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound\")\n                        } else {\n                            types::cat3(\"`\", b_s.as_str(), \"` holds for the integer types, `bool`, `char`, `String` and type parameters bounded by it; for data types it is ADR-0046 open question 4\")\n                        };\n                        self.help(\"E0428\", span, types::cat4(types::cat4(\"`\", tt.as_str(), \"` is not `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str()).as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            for j in 0..p.bounds.len()\n                invariant 0 <= j && j <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[j].clone();\n                if is_path(b_s.as_str()) && !self.has_trait(t, b_s.as_str(), 100000) {\n                    if report {\n                        let what: String = if p.name.as_str() == \"Self\" {\n                            types::cat5(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat4(types::cat4(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str())\n                        };\n                        let fix: String = if types::is_param(t) {\n                            types::cat5(\"bound the type parameter: `\", tt.as_str(), \": \", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat5(\"write `impl \", b_s.as_str(), \" for \", tt.as_str(), \" { .. }`\")\n                        };\n                        self.help(\"E0428\", span, what.as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            if types::has(p.bounds.as_slice(), \"elem\") && !self.vec_elem_ok_renamed(t, 100000) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` cannot be a `Vec` element, which `\", p.name.as_str(), \"` is in `\", of, \"`\").as_str(), \"pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)\");\n                }\n                return false;\n            }\n            if types::has(p.bounds.as_slice(), \"Copy\") && !self.is_copy(t) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` is not `Copy`, a bound of `\", p.name.as_str(), \"` in `\", of, \"`\").as_str(), \"pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)\");\n                }\n                return false;\n            }\n            true\n        }\n\n        #[effects(alloc)]\n        fn vec_elem_ok_renamed(self: &Checker, e: &ast::TypeKind, f: usize) -> bool\n            decreases f,\n        {\n            if f == 0 {\n                return false;\n            }\n            match e {\n                ast::TypeKind::Int(it) => true,\n                ast::TypeKind::F64 => true,\n                ast::TypeKind::Bool => true,\n                ast::TypeKind::Unit => false,\n                ast::TypeKind::Char => true,\n                ast::TypeKind::String => true,\n                ast::TypeKind::Str => false,\n                ast::TypeKind::Array(q2_ae, q2_an) => false,\n                ast::TypeKind::ArrayN(q2_ne, q2_nn) => false,\n                ast::TypeKind::Slice(q2_se) => false,\n                ast::TypeKind::Ref(q2_rm, q2_ri) => false,\n                ast::TypeKind::Named(path, args) => { let mut seen: Vec<String> = Vec::new(); !self.holds_array(e, &mut seen, 100000) },\n                ast::TypeKind::Vec(ve) => self.vec_elem_ok_renamed(&ve.kind, f - 1),\n                ast::TypeKind::Box(be) => self.vec_elem_ok_renamed(&be.kind, f - 1),\n                ast::TypeKind::Param(pn) => true,\n                ast::TypeKind::Never => false,\n                ast::TypeKind::Error => false,\n            }\n        }\n\n        #[effects(alloc)]\n        fn vec_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 1 {\n                if report {\n                    self.err(\"E0420\", span, count1(\"`Vec` takes 1 type argument, found \", args.len()).as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let e: ast::TypeKind = self.canon(&args[0], mp, report, f - 1);\n            if types::is_error(&e) {\n                return ast::TypeKind::Error;\n            }\n            if !self.vec_elem_ok_renamed(&e, 100000) {\n                if report {\n                    self.err(\"E0402\", args[0].span, types::cat3(\"`Vec` elements are scalars, structs and enums without arrays, or `Vec`s and `Box`es of them, found `\", types::text(&e).as_str(), \"`\").as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            ast::TypeKind::Vec(Box::new(ast::Type { kind: e, span: args[0].span }))\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "decls",
+      "remove": [
+       "decls::Checker::vec_elem_ok"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok(t) => {",
+      "new": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok_renamed(t) => {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        let ok = self.vec_elem_ok(&e);",
+      "new": "        let ok = self.vec_elem_ok_renamed(&e);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    fn vec_elem_ok(&self, e: &TypeKind) -> bool {",
+      "new": "    fn vec_elem_ok_renamed(&self, e: &TypeKind) -> bool {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),",
+      "new": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok_renamed(&inner.kind),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "decls",
+      "code": "    impl Checker {\n        #[effects(alloc)]\n        fn targ_ok(self: &mut Checker, t: &ast::TypeKind, p: &types::TParam, of: &str, span: source::Span, report: bool) -> bool {\n            if types::is_error(t) {\n                return false;\n            }\n            let tt: String = types::text(t);\n            if not_value(t) {\n                if report {\n                    self.help(\"E0403\", span, types::cat7(\"type argument `\", tt.as_str(), \"` for `\", p.name.as_str(), \"` of `\", of, \"` is not a value type\").as_str(), \"type arguments are value types: references are second-class (ADR-0015)\");\n                }\n                return false;\n            }\n            for i in 0..p.bounds.len()\n                invariant 0 <= i && i <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[i].clone();\n                if (b_s.as_str() == \"Eq\" || b_s.as_str() == \"Ord\") && !self.has_builtin(t, b_s.as_str()) {\n                    if report {\n                        let fix: String = if is_f64(t) {\n                            types::cat3(\"`f64` is not `\", b_s.as_str(), \"`, as in Rust: NaN is not equal to itself (ADR-0061 §1); compare `f64` values with `<`, `==` in code, or drop the bound\")\n                        } else {\n                            types::cat3(\"`\", b_s.as_str(), \"` holds for the integer types, `bool`, `char`, `String` and type parameters bounded by it; for data types it is ADR-0046 open question 4\")\n                        };\n                        self.help(\"E0428\", span, types::cat4(types::cat4(\"`\", tt.as_str(), \"` is not `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str()).as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            for j in 0..p.bounds.len()\n                invariant 0 <= j && j <= p.bounds.len(),\n            {\n                let b_s: String = p.bounds[j].clone();\n                if is_path(b_s.as_str()) && !self.has_trait(t, b_s.as_str(), 100000) {\n                    if report {\n                        let what: String = if p.name.as_str() == \"Self\" {\n                            types::cat5(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat4(types::cat4(\"`\", tt.as_str(), \"` does not implement `\", b_s.as_str()).as_str(), \"`, a bound of `\", p.name.as_str(), types::cat3(\"` in `\", of, \"`\").as_str())\n                        };\n                        let fix: String = if types::is_param(t) {\n                            types::cat5(\"bound the type parameter: `\", tt.as_str(), \": \", b_s.as_str(), \"`\")\n                        } else {\n                            types::cat5(\"write `impl \", b_s.as_str(), \" for \", tt.as_str(), \" { .. }`\")\n                        };\n                        self.help(\"E0428\", span, what.as_str(), fix.as_str());\n                    }\n                    return false;\n                }\n            }\n            if types::has(p.bounds.as_slice(), \"elem\") && !self.vec_elem_ok_renamed(t, 100000) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` cannot be a `Vec` element, which `\", p.name.as_str(), \"` is in `\", of, \"`\").as_str(), \"pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)\");\n                }\n                return false;\n            }\n            if types::has(p.bounds.as_slice(), \"Copy\") && !self.is_copy(t) {\n                if report {\n                    self.help(\"E0428\", span, types::cat7(\"`\", tt.as_str(), \"` is not `Copy`, a bound of `\", p.name.as_str(), \"` in `\", of, \"`\").as_str(), \"pass a `Copy` type (a scalar, a struct or enum, an array of them); a `Vec`, a `Box` and what holds them move (ADR-0047)\");\n                }\n                return false;\n            }\n            true\n        }\n\n        #[effects(alloc)]\n        fn vec_elem_ok_renamed(self: &Checker, e: &ast::TypeKind, f: usize) -> bool\n            decreases f,\n        {\n            if f == 0 {\n                return false;\n            }\n            match e {\n                ast::TypeKind::Int(it) => true,\n                ast::TypeKind::F64 => true,\n                ast::TypeKind::Bool => true,\n                ast::TypeKind::Unit => false,\n                ast::TypeKind::Char => true,\n                ast::TypeKind::String => true,\n                ast::TypeKind::Str => false,\n                ast::TypeKind::Array(q2_ae, q2_an) => false,\n                ast::TypeKind::ArrayN(q2_ne, q2_nn) => false,\n                ast::TypeKind::Slice(q2_se) => false,\n                ast::TypeKind::Ref(q2_rm, q2_ri) => false,\n                ast::TypeKind::Named(path, args) => { let mut seen: Vec<String> = Vec::new(); !self.holds_array(e, &mut seen, 100000) },\n                ast::TypeKind::Vec(ve) => self.vec_elem_ok_renamed(&ve.kind, f - 1),\n                ast::TypeKind::Box(be) => self.vec_elem_ok_renamed(&be.kind, f - 1),\n                ast::TypeKind::Param(pn) => true,\n                ast::TypeKind::Never => false,\n                ast::TypeKind::Error => false,\n            }\n        }\n\n        #[effects(alloc)]\n        fn vec_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind\n            decreases f * 2,\n        {\n            if f == 0 {\n                return ast::TypeKind::Error;\n            }\n            if args.len() != 1 {\n                if report {\n                    self.err(\"E0420\", span, count1(\"`Vec` takes 1 type argument, found \", args.len()).as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            let e: ast::TypeKind = self.canon(&args[0], mp, report, f - 1);\n            if types::is_error(&e) {\n                return ast::TypeKind::Error;\n            }\n            if !self.vec_elem_ok_renamed(&e, 100000) {\n                if report {\n                    self.err(\"E0402\", args[0].span, types::cat3(\"`Vec` elements are scalars, structs and enums without arrays, or `Vec`s and `Box`es of them, found `\", types::text(&e).as_str(), \"`\").as_str());\n                }\n                return ast::TypeKind::Error;\n            }\n            ast::TypeKind::Vec(Box::new(ast::Type { kind: e, span: args[0].span }))\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "decls",
+      "remove": [
+       "decls::Checker::vec_elem_ok"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok(t) => {",
+      "new": "            _ if p.bounds.iter().any(|b| b == ELEM) && !self.vec_elem_ok_renamed(t) => {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "        let ok = self.vec_elem_ok(&e);",
+      "new": "        let ok = self.vec_elem_ok_renamed(&e);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "    fn vec_elem_ok(&self, e: &TypeKind) -> bool {",
+      "new": "    fn vec_elem_ok_renamed(&self, e: &TypeKind) -> bool {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/check.rs",
+      "old": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok(&inner.kind),",
+      "new": "            TypeKind::Vec(inner) | TypeKind::Box(inner) => self.vec_elem_ok_renamed(&inner.kind),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

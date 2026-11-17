@@ -1,0 +1,119 @@
+{
+ "id": "t18-replay-e0433",
+ "family": "replay",
+ "kind": "change",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "scope": "any",
+ "source": {
+  "code": "E0433",
+  "commit": "ccfe02bfd",
+  "subject": "2O-03: owned fields and partial moves"
+ },
+ "prompt": "`bmb check` does not report the diagnostic E0433 yet: a value is used whole after one of its fields was moved. It came with the commit \"2O-03: owned fields and partial moves\". Implement it. Examples of what `bmb check` must print (one JSON line per diagnostic; the path in `file` is the one given on the command line), each after the source line it points at:\n\n    whole(c)\n    {\"code\": \"E0433\", \"severity\": \"error\", \"message\": \"`c` is used after its field `c.a.data` was moved\", \"file\": \"err/owned_fields.bmb\", \"line\": 19, \"col\": 15, \"end_line\": 19, \"end_col\": 16, \"fix\": {\"message\": \"assign `c.a.data` again before this use, or use the other fields\"}}\n\n    let u: Slot = t;\n    {\"code\": \"E0433\", \"severity\": \"error\", \"message\": \"`t` is used after its field `t.v` was moved\", \"file\": \"err/owned_fields.bmb\", \"line\": 66, \"col\": 23, \"end_line\": 66, \"end_col\": 24, \"fix\": {\"message\": \"assign `t.v` again before this use, or use the other fields\"}}\n\nEverything else the program prints must stay as it is.",
+ "setup": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/moves.rs",
+     "old": "        self.diags.push(\n            Diag::new(\n                \"E0433\",\n                span,\n                format!(\"`{p}` is used after its field `{part}` was moved\"),\n            )\n            .fix(\n                format!(\"assign `{part}` again before this use, or use the other fields\"),\n                None,\n            ),\n        );",
+     "new": ""
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "moves",
+     "code": "    #[effects(alloc)]\n    fn partly_moved(m: &mut Mv, p: &str, part: &str, span: source::Span) -> () {\n        clear(&mut m.state, p);\n    }\n"
+    }
+   ]
+  ]
+ },
+ "cases": [
+  {
+   "name": "replay-owned_fields",
+   "args": [
+    "check"
+   ],
+   "files": [
+    "tests/check/err/owned_fields.bmb"
+   ]
+  }
+ ],
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/moves.rs",
+     "old": "        self.clear(p);",
+     "new": "        self.diags.push(\n            Diag::new(\n                \"E0433\",\n                span,\n                format!(\"`{p}` is used after its field `{part}` was moved\"),\n            )\n            .fix(\n                format!(\"assign `{part}` again before this use, or use the other fields\"),\n                None,\n            ),\n        );\n        self.clear(p);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "moves",
+     "code": "    #[effects(alloc)]\n    fn partly_moved(m: &mut Mv, p: &str, part: &str, span: source::Span) -> () {\n        m.diags.push(diag::fix(diag::new(\"E0433\", span, types::cat5(\"`\", p, \"` is used after its field `\", part, \"` was moved\").as_str()), types::cat3(\"assign `\", part, \"` again before this use, or use the other fields\").as_str(), None));\n        clear(&mut m.state, p);\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "corpus",
+   "bmb": [],
+   "rust": []
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "moves",
+      "code": "    #[effects(alloc)]\n    fn partly_moved(m: &mut Mv, p: &str, part: &str, span: source::Span) -> () {\n        m.diags.push(diag::fix(diag::new(\"E0433\", span, types::cat5(\"`\", p, \"` is used after its field `\", part, \"` was moved\").as_str()), types::cat3(\"assign `\", part, \"` again before this use, or use the other fields\").as_str(), None));\n        clear(&mut m.state, p);\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/moves.rs",
+      "old": "        self.clear(p);",
+      "new": "        self.diags.push(\n            Diag::new(\n                \"E0433\",\n                span,\n                format!(\"`{p}` is used after its field `{part}` was moved\"),\n            )\n            .fix(\n                format!(\"assign `{part}` again before this use, or use the other fields\"),\n                None,\n            ),\n        );\n        self.clear(p);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

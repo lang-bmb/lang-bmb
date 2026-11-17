@@ -1,0 +1,376 @@
+{
+ "id": "r10-rename-qualified_text",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `fmt::qualified_text` to `qualified_text_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `fmt::qualified_text` to `qualified_text_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "escape::Hashes::of",
+   "fmt::caller_text",
+   "fmt::qualified_hashes",
+   "fmt::qualified_text",
+   "fmt::qualified_text_renamed",
+   "incremental::Session::keys",
+   "lib::dump_stage"
+  ],
+  "bmb": [
+   "fmt::caller_text",
+   "fmt::qual_row",
+   "fmt::qualified_text",
+   "fmt::qualified_text_renamed"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/escape.rs",
+     "old": "        let own = crate::fmt::qualified_text(f, unit, self.fns, true);",
+     "new": "        let own = crate::fmt::qualified_text_renamed(f, unit, self.fns, true);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/escape.rs",
+     "old": "                text.push_str(&crate::fmt::qualified_text(g, u, self.fns, true));",
+     "new": "                text.push_str(&crate::fmt::qualified_text_renamed(g, u, self.fns, true));"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "pub fn qualified_text(",
+     "new": "pub fn qualified_text_renamed("
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            let body = crate::sha256::hex(qualified_text(f, &unit, fns, true).as_bytes());",
+     "new": "            let body = crate::sha256::hex(qualified_text_renamed(f, &unit, fns, true).as_bytes());"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "    qualified_text(&g, unit, fns, false)",
+     "new": "    qualified_text_renamed(&g, unit, fns, false)"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/incremental.rs",
+     "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true).as_bytes(),",
+     "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true).as_bytes(),"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/incremental.rs",
+     "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true)",
+     "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true)"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/incremental.rs",
+     "old": "            let qual = crate::fmt::qualified_text(f, unit, &t.fns, true);",
+     "new": "            let qual = crate::fmt::qualified_text_renamed(f, unit, &t.fns, true);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/incremental.rs",
+     "old": "                            crate::fmt::qualified_text(g, u, &t.fns, true)",
+     "new": "                            crate::fmt::qualified_text_renamed(g, u, &t.fns, true)"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/lib.rs",
+     "old": "                        q(&fmt::qualified_text(f, &unit, &t.fns, true)),",
+     "new": "                        q(&fmt::qualified_text_renamed(f, &unit, &t.fns, true)),"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "code": "    #[effects(alloc)]\n    fn caller_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str) -> String {\n        let g: ast::FnDef = without_uses(d);\n        qualified_text_renamed(pr, heads, &g, unit, false)\n    }\n\n    #[effects(alloc)]\n    fn qual_row(path: String, unit: &str, d: &ast::FnDef, heads: &table::Table<String>, pr: &mut Printer) -> QualRow {\n        let text: String = qualified_text_renamed(pr, heads, d, unit, true);\n        let caller: String = caller_text(pr, heads, d, unit);\n        QualRow { path: path, text: text, caller: caller }\n    }\n\n    #[effects(alloc)]\n    fn qualified_text_renamed(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str, with_body: bool) -> String {\n        pr.out = match heads.find(body::span_key(d.span).as_str()) {\n            None => String::new(),\n            Some(at) => heads.items[at].clone(),\n        };\n        pr.names.unit = String::from(unit);\n        pr.function(d, 0, \"_\", with_body, 1000000000);\n        pr.out.clone()\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "remove": [
+      "fmt::qualified_text"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(alloc)]\n    fn caller_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str) -> String {\n        let g: ast::FnDef = without_uses(d);\n        qualified_text_renamed(pr, heads, &g, unit, false)\n    }\n\n    #[effects(alloc)]\n    fn qual_row(path: String, unit: &str, d: &ast::FnDef, heads: &table::Table<String>, pr: &mut Printer) -> QualRow {\n        let text: String = qualified_text_renamed(pr, heads, d, unit, true);\n        let caller: String = caller_text(pr, heads, d, unit);\n        QualRow { path: path, text: text, caller: caller }\n    }\n\n    #[effects(alloc)]\n    fn qualified_text_renamed(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str, with_body: bool) -> String {\n        pr.out = match heads.find(body::span_key(d.span).as_str()) {\n            None => String::new(),\n            Some(at) => heads.items[at].clone(),\n        };\n        pr.names.unit = String::from(unit);\n        pr.function(d, 0, \"_\", with_body, 1000000000);\n        pr.out.clone()\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::qualified_text"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/escape.rs",
+      "old": "        let own = crate::fmt::qualified_text(f, unit, self.fns, true);",
+      "new": "        let own = crate::fmt::qualified_text_renamed(f, unit, self.fns, true);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/escape.rs",
+      "old": "                text.push_str(&crate::fmt::qualified_text(g, u, self.fns, true));",
+      "new": "                text.push_str(&crate::fmt::qualified_text_renamed(g, u, self.fns, true));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "pub fn qualified_text(",
+      "new": "pub fn qualified_text_renamed("
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            let body = crate::sha256::hex(qualified_text(f, &unit, fns, true).as_bytes());",
+      "new": "            let body = crate::sha256::hex(qualified_text_renamed(f, &unit, fns, true).as_bytes());"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "    qualified_text(&g, unit, fns, false)",
+      "new": "    qualified_text_renamed(&g, unit, fns, false)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true).as_bytes(),",
+      "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true).as_bytes(),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true)",
+      "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "            let qual = crate::fmt::qualified_text(f, unit, &t.fns, true);",
+      "new": "            let qual = crate::fmt::qualified_text_renamed(f, unit, &t.fns, true);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                            crate::fmt::qualified_text(g, u, &t.fns, true)",
+      "new": "                            crate::fmt::qualified_text_renamed(g, u, &t.fns, true)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/lib.rs",
+      "old": "                        q(&fmt::qualified_text(f, &unit, &t.fns, true)),",
+      "new": "                        q(&fmt::qualified_text_renamed(f, &unit, &t.fns, true)),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    #[effects(alloc)]\n    fn caller_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str) -> String {\n        let g: ast::FnDef = without_uses(d);\n        qualified_text_renamed(pr, heads, &g, unit, false)\n    }\n\n    #[effects(alloc)]\n    fn qual_row(path: String, unit: &str, d: &ast::FnDef, heads: &table::Table<String>, pr: &mut Printer) -> QualRow {\n        let text: String = qualified_text_renamed(pr, heads, d, unit, true);\n        let caller: String = caller_text(pr, heads, d, unit);\n        QualRow { path: path, text: text, caller: caller }\n    }\n\n    #[effects(alloc)]\n    fn qualified_text_renamed(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str, with_body: bool) -> String {\n        pr.out = match heads.find(body::span_key(d.span).as_str()) {\n            None => String::new(),\n            Some(at) => heads.items[at].clone(),\n        };\n        pr.names.unit = String::from(unit);\n        pr.function(d, 0, \"_\", with_body, 1000000000);\n        pr.out.clone()\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::qualified_text"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/escape.rs",
+      "old": "        let own = crate::fmt::qualified_text(f, unit, self.fns, true);",
+      "new": "        let own = crate::fmt::qualified_text_renamed(f, unit, self.fns, true);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/escape.rs",
+      "old": "                text.push_str(&crate::fmt::qualified_text(g, u, self.fns, true));",
+      "new": "                text.push_str(&crate::fmt::qualified_text_renamed(g, u, self.fns, true));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "pub fn qualified_text(",
+      "new": "pub fn qualified_text_renamed("
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            let body = crate::sha256::hex(qualified_text(f, &unit, fns, true).as_bytes());",
+      "new": "            let body = crate::sha256::hex(qualified_text_renamed(f, &unit, fns, true).as_bytes());"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "    qualified_text(&g, unit, fns, false)",
+      "new": "    qualified_text_renamed(&g, unit, fns, false)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true).as_bytes(),",
+      "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true).as_bytes(),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                        crate::fmt::qualified_text(f, unit, &t.fns, true)",
+      "new": "                        crate::fmt::qualified_text_renamed(f, unit, &t.fns, true)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "            let qual = crate::fmt::qualified_text(f, unit, &t.fns, true);",
+      "new": "            let qual = crate::fmt::qualified_text_renamed(f, unit, &t.fns, true);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/incremental.rs",
+      "old": "                            crate::fmt::qualified_text(g, u, &t.fns, true)",
+      "new": "                            crate::fmt::qualified_text_renamed(g, u, &t.fns, true)"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/lib.rs",
+      "old": "                        q(&fmt::qualified_text(f, &unit, &t.fns, true)),",
+      "new": "                        q(&fmt::qualified_text_renamed(f, &unit, &t.fns, true)),"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}
