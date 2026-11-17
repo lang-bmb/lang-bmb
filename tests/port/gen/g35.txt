@@ -1,0 +1,19 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-9223372036854775807 - 1) <= x && x <= (-30) && (-2147483648) <= y && y <= 2 }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { ((0 * (x - y)) != (y + (x + r))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = (if (y != (if (x != 1) { x } else { 58 })) { (x + y) } else { (67 * 3) });
+        let mut t: [i64; 3] = [x, y, 0];
+        t = if ((v0 < t[0]) && (x <= t[2])) { [(t[1] * t[1]), (v0 / v0), y] } else { t };
+        t = [(if (y <= v0) { (-4611686018427387904) } else { y }), (4174506560747913641 + y), v0];
+        (if (((-v0) < (t[2] / y)) && (y <= (t[2] + t[1]))) { t[0] } else { ((if (y != t[1]) { t[1] } else { t[1] }) * y.wrapping_mul(t[2])) })
+    }
+}

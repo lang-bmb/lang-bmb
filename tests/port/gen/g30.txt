@@ -1,0 +1,56 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-6173928392769449829) <= x && x <= 348446337503681126 && (-2) <= y && y <= 882613361807171328 && !((((-2147483648) + 7091617572049550044) - (1000 - x)) <= ((y - y) - (y + y))) }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { (((3 * y) + (r + r)) != ((x + y) + 4294967296)) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = 4611686018427387904.wrapping_mul(y);
+        let v1: i64 = (if (20 <= (v0 % v0)) { v0.wrapping_mul(4356128553841894427) } else { y });
+        (((7 + 95) + (if (v0 <= x) { v1 } else { y })) / (-4611686018427387904).wrapping_add(v0))
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-7296172268905371893) <= x && x <= 2147483648 && (-4590383030102352503) <= y && y <= 1000 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (((-2) * (y + y)) == x) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        let v0: i64 = (if (x != x) { y } else { 7 }).wrapping_mul((if (x <= x) { x } else { 7980247802489307527 }));
+        let v1: i64 = v0;
+        (if (y == (2147483648 / (-6634296184154979320))) { (if (v1 < x) { y } else { v0 }) } else { (y % v0) }).wrapping_mul(((v1 % v1) + (y / v1)))
+    }
+
+    spec fn f2_pre(x: i64, y: i64) -> bool { 6010091672126863688 <= x && x <= 9223372036854775807 && (-4294967296) <= y && y <= 9223372036854775807 && (y != (x - (-14))) }
+
+    spec fn f2_post(x: i64, y: i64, r: i64) -> bool { (y == ((r + r) - (x - y))) }
+
+    #[effects(pure)]
+    #[uses(f2_pre, f2_post)]
+    fn f2(x: i64, y: i64) -> (r: i64)
+        requires f2_pre(x, y),
+        ensures f2_post(x, y, r),
+    {
+        let v0: i64 = 4294967296;
+        y
+    }
+
+    #[effects(pure)]
+    fn c0(x: i64, y: i64) -> i64 {
+        f0(x, y)
+    }
+
+    #[effects(pure)]
+    fn c1(x: i64, y: i64) -> i64 {
+        f2(x, y)
+    }
+}

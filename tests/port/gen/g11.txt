@@ -1,0 +1,118 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { 25 <= x && x <= 4294967296 && (-43) <= y && y <= 100 }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { !(y <= (r - (3 * (-2147483648)))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = (-6538259465716033499);
+        let v1: i64 = (if ((if (v0 <= y) { (-75) } else { x }) == (if (y <= v0) { v0 } else { y })) { (x % (-7)) } else { (if (v0 == x) { y } else { y }) });
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [t[1], (v1 / v1), x];
+        t = [v1, 2.wrapping_mul(x), y];
+        t[1]
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-9223372036854775807) <= x && x <= 40 && (-4294967296) <= y && y <= 3 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (r < r) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        let v0: i64 = x;
+        (x % (if (((-2) * y) == (v0 * (-6331859694972121237))) { y } else { v0.wrapping_add((-4294967296)) }))
+    }
+
+    spec fn f2_pre(x: i64, y: i64) -> bool { (-4611686018427387904) <= x && x <= 1000 && (-7654658721513993426) <= y && y <= (-3523732235461481225) && !(((y + x) + ((-4294967296) + x)) == (y - ((-1) * x))) }
+
+    spec fn f2_post(x: i64, y: i64, r: i64) -> bool { ((y - y) <= (3 * x)) }
+
+    #[effects(pure)]
+    #[uses(f2_pre, f2_post)]
+    fn f2(x: i64, y: i64) -> (r: i64)
+        requires f2_pre(x, y),
+        ensures f2_post(x, y, r),
+    {
+        let v0: i64 = (if (x != y) { x } else { x }).wrapping_add(x);
+        let v1: i64 = ((v0 + (-7)) * y);
+        (((x / v1) * (if (y < x) { v1 } else { 7 })) - ((if ((-7039928689573418587) == (-1000)) { x } else { (-1637093928488622678) }) / y.wrapping_add(x)))
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}
+#[summary("s")]
+mod u1 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-9223372036854775807 - 1) <= x && x <= 0 && 4611686018427387904 <= y && y <= 9223372036854775806 && (x == ((-2) * x)) }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { (14 <= r) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        ((-(if ((-80) != x) { x } else { y })) - (4611686018427387904 + (-7)))
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-4294967296) <= x && x <= (-58) && (-7) <= y && y <= 2 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (((r + x) + (x + r)) < ((1 * 4611686018427387904) - (-1218046848488444559))) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        ((1 + y.wrapping_add(y)) * x)
+    }
+
+    spec fn f2_pre(x: i64, y: i64) -> bool { 10 <= x && x <= 77 && (-1000) <= y && y <= 1 && (((-1) * x) < x) }
+
+    spec fn f2_post(x: i64, y: i64, r: i64) -> bool { (791796426291422800 == ((-2) * (1 * x))) }
+
+    #[effects(pure)]
+    #[uses(f2_pre, f2_post)]
+    fn f2(x: i64, y: i64) -> (r: i64)
+        requires f2_pre(x, y),
+        ensures f2_post(x, y, r),
+    {
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [(if (4611686018427387904 != t[1]) { y } else { x }), x.wrapping_add(1000), t[0]];
+        (-4611686018427387904)
+    }
+
+    #[effects(pure)]
+    fn c0(x: i64, y: i64) -> i64 {
+        f2(x, y)
+    }
+}

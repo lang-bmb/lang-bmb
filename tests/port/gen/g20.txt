@@ -1,0 +1,145 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-83) <= x && x <= 10 && (-83) <= y && y <= (-7) }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { ((((-1) * (0 * x)) == (((-86) - y) - y)) && (((-1) - (y - x)) < ((-17) - (y + r)))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = ((if ((-9223372036854775807 - 1) == 4952747830164419055) { x } else { y }) % (18 + y));
+        x
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}
+#[summary("s")]
+mod u1 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-4611686018427387904) <= x && x <= (-1) && (-86) <= y && y <= (-7) }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { (((4611686018427387904 - (x + (-4611686018427387904))) <= (y - x)) || ((4611686018427387904 + (y - (-10))) < r)) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = (if !((-99) < 827323863955209788) { x } else { x.wrapping_mul(y) });
+        let v1: i64 = ((10 / (-2)) - (if (37 < y) { v0 } else { 1000 }));
+        ((-5021703736553079849) / ((1000 - x) - (if (45 != x) { y } else { v0 })))
+    }
+
+    #[effects(pure)]
+    fn c0(x: i64, y: i64) -> i64 {
+        u0::f0(x, y)
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}
+#[summary("s")]
+mod u2 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-7) <= x && x <= 63 && 1585350105620533211 <= y && y <= 1618610484942464663 }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { (x <= ((0 * y) + ((-1) * y))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        x
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-3872392091751981287) <= x && x <= 7572389885662618180 && (-4453652514465798087) <= y && y <= 3101777555963401602 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (1 < (((-8743595182789864529) + x) + x)) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        (x - x).wrapping_mul((if (y != y) { 64 } else { x })).wrapping_add(((-72) / y.wrapping_add(39)))
+    }
+
+    spec fn f2_pre(x: i64, y: i64) -> bool { (-1000) <= x && x <= 1 && 1 <= y && y <= 4611686018427387904 }
+
+    spec fn f2_post(x: i64, y: i64, r: i64) -> bool { !((1 * y) == x) }
+
+    #[effects(pure)]
+    #[uses(f2_pre, f2_post)]
+    fn f2(x: i64, y: i64) -> (r: i64)
+        requires f2_pre(x, y),
+        ensures f2_post(x, y, r),
+    {
+        let v0: i64 = ((if (x <= y) { x } else { (-7) }) % x);
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [(if ((-2) < t[0]) { v0 } else { 5719154738674021609 }), (-1000), t[0]];
+        (((if (x == 25) { y } else { (-2) }) / (-4333765169584803397)) - t[0])
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}

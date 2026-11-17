@@ -16,6 +16,7 @@
 | `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
 | `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
 | `types/` | 검사기 2패스(몸 검사)의 경계 입력(같은 이유로 `.txt`) |
+| `gen/` | 검사를 통과하는 생성 프로그램의 얼린 표본 40개(`4D-36`: `tests/fmt_fuzz.rs`의 생성기, `BMB_FMT_FUZZ_EXPORT`). 변형 입력과 달리 검사 뒤의 단계(해시, 정규형, 한정 글)까지 간다. 생성기가 바뀌어도 다시 만들지 않는다 |
 
 포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `moves`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `dump moves`로: 함수마다 소유 값이 놓이는 자리), `moves-together`. `hash`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `hash`로: 정의와 타입 선언의 정체성 해시), `hash-together`. `fmt`(같은 파일들을 하나씩 `fmt`로: 검사한 프로그램의 정규형, 경로로 쓴 메서드 호출은 메서드 문법으로), `fmt-check`(`fmt --check`: 종료 코드와 표준 오류), `fmt-together`. `texts`(같은 파일들을 하나씩 `dump texts`로: 증분 키가 읽는 한정 글과 한정 해시), `texts-together`.
 

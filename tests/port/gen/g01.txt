@@ -1,0 +1,59 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { 35 <= x && x <= 4294967296 && (-74) <= y && y <= 10 }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { (((x - y) + y) == ((-2) * (941255026124557556 + y))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [(x - t[0]), (if (t[0] == t[2]) { t[1] } else { 15 }), ((-4294967296) % t[2])];
+        t = if !(y <= y) { [y.wrapping_mul(t[1]), x.wrapping_mul(t[1]), (if (t[1] != t[2]) { x } else { 2 })] } else { t };
+        (if (y <= (4635411482529066406 % (-1000))) { (((-32) + t[0]) - (x * t[0])) } else { (if ((-t[0]) != (if (t[1] <= y) { 3 } else { t[2] })) { (if (7 != t[1]) { t[0] } else { t[2] }) } else { ((-7208537036502146361) - (-18)) }) })
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-4294967296) <= x && x <= 4611686018427387904 && (-80) <= y && y <= 66 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (((1 * (-7856125022800453590)) != ((-3) * y)) && (r != (((-9) + x) - (y - x)))) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [(-4294967296), (-71), (t[1] + t[2])];
+        ((y * y) / (if (t[1] != t[0]) { t[2] } else { x })).wrapping_mul((if (((-6739496571625654544) <= t[2]) && (t[2] != t[2])) { t[0] } else { ((-4330506225190244056) - t[1]) }))
+    }
+
+    #[effects(pure)]
+    fn c0(x: i64, y: i64) -> i64 {
+        f1(x, y)
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}

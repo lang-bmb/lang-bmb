@@ -1,0 +1,70 @@
+#[summary("s")]
+mod u0 {
+    spec fn f0_pre(x: i64, y: i64) -> bool { (-4611686018427387904) <= x && x <= 3 && (-5341511041714442843) <= y && y <= (-1000) }
+
+    spec fn f0_post(x: i64, y: i64, r: i64) -> bool { ((((2 * x) - (x - r)) != ((2688542182695434427 + y) + (x - y))) && (x < (r - (y - r)))) }
+
+    #[effects(pure)]
+    #[uses(f0_pre, f0_post)]
+    fn f0(x: i64, y: i64) -> (r: i64)
+        requires f0_pre(x, y),
+        ensures f0_post(x, y, r),
+    {
+        let v0: i64 = (if ((x <= x) && (y != y)) { (-4611686018427387904) } else { (y * x) });
+        let v1: i64 = (-(x + y));
+        let mut t: [i64; 3] = [x, y, 0];
+        t = [(-448858087535798626), (-15), v1];
+        t = if !(t[0] != (-93)) { [(t[1] / t[0]), (if (y == t[0]) { (-7988614519207484277) } else { t[0] }), (2147483648 % v1)] } else { t };
+        y.wrapping_add(t[1]).wrapping_mul(((-1) - 1000).wrapping_mul(25))
+    }
+
+    spec fn f1_pre(x: i64, y: i64) -> bool { (-6455906870765895441) <= x && x <= 10 && (-8753061634495484429) <= y && y <= 31 }
+
+    spec fn f1_post(x: i64, y: i64, r: i64) -> bool { (0 < y) }
+
+    #[effects(pure)]
+    #[uses(f1_pre, f1_post)]
+    fn f1(x: i64, y: i64) -> (r: i64)
+        requires f1_pre(x, y),
+        ensures f1_post(x, y, r),
+    {
+        let v0: i64 = (0 % (if (x == (-7)) { x } else { y }));
+        let v1: i64 = ((x % 5973821383952171116) / (y / x));
+        (-y)
+    }
+
+    spec fn f2_pre(x: i64, y: i64) -> bool { 7 <= x && x <= 1000 && (-5395515340123901705) <= y && y <= (-7) && (((-50) - ((-33) + 43)) != x) }
+
+    spec fn f2_post(x: i64, y: i64, r: i64) -> bool { ((y < y) || (((3 - r) - (-1)) <= ((x - y) + (y + x)))) }
+
+    #[effects(pure)]
+    #[uses(f2_pre, f2_post)]
+    fn f2(x: i64, y: i64) -> (r: i64)
+        requires f2_pre(x, y),
+        ensures f2_post(x, y, r),
+    {
+        let v0: i64 = 9223372036854775806;
+        v0
+    }
+
+    spec fn q(x: i64, y: i64) -> bool {
+        x - y <= x + y || y < 0
+    }
+
+    #[uses(q)]
+    proof fn l(x: i64, y: i64)
+        ensures q(x, y),
+    {
+        if y < 0 {
+            assert(y < 0);
+        }
+    }
+
+    #[effects(pure)]
+    fn p(x: i64, y: i64) -> i64 {
+        proof {
+            l(x, y);
+        }
+        x
+    }
+}

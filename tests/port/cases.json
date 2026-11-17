@@ -518,7 +518,8 @@
       ],
       "inputs": {
         "files": [
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -539,7 +540,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -562,7 +564,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -607,7 +610,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -650,7 +654,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -673,7 +678,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
@@ -718,7 +724,8 @@
       "inputs": {
         "files": [
           "*.bmb",
-          "tests/port/types/*.txt"
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
         ],
         "chunk": 1
       }
