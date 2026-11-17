@@ -1,0 +1,231 @@
+{
+ "id": "r07-rename-attr_line",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `fmt::Printer::attr_line` to `attr_line_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `fmt::Printer::attr_line` to `attr_line_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "fmt::Printer::attr_line",
+   "fmt::Printer::attr_line_renamed",
+   "fmt::Printer::trait_def",
+   "fmt::Printer::trait_identity",
+   "fmt::Printer::type_def_as"
+  ],
+  "bmb": [
+   "fmt::Printer::attr_line",
+   "fmt::Printer::attr_line_renamed",
+   "fmt::Printer::trait_def",
+   "fmt::Printer::trait_identity",
+   "fmt::Printer::type_def_as"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "    fn attr_line(&mut self, a: &Attr, depth: usize) {",
+     "new": "    fn attr_line_renamed(&mut self, a: &Attr, depth: usize) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            self.attr_line(a, depth);\n        }\n        let gens = self.generics(&t.generics);",
+     "new": "            self.attr_line_renamed(a, depth);\n        }\n        let gens = self.generics(&t.generics);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            self.attr_line(a, depth);",
+     "new": "            self.attr_line_renamed(a, depth);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/fmt.rs",
+     "old": "            self.attr_line(a, 0);",
+     "new": "            self.attr_line_renamed(a, 0);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "code": "    impl Printer {\n        #[effects(alloc)]\n        fn attr_line_renamed(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            if a.name.name == \"summary\" {\n                return;\n            }\n            let mut row: String = String::from(\"#[\");\n            row.push_str(a.name.name.as_str());\n            row.push_str(\"(\");\n            if a.name.name == \"invariant\" {\n                let mut i: usize = 0;\n                while i < a.args.len()\n                    decreases a.args.len() - i,\n                {\n                    if i > 0 {\n                        row.push_str(\", \");\n                    }\n                    match &a.args[i] {\n                        ast::AttrArg::Ident(id) => row.push_str(self.uses_name(id.name.as_str()).as_str()),\n                        ast::AttrArg::Str(s, sp) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                        ast::AttrArg::Pair(pk, pv) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                    }\n                    i = i + 1;\n                }\n            } else {\n                row.push_str(attr_args(a.args.as_slice()).as_str());\n            }\n            row.push_str(\")]\");\n            self.line(depth, row.as_str());\n        }\n\n        #[effects(alloc)]\n        fn trait_def(self: &mut Printer, t: &ast::TraitDef, depth: usize, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let mut head: String = String::from(\"trait \");\n            head.push_str(t.name.name.as_str());\n            if t.fns.len() == 0 {\n                head.push_str(\" {}\");\n                self.line(depth, head.as_str());\n                return;\n            }\n            head.push_str(\" {\");\n            self.line(depth, head.as_str());\n            let mut keys: Vec<String> = Vec::new();\n            let mut i: usize = 0;\n            while i < t.fns.len()\n                decreases t.fns.len() - i,\n            {\n                keys.push(t.fns[i].f.name.name.clone());\n                i = i + 1;\n            }\n            let ord: Vec<usize> = order(keys.as_slice());\n            i = 0;\n            while i < ord.len()\n                decreases ord.len() - i,\n            {\n                if ord[i] < t.fns.len() {\n                    if i > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), \"\", f - 1);\n                }\n                i = i + 1;\n            }\n            self.line(depth, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn trait_identity(self: &mut Printer, t: &ast::TraitDef, order: &[usize], f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], 0);\n                a = a + 1;\n            }\n            self.line(0, \"trait _ {\");\n            let mut k: usize = 0;\n            while k < order.len()\n                decreases order.len() - k,\n            {\n                if order[k] < t.fns.len() {\n                    if k > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.reset_binders();\n                    self.trait_fn(&t.fns[order[k]], 1, \"_\", f - 1);\n                }\n                k = k + 1;\n            }\n            self.line(0, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn type_def_as(self: &mut Printer, t: &ast::TypeDef, depth: usize, name: &str) -> () {\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let gens: String = self.generics(t.generics.as_slice());\n            let id: bool = self.is_id();\n            let mut items: String = String::new();\n            let mut row: String = String::new();\n            match &t.kind {\n                ast::TypeDefKind::Struct(fs) => { row.push_str(\"struct \"); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(\", \"); } if !id { items.push_str(fs[i].name.name.as_str()); items.push_str(\": \"); } items.push_str(self.ty(&fs[i].ty).as_str()); i = i + 1; } },\n                ast::TypeDefKind::Enum(vs) => { row.push_str(\"enum \"); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(\", \"); } if !id { items.push_str(vs[k].name.name.as_str()); } if id || vs[k].payload.len() > 0 { items.push_str(\"(\"); let mut j: usize = 0; while j < vs[k].payload.len() decreases vs[k].payload.len() - j, { if j > 0 { items.push_str(\", \"); } items.push_str(self.ty(&vs[k].payload[j]).as_str()); j = j + 1; } items.push_str(\")\"); } k = k + 1; } },\n            }\n            row.push_str(name);\n            row.push_str(gens.as_str());\n            if items.len() == 0 && !id {\n                row.push_str(\" {}\");\n            } else {\n                row.push_str(\" { \");\n                row.push_str(items.as_str());\n                row.push_str(\" }\");\n            }\n            self.line(depth, row.as_str());\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "fmt",
+     "remove": [
+      "fmt::Printer::attr_line"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    impl Printer {\n        #[effects(alloc)]\n        fn attr_line_renamed(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            if a.name.name == \"summary\" {\n                return;\n            }\n            let mut row: String = String::from(\"#[\");\n            row.push_str(a.name.name.as_str());\n            row.push_str(\"(\");\n            if a.name.name == \"invariant\" {\n                let mut i: usize = 0;\n                while i < a.args.len()\n                    decreases a.args.len() - i,\n                {\n                    if i > 0 {\n                        row.push_str(\", \");\n                    }\n                    match &a.args[i] {\n                        ast::AttrArg::Ident(id) => row.push_str(self.uses_name(id.name.as_str()).as_str()),\n                        ast::AttrArg::Str(s, sp) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                        ast::AttrArg::Pair(pk, pv) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                    }\n                    i = i + 1;\n                }\n            } else {\n                row.push_str(attr_args(a.args.as_slice()).as_str());\n            }\n            row.push_str(\")]\");\n            self.line(depth, row.as_str());\n        }\n\n        #[effects(alloc)]\n        fn trait_def(self: &mut Printer, t: &ast::TraitDef, depth: usize, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let mut head: String = String::from(\"trait \");\n            head.push_str(t.name.name.as_str());\n            if t.fns.len() == 0 {\n                head.push_str(\" {}\");\n                self.line(depth, head.as_str());\n                return;\n            }\n            head.push_str(\" {\");\n            self.line(depth, head.as_str());\n            let mut keys: Vec<String> = Vec::new();\n            let mut i: usize = 0;\n            while i < t.fns.len()\n                decreases t.fns.len() - i,\n            {\n                keys.push(t.fns[i].f.name.name.clone());\n                i = i + 1;\n            }\n            let ord: Vec<usize> = order(keys.as_slice());\n            i = 0;\n            while i < ord.len()\n                decreases ord.len() - i,\n            {\n                if ord[i] < t.fns.len() {\n                    if i > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), \"\", f - 1);\n                }\n                i = i + 1;\n            }\n            self.line(depth, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn trait_identity(self: &mut Printer, t: &ast::TraitDef, order: &[usize], f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], 0);\n                a = a + 1;\n            }\n            self.line(0, \"trait _ {\");\n            let mut k: usize = 0;\n            while k < order.len()\n                decreases order.len() - k,\n            {\n                if order[k] < t.fns.len() {\n                    if k > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.reset_binders();\n                    self.trait_fn(&t.fns[order[k]], 1, \"_\", f - 1);\n                }\n                k = k + 1;\n            }\n            self.line(0, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn type_def_as(self: &mut Printer, t: &ast::TypeDef, depth: usize, name: &str) -> () {\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let gens: String = self.generics(t.generics.as_slice());\n            let id: bool = self.is_id();\n            let mut items: String = String::new();\n            let mut row: String = String::new();\n            match &t.kind {\n                ast::TypeDefKind::Struct(fs) => { row.push_str(\"struct \"); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(\", \"); } if !id { items.push_str(fs[i].name.name.as_str()); items.push_str(\": \"); } items.push_str(self.ty(&fs[i].ty).as_str()); i = i + 1; } },\n                ast::TypeDefKind::Enum(vs) => { row.push_str(\"enum \"); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(\", \"); } if !id { items.push_str(vs[k].name.name.as_str()); } if id || vs[k].payload.len() > 0 { items.push_str(\"(\"); let mut j: usize = 0; while j < vs[k].payload.len() decreases vs[k].payload.len() - j, { if j > 0 { items.push_str(\", \"); } items.push_str(self.ty(&vs[k].payload[j]).as_str()); j = j + 1; } items.push_str(\")\"); } k = k + 1; } },\n            }\n            row.push_str(name);\n            row.push_str(gens.as_str());\n            if items.len() == 0 && !id {\n                row.push_str(\" {}\");\n            } else {\n                row.push_str(\" { \");\n                row.push_str(items.as_str());\n                row.push_str(\" }\");\n            }\n            self.line(depth, row.as_str());\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::Printer::attr_line"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "    fn attr_line(&mut self, a: &Attr, depth: usize) {",
+      "new": "    fn attr_line_renamed(&mut self, a: &Attr, depth: usize) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, depth);\n        }\n        let gens = self.generics(&t.generics);",
+      "new": "            self.attr_line_renamed(a, depth);\n        }\n        let gens = self.generics(&t.generics);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, depth);",
+      "new": "            self.attr_line_renamed(a, depth);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, 0);",
+      "new": "            self.attr_line_renamed(a, 0);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "code": "    impl Printer {\n        #[effects(alloc)]\n        fn attr_line_renamed(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {\n            if a.name.name == \"summary\" {\n                return;\n            }\n            let mut row: String = String::from(\"#[\");\n            row.push_str(a.name.name.as_str());\n            row.push_str(\"(\");\n            if a.name.name == \"invariant\" {\n                let mut i: usize = 0;\n                while i < a.args.len()\n                    decreases a.args.len() - i,\n                {\n                    if i > 0 {\n                        row.push_str(\", \");\n                    }\n                    match &a.args[i] {\n                        ast::AttrArg::Ident(id) => row.push_str(self.uses_name(id.name.as_str()).as_str()),\n                        ast::AttrArg::Str(s, sp) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                        ast::AttrArg::Pair(pk, pv) => row.push_str(attr_arg(&a.args[i], 100).as_str()),\n                    }\n                    i = i + 1;\n                }\n            } else {\n                row.push_str(attr_args(a.args.as_slice()).as_str());\n            }\n            row.push_str(\")]\");\n            self.line(depth, row.as_str());\n        }\n\n        #[effects(alloc)]\n        fn trait_def(self: &mut Printer, t: &ast::TraitDef, depth: usize, f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let mut head: String = String::from(\"trait \");\n            head.push_str(t.name.name.as_str());\n            if t.fns.len() == 0 {\n                head.push_str(\" {}\");\n                self.line(depth, head.as_str());\n                return;\n            }\n            head.push_str(\" {\");\n            self.line(depth, head.as_str());\n            let mut keys: Vec<String> = Vec::new();\n            let mut i: usize = 0;\n            while i < t.fns.len()\n                decreases t.fns.len() - i,\n            {\n                keys.push(t.fns[i].f.name.name.clone());\n                i = i + 1;\n            }\n            let ord: Vec<usize> = order(keys.as_slice());\n            i = 0;\n            while i < ord.len()\n                decreases ord.len() - i,\n            {\n                if ord[i] < t.fns.len() {\n                    if i > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), \"\", f - 1);\n                }\n                i = i + 1;\n            }\n            self.line(depth, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn trait_identity(self: &mut Printer, t: &ast::TraitDef, order: &[usize], f: usize) -> ()\n            decreases f,\n        {\n            if f == 0 {\n                return;\n            }\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], 0);\n                a = a + 1;\n            }\n            self.line(0, \"trait _ {\");\n            let mut k: usize = 0;\n            while k < order.len()\n                decreases order.len() - k,\n            {\n                if order[k] < t.fns.len() {\n                    if k > 0 {\n                        self.out.push_str(\"\\n\");\n                    }\n                    self.reset_binders();\n                    self.trait_fn(&t.fns[order[k]], 1, \"_\", f - 1);\n                }\n                k = k + 1;\n            }\n            self.line(0, \"}\");\n        }\n\n        #[effects(alloc)]\n        fn type_def_as(self: &mut Printer, t: &ast::TypeDef, depth: usize, name: &str) -> () {\n            self.summary_line(t.attrs.as_slice(), depth);\n            let mut a: usize = 0;\n            while a < t.attrs.len()\n                decreases t.attrs.len() - a,\n            {\n                self.attr_line_renamed(&t.attrs[a], depth);\n                a = a + 1;\n            }\n            let gens: String = self.generics(t.generics.as_slice());\n            let id: bool = self.is_id();\n            let mut items: String = String::new();\n            let mut row: String = String::new();\n            match &t.kind {\n                ast::TypeDefKind::Struct(fs) => { row.push_str(\"struct \"); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(\", \"); } if !id { items.push_str(fs[i].name.name.as_str()); items.push_str(\": \"); } items.push_str(self.ty(&fs[i].ty).as_str()); i = i + 1; } },\n                ast::TypeDefKind::Enum(vs) => { row.push_str(\"enum \"); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(\", \"); } if !id { items.push_str(vs[k].name.name.as_str()); } if id || vs[k].payload.len() > 0 { items.push_str(\"(\"); let mut j: usize = 0; while j < vs[k].payload.len() decreases vs[k].payload.len() - j, { if j > 0 { items.push_str(\", \"); } items.push_str(self.ty(&vs[k].payload[j]).as_str()); j = j + 1; } items.push_str(\")\"); } k = k + 1; } },\n            }\n            row.push_str(name);\n            row.push_str(gens.as_str());\n            if items.len() == 0 && !id {\n                row.push_str(\" {}\");\n            } else {\n                row.push_str(\" { \");\n                row.push_str(items.as_str());\n                row.push_str(\" }\");\n            }\n            self.line(depth, row.as_str());\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "fmt",
+      "remove": [
+       "fmt::Printer::attr_line"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "    fn attr_line(&mut self, a: &Attr, depth: usize) {",
+      "new": "    fn attr_line_renamed(&mut self, a: &Attr, depth: usize) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, depth);\n        }\n        let gens = self.generics(&t.generics);",
+      "new": "            self.attr_line_renamed(a, depth);\n        }\n        let gens = self.generics(&t.generics);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, depth);",
+      "new": "            self.attr_line_renamed(a, depth);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/fmt.rs",
+      "old": "            self.attr_line(a, 0);",
+      "new": "            self.attr_line_renamed(a, 0);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

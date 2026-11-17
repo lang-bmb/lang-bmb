@@ -1,0 +1,205 @@
+{
+ "id": "r06-rename-compound_op",
+ "kind": "change",
+ "family": "rename",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Rename the function `parser::Parser::compound_op` to `compound_op_renamed` and update every use of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Rename the function `parser::Parser::compound_op` to `compound_op_renamed` and update every use of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "parser::Parser::compound_ahead",
+   "parser::Parser::compound_assign",
+   "parser::Parser::compound_op",
+   "parser::Parser::compound_op_renamed"
+  ],
+  "bmb": [
+   "parser::Parser::compound_ahead",
+   "parser::Parser::compound_assign",
+   "parser::Parser::compound_op",
+   "parser::Parser::compound_op_renamed"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "    fn compound_op(&self) -> Option<BinOp> {",
+     "new": "    fn compound_op_renamed(&self) -> Option<BinOp> {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "        let op = match (&target, self.compound_op()) {",
+     "new": "        let op = match (&target, self.compound_op_renamed()) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/parser.rs",
+     "old": "                _ if depth == 0 && self.compound_op().is_some() => {",
+     "new": "                _ if depth == 0 && self.compound_op_renamed().is_some() => {"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "parser",
+     "code": "    impl Parser {\n        #[effects(pure)]\n        #[uses(inside)]\n        fn compound_ahead(self: &Parser) -> bool {\n            let mut depth: usize = 0;\n            let mut n: usize = 0;\n            let last: usize = self.t.items.len() - 1;\n            while self.t.pos.saturating_add(n) < last\n                decreases last - self.t.pos.saturating_add(n),\n            {\n                if self.t.is_p(n, \"(\") || self.t.is_p(n, \"[\") {\n                    depth = depth.saturating_add(1);\n                } else if self.t.is_p(n, \")\") || self.t.is_p(n, \"]\") {\n                    if depth == 0 {\n                        return false;\n                    }\n                    depth = depth - 1;\n                } else if (self.t.is_p(n, \";\") || self.t.is_p(n, \"{\") || self.t.is_p(n, \"}\") || self.t.is_p(n, \"=\")) && depth == 0 {\n                    return false;\n                } else if self.t.kind(n) == 9 {\n                    return false;\n                } else if depth == 0 {\n                    match self.compound_op_renamed(n) {\n                        None => {},\n                        Some(o) => { return true; },\n                    }\n                }\n                n = n + 1;\n            }\n            false\n        }\n\n        #[effects(alloc)]\n        fn compound_assign(self: &mut Parser, lo: source::Span, d: usize) -> Option<Compound>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 28,\n        {\n            if !self.compound_ahead() {\n                return Some(Compound::No);\n            }\n            let pos: usize = self.t.pos;\n            let nd: usize = self.diags.items.len();\n            let na: usize = self.diags.aliases.len();\n            let first: Option<ast::Expr> = self.parse_unary(d);\n            let found: Option<ast::BinOp> = self.compound_op_renamed(0);\n            let mut ok: bool = false;\n            match &first {\n                None => {},\n                Some(f) => { match &found { None => {}, Some(o) => { ok = true; }, } },\n            }\n            if !ok {\n                self.t.back(pos);\n                self.diags.items.truncate(nd);\n                self.diags.aliases.truncate(na);\n                return Some(Compound::No);\n            }\n            let target: ast::Expr = first?;\n            let op: ast::BinOp = found?;\n            let nd2: usize = self.diags.items.len();\n            let na2: usize = self.diags.aliases.len();\n            let nl2: usize = self.lens.len();\n            self.t.back(pos);\n            let copy: ast::Expr = self.parse_unary(d)?;\n            self.diags.items.truncate(nd2);\n            self.diags.aliases.truncate(na2);\n            self.lens.truncate(nl2);\n            let op_lo: source::Span = self.span();\n            self.bump();\n            self.bump();\n            let value: ast::Expr = self.parse_expr(d)?;\n            let hi: source::Span = self.expect_p(\";\")?;\n            let mut sym: String = String::new();\n            ast::push_bin_symbol(&mut sym, &op);\n            if !plain_place(&target, self.left()) {\n                self.err_fix_to(\"E0103\", op_lo, cat3(\"compound assignment `\", sym.as_str(), \"=` to a place that calls a function\").as_str(), \"compute the index into a local first, then write `t = t op e;`\");\n                return None;\n            }\n            let t: String = lexer::cut(self.text.as_str(), target.span.lo as usize, target.span.hi as usize);\n            let mut v: String = lexer::cut(self.text.as_str(), value.span.lo as usize, value.span.hi as usize);\n            if fmt::prec(&value) <= fmt::bin_prec(&op) {\n                v = cat3(\"(\", v.as_str(), \")\");\n            }\n            let wspan: source::Span = source::Span { file: lo.file, lo: target.span.lo, hi: value.span.hi };\n            let bspan: source::Span = target.span.to(self.prev_span());\n            let mut msg: String = String::from(\"compound assignment `\");\n            msg.push_str(sym.as_str());\n            msg.push_str(\"=`: the canonical form is `\");\n            msg.push_str(t.as_str());\n            msg.push_str(\" = \");\n            msg.push_str(t.as_str());\n            msg.push_str(\" \");\n            msg.push_str(sym.as_str());\n            msg.push_str(\" ..`\");\n            let mut rep: String = String::new();\n            rep.push_str(t.as_str());\n            rep.push_str(\" = \");\n            rep.push_str(t.as_str());\n            rep.push_str(\" \");\n            rep.push_str(sym.as_str());\n            rep.push_str(\" \");\n            rep.push_str(v.as_str());\n            self.diags.aliases.push(diag::fix(diag::new(\"W0914\", wspan, msg.as_str()), \"write the assignment out\", Some(rep)));\n            let both: ast::Expr = ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(copy), Box::new(value)), span: bspan };\n            Some(Compound::Yes(ast::Stmt::Assign(ast::Assign { target: target, value: both, span: lo.to(hi) })))\n        }\n\n        #[effects(pure)]\n        fn compound_op_renamed(self: &Parser, n: usize) -> Option<ast::BinOp> {\n            if !self.t.joined(n) {\n                return None;\n            }\n            let m: usize = n.saturating_add(1);\n            if self.t.is_p(n, \"<\") && self.t.is_p(m, \"<=\") {\n                return Some(ast::BinOp::Shl);\n            }\n            if self.t.is_p(n, \">\") && self.t.is_p(m, \">=\") {\n                return Some(ast::BinOp::Shr);\n            }\n            if !self.t.is_p(m, \"=\") {\n                return None;\n            }\n            if self.t.is_p(n, \"+\") {\n                Some(ast::BinOp::Add)\n            } else if self.t.is_p(n, \"-\") {\n                Some(ast::BinOp::Sub)\n            } else if self.t.is_p(n, \"*\") {\n                Some(ast::BinOp::Mul)\n            } else if self.t.is_p(n, \"/\") {\n                Some(ast::BinOp::Div)\n            } else if self.t.is_p(n, \"%\") {\n                Some(ast::BinOp::Rem)\n            } else if self.t.is_p(n, \"^\") {\n                Some(ast::BinOp::BitXor)\n            } else if self.t.is_p(n, \"|\") {\n                Some(ast::BinOp::BitOr)\n            } else if self.t.is_p(n, \"&\") {\n                Some(ast::BinOp::BitAnd)\n            } else {\n                None\n            }\n        }\n    }\n"
+    }
+   ],
+   [
+    "write",
+    {
+     "unit": "parser",
+     "remove": [
+      "parser::Parser::compound_op"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(pure)]\n        #[uses(inside)]\n        fn compound_ahead(self: &Parser) -> bool {\n            let mut depth: usize = 0;\n            let mut n: usize = 0;\n            let last: usize = self.t.items.len() - 1;\n            while self.t.pos.saturating_add(n) < last\n                decreases last - self.t.pos.saturating_add(n),\n            {\n                if self.t.is_p(n, \"(\") || self.t.is_p(n, \"[\") {\n                    depth = depth.saturating_add(1);\n                } else if self.t.is_p(n, \")\") || self.t.is_p(n, \"]\") {\n                    if depth == 0 {\n                        return false;\n                    }\n                    depth = depth - 1;\n                } else if (self.t.is_p(n, \";\") || self.t.is_p(n, \"{\") || self.t.is_p(n, \"}\") || self.t.is_p(n, \"=\")) && depth == 0 {\n                    return false;\n                } else if self.t.kind(n) == 9 {\n                    return false;\n                } else if depth == 0 {\n                    match self.compound_op_renamed(n) {\n                        None => {},\n                        Some(o) => { return true; },\n                    }\n                }\n                n = n + 1;\n            }\n            false\n        }\n\n        #[effects(alloc)]\n        fn compound_assign(self: &mut Parser, lo: source::Span, d: usize) -> Option<Compound>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 28,\n        {\n            if !self.compound_ahead() {\n                return Some(Compound::No);\n            }\n            let pos: usize = self.t.pos;\n            let nd: usize = self.diags.items.len();\n            let na: usize = self.diags.aliases.len();\n            let first: Option<ast::Expr> = self.parse_unary(d);\n            let found: Option<ast::BinOp> = self.compound_op_renamed(0);\n            let mut ok: bool = false;\n            match &first {\n                None => {},\n                Some(f) => { match &found { None => {}, Some(o) => { ok = true; }, } },\n            }\n            if !ok {\n                self.t.back(pos);\n                self.diags.items.truncate(nd);\n                self.diags.aliases.truncate(na);\n                return Some(Compound::No);\n            }\n            let target: ast::Expr = first?;\n            let op: ast::BinOp = found?;\n            let nd2: usize = self.diags.items.len();\n            let na2: usize = self.diags.aliases.len();\n            let nl2: usize = self.lens.len();\n            self.t.back(pos);\n            let copy: ast::Expr = self.parse_unary(d)?;\n            self.diags.items.truncate(nd2);\n            self.diags.aliases.truncate(na2);\n            self.lens.truncate(nl2);\n            let op_lo: source::Span = self.span();\n            self.bump();\n            self.bump();\n            let value: ast::Expr = self.parse_expr(d)?;\n            let hi: source::Span = self.expect_p(\";\")?;\n            let mut sym: String = String::new();\n            ast::push_bin_symbol(&mut sym, &op);\n            if !plain_place(&target, self.left()) {\n                self.err_fix_to(\"E0103\", op_lo, cat3(\"compound assignment `\", sym.as_str(), \"=` to a place that calls a function\").as_str(), \"compute the index into a local first, then write `t = t op e;`\");\n                return None;\n            }\n            let t: String = lexer::cut(self.text.as_str(), target.span.lo as usize, target.span.hi as usize);\n            let mut v: String = lexer::cut(self.text.as_str(), value.span.lo as usize, value.span.hi as usize);\n            if fmt::prec(&value) <= fmt::bin_prec(&op) {\n                v = cat3(\"(\", v.as_str(), \")\");\n            }\n            let wspan: source::Span = source::Span { file: lo.file, lo: target.span.lo, hi: value.span.hi };\n            let bspan: source::Span = target.span.to(self.prev_span());\n            let mut msg: String = String::from(\"compound assignment `\");\n            msg.push_str(sym.as_str());\n            msg.push_str(\"=`: the canonical form is `\");\n            msg.push_str(t.as_str());\n            msg.push_str(\" = \");\n            msg.push_str(t.as_str());\n            msg.push_str(\" \");\n            msg.push_str(sym.as_str());\n            msg.push_str(\" ..`\");\n            let mut rep: String = String::new();\n            rep.push_str(t.as_str());\n            rep.push_str(\" = \");\n            rep.push_str(t.as_str());\n            rep.push_str(\" \");\n            rep.push_str(sym.as_str());\n            rep.push_str(\" \");\n            rep.push_str(v.as_str());\n            self.diags.aliases.push(diag::fix(diag::new(\"W0914\", wspan, msg.as_str()), \"write the assignment out\", Some(rep)));\n            let both: ast::Expr = ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(copy), Box::new(value)), span: bspan };\n            Some(Compound::Yes(ast::Stmt::Assign(ast::Assign { target: target, value: both, span: lo.to(hi) })))\n        }\n\n        #[effects(pure)]\n        fn compound_op_renamed(self: &Parser, n: usize) -> Option<ast::BinOp> {\n            if !self.t.joined(n) {\n                return None;\n            }\n            let m: usize = n.saturating_add(1);\n            if self.t.is_p(n, \"<\") && self.t.is_p(m, \"<=\") {\n                return Some(ast::BinOp::Shl);\n            }\n            if self.t.is_p(n, \">\") && self.t.is_p(m, \">=\") {\n                return Some(ast::BinOp::Shr);\n            }\n            if !self.t.is_p(m, \"=\") {\n                return None;\n            }\n            if self.t.is_p(n, \"+\") {\n                Some(ast::BinOp::Add)\n            } else if self.t.is_p(n, \"-\") {\n                Some(ast::BinOp::Sub)\n            } else if self.t.is_p(n, \"*\") {\n                Some(ast::BinOp::Mul)\n            } else if self.t.is_p(n, \"/\") {\n                Some(ast::BinOp::Div)\n            } else if self.t.is_p(n, \"%\") {\n                Some(ast::BinOp::Rem)\n            } else if self.t.is_p(n, \"^\") {\n                Some(ast::BinOp::BitXor)\n            } else if self.t.is_p(n, \"|\") {\n                Some(ast::BinOp::BitOr)\n            } else if self.t.is_p(n, \"&\") {\n                Some(ast::BinOp::BitAnd)\n            } else {\n                None\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "parser",
+      "remove": [
+       "parser::Parser::compound_op"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "    fn compound_op(&self) -> Option<BinOp> {",
+      "new": "    fn compound_op_renamed(&self) -> Option<BinOp> {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "        let op = match (&target, self.compound_op()) {",
+      "new": "        let op = match (&target, self.compound_op_renamed()) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "                _ if depth == 0 && self.compound_op().is_some() => {",
+      "new": "                _ if depth == 0 && self.compound_op_renamed().is_some() => {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "parser",
+      "code": "    impl Parser {\n        #[effects(pure)]\n        #[uses(inside)]\n        fn compound_ahead(self: &Parser) -> bool {\n            let mut depth: usize = 0;\n            let mut n: usize = 0;\n            let last: usize = self.t.items.len() - 1;\n            while self.t.pos.saturating_add(n) < last\n                decreases last - self.t.pos.saturating_add(n),\n            {\n                if self.t.is_p(n, \"(\") || self.t.is_p(n, \"[\") {\n                    depth = depth.saturating_add(1);\n                } else if self.t.is_p(n, \")\") || self.t.is_p(n, \"]\") {\n                    if depth == 0 {\n                        return false;\n                    }\n                    depth = depth - 1;\n                } else if (self.t.is_p(n, \";\") || self.t.is_p(n, \"{\") || self.t.is_p(n, \"}\") || self.t.is_p(n, \"=\")) && depth == 0 {\n                    return false;\n                } else if self.t.kind(n) == 9 {\n                    return false;\n                } else if depth == 0 {\n                    match self.compound_op_renamed(n) {\n                        None => {},\n                        Some(o) => { return true; },\n                    }\n                }\n                n = n + 1;\n            }\n            false\n        }\n\n        #[effects(alloc)]\n        fn compound_assign(self: &mut Parser, lo: source::Span, d: usize) -> Option<Compound>\n            requires d <= 256,\n            decreases (256 - d) * 64 + 28,\n        {\n            if !self.compound_ahead() {\n                return Some(Compound::No);\n            }\n            let pos: usize = self.t.pos;\n            let nd: usize = self.diags.items.len();\n            let na: usize = self.diags.aliases.len();\n            let first: Option<ast::Expr> = self.parse_unary(d);\n            let found: Option<ast::BinOp> = self.compound_op_renamed(0);\n            let mut ok: bool = false;\n            match &first {\n                None => {},\n                Some(f) => { match &found { None => {}, Some(o) => { ok = true; }, } },\n            }\n            if !ok {\n                self.t.back(pos);\n                self.diags.items.truncate(nd);\n                self.diags.aliases.truncate(na);\n                return Some(Compound::No);\n            }\n            let target: ast::Expr = first?;\n            let op: ast::BinOp = found?;\n            let nd2: usize = self.diags.items.len();\n            let na2: usize = self.diags.aliases.len();\n            let nl2: usize = self.lens.len();\n            self.t.back(pos);\n            let copy: ast::Expr = self.parse_unary(d)?;\n            self.diags.items.truncate(nd2);\n            self.diags.aliases.truncate(na2);\n            self.lens.truncate(nl2);\n            let op_lo: source::Span = self.span();\n            self.bump();\n            self.bump();\n            let value: ast::Expr = self.parse_expr(d)?;\n            let hi: source::Span = self.expect_p(\";\")?;\n            let mut sym: String = String::new();\n            ast::push_bin_symbol(&mut sym, &op);\n            if !plain_place(&target, self.left()) {\n                self.err_fix_to(\"E0103\", op_lo, cat3(\"compound assignment `\", sym.as_str(), \"=` to a place that calls a function\").as_str(), \"compute the index into a local first, then write `t = t op e;`\");\n                return None;\n            }\n            let t: String = lexer::cut(self.text.as_str(), target.span.lo as usize, target.span.hi as usize);\n            let mut v: String = lexer::cut(self.text.as_str(), value.span.lo as usize, value.span.hi as usize);\n            if fmt::prec(&value) <= fmt::bin_prec(&op) {\n                v = cat3(\"(\", v.as_str(), \")\");\n            }\n            let wspan: source::Span = source::Span { file: lo.file, lo: target.span.lo, hi: value.span.hi };\n            let bspan: source::Span = target.span.to(self.prev_span());\n            let mut msg: String = String::from(\"compound assignment `\");\n            msg.push_str(sym.as_str());\n            msg.push_str(\"=`: the canonical form is `\");\n            msg.push_str(t.as_str());\n            msg.push_str(\" = \");\n            msg.push_str(t.as_str());\n            msg.push_str(\" \");\n            msg.push_str(sym.as_str());\n            msg.push_str(\" ..`\");\n            let mut rep: String = String::new();\n            rep.push_str(t.as_str());\n            rep.push_str(\" = \");\n            rep.push_str(t.as_str());\n            rep.push_str(\" \");\n            rep.push_str(sym.as_str());\n            rep.push_str(\" \");\n            rep.push_str(v.as_str());\n            self.diags.aliases.push(diag::fix(diag::new(\"W0914\", wspan, msg.as_str()), \"write the assignment out\", Some(rep)));\n            let both: ast::Expr = ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(copy), Box::new(value)), span: bspan };\n            Some(Compound::Yes(ast::Stmt::Assign(ast::Assign { target: target, value: both, span: lo.to(hi) })))\n        }\n\n        #[effects(pure)]\n        fn compound_op_renamed(self: &Parser, n: usize) -> Option<ast::BinOp> {\n            if !self.t.joined(n) {\n                return None;\n            }\n            let m: usize = n.saturating_add(1);\n            if self.t.is_p(n, \"<\") && self.t.is_p(m, \"<=\") {\n                return Some(ast::BinOp::Shl);\n            }\n            if self.t.is_p(n, \">\") && self.t.is_p(m, \">=\") {\n                return Some(ast::BinOp::Shr);\n            }\n            if !self.t.is_p(m, \"=\") {\n                return None;\n            }\n            if self.t.is_p(n, \"+\") {\n                Some(ast::BinOp::Add)\n            } else if self.t.is_p(n, \"-\") {\n                Some(ast::BinOp::Sub)\n            } else if self.t.is_p(n, \"*\") {\n                Some(ast::BinOp::Mul)\n            } else if self.t.is_p(n, \"/\") {\n                Some(ast::BinOp::Div)\n            } else if self.t.is_p(n, \"%\") {\n                Some(ast::BinOp::Rem)\n            } else if self.t.is_p(n, \"^\") {\n                Some(ast::BinOp::BitXor)\n            } else if self.t.is_p(n, \"|\") {\n                Some(ast::BinOp::BitOr)\n            } else if self.t.is_p(n, \"&\") {\n                Some(ast::BinOp::BitAnd)\n            } else {\n                None\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "parser",
+      "remove": [
+       "parser::Parser::compound_op"
+      ]
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "    fn compound_op(&self) -> Option<BinOp> {",
+      "new": "    fn compound_op_renamed(&self) -> Option<BinOp> {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "        let op = match (&target, self.compound_op()) {",
+      "new": "        let op = match (&target, self.compound_op_renamed()) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/parser.rs",
+      "old": "                _ if depth == 0 && self.compound_op().is_some() => {",
+      "new": "                _ if depth == 0 && self.compound_op_renamed().is_some() => {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

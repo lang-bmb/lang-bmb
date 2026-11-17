@@ -125,6 +125,36 @@ class Port(unittest.TestCase):
                            text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_change_tasks_are_generated(self):
+        r = subprocess.run([sys.executable, os.path.join(HERE, "port_change.py"), "check"], capture_output=True,
+                           text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_swapping_two_parameters_follows_the_calls(self):
+        import port_change
+        text = ('fn f(&self, a: i64, b: Vec<u8>) -> i64 {\n    self.f(1, g(2, 3)) + T::f(self, x, "a,b)")\n}\n'
+                'fn h() {\n    f::<T>(\n        p,\n        q[1],\n    );\n}')
+        got, names = port_change.swapped(text, "f")
+        self.assertEqual(names, ("a", "b"))
+        self.assertEqual(got, 'fn f(&self, b: Vec<u8>, a: i64) -> i64 {\n    self.f(g(2, 3), 1) + T::f(self, "a,b)", x)\n}\n'
+                              'fn h() {\n    f::<T>(\n        q[1],\n        p,\n    );\n}')
+        # A closure in an argument list is not cut: no task is made of it.
+        self.assertIsNone(port_change.swapped("fn f(a: i64, b: i64) {}\nfn g() { f(1, h(|x, y| x)) }", "f"))
+
+    def test_edits_replace_stretches_that_occur_once(self):
+        import port_change
+        old, new = "a\nb\nc\nb\nd", "a\nB\nc\nb\nD"
+        text = old
+        for o, n in port_change.edits_between(old, new):
+            self.assertEqual(text.count(o), 1)
+            text = text.replace(o, n, 1)
+        self.assertEqual(text, new)
+        text = "x(1)\ny\nx(1)"
+        for o, n in port_change.edits_for(text, r"x\(", "z("):
+            self.assertEqual(text.count(o), 1)
+            text = text.replace(o, n, 1)
+        self.assertEqual(text, "z(1)\ny\nz(1)")
+
     def test_oracles_pass_and_weak_controls_fail(self):
         tasks = {t["id"]: t for t in pair.load_tasks(os.path.join(HERE, "port"))}
         self.assertGreaterEqual(len(tasks), 20)

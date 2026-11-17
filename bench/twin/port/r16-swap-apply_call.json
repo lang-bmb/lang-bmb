@@ -1,0 +1,174 @@
+{
+ "id": "r16-swap-apply_call",
+ "kind": "change",
+ "family": "swap",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Change the signature of the function `closures::apply_call`: its first two parameters change places (`ca` and `todo`). Update every call of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Change the signature of the function `closures::apply_call`: its first two parameters change places (`e` and `todo`). Update every call of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "closures::apply_call",
+   "closures::lower"
+  ],
+  "bmb": [
+   "closures::apply",
+   "closures::apply_call"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "    e: &mut Expr,",
+     "new": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    e: &mut Expr,"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    rej: &[(usize, usize)],",
+     "new": "    rej: &[(usize, usize)],"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "                        apply_call(e, &todo, &rej);",
+     "new": "                        apply_call(&todo, e, &rej);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "closures",
+     "code": "    #[effects(alloc)]\n    fn apply(e: &mut ast::Expr, todo: &[Todo], rej: &[Rej]) -> () {\n        match &mut e.kind {\n            ast::ExprKind::Int(iv, ir) => {},\n            ast::ExprKind::Float(fb) => {},\n            ast::ExprKind::ByteLit(by) => {},\n            ast::ExprKind::ByteStr(bys) => {},\n            ast::ExprKind::StrLit(sv) => {},\n            ast::ExprKind::CharLit(ch) => {},\n            ast::ExprKind::Bool(bo) => {},\n            ast::ExprKind::Unit => {},\n            ast::ExprKind::Var(id) => {},\n            ast::ExprKind::Call(ca) => apply_call(todo, ca, rej),\n            ast::ExprKind::Method(me) => {},\n            ast::ExprKind::Index(ib, ii) => {},\n            ast::ExprKind::Unary(uo, ux) => {},\n            ast::ExprKind::Binary(bop, bl, br) => {},\n            ast::ExprKind::Ref(rm, rx) => {},\n            ast::ExprKind::If(ife) => {},\n            ast::ExprKind::Block(blk) => {},\n            ast::ExprKind::Array(ar) => {},\n            ast::ExprKind::Repeat(rp) => {},\n            ast::ExprKind::Old(ox) => {},\n            ast::ExprKind::Quant(qu) => {},\n            ast::ExprKind::Trigger(tx) => {},\n            ast::ExprKind::Closure(cl) => {},\n            ast::ExprKind::StructLit(sl) => {},\n            ast::ExprKind::Path(pa) => {},\n            ast::ExprKind::Deref(dx) => {},\n            ast::ExprKind::Field(fx, fnm) => {},\n            ast::ExprKind::Match(ma) => {},\n            ast::ExprKind::Return(rv) => {},\n            ast::ExprKind::Try(tr) => {},\n            ast::ExprKind::Loop(lp) => {},\n            ast::ExprKind::Break(bk) => {},\n            ast::ExprKind::Continue(co) => {},\n            ast::ExprKind::Range(rg) => {},\n            ast::ExprKind::Error => {},\n        }\n    }\n\n    #[effects(alloc)]\n    fn apply_call(todo: &[Todo], ca: &mut ast::Call, rej: &[Rej]) -> () {\n        if ca.path.len() == 0 {\n            return;\n        }\n        let last: usize = ca.path.len() - 1;\n        let mut ti: usize = ca.targs.len();\n        let mut q: usize = ca.targs.len();\n        while q > 0\n            invariant q <= ca.targs.len(),\n            decreases q,\n        {\n            q = q - 1;\n            if ca.targs[q].seg == last {\n                ti = q;\n            }\n        }\n        let nargs: usize = ca.args.len();\n        for r in 0..rej.len()\n            invariant ca.args.len() == nargs,\n        {\n            if ti < ca.targs.len() && rej[r].k < ca.targs[ti].args.len() {\n                ca.targs[ti].args[rej[r].k].kind = ast::TypeKind::Error;\n            }\n            if rej[r].j < nargs {\n                ca.args[rej[r].j].kind = ast::ExprKind::Error;\n            }\n        }\n        for t in 0..todo.len()\n            invariant ca.args.len() == nargs,\n        {\n            let j: usize = todo[t].j;\n            if j < nargs {\n                let at: source::Span = ca.args[j].span;\n                let mut sp: source::Span = at;\n                if todo[t].by_ref {\n                    sp = source::Span { file: at.file, lo: at.hi, hi: at.hi };\n                }\n                let fsp: source::Span = source::Span { file: at.file, lo: at.lo, hi: at.lo };\n                let names: Vec<String> = refs::split_path(todo[t].sname.as_str());\n                let mut segs: Vec<ast::Ident> = Vec::new();\n                for s in 0..names.len() {\n                    segs.push(ast::Ident { name: names[s].clone(), span: sp });\n                }\n                let mut fields: Vec<ast::FieldInit> = Vec::new();\n                fields.push(ast::FieldInit { name: ast::Ident { name: String::from(\"item\"), span: sp }, value: ast::Expr { kind: ast::ExprKind::Bool(false), span: fsp } });\n                for c in 0..todo[t].caps.len() {\n                    let p: u32 = at.lo.wrapping_add(1).wrapping_add(low32(c));\n                    let vsp: source::Span = source::Span { file: at.file, lo: p, hi: p };\n                    fields.push(ast::FieldInit { name: ast::Ident { name: todo[t].caps[c].clone(), span: vsp }, value: ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: todo[t].caps[c].clone(), span: vsp }), span: vsp } });\n                }\n                let lit: ast::Expr = ast::Expr { kind: ast::ExprKind::StructLit(ast::StructLit { path: segs, fields: fields, rest: None }), span: sp };\n                if todo[t].by_ref {\n                    ca.args[j] = ast::Expr { kind: ast::ExprKind::Ref(false, Box::new(lit)), span: at };\n                } else {\n                    ca.args[j] = lit;\n                }\n                if ti < ca.targs.len() && todo[t].k < ca.targs[ti].args.len() {\n                    ca.targs[ti].args[todo[t].k].kind = ast::TypeKind::Named(refs::split_path(todo[t].sname.as_str()), Vec::new());\n                }\n            }\n        }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn apply(e: &mut ast::Expr, todo: &[Todo], rej: &[Rej]) -> () {\n        match &mut e.kind {\n            ast::ExprKind::Int(iv, ir) => {},\n            ast::ExprKind::Float(fb) => {},\n            ast::ExprKind::ByteLit(by) => {},\n            ast::ExprKind::ByteStr(bys) => {},\n            ast::ExprKind::StrLit(sv) => {},\n            ast::ExprKind::CharLit(ch) => {},\n            ast::ExprKind::Bool(bo) => {},\n            ast::ExprKind::Unit => {},\n            ast::ExprKind::Var(id) => {},\n            ast::ExprKind::Call(ca) => apply_call(todo, ca, rej),\n            ast::ExprKind::Method(me) => {},\n            ast::ExprKind::Index(ib, ii) => {},\n            ast::ExprKind::Unary(uo, ux) => {},\n            ast::ExprKind::Binary(bop, bl, br) => {},\n            ast::ExprKind::Ref(rm, rx) => {},\n            ast::ExprKind::If(ife) => {},\n            ast::ExprKind::Block(blk) => {},\n            ast::ExprKind::Array(ar) => {},\n            ast::ExprKind::Repeat(rp) => {},\n            ast::ExprKind::Old(ox) => {},\n            ast::ExprKind::Quant(qu) => {},\n            ast::ExprKind::Trigger(tx) => {},\n            ast::ExprKind::Closure(cl) => {},\n            ast::ExprKind::StructLit(sl) => {},\n            ast::ExprKind::Path(pa) => {},\n            ast::ExprKind::Deref(dx) => {},\n            ast::ExprKind::Field(fx, fnm) => {},\n            ast::ExprKind::Match(ma) => {},\n            ast::ExprKind::Return(rv) => {},\n            ast::ExprKind::Try(tr) => {},\n            ast::ExprKind::Loop(lp) => {},\n            ast::ExprKind::Break(bk) => {},\n            ast::ExprKind::Continue(co) => {},\n            ast::ExprKind::Range(rg) => {},\n            ast::ExprKind::Error => {},\n        }\n    }\n\n    #[effects(alloc)]\n    fn apply_call(todo: &[Todo], ca: &mut ast::Call, rej: &[Rej]) -> () {\n        if ca.path.len() == 0 {\n            return;\n        }\n        let last: usize = ca.path.len() - 1;\n        let mut ti: usize = ca.targs.len();\n        let mut q: usize = ca.targs.len();\n        while q > 0\n            invariant q <= ca.targs.len(),\n            decreases q,\n        {\n            q = q - 1;\n            if ca.targs[q].seg == last {\n                ti = q;\n            }\n        }\n        let nargs: usize = ca.args.len();\n        for r in 0..rej.len()\n            invariant ca.args.len() == nargs,\n        {\n            if ti < ca.targs.len() && rej[r].k < ca.targs[ti].args.len() {\n                ca.targs[ti].args[rej[r].k].kind = ast::TypeKind::Error;\n            }\n            if rej[r].j < nargs {\n                ca.args[rej[r].j].kind = ast::ExprKind::Error;\n            }\n        }\n        for t in 0..todo.len()\n            invariant ca.args.len() == nargs,\n        {\n            let j: usize = todo[t].j;\n            if j < nargs {\n                let at: source::Span = ca.args[j].span;\n                let mut sp: source::Span = at;\n                if todo[t].by_ref {\n                    sp = source::Span { file: at.file, lo: at.hi, hi: at.hi };\n                }\n                let fsp: source::Span = source::Span { file: at.file, lo: at.lo, hi: at.lo };\n                let names: Vec<String> = refs::split_path(todo[t].sname.as_str());\n                let mut segs: Vec<ast::Ident> = Vec::new();\n                for s in 0..names.len() {\n                    segs.push(ast::Ident { name: names[s].clone(), span: sp });\n                }\n                let mut fields: Vec<ast::FieldInit> = Vec::new();\n                fields.push(ast::FieldInit { name: ast::Ident { name: String::from(\"item\"), span: sp }, value: ast::Expr { kind: ast::ExprKind::Bool(false), span: fsp } });\n                for c in 0..todo[t].caps.len() {\n                    let p: u32 = at.lo.wrapping_add(1).wrapping_add(low32(c));\n                    let vsp: source::Span = source::Span { file: at.file, lo: p, hi: p };\n                    fields.push(ast::FieldInit { name: ast::Ident { name: todo[t].caps[c].clone(), span: vsp }, value: ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: todo[t].caps[c].clone(), span: vsp }), span: vsp } });\n                }\n                let lit: ast::Expr = ast::Expr { kind: ast::ExprKind::StructLit(ast::StructLit { path: segs, fields: fields, rest: None }), span: sp };\n                if todo[t].by_ref {\n                    ca.args[j] = ast::Expr { kind: ast::ExprKind::Ref(false, Box::new(lit)), span: at };\n                } else {\n                    ca.args[j] = lit;\n                }\n                if ti < ca.targs.len() && todo[t].k < ca.targs[ti].args.len() {\n                    ca.targs[ti].args[todo[t].k].kind = ast::TypeKind::Named(refs::split_path(todo[t].sname.as_str()), Vec::new());\n                }\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    e: &mut Expr,",
+      "new": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    e: &mut Expr,"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    rej: &[(usize, usize)],",
+      "new": "    rej: &[(usize, usize)],"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "                        apply_call(e, &todo, &rej);",
+      "new": "                        apply_call(&todo, e, &rej);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn apply(e: &mut ast::Expr, todo: &[Todo], rej: &[Rej]) -> () {\n        match &mut e.kind {\n            ast::ExprKind::Int(iv, ir) => {},\n            ast::ExprKind::Float(fb) => {},\n            ast::ExprKind::ByteLit(by) => {},\n            ast::ExprKind::ByteStr(bys) => {},\n            ast::ExprKind::StrLit(sv) => {},\n            ast::ExprKind::CharLit(ch) => {},\n            ast::ExprKind::Bool(bo) => {},\n            ast::ExprKind::Unit => {},\n            ast::ExprKind::Var(id) => {},\n            ast::ExprKind::Call(ca) => apply_call(todo, ca, rej),\n            ast::ExprKind::Method(me) => {},\n            ast::ExprKind::Index(ib, ii) => {},\n            ast::ExprKind::Unary(uo, ux) => {},\n            ast::ExprKind::Binary(bop, bl, br) => {},\n            ast::ExprKind::Ref(rm, rx) => {},\n            ast::ExprKind::If(ife) => {},\n            ast::ExprKind::Block(blk) => {},\n            ast::ExprKind::Array(ar) => {},\n            ast::ExprKind::Repeat(rp) => {},\n            ast::ExprKind::Old(ox) => {},\n            ast::ExprKind::Quant(qu) => {},\n            ast::ExprKind::Trigger(tx) => {},\n            ast::ExprKind::Closure(cl) => {},\n            ast::ExprKind::StructLit(sl) => {},\n            ast::ExprKind::Path(pa) => {},\n            ast::ExprKind::Deref(dx) => {},\n            ast::ExprKind::Field(fx, fnm) => {},\n            ast::ExprKind::Match(ma) => {},\n            ast::ExprKind::Return(rv) => {},\n            ast::ExprKind::Try(tr) => {},\n            ast::ExprKind::Loop(lp) => {},\n            ast::ExprKind::Break(bk) => {},\n            ast::ExprKind::Continue(co) => {},\n            ast::ExprKind::Range(rg) => {},\n            ast::ExprKind::Error => {},\n        }\n    }\n\n    #[effects(alloc)]\n    fn apply_call(todo: &[Todo], ca: &mut ast::Call, rej: &[Rej]) -> () {\n        if ca.path.len() == 0 {\n            return;\n        }\n        let last: usize = ca.path.len() - 1;\n        let mut ti: usize = ca.targs.len();\n        let mut q: usize = ca.targs.len();\n        while q > 0\n            invariant q <= ca.targs.len(),\n            decreases q,\n        {\n            q = q - 1;\n            if ca.targs[q].seg == last {\n                ti = q;\n            }\n        }\n        let nargs: usize = ca.args.len();\n        for r in 0..rej.len()\n            invariant ca.args.len() == nargs,\n        {\n            if ti < ca.targs.len() && rej[r].k < ca.targs[ti].args.len() {\n                ca.targs[ti].args[rej[r].k].kind = ast::TypeKind::Error;\n            }\n            if rej[r].j < nargs {\n                ca.args[rej[r].j].kind = ast::ExprKind::Error;\n            }\n        }\n        for t in 0..todo.len()\n            invariant ca.args.len() == nargs,\n        {\n            let j: usize = todo[t].j;\n            if j < nargs {\n                let at: source::Span = ca.args[j].span;\n                let mut sp: source::Span = at;\n                if todo[t].by_ref {\n                    sp = source::Span { file: at.file, lo: at.hi, hi: at.hi };\n                }\n                let fsp: source::Span = source::Span { file: at.file, lo: at.lo, hi: at.lo };\n                let names: Vec<String> = refs::split_path(todo[t].sname.as_str());\n                let mut segs: Vec<ast::Ident> = Vec::new();\n                for s in 0..names.len() {\n                    segs.push(ast::Ident { name: names[s].clone(), span: sp });\n                }\n                let mut fields: Vec<ast::FieldInit> = Vec::new();\n                fields.push(ast::FieldInit { name: ast::Ident { name: String::from(\"item\"), span: sp }, value: ast::Expr { kind: ast::ExprKind::Bool(false), span: fsp } });\n                for c in 0..todo[t].caps.len() {\n                    let p: u32 = at.lo.wrapping_add(1).wrapping_add(low32(c));\n                    let vsp: source::Span = source::Span { file: at.file, lo: p, hi: p };\n                    fields.push(ast::FieldInit { name: ast::Ident { name: todo[t].caps[c].clone(), span: vsp }, value: ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: todo[t].caps[c].clone(), span: vsp }), span: vsp } });\n                }\n                let lit: ast::Expr = ast::Expr { kind: ast::ExprKind::StructLit(ast::StructLit { path: segs, fields: fields, rest: None }), span: sp };\n                if todo[t].by_ref {\n                    ca.args[j] = ast::Expr { kind: ast::ExprKind::Ref(false, Box::new(lit)), span: at };\n                } else {\n                    ca.args[j] = lit;\n                }\n                if ti < ca.targs.len() && todo[t].k < ca.targs[ti].args.len() {\n                    ca.targs[ti].args[todo[t].k].kind = ast::TypeKind::Named(refs::split_path(todo[t].sname.as_str()), Vec::new());\n                }\n            }\n        }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    e: &mut Expr,",
+      "new": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    e: &mut Expr,"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    todo: &[(usize, String, usize, bool, Vec<String>)],\n    rej: &[(usize, usize)],",
+      "new": "    rej: &[(usize, usize)],"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "                        apply_call(e, &todo, &rej);",
+      "new": "                        apply_call(&todo, e, &rej);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

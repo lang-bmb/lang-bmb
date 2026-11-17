@@ -40,17 +40,23 @@ def strip_comments(text):
     return "\n".join(out)
 
 
-def _items(lines, starts):
+def _items(lines, starts, rest=None):
     """{path: text}: `starts(i, line)` gives (path, indent) where an item
     begins; it ends at the first later line that is `indent}` (or on its own
-    line when it has no body)."""
+    line when it has no body). With `rest` (a list), an item takes the
+    attribute lines right above it and every other line goes to `rest`."""
     out, i = {}, 0
     while i < len(lines):
         hit = starts(i, lines[i])
         if hit is None:
+            if rest is not None:
+                rest.append(lines[i])
             i += 1
             continue
         path, ind = hit
+        attrs = []
+        while rest and rest[-1].startswith(ind + "#["):
+            attrs.insert(0, rest.pop())
         j = i
         while j < len(lines):
             ln = lines[j]
@@ -59,20 +65,32 @@ def _items(lines, starts):
             if ln == ind + "}" or one_line or no_body:
                 break
             j += 1
-        out[path] = "\n".join(lines[i:j + 1])
+        out[path] = "\n".join(attrs + lines[i:j + 1])
         i = j + 1
     return out
 
 
-def rust_index(root, files=RUST_FILES):
+def rust_files(src):
+    """Every `.rs` file under `src`, as paths relative to it."""
+    out = []
+    for d, dirs, files in os.walk(src):
+        dirs.sort()
+        out += [os.path.relpath(os.path.join(d, f), src) for f in sorted(files) if f.endswith(".rs")]
+    return sorted(out)
+
+
+def rust_index(root, files=RUST_FILES, src=os.path.join("compiler", "src"), rest=False):
     """{path: text without comments} of the functions and methods of
-    `root/compiler/src/FILE`."""
+    `root/src/FILE`. With `rest`, a function has its attributes and each
+    file's other lines are `module::<rest>` (what `pair.py` compares to
+    find what a session changed)."""
     out = {}
     for f in files:
-        mod = f[:-3].replace("/", "::")
-        with open(os.path.join(root, "compiler", "src", f), encoding="utf-8") as h:
+        mod = f[:-3].replace(os.sep, "::").replace("/", "::")
+        with open(os.path.join(root, src, f), encoding="utf-8", errors="replace") as h:
             text = strip_comments(h.read())
         lines = text.split("#[cfg(test)]")[0].split("\n")
+        other = [] if rest else None
         owner = [None]
 
         def starts(i, ln):
@@ -91,20 +109,27 @@ def rust_index(root, files=RUST_FILES):
                 return f"{mod}::{owner[0]}::{m.group(1)}", "    "
             return None
 
-        out.update(_items(lines, starts))
+        out.update(_items(lines, starts, other))
+        if rest:
+            out[f"{mod}::<rest>"] = "\n".join(x for x in other if x.strip())
     return out
 
 
-def bmb_index(root, d="selfhost"):
-    """{path: text} of the functions and methods of `root/d/*.bmb`."""
+def bmb_index(root, d="selfhost", rest=False, heads=None):
+    """{path: text} of the functions and methods of `root/d/*.bmb`. With
+    `rest`, as `rust_index`; a summary is no part of any text (ADR-0117:
+    no hash reads it). `heads` (a dict) receives, per method, the line
+    that opens its `impl` block."""
     out = {}
     src = os.path.join(root, d)
     for f in sorted(os.listdir(src)):
         if not f.endswith(".bmb"):
             continue
         with open(os.path.join(src, f), encoding="utf-8") as h:
-            lines = h.read().split("\n")
+            lines = [ln for ln in h.read().split("\n") if not re.match(r"\s*#\[summary\(", ln)] if rest \
+                else h.read().split("\n")
         state = {"unit": None, "owner": None}
+        other = [] if rest else None
 
         def starts(i, ln):
             m = re.match(r"mod (\w+) \{", ln)
@@ -114,6 +139,7 @@ def bmb_index(root, d="selfhost"):
             m = re.match(r"    impl(?:<[^>]*>)? (?:([\w:]+) for )?(\w+)", ln)
             if m:
                 state["owner"] = (m.group(2), m.group(1))
+                state["head"] = ln
                 return None
             if ln == "    }":
                 state["owner"] = None
@@ -126,12 +152,15 @@ def bmb_index(root, d="selfhost"):
             if not m:
                 return None
             ty, tr = state["owner"]
-            if tr is None:
-                return f"{unit}::{ty}::{m.group(1)}", "        "
-            full = tr if "::" in tr else f"{unit}::{tr}"
-            return f"<{unit}::{ty} as {full}>::{m.group(1)}", "        "
+            full = tr if tr is None or "::" in tr else f"{unit}::{tr}"
+            path = f"{unit}::{ty}::{m.group(1)}" if tr is None else f"<{unit}::{ty} as {full}>::{m.group(1)}"
+            if heads is not None:
+                heads[path] = state["head"]
+            return path, "        "
 
-        out.update(_items(lines, starts))
+        out.update(_items(lines, starts, other))
+        if rest:
+            out[f"{state['unit']}::<rest>"] = "\n".join(x for x in other if x.strip())
     return out
 
 

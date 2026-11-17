@@ -1,0 +1,174 @@
+{
+ "id": "r15-swap-leftover_closures",
+ "kind": "change",
+ "family": "swap",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Change the signature of the function `closures::leftover_closures`: its first two parameters change places (`p` and `diags`). Update every call of it. The program's behaviour must not change; change nothing else.",
+  "rust": "Change the signature of the function `closures::leftover_closures`: its first two parameters change places (`p` and `diags`). Update every call of it. The program's behaviour must not change; change nothing else."
+ },
+ "scope": {
+  "rust": [
+   "closures::leftover_closures",
+   "closures::lower"
+  ],
+  "bmb": [
+   "closures::leftover_closures",
+   "closures::lower"
+  ]
+ },
+ "oracle": {
+  "rust": [
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "fn leftover_closures(p: &mut Program, diags: &mut Diags) {",
+     "new": "fn leftover_closures(diags: &mut Diags, p: &mut Program) {"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "        leftover_closures(p, diags);",
+     "new": "        leftover_closures(diags, p);"
+    }
+   ],
+   [
+    "edit_file",
+    {
+     "path": "src/closures.rs",
+     "old": "    leftover_closures(p, diags);",
+     "new": "    leftover_closures(diags, p);"
+    }
+   ]
+  ],
+  "bmb": [
+   [
+    "write",
+    {
+     "unit": "closures",
+     "code": "    #[effects(alloc)]\n    fn leftover_closures(diags: &mut diag::Diags, p: &mut ast::Program) -> () {\n        let mut v: Spans = Spans { spans: Vec::new() };\n        ast::exprs_mut::<Spans>(p, &mut v);\n        for i in 0..v.spans.len() {\n            diags.push(diag::fix(diag::new(\"E0264\", v.spans[i], \"a closure is the argument of a function's `Fn`-bounded parameter\"), \"pass it directly where a function takes `f: F` with `F: Fn(..) -> R`, or name it as a `fn` of the unit\", None));\n        }\n    }\n\n    #[effects(alloc)]\n    fn lower(p: &mut ast::Program, diags: &mut diag::Diags) -> Lowered {\n        let mut st: State = State { generics: table::new::<Generic>(), items: table::new::<Item>(), pending: Vec::new(), names: table::new::<String>(), passes: Vec::new(), located: table::new::<source::Span>(), written: table::new::<usize>(), text: table::new::<Text>(), made: table::new::<String>(), items_made: 0, closures_made: 0, bodies: table::new::<Body>(), unit: String::new(), owner: String::new(), owner_uses: Vec::new(), decls: table::new::<Option<ast::Type>>() };\n        for i in 0..p.mods.len() {\n            scan(&p.mods[i], \"\", &mut st, 1000000000);\n        }\n        if st.generics.len() == 0 {\n            leftover_closures(diags, p);\n            return Lowered { quiet: Vec::new(), names: table::new::<String>(), passes: Vec::new(), at: table::new::<source::Span>() };\n        }\n        init_names(&mut st);\n        init_traits(&mut st);\n        let mut made_files: usize = 0;\n        let mut quiet: Vec<u32> = Vec::new();\n        let mut first: bool = true;\n        for round in 0..1000000000 {\n            st.bodies = table::new::<Body>();\n            let before: usize = st.closures_made;\n            let nm: usize = p.mods.len();\n            for m in 0..nm\n                invariant p.mods.len() == nm,\n            {\n                round_mod(&mut p.mods[m], \"\", &mut st, 1000000000);\n            }\n            if first {\n                for m2 in 0..nm\n                    invariant p.mods.len() == nm,\n                {\n                    rewrite_generic(&mut p.mods[m2], \"\", &st.generics, 1000000000);\n                }\n                first = false;\n            }\n            let pend: Vec<diag::Diag> = std::mem::replace(&mut st.pending, Vec::new());\n            push_diags(diags, pend);\n            made_files = splice_all(p, diags, &mut st, made_files, &mut quiet);\n            let mut left: Spans = Spans { spans: Vec::new() };\n            ast::exprs_mut::<Spans>(p, &mut left);\n            if left.spans.len() == 0 || st.closures_made == before {\n                break;\n            }\n        }\n        leftover_closures(diags, p);\n        Lowered { quiet: quiet, names: st.names, passes: st.passes, at: st.located }\n    }\n"
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "scope",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn leftover_closures(diags: &mut diag::Diags, p: &mut ast::Program) -> () {\n        let mut v: Spans = Spans { spans: Vec::new() };\n        ast::exprs_mut::<Spans>(p, &mut v);\n        for i in 0..v.spans.len() {\n            diags.push(diag::fix(diag::new(\"E0264\", v.spans[i], \"a closure is the argument of a function's `Fn`-bounded parameter\"), \"pass it directly where a function takes `f: F` with `F: Fn(..) -> R`, or name it as a `fn` of the unit\", None));\n        }\n    }\n\n    #[effects(alloc)]\n    fn lower(p: &mut ast::Program, diags: &mut diag::Diags) -> Lowered {\n        let mut st: State = State { generics: table::new::<Generic>(), items: table::new::<Item>(), pending: Vec::new(), names: table::new::<String>(), passes: Vec::new(), located: table::new::<source::Span>(), written: table::new::<usize>(), text: table::new::<Text>(), made: table::new::<String>(), items_made: 0, closures_made: 0, bodies: table::new::<Body>(), unit: String::new(), owner: String::new(), owner_uses: Vec::new(), decls: table::new::<Option<ast::Type>>() };\n        for i in 0..p.mods.len() {\n            scan(&p.mods[i], \"\", &mut st, 1000000000);\n        }\n        if st.generics.len() == 0 {\n            leftover_closures(diags, p);\n            return Lowered { quiet: Vec::new(), names: table::new::<String>(), passes: Vec::new(), at: table::new::<source::Span>() };\n        }\n        init_names(&mut st);\n        init_traits(&mut st);\n        let mut made_files: usize = 0;\n        let mut quiet: Vec<u32> = Vec::new();\n        let mut first: bool = true;\n        for round in 0..1000000000 {\n            st.bodies = table::new::<Body>();\n            let before: usize = st.closures_made;\n            let nm: usize = p.mods.len();\n            for m in 0..nm\n                invariant p.mods.len() == nm,\n            {\n                round_mod(&mut p.mods[m], \"\", &mut st, 1000000000);\n            }\n            if first {\n                for m2 in 0..nm\n                    invariant p.mods.len() == nm,\n                {\n                    rewrite_generic(&mut p.mods[m2], \"\", &st.generics, 1000000000);\n                }\n                first = false;\n            }\n            let pend: Vec<diag::Diag> = std::mem::replace(&mut st.pending, Vec::new());\n            push_diags(diags, pend);\n            made_files = splice_all(p, diags, &mut st, made_files, &mut quiet);\n            let mut left: Spans = Spans { spans: Vec::new() };\n            ast::exprs_mut::<Spans>(p, &mut left);\n            if left.spans.len() == 0 || st.closures_made == before {\n                break;\n            }\n        }\n        leftover_closures(diags, p);\n        Lowered { quiet: quiet, names: st.names, passes: st.passes, at: st.located }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "sha256",
+      "code": "    #[effects(alloc)]\n    fn push_digit(out: &mut String, d: u32) -> () {\n        let digit_code: u32 = if d < 10 {\n            48 + d % 16\n        } else {\n            87 + d % 16\n        };\n        match char::from_u32(digit_code) {\n            None => {},\n            Some(c) => out.push(c),\n        }\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "fn leftover_closures(p: &mut Program, diags: &mut Diags) {",
+      "new": "fn leftover_closures(diags: &mut Diags, p: &mut Program) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "        leftover_closures(p, diags);",
+      "new": "        leftover_closures(diags, p);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    leftover_closures(p, diags);",
+      "new": "    leftover_closures(diags, p);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/sha256.rs",
+      "old": "    let mut s = String::from(\"sha256:\");",
+      "new": "    let mut s = \"sha256:\".to_string();"
+     }
+    ]
+   ]
+  },
+  {
+   "fails": "corpus",
+   "bmb": [
+    [
+     "write",
+     {
+      "unit": "closures",
+      "code": "    #[effects(alloc)]\n    fn leftover_closures(diags: &mut diag::Diags, p: &mut ast::Program) -> () {\n        let mut v: Spans = Spans { spans: Vec::new() };\n        ast::exprs_mut::<Spans>(p, &mut v);\n        for i in 0..v.spans.len() {\n            diags.push(diag::fix(diag::new(\"E0264\", v.spans[i], \"a closure is the argument of a function's `Fn`-bounded parameter\"), \"pass it directly where a function takes `f: F` with `F: Fn(..) -> R`, or name it as a `fn` of the unit\", None));\n        }\n    }\n\n    #[effects(alloc)]\n    fn lower(p: &mut ast::Program, diags: &mut diag::Diags) -> Lowered {\n        let mut st: State = State { generics: table::new::<Generic>(), items: table::new::<Item>(), pending: Vec::new(), names: table::new::<String>(), passes: Vec::new(), located: table::new::<source::Span>(), written: table::new::<usize>(), text: table::new::<Text>(), made: table::new::<String>(), items_made: 0, closures_made: 0, bodies: table::new::<Body>(), unit: String::new(), owner: String::new(), owner_uses: Vec::new(), decls: table::new::<Option<ast::Type>>() };\n        for i in 0..p.mods.len() {\n            scan(&p.mods[i], \"\", &mut st, 1000000000);\n        }\n        if st.generics.len() == 0 {\n            leftover_closures(diags, p);\n            return Lowered { quiet: Vec::new(), names: table::new::<String>(), passes: Vec::new(), at: table::new::<source::Span>() };\n        }\n        init_names(&mut st);\n        init_traits(&mut st);\n        let mut made_files: usize = 0;\n        let mut quiet: Vec<u32> = Vec::new();\n        let mut first: bool = true;\n        for round in 0..1000000000 {\n            st.bodies = table::new::<Body>();\n            let before: usize = st.closures_made;\n            let nm: usize = p.mods.len();\n            for m in 0..nm\n                invariant p.mods.len() == nm,\n            {\n                round_mod(&mut p.mods[m], \"\", &mut st, 1000000000);\n            }\n            if first {\n                for m2 in 0..nm\n                    invariant p.mods.len() == nm,\n                {\n                    rewrite_generic(&mut p.mods[m2], \"\", &st.generics, 1000000000);\n                }\n                first = false;\n            }\n            let pend: Vec<diag::Diag> = std::mem::replace(&mut st.pending, Vec::new());\n            push_diags(diags, pend);\n            made_files = splice_all(p, diags, &mut st, made_files, &mut quiet);\n            let mut left: Spans = Spans { spans: Vec::new() };\n            ast::exprs_mut::<Spans>(p, &mut left);\n            if left.spans.len() == 0 || st.closures_made == before {\n                break;\n            }\n        }\n        leftover_closures(diags, p);\n        Lowered { quiet: quiet, names: st.names, passes: st.passes, at: st.located }\n    }\n"
+     }
+    ],
+    [
+     "write",
+     {
+      "unit": "diag",
+      "code": "    #[effects(alloc)]\n    fn render(d: &Diag, sm: &source::SourceMap) -> String {\n        let a: source::Pos = sm.line_col(d.span.file, d.span.lo);\n        let b: source::Pos = sm.line_col(d.span.file, d.span.hi);\n        let mut s: String = String::from(\"{\\\"code\\\":\");\n        std::json::push_string(&mut s, d.code.as_str());\n        s.push_str(\",\\\"sev\\\":\\\"\");\n        push_severity(&mut s, d.code.as_str());\n        s.push_str(\"\\\",\\\"message\\\":\");\n        std::json::push_string(&mut s, d.message.as_str());\n        s.push_str(\",\\\"file\\\":\");\n        sm.push_name(&mut s, d.span.file);\n        s.push_str(\",\\\"line\\\":\");\n        std::num::push_u64(&mut s, a.line as u64);\n        s.push_str(\",\\\"col\\\":\");\n        std::num::push_u64(&mut s, a.col as u64);\n        s.push_str(\",\\\"end_line\\\":\");\n        std::num::push_u64(&mut s, b.line as u64);\n        s.push_str(\",\\\"end_col\\\":\");\n        std::num::push_u64(&mut s, b.col as u64);\n        match &d.obligation {\n            None => {},\n            Some(o) => { s.push_str(\",\\\"obligation\\\":\"); std::json::push_string(&mut s, o.as_str()); },\n        }\n        match &d.bounded {\n            None => {},\n            Some(k) => { s.push_str(\",\\\"bounded\\\":{\\\"b\\\":\"); std::num::push_i64(&mut s, k.b); s.push_str(\",\\\"l\\\":\"); std::num::push_u64(&mut s, k.l as u64); s.push_str(\"}\"); },\n        }\n        match &d.fix {\n            None => {},\n            Some(f) => { s.push_str(\",\\\"fix\\\":{\\\"message\\\":\"); std::json::push_string(&mut s, f.message.as_str()); match &f.replacement { None => {}, Some(r) => { s.push_str(\",\\\"replacement\\\":\"); std::json::push_string(&mut s, r.as_str()); }, } s.push_str(\"}\"); },\n        }\n        s.push_str(\"}\");\n        s\n    }\n"
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "fn leftover_closures(p: &mut Program, diags: &mut Diags) {",
+      "new": "fn leftover_closures(diags: &mut Diags, p: &mut Program) {"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "        leftover_closures(p, diags);",
+      "new": "        leftover_closures(diags, p);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/closures.rs",
+      "old": "    leftover_closures(p, diags);",
+      "new": "    leftover_closures(diags, p);"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "    s.push_str(&format!(\"\\\"severity\\\":\\\"{}\\\",\", severity(d.code)));",
+      "new": "    s.push_str(&format!(\"\\\"sev\\\":\\\"{}\\\",\", severity(d.code)));"
+     }
+    ],
+    [
+     "edit_file",
+     {
+      "path": "src/diag.rs",
+      "old": "            \"{{\\\"code\\\":{},\\\"severity\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\",",
+      "new": "            \"{{\\\"code\\\":{},\\\"sev\\\":\\\"{}\\\",\\\"description\\\":{}}}\\n\","
+     }
+    ]
+   ]
+  }
+ ]
+}

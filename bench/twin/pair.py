@@ -60,6 +60,8 @@ BENCH = os.path.dirname(HERE)
 ROOT = os.path.dirname(BENCH)
 sys.path.insert(0, os.path.join(BENCH, "m1"))
 import harness  # noqa: E402
+sys.path.insert(0, HERE)
+import index  # noqa: E402
 
 MAX_TOOL_CALLS = 60
 RUN_TIMEOUT = 20  # seconds per corpus case
@@ -261,6 +263,20 @@ def materialize_repo(task, arm, dest, spec):
             r = subprocess.run([bmb_bin(), "import", dest, *files], capture_output=True, text=True)
             if r.returncode != 0:
                 raise RuntimeError(f"bmb import failed: {r.stdout}{r.stderr}")
+            if task["kind"] == "change":
+                # Every definition proved, so a session pays for what it
+                # changes (the tools and the judge read `.bmb-cache`).
+                shutil.copytree(proof_cache(task["commit"], spec), os.path.join(dest, ".bmb-cache"))
+        elif task["kind"] == "change":
+            # The whole crate (it must build), with what its build reads
+            # from outside it, beside it.
+            shutil.copytree(src, dest, ignore=shutil.ignore_patterns("target", "tests"))
+            for rel in spec.get("beside", []):
+                tar = subprocess.run(["git", "archive", task["commit"], rel], cwd=ROOT, capture_output=True,
+                                     check=True).stdout
+                subprocess.run(["tar", "-x", "-C", os.path.dirname(dest)], input=tar, check=True)
+            if DOCS != "all":
+                strip_crate(dest, docs=DOCS == "summary")
         else:
             for f in spec["files"]:
                 os.makedirs(os.path.dirname(os.path.join(dest, f)), exist_ok=True)
@@ -270,6 +286,116 @@ def materialize_repo(task, arm, dest, spec):
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return dest
+
+
+def twin_dir(commit, *parts):
+    """Where what is computed once per commit of a repository fixture is
+    kept: `$PAIR_CACHE/COMMIT/..` (default `~/.cache/bmb/twin`). Outside
+    the repository: its copy of the crate must not be a member of the
+    repository's cargo workspace."""
+    base = os.environ.get("PAIR_CACHE", os.path.join(os.path.expanduser("~"), ".cache", "bmb", "twin"))
+    return os.path.join(base, commit, *parts)
+
+
+def commit_tree(commit, paths):
+    """`paths` of the repository at `commit`, extracted once."""
+    d = twin_dir(commit, "tree")
+    need = [p for p in paths if not os.path.exists(os.path.join(d, p))]
+    if need:
+        os.makedirs(d, exist_ok=True)
+        tar = subprocess.run(["git", "archive", commit, *need], cwd=ROOT, capture_output=True, check=True).stdout
+        subprocess.run(["tar", "-x", "-C", d], input=tar, check=True)
+    return d
+
+
+def proof_cache(commit, spec):
+    """The proof cache of the BMB side at `commit`, every definition
+    proved: built once. The cache is keyed by content, so the gate's cache
+    of the port (`target/port-proof`) is a start where it exists; what it
+    does not hold is proved here (from nothing the port takes about an
+    hour in one process)."""
+    d = twin_dir(commit, "bmb-cache")
+    if not os.path.exists(os.path.join(d, ".done")):
+        tree = commit_tree(commit, [spec["dir"]])
+        src = os.path.join(tree, spec["dir"])
+        files = sorted(os.path.join(src, f) for f in os.listdir(src) if f.endswith(".bmb"))
+        seed = os.path.join(ROOT, "target", "port-proof")
+        if os.path.isdir(seed) and not os.path.exists(d):
+            shutil.copytree(seed, d)
+        r = subprocess.run([bmb_bin(), "verify", "--cache", d, *files], capture_output=True, text=True)
+        bad = [ln for ln in r.stdout.splitlines() if '"status":"verified"' not in ln]
+        if r.returncode != 0 or bad:
+            raise RuntimeError(f"the port does not prove at {commit}: {bad[:5]}{r.stderr[-1000:]}")
+        open(os.path.join(d, ".done"), "w").close()
+    return d
+
+
+def reference_bin(commit, spec):
+    """The Rust side built at `commit` (release): the program whose output
+    is the expected bytes of the corpus. The two sides print the same
+    bytes there (the port's differential tests), so one reference serves
+    both arms."""
+    out = twin_dir(commit, "reference")
+    exe = os.path.join(out, "release", spec["bin"])
+    if not os.path.exists(exe):
+        tree = commit_tree(commit, [spec["dir"], *spec.get("beside", [])])
+        code, text = cargo(os.path.join(tree, spec["dir"]), out, ["build", "--release"])
+        if code != 0:
+            raise RuntimeError(f"the reference does not build at {commit}: {text[-2000:]}")
+    return exe
+
+
+def repo_cases(task, spec):
+    """[(name, argv tail, expected stdout, expected exit code)] and the
+    directory the cases run in. A case is a command line over files of
+    the repository at the task's commit; its expected output is the
+    reference's, computed once."""
+    commit = task["commit"]
+    cases = spec["corpus"] + task.get("cases", [])
+    if len({c["name"] for c in cases}) != len(cases):
+        raise RuntimeError("two corpus cases have one name")
+    tree = commit_tree(commit, sorted({f for c in cases for f in c.get("files", [])}))
+    exe, out = None, []
+    for c in cases:
+        argv = c["args"] + c.get("files", [])
+        f = twin_dir(commit, "expected", c["name"])
+        if not os.path.exists(f + ".out"):
+            exe = exe or reference_bin(commit, spec["rust"])
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            r = subprocess.run([exe, *argv], capture_output=True, cwd=tree, timeout=RUN_TIMEOUT)
+            with open(f + ".code", "w") as h:
+                h.write(str(r.returncode))
+            with open(f + ".out", "wb") as h:
+                h.write(r.stdout)
+        with open(f + ".out", "rb") as a, open(f + ".code") as b:
+            out.append((c["name"], argv, a.read(), int(b.read())))
+    return out, tree
+
+
+def run_repo_cases(exe, cases, cwd):
+    passed, failures = 0, []
+    for name, argv, want, code in cases:
+        try:
+            r = subprocess.run([exe, *argv], capture_output=True, timeout=RUN_TIMEOUT, cwd=cwd)
+            ok = r.returncode == code and r.stdout == want
+        except subprocess.TimeoutExpired:
+            ok = False
+        if ok:
+            passed += 1
+        else:
+            failures.append(name)
+    return passed, failures
+
+
+def defs_of(task, arm, root):
+    """{definition: text} of an arm's code, to see what a session changed.
+    A repository fixture is split by function and method (`index.py`):
+    its `impl` blocks are too large to be one item."""
+    if not repo_fixture(task["fixture"]):
+        return bmb_defs(root) if arm == "bmb" else rust_defs(root)
+    if arm == "bmb":
+        return index.bmb_index(root, "src", rest=True)
+    return index.rust_index(root, index.rust_files(os.path.join(root, "src")), src="src", rest=True)
 
 
 def ws_files(ws):
@@ -592,13 +718,15 @@ def run_cases(exe, cases, cwd=None):
 def judge_change(task, arm, root, before, work):
     out = {"built": False, "tests": None, "corpus_passed": 0, "corpus_total": 0, "corpus_failures": [],
            "out_of_scope": []}
-    cases = task_cases(task)
+    spec = repo_fixture(task["fixture"])
+    cases, cwd = repo_cases(task, spec) if spec else (task_cases(task), None)
     out["corpus_total"] = len(cases)
     if arm == "bmb":
         exe = os.path.join(work, "judge-exe")
-        r = subprocess.run([bmb_bin(), "build", *ws_files(root), "-o", exe], capture_output=True, text=True)
+        cache = os.path.join(root, ".bmb-cache")
+        r = subprocess.run([bmb_bin(), "build", *(["--cache", cache] if spec else []), *ws_files(root), "-o", exe],
+                           capture_output=True, text=True)
         out["built"] = r.returncode == 0
-        after = bmb_defs(root)
     else:
         tgt = os.path.join(work, "judge-target")
         code, _ = cargo(root, tgt, ["build"])
@@ -606,10 +734,11 @@ def judge_change(task, arm, root, before, work):
         if out["built"]:
             code, _ = cargo(root, tgt, ["test"])
             out["tests"] = code == 0
-        exe = os.path.join(tgt, "debug", task.get("rust_bin", task["fixture"]))
-        after = rust_defs(root)
+        exe = os.path.join(tgt, "debug", spec["rust"]["bin"] if spec else task.get("rust_bin", task["fixture"]))
+    after = defs_of(task, arm, root)
     if out["built"]:
-        out["corpus_passed"], out["corpus_failures"] = run_cases(exe, cases)
+        out["corpus_passed"], out["corpus_failures"] = (run_repo_cases(exe, cases, cwd) if spec
+                                                        else run_cases(exe, cases))
     out["out_of_scope"] = out_of_scope(task, arm, before, after)
     out["changed"] = changed(before, after)
     out["success"] = (out["built"] and out["tests"] is not False and out["corpus_passed"] == len(cases)
@@ -660,7 +789,7 @@ def run_task(task, arm, agent_kind, script=None):
     work = tempfile.mkdtemp(prefix=f"pair-{task['id']}-{arm}-")
     try:
         root = materialize(task, arm, os.path.join(work, "code"))
-        before = bmb_defs(root) if arm == "bmb" else rust_defs(root)
+        before = defs_of(task, arm, root)
         tools = BmbTools(root) if arm == "bmb" else RustTools(root, os.path.join(work, "target"))
         agent = make_agent(agent_kind, arm, task, script)
         comprehend = task["kind"] == "comprehend"
