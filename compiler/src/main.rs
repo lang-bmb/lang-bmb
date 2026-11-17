@@ -181,6 +181,10 @@ const USAGE: &str = "usage:
                             resolved program and per definition its locals, the type of every
                             expression, type arguments, call edges, effects and recursion
                             (types), or where each function drops its owned values (moves)
+  bmb dump texts <file.bmb>...
+                            the qualified texts the incremental keys read, when the program
+                            checks: per definition its qualified normal form and the surface
+                            a caller reads, then every item's qualified hash
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1020,7 +1024,7 @@ fn run() -> ExitCode {
             if args.len() > 2
                 && matches!(
                     args[1].as_str(),
-                    "tokens" | "parse" | "std" | "lower" | "decls" | "types" | "moves"
+                    "tokens" | "parse" | "std" | "lower" | "decls" | "types" | "moves" | "texts"
                 ) =>
         {
             let files = match read_files(&args[2..]) {

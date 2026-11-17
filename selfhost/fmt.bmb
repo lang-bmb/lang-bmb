@@ -1871,6 +1871,9 @@ mod fmt {
         }
     }
 
+    #[summary("한정 글의 줄 하나 (dump texts): 정의의 경로, 한정 정규형, 부르는 쪽이 읽는 겉")]
+    struct QualRow { path: String, text: String, caller: String }
+
     #[summary("정체성 글이 참조 하나를 쓰는 글(#<id>, #self, #self<색>, #self.k)과, trait이면 그 메서드의 정체성 순서")]
     struct RefRow { text: String, methods: Vec<String> }
 
@@ -1935,6 +1938,13 @@ mod fmt {
             ast::BinOp::Shl => 8,
             ast::BinOp::Shr => 8,
         }
+    }
+
+    #[summary("부르는 쪽의 질의가 실행 함수에서 읽는 것 (백로그 2D-22): #[uses]를 뺀 한정된 겉. 정의의 #[uses]는 제 질의에서만 spec fn의 몸을 드러내므로 부르는 쪽의 증분 키는 그것을 뺀다")]
+    #[effects(alloc)]
+    fn caller_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str) -> String {
+        let g: ast::FnDef = without_uses(d);
+        qualified_text(pr, heads, &g, unit, false)
     }
 
     #[summary("파일이 source::CAPTURE인 self인가")]
@@ -2198,6 +2208,66 @@ mod fmt {
     #[effects(alloc)]
     fn identity(fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, tys: table::Table<ast::TypeKind>, traits: Vec<String>) -> Printer {
         Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Identity, unit: String::new(), fns: fns, adts: adts, types: tys, traits: traits, refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
+    }
+
+    #[summary("함수가 검사되고 증명되는 impl의 머리 (백로그 2T-03), 없으면 빈 글: impl의 타입 매개변수와 그 한정, 그리고 경로의 마지막 마디 앞(trait의 메서드나 trait impl의 함수면 trait과 타입: 계약과 정제 의무가 거기 달렸다)")]
+    #[effects(alloc)]
+    fn impl_head(sig: &types::FnSig) -> String {
+        let n: usize = sig.path.len();
+        if !(sig.impl_generics > 0 || n > 0 && sig.path.as_bytes()[0] == 60) {
+            return String::new();
+        }
+        let mut cut_at: usize = n;
+        let mut i: usize = n;
+        let mut found: bool = false;
+        while i >= 2 && !found
+            invariant i <= n,
+            decreases i,
+        {
+            if sig.path.as_bytes()[i - 1] == 58 && sig.path.as_bytes()[i - 2] == 58 {
+                cut_at = i - 2;
+                found = true;
+            }
+            i = i - 1;
+        }
+        if !found {
+            return String::new();
+        }
+        let mut out: String = String::from("impl<");
+        let mut g: usize = 0;
+        while g < sig.impl_generics && g < sig.generics.len()
+            decreases sig.generics.len() - g,
+        {
+            if g > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(sig.generics[g].name.as_str());
+            out.push_str(": ");
+            out.push_str(types::join(sig.generics[g].bounds.as_slice(), " + ").as_str());
+            g = g + 1;
+        }
+        out.push_str("> ");
+        out.push_str(lexer::cut(sig.path.as_str(), 0, cut_at).as_str());
+        out.push_str("\n");
+        out
+    }
+
+    #[summary("함수의 자리(열쇠)마다 그 impl의 머리: 그 자리의, 내장도 인스턴스(경로가 >로 끝난다)도 아닌 첫 시그니처(경로의 순서)의 것")]
+    #[effects(alloc)]
+    fn impl_heads(fns: &table::Table<types::FnSig>) -> table::Table<String> {
+        let mut out: table::Table<String> = table::new::<String>();
+        let total: usize = fns.len();
+        let mut n: usize = 0;
+        while n < total
+            decreases total - n,
+        {
+            match fns.nth(n) {
+                None => {},
+                Some(at) => { let len: usize = fns.items[at].path.len(); let instance: bool = len > 0 && fns.items[at].path.as_bytes()[len - 1] == 62; if !fns.items[at].builtin && !instance { let key: String = body::span_key(fns.items[at].span); if !out.has(key.as_str()) { out.insert(key.as_str(), impl_head(&fns.items[at])); } } },
+            }
+            n = n + 1;
+        }
+        out
     }
 
     #[summary("클로저가 잡은 값을 가리키는 self인가: 파일이 source::CAPTURE인 self, 또는 그것의 old")]
@@ -2565,6 +2635,181 @@ mod fmt {
         push_kind(out, &t.kind, f);
     }
 
+    #[summary("정의 하나의 줄")]
+    #[effects(alloc)]
+    fn qual_row(path: String, unit: &str, d: &ast::FnDef, heads: &table::Table<String>, pr: &mut Printer) -> QualRow {
+        let text: String = qualified_text(pr, heads, d, unit, true);
+        let caller: String = caller_text(pr, heads, d, unit);
+        QualRow { path: path, text: text, caller: caller }
+    }
+
+    #[summary("몸이 있는 모든 정의의 한정 글, body::defs_of의 순서로 (단위마다 안의 단위 먼저, 이어서 함수, impl T의 함수, trait impl의 함수, 기본 메서드의 몸)")]
+    #[effects(alloc)]
+    fn qual_rows(p: &ast::Program, fns: &table::Table<types::FnSig>) -> Vec<QualRow> {
+        let mut by_span: table::Table<String> = table::new::<String>();
+        let total: usize = fns.len();
+        let mut n: usize = 0;
+        while n < total
+            decreases total - n,
+        {
+            match fns.nth(n) {
+                None => {},
+                Some(at) => { if fns.items[at].in_impl && body::impl_path(fns.items[at].path.as_str()) { by_span.insert(body::span_key(fns.items[at].span).as_str(), fns.items[at].path.clone()); } },
+            }
+            n = n + 1;
+        }
+        let heads: table::Table<String> = impl_heads(fns);
+        let mut pr: Printer = qualifying(fns.clone(), "");
+        let mut out: Vec<QualRow> = Vec::new();
+        let mut i: usize = 0;
+        while i < p.mods.len()
+            decreases p.mods.len() - i,
+        {
+            qual_walk(&p.mods[i], "", &by_span, &heads, &mut pr, &mut out, 100000);
+            i = i + 1;
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn qual_walk(m: &ast::Mod, prefix: &str, by_span: &table::Table<String>, heads: &table::Table<String>, pr: &mut Printer, out: &mut Vec<QualRow>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let sub: String = types::cat3(mp.as_str(), "::", "");
+        let mut s: usize = 0;
+        while s < m.mods.len()
+            decreases m.mods.len() - s,
+        {
+            qual_walk(&m.mods[s], sub.as_str(), by_span, heads, pr, out, f - 1);
+            s = s + 1;
+        }
+        let mut i: usize = 0;
+        while i < m.fns.len()
+            decreases m.fns.len() - i,
+        {
+            out.push(qual_row(types::cat3(sub.as_str(), m.fns[i].name.name.as_str(), ""), mp.as_str(), &m.fns[i], heads, pr));
+            i = i + 1;
+        }
+        i = 0;
+        while i < m.impls.len()
+            decreases m.impls.len() - i,
+        {
+            let mut j: usize = 0;
+            while j < m.impls[i].fns.len()
+                decreases m.impls[i].fns.len() - j,
+            {
+                out.push(qual_row(types::cat7(sub.as_str(), m.impls[i].ty.name.as_str(), "::", m.impls[i].fns[j].name.name.as_str(), "", "", ""), mp.as_str(), &m.impls[i].fns[j], heads, pr));
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        i = 0;
+        while i < m.trait_impls.len()
+            decreases m.trait_impls.len() - i,
+        {
+            let mut j: usize = 0;
+            while j < m.trait_impls[i].fns.len()
+                decreases m.trait_impls[i].fns.len() - j,
+            {
+                match by_span.find(body::span_key(m.trait_impls[i].fns[j].span).as_str()) {
+                    None => {},
+                    Some(at) => out.push(qual_row(by_span.items[at].clone(), mp.as_str(), &m.trait_impls[i].fns[j], heads, pr)),
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        i = 0;
+        while i < m.traits.len()
+            decreases m.traits.len() - i,
+        {
+            let mut j: usize = 0;
+            while j < m.traits[i].fns.len()
+                decreases m.traits[i].fns.len() - j,
+            {
+                if m.traits[i].fns[j].has_body {
+                    out.push(qual_row(types::cat7(sub.as_str(), m.traits[i].name.name.as_str(), "::", m.traits[i].fns[j].f.name.name.as_str(), "", "", ""), mp.as_str(), &m.traits[i].fns[j].f, heads, pr));
+                }
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    #[summary("모든 정의와 타입 선언, trait, trait impl 머리의 한정 해시, 경로에서: 정의의 제 글에서 바뀐 것 (ADR-0019 §2). 커밋이 이것을 알린다(workspace::Commit). rows는 qual_rows의 것")]
+    #[effects(alloc)]
+    fn qualified_hashes(p: &ast::Program, rows: &[QualRow]) -> table::Table<String> {
+        let mut out: table::Table<String> = table::new::<String>();
+        let mut i: usize = 0;
+        while i < rows.len()
+            decreases rows.len() - i,
+        {
+            out.insert(rows[i].path.as_str(), sha256::hex(rows[i].text.as_bytes()));
+            i = i + 1;
+        }
+        i = 0;
+        while i < p.mods.len()
+            decreases p.mods.len() - i,
+        {
+            type_hashes(&p.mods[i], "", &mut out, 100000);
+            i = i + 1;
+        }
+        i = 0;
+        while i < p.mods.len()
+            decreases p.mods.len() - i,
+        {
+            trait_hashes(&p.mods[i], "", &mut out, 100000);
+            i = i + 1;
+        }
+        out
+    }
+
+    #[summary("정의 하나의 한정 정규형: 다른 정의를 온 경로로, 제 이름은 _로 (ADR-0019 §2). 증분 키가 읽는다(ADR-0032); 정체성 해시는 읽지 않는다(ADR-0059). pr은 한정 출력기, heads는 impl_heads의 표")]
+    #[effects(alloc)]
+    fn qualified_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str, with_body: bool) -> String {
+        pr.out = match heads.find(body::span_key(d.span).as_str()) {
+            None => String::new(),
+            Some(at) => heads.items[at].clone(),
+        };
+        pr.names.unit = String::from(unit);
+        pr.function(d, 0, "_", with_body, 1000000000);
+        pr.out.clone()
+    }
+
+    #[summary("단위 mp의 타입 이름(local)을 온 경로로 쓴 타입 (한정 정규형: T는 mp::T). Vec와 Box의 안은 그대로 둔다(stage0과 같다)")]
+    #[effects(alloc)]
+    fn qualify_type(t: &ast::Type, mp: &str, local: &[String], f: usize) -> ast::Type
+        decreases f,
+    {
+        if f == 0 {
+            return t.clone();
+        }
+        let kind: ast::TypeKind = match &t.kind {
+            ast::TypeKind::Int(q4_tk_int0) => t.kind.clone(),
+            ast::TypeKind::F64 => t.kind.clone(),
+            ast::TypeKind::Bool => t.kind.clone(),
+            ast::TypeKind::Unit => t.kind.clone(),
+            ast::TypeKind::Char => t.kind.clone(),
+            ast::TypeKind::String => t.kind.clone(),
+            ast::TypeKind::Str => t.kind.clone(),
+            ast::TypeKind::Array(e, n) => ast::TypeKind::Array(Box::new(qualify_type(&**e, mp, local, f - 1)), *n),
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => t.kind.clone(),
+            ast::TypeKind::Slice(e) => ast::TypeKind::Slice(Box::new(qualify_type(&**e, mp, local, f - 1))),
+            ast::TypeKind::Ref(m, e) => ast::TypeKind::Ref(*m, Box::new(qualify_type(&**e, mp, local, f - 1))),
+            ast::TypeKind::Named(np, a) => { let mut args: Vec<ast::Type> = Vec::new(); let mut i: usize = 0; while i < a.len() decreases a.len() - i, { args.push(qualify_type(&a[i], mp, local, f - 1)); i = i + 1; } if np.len() == 1 && types::has(local, np[0].as_str()) { let mut full: Vec<String> = Vec::new(); full.push(String::from(mp)); full.push(np[0].clone()); ast::TypeKind::Named(full, args) } else { ast::TypeKind::Named(np.clone(), args) } },
+            ast::TypeKind::Vec(q4_tk_vec0) => t.kind.clone(),
+            ast::TypeKind::Box(q4_tk_box0) => t.kind.clone(),
+            ast::TypeKind::Param(q4_tk_param0) => t.kind.clone(),
+            ast::TypeKind::Never => t.kind.clone(),
+            ast::TypeKind::Error => t.kind.clone(),
+        };
+        ast::Type { kind: kind, span: t.span }
+    }
+
     #[summary("단위 unit의 정의를 한정해 찍는 출력기 (ADR-0019 §2): 다른 정의를 온 경로로")]
     #[effects(alloc)]
     fn qualifying(fns: table::Table<types::FnSig>, unit: &str) -> Printer {
@@ -2644,6 +2889,67 @@ mod fmt {
         }
     }
 
+    #[summary("trait마다(unit::Trait, 그 선언) 그리고 trait impl의 머리마다(<unit::T as unit::Trait>, 그 매개변수) 줄 하나: 커밋이 put이 쓰는 항목을 모두 부르도록 (ADR-0074 §5). impl의 함수는 제 줄이 있다")]
+    #[effects(alloc)]
+    fn trait_hashes(m: &ast::Mod, prefix: &str, out: &mut table::Table<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let sub: String = types::cat3(mp.as_str(), "::", "");
+        let mut s: usize = 0;
+        while s < m.mods.len()
+            decreases m.mods.len() - s,
+        {
+            trait_hashes(&m.mods[s], sub.as_str(), out, f - 1);
+            s = s + 1;
+        }
+        let mut i: usize = 0;
+        while i < m.traits.len()
+            decreases m.traits.len() - i,
+        {
+            let mut pr: Printer = plain();
+            pr.trait_def(&m.traits[i], 0, 1000000000);
+            out.insert(types::cat3(sub.as_str(), m.traits[i].name.name.as_str(), "").as_str(), sha256::hex(pr.out.as_bytes()));
+            i = i + 1;
+        }
+        i = 0;
+        while i < m.trait_impls.len()
+            decreases m.trait_impls.len() - i,
+        {
+            let addr: String = trait_impl_address(mp.as_str(), m, &m.trait_impls[i]);
+            let head: String = types::cat7("impl", generics_str(m.trait_impls[i].generics.as_slice()).as_str(), " ", addr.as_str(), "", "", "");
+            out.insert(addr.as_str(), sha256::hex(head.as_bytes()));
+            i = i + 1;
+        }
+    }
+
+    #[summary("단위 m(경로 mp)에 쓴 trait impl i의 주소, 검사기가 그 함수에 주는 이름에서 ::f를 뺀 것 (ADR-0074 §1): <mp::T as mp::Trait>. trait은 한 마디가 m의 trait이면 이 단위의 것, 아니면 쓴 대로; 단위의 제 타입 이름은 온 경로로")]
+    #[effects(alloc)]
+    fn trait_impl_address(mp: &str, m: &ast::Mod, i: &ast::TraitImpl) -> String {
+        let local: Vec<String> = type_names(m);
+        let ty: String = type_str(&qualify_type(&i.self_ty, mp, local.as_slice(), 100000));
+        let plain: String = path_str(i.trait_path.as_slice());
+        let mut own: bool = false;
+        let mut k: usize = 0;
+        while k < m.traits.len()
+            decreases m.traits.len() - k,
+        {
+            if m.traits[k].name.name == plain {
+                own = true;
+            }
+            k = k + 1;
+        }
+        let tr: String = if i.trait_path.len() == 1 && own {
+            types::cat3(mp, "::", plain.as_str())
+        } else {
+            plain
+        };
+        types::cat7("<", ty.as_str(), " as ", tr.as_str(), ">", "", "")
+    }
+
     #[summary("양끝의 공백(유니코드)을 뗀 글")]
     #[effects(alloc)]
     fn trim(s: &str) -> String {
@@ -2674,6 +2980,54 @@ mod fmt {
             }
         }
         String::new()
+    }
+
+    #[summary("타입 선언의 한정 해시, 경로에서. 타입 선언은 제 겉이고 이름은 _로 쓴다 (ADR-0026 §6, 정의와 같이)")]
+    #[effects(alloc)]
+    fn type_hashes(m: &ast::Mod, prefix: &str, out: &mut table::Table<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let sub: String = types::cat3(mp.as_str(), "::", "");
+        let mut s: usize = 0;
+        while s < m.mods.len()
+            decreases m.mods.len() - s,
+        {
+            type_hashes(&m.mods[s], sub.as_str(), out, f - 1);
+            s = s + 1;
+        }
+        let local: Vec<String> = type_names(m);
+        let mut i: usize = 0;
+        while i < m.types.len()
+            decreases m.types.len() - i,
+        {
+            let mut q: ast::TypeDef = m.types[i].clone();
+            q.kind = match &m.types[i].kind {
+                ast::TypeDefKind::Struct(fs) => { let mut qs: Vec<ast::Field> = Vec::new(); let mut a: usize = 0; while a < fs.len() decreases fs.len() - a, { qs.push(ast::Field { name: fs[a].name.clone(), ty: qualify_type(&fs[a].ty, mp.as_str(), local.as_slice(), 100000) }); a = a + 1; } ast::TypeDefKind::Struct(qs) },
+                ast::TypeDefKind::Enum(vs) => { let mut qv: Vec<ast::Variant> = Vec::new(); let mut b: usize = 0; while b < vs.len() decreases vs.len() - b, { let mut ps: Vec<ast::Type> = Vec::new(); let mut c: usize = 0; while c < vs[b].payload.len() decreases vs[b].payload.len() - c, { ps.push(qualify_type(&vs[b].payload[c], mp.as_str(), local.as_slice(), 100000)); c = c + 1; } qv.push(ast::Variant { name: vs[b].name.clone(), payload: ps, span: vs[b].span }); b = b + 1; } ast::TypeDefKind::Enum(qv) },
+            };
+            let mut pr: Printer = plain();
+            pr.type_def_as(&q, 0, "_");
+            out.insert(types::cat3(sub.as_str(), m.types[i].name.name.as_str(), "").as_str(), sha256::hex(pr.out.as_bytes()));
+            i = i + 1;
+        }
+    }
+
+    #[summary("단위에 선언한 타입의 이름들")]
+    #[effects(alloc)]
+    fn type_names(m: &ast::Mod) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut i: usize = 0;
+        while i < m.types.len()
+            decreases m.types.len() - i,
+        {
+            out.push(m.types[i].name.name.clone());
+            i = i + 1;
+        }
+        out
     }
 
     #[effects(alloc)]
@@ -2707,5 +3061,23 @@ mod fmt {
             types::AdtKind::Struct(fs) => None,
             types::AdtKind::Enum(vs) => { let mut i: usize = 0; while i < vs.len() decreases vs.len() - i, { if vs[i].name == name { return Some(i); } i = i + 1; } None },
         }
+    }
+
+    #[summary("#[uses]를 뺀 정의의 사본")]
+    #[effects(alloc)]
+    fn without_uses(d: &ast::FnDef) -> ast::FnDef {
+        let mut g: ast::FnDef = d.clone();
+        let mut kept: Vec<ast::Attr> = Vec::new();
+        let mut i: usize = 0;
+        while i < d.attrs.len()
+            decreases d.attrs.len() - i,
+        {
+            if d.attrs[i].name.name != "uses" {
+                kept.push(d.attrs[i].clone());
+            }
+            i = i + 1;
+        }
+        g.attrs = kept;
+        g
     }
 }

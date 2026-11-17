@@ -954,6 +954,11 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 ///   (`check::dump_decls`).
 /// - `types`, `moves`: what the checker's bodies compute
 ///   (`check::dump_tables`, backlog 4D-03e1).
+/// - `texts`: the qualified texts the incremental keys read (ADR-0019 §2,
+///   backlog 4D-03f4), when the program checks: per definition its
+///   qualified normal form and the surface a caller reads
+///   (`fmt::qualified_text`, `fmt::caller_text`), then the qualified hash of
+///   every item (`fmt::qualified_hashes`).
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1021,6 +1026,24 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
             out
         }
         "decls" => check::dump_decls(program, &mut diags),
+        "texts" => {
+            let (r, t) = check::check_resolved(program, &mut diags);
+            let mut out = String::new();
+            if !diags.has_errors() {
+                for (path, unit, f) in check::defs_of(&r, &t.fns) {
+                    out.push_str(&format!(
+                        "{{\"def\":{},\"text\":{},\"caller\":{}}}\n",
+                        q(&path),
+                        q(&fmt::qualified_text(f, &unit, &t.fns, true)),
+                        q(&fmt::caller_text(f, &unit, &t.fns))
+                    ));
+                }
+                for (path, h) in fmt::qualified_hashes(&r, &t.fns) {
+                    out.push_str(&format!("{{\"item\":{},\"hash\":\"{h}\"}}\n", q(&path)));
+                }
+            }
+            out
+        }
         _ => check::dump_tables(
             program,
             &mut diags,

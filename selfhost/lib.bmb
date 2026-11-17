@@ -59,6 +59,11 @@ mod lib {
         } else if stage == "types" {
             let ck: body::Checked = body::check_resolved(program.clone(), &mut diags);
             push_tables(&mut body, &ck, &sm);
+        } else if stage == "texts" {
+            let tk: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            if !diags.has_errors() {
+                push_texts(&mut body, &tk);
+            }
         } else if stage == "moves" {
             let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);
             push_moves(&mut body, &mk, &sm);
@@ -448,6 +453,33 @@ mod lib {
             match ck.b.const_reads.nth(n) {
                 None => {},
                 Some(at) => { out.push_str("{\"reads\":"); std::json::push_string(out, ck.b.const_reads.key(n).as_str()); out.push_str(",\"consts\":"); push_names(out, ck.b.const_reads.items[at].as_slice()); out.push_str("}\n"); },
+            }
+        }
+    }
+
+    #[summary("dump texts의 글 (백로그 4D-03f4): 정의마다 한정 정규형과 부르는 쪽이 읽는 겉, 이어서 항목마다 한정 해시")]
+    #[effects(alloc)]
+    fn push_texts(out: &mut String, ck: &body::Checked) -> () {
+        let rows: Vec<fmt::QualRow> = fmt::qual_rows(&ck.program, &ck.b.c.fns);
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            out.push_str("{\"def\":");
+            std::json::push_string(out, rows[i].path.as_str());
+            out.push_str(",\"text\":");
+            std::json::push_string(out, rows[i].text.as_str());
+            out.push_str(",\"caller\":");
+            std::json::push_string(out, rows[i].caller.as_str());
+            out.push_str("}\n");
+        }
+        let hashes: table::Table<String> = fmt::qualified_hashes(&ck.program, rows.as_slice());
+        let total: usize = hashes.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match hashes.nth(n as usize) {
+                None => {},
+                Some(at) => { out.push_str("{\"item\":"); std::json::push_string(out, hashes.key(n as usize).as_str()); out.push_str(",\"hash\":\""); out.push_str(hashes.items[at].as_str()); out.push_str("\"}\n"); },
             }
         }
     }

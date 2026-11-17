@@ -320,7 +320,7 @@ mod identity {
             };
             fresh(pr, self.ents.items[at].unit.as_str());
             match &self.ents.items[at].kind {
-                EntKind::Def(d, c) => { let mut head: String = String::new(); match c { Ctx::Free => {}, Ctx::Impl(h) => { if h.generics.len() > 0 { head.push_str("impl"); head.push_str(pr.generics(h.generics.as_slice()).as_str()); head.push_str(" "); head.push_str(pr.applied_ty(h.name.as_str(), h.args.as_slice()).as_str()); head.push_str("\n"); } }, Ctx::TraitImpl(th) => { head.push_str("impl"); head.push_str(pr.generics(th.generics.as_slice()).as_str()); head.push_str(" "); let full: String = trait_path(&pr.names.traits, self.ents.items[at].unit.as_str(), th.trait_path.as_slice()); head.push_str(pr.method_ref(full.as_str(), d.name.name.as_str()).as_str()); head.push_str(" for "); head.push_str(pr.ty(&th.self_ty).as_str()); head.push_str("\n"); }, Ctx::Default(tr) => { head.push_str("default "); head.push_str(pr.method_ref(tr.as_str(), d.name.name.as_str()).as_str()); head.push_str("\n"); }, } pr.out = head; match part { Part::Body => pr.function(d, 0, "_", true, 1000000000), Part::Iface => pr.function(d, 0, "_", false, 1000000000), Part::Caller => { let g: ast::FnDef = without_uses(d); pr.function(&g, 0, "_", false, 1000000000); }, } pr.out.clone() },
+                EntKind::Def(d, c) => { let mut head: String = String::new(); match c { Ctx::Free => {}, Ctx::Impl(h) => { if h.generics.len() > 0 { head.push_str("impl"); head.push_str(pr.generics(h.generics.as_slice()).as_str()); head.push_str(" "); head.push_str(pr.applied_ty(h.name.as_str(), h.args.as_slice()).as_str()); head.push_str("\n"); } }, Ctx::TraitImpl(th) => { head.push_str("impl"); head.push_str(pr.generics(th.generics.as_slice()).as_str()); head.push_str(" "); let full: String = trait_path(&pr.names.traits, self.ents.items[at].unit.as_str(), th.trait_path.as_slice()); head.push_str(pr.method_ref(full.as_str(), d.name.name.as_str()).as_str()); head.push_str(" for "); head.push_str(pr.ty(&th.self_ty).as_str()); head.push_str("\n"); }, Ctx::Default(tr) => { head.push_str("default "); head.push_str(pr.method_ref(tr.as_str(), d.name.name.as_str()).as_str()); head.push_str("\n"); }, } pr.out = head; match part { Part::Body => pr.function(d, 0, "_", true, 1000000000), Part::Iface => pr.function(d, 0, "_", false, 1000000000), Part::Caller => { let g: ast::FnDef = fmt::without_uses(d); pr.function(&g, 0, "_", false, 1000000000); }, } pr.out.clone() },
                 EntKind::Type(td) => { pr.type_def_as(td, 0, "_"); let mut out: String = pr.out.clone(); match self.impls_of_type.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_type.items[l].as_slice()).as_str()), } out },
                 EntKind::Trait(t) => { let mut idx: Vec<usize> = Vec::new(); for i in 0..order.len() invariant 0 <= i && i <= order.len(), { match method_at(t, order[i].as_str()) { None => {}, Some(k) => idx.push(k), } } pr.trait_identity(t, idx.as_slice(), 1000000000); let mut out: String = pr.out.clone(); match self.impls_of_trait.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_trait.items[l].as_slice()).as_str()), } out },
             }
@@ -749,22 +749,6 @@ mod identity {
         {
             out.push(types::cat7("1", ":", mp.as_str(), "::", m.types[i].name.name.as_str(), "", ""));
         }
-    }
-
-    #[summary("#[uses]를 뺀 정의의 사본")]
-    #[effects(alloc)]
-    fn without_uses(d: &ast::FnDef) -> ast::FnDef {
-        let mut g: ast::FnDef = d.clone();
-        let mut kept: Vec<ast::Attr> = Vec::new();
-        for i in 0..d.attrs.len()
-            invariant 0 <= i && i <= d.attrs.len(),
-        {
-            if d.attrs[i].name.name != "uses" {
-                kept.push(d.attrs[i].clone());
-            }
-        }
-        g.attrs = kept;
-        g
     }
 
     #[summary("t에 적힌 k의 글, 없으면 빈 글")]

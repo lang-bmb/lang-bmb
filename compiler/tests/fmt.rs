@@ -334,6 +334,40 @@ mod d {
     );
 }
 
+/// `bmb dump texts` (backlog 4D-03f4): the qualified texts the incremental
+/// keys read. Another definition is written by its full path, the
+/// definition's own name `_`; a caller's surface leaves `#[uses]` out.
+#[test]
+fn text_dump_shows_the_qualified_texts() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    struct P { x: i64 }
+    impl P { #[effects(pure)] fn get(self: &P) -> i64 { self.x } }
+    spec fn small(x: i64) -> bool { x < 10 }
+    #[effects(pure)]
+    #[uses(small)]
+    fn low(p: &P) -> (r: i64)
+        requires small(p.x),
+        ensures small(r),
+    { P::get(p) }
+}
+"#;
+    let dump = |text: &str| bmb(&["dump", "texts"], &one("x.bmb", text));
+    let (ok, out) = dump(SRC);
+    assert!(ok && out.starts_with("---\n"), "{out}");
+    assert_eq!(dump(SRC).1, out);
+    for row in [
+        r##"{"def":"d::low","text":"#[effects(pure)]\n#[uses(d::small)]\nfn _(p: &P) -> (r: i64)\n    requires d::small(p.x),\n    ensures d::small(r),\n{\n    d::P::get(p)\n}\n","caller":"#[effects(pure)]\nfn _(p: &P) -> (r: i64)\n    requires d::small(p.x),\n    ensures d::small(r),\n"}"##,
+        r#"{"item":"d::P","hash":"sha256:"#,
+        r#"{"item":"d::low","hash":"sha256:"#,
+    ] {
+        assert!(out.contains(row), "{row}\n{out}");
+    }
+    // A program that does not check has diagnostics and no rows.
+    let (ok, out) = dump(&SRC.replace("P::get(p)", "true"));
+    assert!(!ok && out.ends_with("---\n"), "{out}");
+}
+
 /// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
 /// parser and the checker's bodies, each the same text on every run.
 #[test]

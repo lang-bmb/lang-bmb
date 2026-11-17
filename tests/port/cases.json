@@ -699,6 +699,53 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "texts",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "dump",
+        "texts",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "texts",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "texts-together",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "dump",
+        "texts",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "texts",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

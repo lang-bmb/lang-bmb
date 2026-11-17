@@ -121,18 +121,22 @@
         "selfhost/fmt.bmb",
         "selfhost/identity.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "ed3220d436989daec9c440b13fd0bcd5e4bcca57fb0e3a9827540269ea7f1dbf",
+        "port": "d8f8d0ef026573dc8c799fa0ab51d1bfdedccd41534b71aac2078df0b8b1f618"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
         "friction": [
-          "`fmt`는 처음에 `dump parse`가 쓰는 부분만 옮겼다(쓴 그대로의 정규형, 1,890줄). 정체성 글과 한정 글의 방식은 `4D-03f1`, `identity`는 `4D-03f2`에서 옮겼다. 한정 글의 함수(`qualified_text` 등)는 `4D-03f4`: 그때까지 이 행은 닫히지 않았고 고정하지 않는다",
+          "`fmt`는 처음에 `dump parse`가 쓰는 부분만 옮겼다(쓴 그대로의 정규형, 1,890줄). 정체성 글과 한정 글의 방식은 `4D-03f1`, `identity`는 `4D-03f2`, 한정 글의 함수는 `4D-03f4`에서 옮겨 이 행을 닫고 고정했다. `sha256`은 C0, `check::methodize`는 C4의 행에 적는다",
           "`String`에 `pop`·`truncate`가 없다. 줄 끝을 고치는 두 곳(`}`와 `else`를 잇기, trait 메서드의 `;`)은 그 조각을 따로 받아 잘라 붙인다: 그대로 둠",
           "`sort_by`가 없어 이름 순서는 `std::slice::sort_indices`(키의 안정 정렬 순서)로 얻는다. 그 길이 전제를 실행 때 확인하던 것은 `4D-22`가 전제를 지워 걷었다(해소). 돌려받은 자리의 범위는 쓰는 곳에서 확인한다: 그대로 둠",
           "`BTreeMap<(u32, u32, u32), String>`(길이 이름)은 구조체의 `Vec`와 뒤에서부터의 선형 탐색이다: 그대로 둠, 단위마다 몇 개뿐",
           "`4D-03f1`(출력기의 이름 방식): 구조체가 참조를 들 수 없어 `Printer<'a>`의 `Option<IdMode<'a>>`(검사기의 표와 `&dyn Resolve`)는 출력기가 가진 값 `Names`가 됐다: 방식(`Mode`), 검사기의 표의 사본, 묶인 이름의 표. `dyn Resolve`의 두 구현(참조를 모으는 `Collect`, 성분을 해시하며 쓰는 `Final`)은 방식 둘(`Mode::Collect`·`Mode::Identity`)과 참조의 글을 담은 표 `refs`다: 정체성이 글을 찍기 전에 그 글이 가리키는 것들(참조 그래프의 간선)의 글을 표에 놓는다. `RefCell`로 모으던 열쇠는 출력기의 `seen`이다. 메서드 36개를 더했고 기존 자리 23곳을 바꿨다. `bmb check`의 첫 진단 2개(E0414, E0303), `bmb verify`는 첫 회에 전부 통과(1,451개)",
-          "`4D-03f2`(`identity`, `selfhost/identity.bmb`): stage0 791줄이 778줄, 정의 32개. 구문을 가리키던 참조(`Ent<'p>`의 `&'p FnDef` 등)는 사본이다(프로그램 하나를 한 번 더 든다). `Key`(열거형)는 종류 숫자와 경로를 이은 글이다: 글의 순서가 `Key`의 순서가 되도록 숫자를 골랐다(0 정의, 1 타입, 2 trait). `BTreeMap<Key, _>`은 `table::Table`, `BTreeSet<Key>`는 줄 세운 `Vec<String>`이다. Tarjan의 `while let Some(..) = frames.last_mut()`은 색인으로 읽는 `while`과 걸음의 한도(`fuel`, `decreases`)다: 끝남을 구조로 보이지 못한다. `&mut self.pr`와 `self`의 다른 필드를 함께 넘길 수 없어(E0410) 출력기는 `Ids` 밖에 두고 메서드마다 인자로 넘긴다. `bmb check`의 첫 진단 9개(E0414 넷, E0303 넷, E0426 하나: `match`의 갈래 순서), `bmb verify`는 첫 회에 전부 통과(1,485개). stage0과의 첫 대조에서 차이 하나(정의의 자리 열쇠: `body::DefRow`의 자리는 이름의 자리다), 고친 뒤 0"
+          "`4D-03f2`(`identity`, `selfhost/identity.bmb`): stage0 791줄이 778줄, 정의 32개. 구문을 가리키던 참조(`Ent<'p>`의 `&'p FnDef` 등)는 사본이다(프로그램 하나를 한 번 더 든다). `Key`(열거형)는 종류 숫자와 경로를 이은 글이다: 글의 순서가 `Key`의 순서가 되도록 숫자를 골랐다(0 정의, 1 타입, 2 trait). `BTreeMap<Key, _>`은 `table::Table`, `BTreeSet<Key>`는 줄 세운 `Vec<String>`이다. Tarjan의 `while let Some(..) = frames.last_mut()`은 색인으로 읽는 `while`과 걸음의 한도(`fuel`, `decreases`)다: 끝남을 구조로 보이지 못한다. `&mut self.pr`와 `self`의 다른 필드를 함께 넘길 수 없어(E0410) 출력기는 `Ids` 밖에 두고 메서드마다 인자로 넘긴다. `bmb check`의 첫 진단 9개(E0414 넷, E0303 넷, E0426 하나: `match`의 갈래 순서), `bmb verify`는 첫 회에 전부 통과(1,485개). stage0과의 첫 대조에서 차이 하나(정의의 자리 열쇠: `body::DefRow`의 자리는 이름의 자리다), 고친 뒤 0",
+          "`4D-03f4`(한정 글, `selfhost/fmt.bmb`): `qualified_text`·`caller_text`·`qualified_hashes`·`type_hashes`·`trait_hashes`·`trait_impl_address`·`qualify_type`이 정의 14개, 363줄. 쓰는 곳(증분 키, 작업 공간, `escape`)이 아직 옮겨지지 않아 명령의 출력이 없었다: stage0에 `bmb dump texts`를 두어 견줬다. 정의마다 새로 짓던 한정 출력기는 하나를 지어 단위와 글을 바꿔 가며 쓴다(검사기의 표를 정의마다 복사하지 않도록). 함수의 자리로 그 시그니처를 찾는 `fns.values().find(..)`는 자리에서 `impl` 머리로 가는 표다. `defs_of`가 주던 `&FnDef`를 줄에 담을 수 없어 같은 순서의 걷기(`qual_walk`)를 하나 더 썼다: 걷는 순서가 `body::defs_of`와 `identity::collect`까지 세 곳에 있다(그대로 둠, 증분 키를 옮길 때 하나로 모은다). `bmb check`의 첫 진단 0, `bmb verify` 첫 회에 전부 통과(1,515개), stage0과의 첫 대조에서 차이 0"
         ]
       }
     },

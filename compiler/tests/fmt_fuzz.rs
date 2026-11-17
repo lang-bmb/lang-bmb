@@ -18,7 +18,10 @@
 //!
 //! `BMB_FMT_FUZZ_ITERS` raises the number of generated programs (the first
 //! `BMB_FMT_FUZZ_PROVE` of them, default 2, are also proved and lowered) and
-//! `BMB_FMT_FUZZ_SEED` picks another sequence.
+//! `BMB_FMT_FUZZ_SEED` picks another sequence. `BMB_FMT_FUZZ_EXPORT=DIR` also
+//! writes every generated program to `DIR/NNNNN.bmb` (backlog 4D-03f): inputs
+//! that check, on which another implementation's `fmt`, `hash` and `dump
+//! texts` are compared with this one's.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -521,11 +524,18 @@ fn generated_programs_keep_normal_form_hashes_proofs_and_ir() {
     let iters = env("BMB_FMT_FUZZ_ITERS", 24);
     let prove = env("BMB_FMT_FUZZ_PROVE", 2);
     let seed = env("BMB_FMT_FUZZ_SEED", 0);
+    let export = std::env::var_os("BMB_FMT_FUZZ_EXPORT").map(std::path::PathBuf::from);
+    if let Some(e) = &export {
+        fs::create_dir_all(e).unwrap();
+    }
     for i in 0..iters {
         let s = seed.wrapping_mul(1_000_003).wrapping_add(i);
         let mut rng = Rng(s.wrapping_mul(0x9E3779B97F4A7C15) | 1);
         let units = gen_program(&mut rng);
         let base = one(units.iter().map(|u| unit_text(u, "s")).collect());
+        if let Some(e) = &export {
+            fs::write(e.join(format!("{i:05}.bmb")), &base[0].1).unwrap();
+        }
         let what = format!("seed {seed} program {i}");
         check_variants(&mut rng, &what, &base, Some(&units));
         if i < prove {
