@@ -1,0 +1,778 @@
+#[summary("정의의 정체성: 해시 참조, 이름은 메타데이터 (ADR-0059 §1) (stage0 compiler/src/identity.rs의 포트, 백로그 4D-03f2). 정의의 정체성(id)은 이름 없는 정규형(fmt의 정체성 글)의 SHA-256이다. 다른 정의(함수, spec fn, 타입, trait)는 그 id로(#<hex>), trait 메서드와 열거형의 변형은 #<id>#k로, 묶는 이름은 묶인 자리로(_0, _1, ..), 필드와 변형은 선언 자리로 쓴다. 타입의 글은 그 타입의 trait impl들을, trait의 글은 제 impl 전부를 담는다(이름으로 가르는 타입: 구조가 같아도 다른 타입이다). 서로 가리키는 정의들은 참조 그래프의 강결합 성분이고 그 안에서 성원은 #self.k다. 성원의 순서(Unison의 규칙): 성분을 지운 글(#self)의 해시, 그다음 갈라짐이 멈출 때까지 다른 성원을 앞 해시로 쓴 글의 해시(색 정제), 남은 동률은 경로로. 성분의 해시는 그 순서의 성원 해시들의 해시이고 성원의 id는 <성분>.k, 혼자인 성분은 제 해시다. trait의 메서드는 메서드의 글(trait의 것을 지운)과 그것을 정의하는 impl 함수들의 해시로 줄 세우고 남은 동률은 이름으로. 열쇠는 종류 숫자(0 정의, 1 타입, 2 trait), 쌍점, 온 경로다: 글의 순서가 stage0의 Key 순서다. 구문은 사본으로 든다(참조를 구조체에 둘 수 없다)")]
+mod identity {
+    #[summary("trait impl 블록 하나 (걸어서 모은 것): 단위, 머리, 함수들의 자리와 이름")]
+    struct Block { unit: String, head: TraitHead, spans: Vec<source::Span>, names: Vec<String> }
+
+    #[summary("몸이 있는 정의가 놓인 곳: 자유 함수, impl T, trait impl, trait 메서드의 기본 몸(trait의 온 경로)")]
+    enum Ctx { Free, Impl(ImplHead), TraitImpl(TraitHead), Default(String) }
+
+    #[summary("bmb hash의 줄 하나")]
+    struct DefHash { path: String, id: String, body: String, iface: String }
+
+    #[summary("해시한 것: 해시와, trait이면 메서드 이름의 정체성 순서")]
+    struct Done { hashes: Hashes, methods: Vec<String> }
+
+    #[summary("해시하는 것 하나: 몸이 있는 정의(함수, spec fn, impl 함수, trait의 기본 몸), 타입 선언, trait")]
+    struct Ent { unit: String, kind: EntKind }
+
+    enum EntKind { Def(ast::FnDef, Ctx), Type(ast::TypeDef), Trait(ast::TraitDef) }
+
+    #[summary("Tarjan의 틀 하나: 마디, 그 후속들, 다음에 볼 후속")]
+    struct Frame { v: String, succ: Vec<String>, next: usize }
+
+    #[summary("것 하나의 해시들. id는 sha256:<hex>, 되부름 성분의 k번째 성원이면 sha256:<hex>.k. body는 제 이름 없는 글(성분의 성원은 #self.k), iface는 몸을 뺀 것, caller는 iface에서 #[uses]를 뺀 것(부르는 쪽의 질의가 읽는 것, ADR-0043). 타입과 trait은 셋 다 그 글의 해시이고 spec fn은 iface가 body다(몸이 겉이다)")]
+    struct Hashes { id: String, body: String, iface: String, caller: String }
+
+    #[summary("검사된 프로그램의 정체성들, 물을 때 센다. edges는 참조 그래프의 간선(것의 글이 가리키는 것들), done은 해시한 것")]
+    struct Ids { ents: table::Table<Ent>, impls: Vec<ImplInfo>, impls_of_type: table::Table<Vec<usize>>, impls_of_trait: table::Table<Vec<usize>>, edges: table::Table<Vec<String>>, done: table::Table<Done> }
+
+    impl Ids {
+        #[summary("start와 그것이 닿는 모든 것을 해시한다 (Tarjan의 알고리즘: 성분을 그것이 가리키는 성분들 뒤에 끝낸다). fuel은 걸음의 한도다")]
+        #[effects(alloc)]
+        fn ensure(self: &mut Ids, pr: &mut fmt::Printer, start: &str) -> () {
+            if self.done.has(start) {
+                return;
+            }
+            let mut index: table::Table<usize> = table::new::<usize>();
+            let mut low: table::Table<usize> = table::new::<usize>();
+            let mut on_stack: table::Table<bool> = table::new::<bool>();
+            let mut stack: Vec<String> = Vec::new();
+            let mut frames: Vec<Frame> = Vec::new();
+            index.insert(start, 0);
+            low.insert(start, 0);
+            stack.push(String::from(start));
+            on_stack.insert(start, true);
+            let first: Vec<String> = self.succ(pr, start);
+            frames.push(Frame { v: String::from(start), succ: first, next: 0 });
+            let mut fuel: usize = 1000000000000;
+            while frames.len() > 0 && fuel > 0
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                let top: usize = frames.len() - 1;
+                if frames[top].next < frames[top].succ.len() {
+                    let w: String = frames[top].succ[frames[top].next].clone();
+                    frames[top].next = frames[top].next + 1;
+                    let v: String = frames[top].v.clone();
+                    if !self.done.has(w.as_str()) {
+                        if !index.has(w.as_str()) {
+                            let n: usize = index.len();
+                            index.insert(w.as_str(), n);
+                            low.insert(w.as_str(), n);
+                            stack.push(w.clone());
+                            on_stack.insert(w.as_str(), true);
+                            let s: Vec<String> = self.succ(pr, w.as_str());
+                            frames.push(Frame { v: w.clone(), succ: s, next: 0 });
+                        } else if flag(&on_stack, w.as_str()) {
+                            let m: usize = lesser(num(&low, v.as_str()), num(&index, w.as_str()));
+                            low.insert(v.as_str(), m);
+                        }
+                    }
+                } else {
+                    let v: String = frames[top].v.clone();
+                    frames.pop();
+                    if frames.len() > 0 {
+                        let u: String = frames[frames.len() - 1].v.clone();
+                        let m: usize = lesser(num(&low, u.as_str()), num(&low, v.as_str()));
+                        low.insert(u.as_str(), m);
+                    }
+                    if num(&low, v.as_str()) == num(&index, v.as_str()) {
+                        let mut comp: Vec<String> = Vec::new();
+                        let mut more: bool = true;
+                        while more && stack.len() > 0
+                            decreases stack.len(),
+                        {
+                            let w: String = stack[stack.len() - 1].clone();
+                            stack.pop();
+                            on_stack.insert(w.as_str(), false);
+                            more = w != v;
+                            comp.push(w);
+                        }
+                        self.finish(pr, sorted(comp.as_slice()));
+                    }
+                }
+            }
+        }
+
+        #[summary("밖을 가리키는 참조가 모두 해시된 성분 하나를 해시한다")]
+        #[effects(alloc)]
+        fn finish(self: &mut Ids, pr: &mut fmt::Printer, comp: Vec<String>) -> () {
+            if comp.len() == 0 {
+                return;
+            }
+            let own: Vec<String> = self.succ(pr, comp[0].as_str());
+            let cyclic: bool = comp.len() > 1 || types::has(own.as_slice(), comp[0].as_str());
+            let set: Vec<String> = if cyclic {
+                comp.clone()
+            } else {
+                Vec::new()
+            };
+            let mut methods: table::Table<Vec<String>> = table::new::<Vec<String>>();
+            for i in 0..comp.len()
+                invariant 0 <= i && i <= comp.len(),
+            {
+                if is_trait(comp[i].as_str()) {
+                    let path: String = path_of(comp[i].as_str());
+                    let order: Vec<String> = self.method_order(pr, path.as_str(), set.as_slice());
+                    methods.insert(path.as_str(), order);
+                }
+            }
+            let mut members: Vec<String> = comp;
+            if cyclic {
+                let mut colors: table::Table<String> = table::new::<String>();
+                for i in 0..members.len()
+                    invariant 0 <= i && i <= members.len(),
+                {
+                    let t: String = self.text(pr, members[i].as_str(), set.as_slice(), &Member::Erased, &methods, Part::Body);
+                    colors.insert(members[i].as_str(), sha(t.as_str()));
+                }
+                let mut round: usize = 0;
+                let mut split: bool = true;
+                while split && round < members.len()
+                    decreases members.len() - round,
+                {
+                    let member: Member = Member::Colored(colors.clone());
+                    let mut next: table::Table<String> = table::new::<String>();
+                    for i in 0..members.len()
+                        invariant 0 <= i && i <= members.len(),
+                    {
+                        let t: String = self.text(pr, members[i].as_str(), set.as_slice(), &member, &methods, Part::Body);
+                        next.insert(members[i].as_str(), sha(types::cat3(word(&colors, members[i].as_str()).as_str(), "\n", t.as_str()).as_str()));
+                    }
+                    split = classes(&next) > classes(&colors);
+                    colors = next;
+                    round = round + 1;
+                }
+                let mut keys: Vec<String> = Vec::new();
+                for i in 0..members.len()
+                    invariant 0 <= i && i <= members.len(),
+                {
+                    keys.push(types::cat3(word(&colors, members[i].as_str()).as_str(), "\n", members[i].as_str()));
+                }
+                let ord: Vec<usize> = std::slice::sort_indices::<String>(keys.as_slice());
+                let mut by_color: Vec<String> = Vec::new();
+                for i in 0..ord.len()
+                    invariant 0 <= i && i <= ord.len(),
+                {
+                    if ord[i] < members.len() {
+                        by_color.push(members[ord[i]].clone());
+                    }
+                }
+                members = by_color;
+            }
+            let mut at: table::Table<usize> = table::new::<usize>();
+            for i in 0..members.len()
+                invariant 0 <= i && i <= members.len(),
+            {
+                at.insert(members[i].as_str(), i as usize);
+            }
+            let place: Member = Member::At(at);
+            let mut rows: Vec<Hashes> = Vec::new();
+            for i in 0..members.len()
+                invariant 0 <= i && i <= members.len(),
+            {
+                let body: String = sha(self.text(pr, members[i].as_str(), set.as_slice(), &place, &methods, Part::Body).as_str());
+                if self.is_exec(members[i].as_str()) {
+                    let iface: String = sha(self.text(pr, members[i].as_str(), set.as_slice(), &place, &methods, Part::Iface).as_str());
+                    let caller: String = sha(self.text(pr, members[i].as_str(), set.as_slice(), &place, &methods, Part::Caller).as_str());
+                    rows.push(Hashes { id: String::new(), body: body, iface: iface, caller: caller });
+                } else {
+                    rows.push(Hashes { id: String::new(), body: body.clone(), iface: body.clone(), caller: body });
+                }
+            }
+            let total: usize = rows.len();
+            let mut comp_hash: String = String::new();
+            if total == 1 {
+                comp_hash = rows[0].body.clone();
+            } else {
+                let mut all: String = String::new();
+                for i in 0..total
+                    invariant 0 <= i && i <= total,
+                {
+                    let k: usize = i as usize;
+                    if k < rows.len() {
+                        all.push_str(rows[k].body.as_str());
+                        all.push_str("\n");
+                    }
+                }
+                comp_hash = sha(all.as_str());
+            }
+            for i in 0..total
+                invariant 0 <= i && i <= total,
+            {
+                let k: usize = i as usize;
+                if k < rows.len() && k < members.len() {
+                    let mut id: String = comp_hash.clone();
+                    if total != 1 {
+                        id.push_str(".");
+                        std::num::push_u64(&mut id, k as u64);
+                    }
+                    let order: Vec<String> = match methods.find(path_of(members[k].as_str()).as_str()) {
+                        None => Vec::new(),
+                        Some(m) => { if is_trait(members[k].as_str()) { methods.items[m].clone() } else { Vec::new() } },
+                    };
+                    self.done.insert(members[k].as_str(), Done { hashes: Hashes { id: id, body: rows[k].body.clone(), iface: rows[k].iface.clone(), caller: rows[k].caller.clone() }, methods: order });
+                }
+            }
+        }
+
+        #[summary("key의 해시들. 프로그램에 그런 것이 없으면 None")]
+        #[effects(alloc)]
+        fn get(self: &mut Ids, pr: &mut fmt::Printer, key: &str) -> Option<Hashes> {
+            if !self.ents.has(key) {
+                return None;
+            }
+            self.ensure(pr, key);
+            match self.done.find(key) {
+                None => None,
+                Some(at) => Some(self.done.items[at].hashes.clone()),
+            }
+        }
+
+        #[summary("trait impl 하나를 한 줄로: impl<..> #trait for <타입> { #trait#k = #fn, .. }")]
+        #[effects(alloc)]
+        fn impl_line(self: &Ids, pr: &mut fmt::Printer, k: usize) -> String {
+            if k >= self.impls.len() {
+                return String::new();
+            }
+            fresh(pr, self.impls[k].unit.as_str());
+            let g: String = pr.generics(self.impls[k].generics.as_slice());
+            let mut fns: Vec<String> = Vec::new();
+            for i in 0..self.impls[k].names.len()
+                invariant 0 <= i && i <= self.impls[k].names.len(),
+            {
+                if i < self.impls[k].paths.len() {
+                    let m: String = pr.method_ref(self.impls[k].trait_path.as_str(), self.impls[k].names[i].as_str());
+                    fns.push(types::cat3(m.as_str(), " = ", pr.entity("0", self.impls[k].paths[i].as_str()).as_str()));
+                }
+            }
+            let mut out: String = String::from("impl");
+            out.push_str(g.as_str());
+            out.push_str(" ");
+            out.push_str(pr.entity("2", self.impls[k].trait_path.as_str()).as_str());
+            out.push_str(" for ");
+            out.push_str(pr.ty(&self.impls[k].self_ty).as_str());
+            out.push_str(" { ");
+            out.push_str(types::join(sorted(fns.as_slice()).as_slice(), ", ").as_str());
+            out.push_str(" }\n");
+            out
+        }
+
+        #[summary("impl들의 줄을 글의 순서로 (원천에서의 순서는 뜻이 아니다)")]
+        #[effects(alloc)]
+        fn impl_lines(self: &Ids, pr: &mut fmt::Printer, list: &[usize]) -> String {
+            let mut lines: Vec<String> = Vec::new();
+            for i in 0..list.len()
+                invariant 0 <= i && i <= list.len(),
+            {
+                lines.push(self.impl_line(pr, list[i]));
+            }
+            types::join(sorted(lines.as_slice()).as_slice(), "")
+        }
+
+        #[summary("key가 실행 함수(fn)의 정의인가: 그것만 iface와 caller가 body와 다르다")]
+        #[effects(alloc)]
+        fn is_exec(self: &Ids, key: &str) -> bool {
+            match self.ents.find(key) {
+                None => false,
+                Some(at) => match &self.ents.items[at].kind { EntKind::Def(d, c) => match &d.kind { ast::FnKind::Exec => true, ast::FnKind::Spec => false, ast::FnKind::Proof => false, }, EntKind::Type(td) => false, EntKind::Trait(tr) => false, },
+            }
+        }
+
+        #[summary("성분 comp 안에서 trait path의 메서드 순서: 메서드마다 성분을 지운 글과, 그것을 정의하는 impl 함수들의 지운 글의 해시. 동률은 이름으로")]
+        #[effects(alloc)]
+        fn method_order(self: &Ids, pr: &mut fmt::Printer, path: &str, comp: &[String]) -> Vec<String> {
+            let key: String = types::cat3("2", ":", path);
+            let at: usize = match self.ents.find(key.as_str()) {
+                None => { return Vec::new(); },
+                Some(i) => i,
+            };
+            let none: table::Table<Vec<String>> = table::new::<Vec<String>>();
+            let list: Vec<usize> = match self.impls_of_trait.find(path) {
+                None => Vec::new(),
+                Some(l) => self.impls_of_trait.items[l].clone(),
+            };
+            let mut keyed: Vec<String> = Vec::new();
+            let mut names: Vec<String> = Vec::new();
+            match &self.ents.items[at].kind {
+                EntKind::Def(d, c) => {},
+                EntKind::Type(td) => {},
+                EntKind::Trait(t) => { for i in 0..t.fns.len() invariant 0 <= i && i <= t.fns.len(), { fresh(pr, self.ents.items[at].unit.as_str()); self.resolve(pr, key.as_str(), comp, &Member::Erased, &none); pr.trait_fn(&t.fns[i], 0, "_", 1000000000); let own: String = pr.out.clone(); let mut defs: Vec<String> = Vec::new(); for a in 0..list.len() invariant 0 <= a && a <= list.len(), { let k: usize = list[a]; if k < self.impls.len() { for b in 0..self.impls[k].names.len() invariant 0 <= b && b <= self.impls[k].names.len(), { if b < self.impls[k].paths.len() && self.impls[k].names[b] == t.fns[i].f.name.name { let dk: String = types::cat3("0", ":", self.impls[k].paths[b].as_str()); defs.push(sha(self.text(pr, dk.as_str(), comp, &Member::Erased, &none, Part::Body).as_str())); } } } } let h: String = sha(types::cat3(own.as_str(), "\n", types::join(sorted(defs.as_slice()).as_slice(), "\n").as_str()).as_str()); keyed.push(types::cat3(h.as_str(), "\n", t.fns[i].f.name.name.as_str())); names.push(t.fns[i].f.name.name.clone()); } },
+            }
+            let ord: Vec<usize> = std::slice::sort_indices::<String>(keyed.as_slice());
+            let mut out: Vec<String> = Vec::new();
+            for i in 0..ord.len()
+                invariant 0 <= i && i <= ord.len(),
+            {
+                if ord[i] < names.len() {
+                    out.push(names[ord[i]].clone());
+                }
+            }
+            out
+        }
+
+        #[summary("key의 글. trait의 메서드는 order(이름들)의 순서로. 참조의 글은 pr.names가 정한다")]
+        #[effects(alloc)]
+        fn print(self: &Ids, pr: &mut fmt::Printer, key: &str, part: &Part, order: &[String]) -> String {
+            let at: usize = match self.ents.find(key) {
+                None => { return String::new(); },
+                Some(i) => i,
+            };
+            fresh(pr, self.ents.items[at].unit.as_str());
+            match &self.ents.items[at].kind {
+                EntKind::Def(d, c) => { let mut head: String = String::new(); match c { Ctx::Free => {}, Ctx::Impl(h) => { if h.generics.len() > 0 { head.push_str("impl"); head.push_str(pr.generics(h.generics.as_slice()).as_str()); head.push_str(" "); head.push_str(pr.applied_ty(h.name.as_str(), h.args.as_slice()).as_str()); head.push_str("\n"); } }, Ctx::TraitImpl(th) => { head.push_str("impl"); head.push_str(pr.generics(th.generics.as_slice()).as_str()); head.push_str(" "); let full: String = trait_path(&pr.names.traits, self.ents.items[at].unit.as_str(), th.trait_path.as_slice()); head.push_str(pr.method_ref(full.as_str(), d.name.name.as_str()).as_str()); head.push_str(" for "); head.push_str(pr.ty(&th.self_ty).as_str()); head.push_str("\n"); }, Ctx::Default(tr) => { head.push_str("default "); head.push_str(pr.method_ref(tr.as_str(), d.name.name.as_str()).as_str()); head.push_str("\n"); }, } pr.out = head; match part { Part::Body => pr.function(d, 0, "_", true, 1000000000), Part::Iface => pr.function(d, 0, "_", false, 1000000000), Part::Caller => { let g: ast::FnDef = without_uses(d); pr.function(&g, 0, "_", false, 1000000000); }, } pr.out.clone() },
+                EntKind::Type(td) => { pr.type_def_as(td, 0, "_"); let mut out: String = pr.out.clone(); match self.impls_of_type.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_type.items[l].as_slice()).as_str()), } out },
+                EntKind::Trait(t) => { let mut idx: Vec<usize> = Vec::new(); for i in 0..order.len() invariant 0 <= i && i <= order.len(), { match method_at(t, order[i].as_str()) { None => {}, Some(k) => idx.push(k), } } pr.trait_identity(t, idx.as_slice(), 1000000000); let mut out: String = pr.out.clone(); match self.impls_of_trait.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_trait.items[l].as_slice()).as_str()), } out },
+            }
+        }
+
+        #[summary("key의 글이 가리키는 것들의 참조 글을 pr에 놓는다: 성분 comp의 성원은 member가 말하는 대로(#self, #self<색>, #self.k), 그 밖은 id로(#<hex>). trait의 메서드 순서는 성분의 것(methods)이거나 해시된 것이다. 놓지 않은 것(프로그램의 것이 아닌 것)은 출력기가 #?경로로 쓴다")]
+        #[effects(alloc)]
+        fn resolve(self: &Ids, pr: &mut fmt::Printer, key: &str, comp: &[String], member: &Member, methods: &table::Table<Vec<String>>) -> () {
+            let mut refs: table::Table<fmt::RefRow> = table::new::<fmt::RefRow>();
+            match self.edges.find(key) {
+                None => {},
+                Some(at) => { for i in 0..self.edges.items[at].len() invariant 0 <= i && i <= self.edges.items[at].len(), { let r: String = self.edges.items[at][i].clone(); let mut text: String = String::new(); let mut known: bool = false; let mut order: Vec<String> = Vec::new(); let d: Option<usize> = self.done.find(r.as_str()); if types::has(comp, r.as_str()) { known = true; match member { Member::Erased => text.push_str("#self"), Member::Colored(colors) => { text.push_str("#self<"); text.push_str(hex(word(colors, r.as_str()).as_str()).as_str()); text.push_str(">"); }, Member::At(places) => { text.push_str("#self."); std::num::push_u64(&mut text, num(places, r.as_str()) as u64); }, } } else { match d { None => {}, Some(x) => { known = true; text.push_str("#"); text.push_str(hex(self.done.items[x].hashes.id.as_str()).as_str()); }, } } if is_trait(r.as_str()) { match methods.find(path_of(r.as_str()).as_str()) { None => match d { None => {}, Some(x) => { order = self.done.items[x].methods.clone(); }, }, Some(m) => { order = methods.items[m].clone(); }, } } if known { refs.insert(r.as_str(), fmt::RefRow { text: text.clone(), methods: order.clone() }); } } },
+            }
+            pr.names.refs = refs;
+        }
+
+        #[summary("key의 글이 가리키는 것들 (참조 그래프의 간선), 열쇠의 순서로")]
+        #[effects(alloc)]
+        fn succ(self: &mut Ids, pr: &mut fmt::Printer, key: &str) -> Vec<String> {
+            match self.edges.find(key) {
+                None => {},
+                Some(at) => { return self.edges.items[at].clone(); },
+            }
+            let order: Vec<String> = match self.ents.find(key) {
+                None => Vec::new(),
+                Some(at) => match &self.ents.items[at].kind { EntKind::Def(d, c) => Vec::new(), EntKind::Type(td) => Vec::new(), EntKind::Trait(t) => method_names(t), },
+            };
+            pr.names.mode = fmt::Mode::Collect;
+            pr.names.seen = Vec::new();
+            let text: String = self.print(pr, key, &Part::Body, order.as_slice());
+            pr.names.mode = fmt::Mode::Identity;
+            let mut found: Vec<String> = Vec::new();
+            for i in 0..pr.names.seen.len()
+                invariant 0 <= i && i <= pr.names.seen.len(),
+            {
+                if self.ents.has(pr.names.seen[i].as_str()) {
+                    found.push(pr.names.seen[i].clone());
+                }
+            }
+            let out: Vec<String> = sorted(found.as_slice());
+            self.edges.insert(key, out.clone());
+            out
+        }
+
+        #[summary("key의 글: 참조를 comp, member, methods로 풀어 찍는다")]
+        #[effects(alloc)]
+        fn text(self: &Ids, pr: &mut fmt::Printer, key: &str, comp: &[String], member: &Member, methods: &table::Table<Vec<String>>, part: Part) -> String {
+            self.resolve(pr, key, comp, member, methods);
+            let order: Vec<String> = match methods.find(path_of(key).as_str()) {
+                None => Vec::new(),
+                Some(m) => { if is_trait(key) { methods.items[m].clone() } else { Vec::new() } },
+            };
+            self.print(pr, key, &part, order.as_slice())
+        }
+    }
+
+    #[summary("impl T의 머리: 타입 매개변수, 타입의 이름과 인자")]
+    struct ImplHead { generics: Vec<ast::TypeParam>, name: String, args: Vec<ast::Type> }
+
+    #[summary("trait impl 블록: 단위, 타입 매개변수, 타입, trait의 온 경로, 함수들(메서드 이름과 정의의 경로)")]
+    struct ImplInfo { unit: String, generics: Vec<ast::TypeParam>, self_ty: ast::Type, trait_path: String, names: Vec<String>, paths: Vec<String> }
+
+    #[summary("해시하는 성분의 성원을 쓰는 법: #self(첫 줄 세우기), #self<해시>(정제), #self.k(마지막 글)")]
+    enum Member { Erased, Colored(table::Table<String>), At(table::Table<usize>) }
+
+    #[summary("찍는 글: 몸까지, 몸 없이, 부르는 쪽이 읽는 겉")]
+    enum Part { Body, Iface, Caller }
+
+    #[summary("trait impl의 머리: 타입 매개변수, 쓴 trait 경로, 타입")]
+    struct TraitHead { generics: Vec<ast::TypeParam>, trait_path: Vec<ast::Ident>, self_ty: ast::Type }
+
+    #[summary("걸으며 모은 것: 함수의 이름의 자리마다(body::DefRow의 자리가 그것이다) 놓인 곳(ctx)과 구문(fns), trait impl 블록들, trait의 온 경로들")]
+    struct Walk { ctx: table::Table<Ctx>, fns: table::Table<ast::FnDef>, blocks: Vec<Block>, traits: Vec<String> }
+
+    #[summary("서로 다른 값의 수")]
+    #[effects(alloc)]
+    fn classes(c: &table::Table<String>) -> usize {
+        let vals: Vec<String> = sorted(c.items.as_slice());
+        let mut n: usize = 0;
+        for i in 0..vals.len()
+            invariant 0 <= i && i <= vals.len() && n <= i,
+        {
+            if i == 0 || vals[i - 1] != vals[i] {
+                n = n + 1;
+            }
+        }
+        n
+    }
+
+    #[summary("단위 m과 그 안 단위를 걸어 타입과 trait을 ents에, 함수의 놓인 곳과 구문, trait impl 블록을 w에 모은다")]
+    #[effects(alloc)]
+    fn collect(m: &ast::Mod, prefix: &str, ents: &mut table::Table<Ent>, w: &mut Walk, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let inner: String = types::cat3(mp.as_str(), "::", "");
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            collect(&m.mods[s], inner.as_str(), ents, w, f - 1);
+        }
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            w.fns.insert(body::span_key(m.fns[i].name.span).as_str(), m.fns[i].clone());
+        }
+        for i in 0..m.impls.len()
+            invariant 0 <= i && i <= m.impls.len(),
+        {
+            for j in 0..m.impls[i].fns.len()
+                invariant 0 <= j && j <= m.impls[i].fns.len(),
+            {
+                let at: String = body::span_key(m.impls[i].fns[j].name.span);
+                w.ctx.insert(at.as_str(), Ctx::Impl(ImplHead { generics: m.impls[i].generics.clone(), name: m.impls[i].ty.name.clone(), args: m.impls[i].ty_args.clone() }));
+                w.fns.insert(at.as_str(), m.impls[i].fns[j].clone());
+            }
+        }
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            let mut spans: Vec<source::Span> = Vec::new();
+            let mut names: Vec<String> = Vec::new();
+            for j in 0..m.trait_impls[i].fns.len()
+                invariant 0 <= j && j <= m.trait_impls[i].fns.len(),
+            {
+                let at: String = body::span_key(m.trait_impls[i].fns[j].name.span);
+                w.ctx.insert(at.as_str(), Ctx::TraitImpl(TraitHead { generics: m.trait_impls[i].generics.clone(), trait_path: m.trait_impls[i].trait_path.clone(), self_ty: m.trait_impls[i].self_ty.clone() }));
+                w.fns.insert(at.as_str(), m.trait_impls[i].fns[j].clone());
+                spans.push(m.trait_impls[i].fns[j].name.span);
+                names.push(m.trait_impls[i].fns[j].name.name.clone());
+            }
+            w.blocks.push(Block { unit: mp.clone(), head: TraitHead { generics: m.trait_impls[i].generics.clone(), trait_path: m.trait_impls[i].trait_path.clone(), self_ty: m.trait_impls[i].self_ty.clone() }, spans: spans, names: names });
+        }
+        for i in 0..m.types.len()
+            invariant 0 <= i && i <= m.types.len(),
+        {
+            let key: String = types::cat7("1", ":", mp.as_str(), "::", m.types[i].name.name.as_str(), "", "");
+            ents.insert(key.as_str(), Ent { unit: mp.clone(), kind: EntKind::Type(m.types[i].clone()) });
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            let path: String = types::cat3(mp.as_str(), "::", m.traits[i].name.name.as_str());
+            for j in 0..m.traits[i].fns.len()
+                invariant 0 <= j && j <= m.traits[i].fns.len(),
+            {
+                if m.traits[i].fns[j].has_body {
+                    let at: String = body::span_key(m.traits[i].fns[j].f.name.span);
+                    w.ctx.insert(at.as_str(), Ctx::Default(path.clone()));
+                    w.fns.insert(at.as_str(), m.traits[i].fns[j].f.clone());
+                }
+            }
+            w.traits.push(path.clone());
+            ents.insert(types::cat3("2", ":", path.as_str()).as_str(), Ent { unit: mp.clone(), kind: EntKind::Trait(m.traits[i].clone()) });
+        }
+    }
+
+    #[summary("t에 k가 참으로 적혔는가")]
+    #[effects(alloc)]
+    fn flag(t: &table::Table<bool>, k: &str) -> bool {
+        match t.find(k) {
+            None => false,
+            Some(at) => t.items[at],
+        }
+    }
+
+    #[summary("새 글을 찍을 채비: 단위 unit, 빈 글, 묶인 이름 없음 (stage0은 글마다 새 출력기를 짓는다)")]
+    #[effects(alloc)]
+    fn fresh(pr: &mut fmt::Printer, unit: &str) -> () {
+        pr.out = String::new();
+        pr.names.unit = String::from(unit);
+        pr.reset_binders();
+    }
+
+    #[summary("모든 정의와 타입 선언의 정체성 해시, 경로의 순서로 (ADR-0059 §1: bmb hash). p는 검사된 프로그램, 표들은 그 검사기의 것")]
+    #[effects(alloc)]
+    fn hashes(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> Vec<DefHash> {
+        let mut keys: Vec<String> = Vec::new();
+        let defs: Vec<body::DefRow> = body::defs_of(p, fns);
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            keys.push(types::cat3("0", ":", defs[i].path.as_str()));
+        }
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            type_paths(&p.mods[i], "", &mut keys, 100000);
+        }
+        let mut w: Walk = Walk { ctx: table::new::<Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut ids: Ids = new(p, fns, adts, &mut w);
+        let mut pr: fmt::Printer = fmt::identity(fns.clone(), adts.clone(), tys.clone(), w.traits.clone());
+        let mut rows: Vec<DefHash> = Vec::new();
+        let mut paths: Vec<String> = Vec::new();
+        for i in 0..keys.len()
+            invariant 0 <= i && i <= keys.len(),
+        {
+            match ids.get(&mut pr, keys[i].as_str()) {
+                None => {},
+                Some(h) => { paths.push(path_of(keys[i].as_str())); rows.push(DefHash { path: path_of(keys[i].as_str()), id: h.id, body: h.body, iface: h.iface }); },
+            }
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(paths.as_slice());
+        let mut out: Vec<DefHash> = Vec::new();
+        for i in 0..ord.len()
+            invariant 0 <= i && i <= ord.len(),
+        {
+            if ord[i] < rows.len() {
+                out.push(rows[ord[i]].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("sha256: 접두어를 뗀 해시, 참조가 쓰는 꼴")]
+    #[effects(alloc)]
+    fn hex(h: &str) -> String {
+        if h.len() >= 7 && lexer::cut(h, 0, 7) == "sha256:" {
+            lexer::cut(h, 7, h.len())
+        } else {
+            String::from(h)
+        }
+    }
+
+    #[summary("열쇠가 trait의 것인가")]
+    #[effects(pure)]
+    fn is_trait(key: &str) -> bool {
+        key.len() > 0 && key.as_bytes()[0] == 50
+    }
+
+    #[effects(pure)]
+    fn lesser(a: usize, b: usize) -> usize {
+        if a < b {
+            a
+        } else {
+            b
+        }
+    }
+
+    #[summary("trait t의 메서드 name의 선언 자리")]
+    #[effects(pure)]
+    fn method_at(t: &ast::TraitDef, name: &str) -> (r: Option<usize>) {
+        let mut i: usize = 0;
+        while i < t.fns.len()
+            decreases t.fns.len() - i,
+        {
+            if t.fns[i].f.name.name == name {
+                return Some(i);
+            }
+            i = i + 1;
+        }
+        None
+    }
+
+    #[summary("trait의 메서드 이름들, 선언의 순서")]
+    #[effects(alloc)]
+    fn method_names(t: &ast::TraitDef) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..t.fns.len()
+            invariant 0 <= i && i <= t.fns.len(),
+        {
+            out.push(t.fns[i].f.name.name.clone());
+        }
+        out
+    }
+
+    #[summary("프로그램 p의 것들을 모은다: 타입과 trait, 몸이 있는 정의(놓인 곳과 함께), trait impl 블록. w에는 걸으며 모은 것이 남는다(trait의 경로들)")]
+    #[effects(alloc)]
+    fn new(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, w: &mut Walk) -> Ids {
+        let mut ids: Ids = Ids { ents: table::new::<Ent>(), impls: Vec::new(), impls_of_type: table::new::<Vec<usize>>(), impls_of_trait: table::new::<Vec<usize>>(), edges: table::new::<Vec<String>>(), done: table::new::<Done>() };
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            collect(&p.mods[i], "", &mut ids.ents, w, 100000);
+        }
+        let mut path_at: table::Table<String> = table::new::<String>();
+        let defs: Vec<body::DefRow> = body::defs_of(p, fns);
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            let at: String = body::span_key(defs[i].span);
+            path_at.insert(at.as_str(), defs[i].path.clone());
+            let c: Ctx = match w.ctx.find(at.as_str()) {
+                None => Ctx::Free,
+                Some(x) => w.ctx.items[x].clone(),
+            };
+            match w.fns.find(at.as_str()) {
+                None => {},
+                Some(x) => ids.ents.insert(types::cat3("0", ":", defs[i].path.as_str()).as_str(), Ent { unit: defs[i].unit.clone(), kind: EntKind::Def(w.fns.items[x].clone(), c) }),
+            }
+        }
+        for i in 0..w.blocks.len()
+            invariant 0 <= i && i <= w.blocks.len(),
+        {
+            let tp: String = trait_path(&w.traits, w.blocks[i].unit.as_str(), w.blocks[i].head.trait_path.as_slice());
+            if types::has(w.traits.as_slice(), tp.as_str()) {
+                let mut names: Vec<String> = Vec::new();
+                let mut paths: Vec<String> = Vec::new();
+                for j in 0..w.blocks[i].spans.len()
+                    invariant 0 <= j && j <= w.blocks[i].spans.len(),
+                {
+                    match path_at.find(body::span_key(w.blocks[i].spans[j]).as_str()) {
+                        None => {},
+                        Some(x) => { if j < w.blocks[i].names.len() { names.push(w.blocks[i].names[j].clone()); paths.push(path_at.items[x].clone()); } },
+                    }
+                }
+                let k: usize = ids.impls.len();
+                let full: String = own_type(&w.blocks[i].head.self_ty.kind, w.blocks[i].unit.as_str());
+                if full.len() > 0 && adts.has(full.as_str()) {
+                    push_at(&mut ids.impls_of_type, full.as_str(), k);
+                }
+                push_at(&mut ids.impls_of_trait, tp.as_str(), k);
+                ids.impls.push(ImplInfo { unit: w.blocks[i].unit.clone(), generics: w.blocks[i].head.generics.clone(), self_ty: w.blocks[i].head.self_ty.clone(), trait_path: tp.clone(), names: names, paths: paths });
+            }
+        }
+        ids
+    }
+
+    #[summary("t에 적힌 k의 수, 없으면 0")]
+    #[effects(alloc)]
+    fn num(t: &table::Table<usize>, k: &str) -> usize {
+        match t.find(k) {
+            None => 0,
+            Some(at) => t.items[at],
+        }
+    }
+
+    #[summary("단위 unit에 쓴 타입이 이름 붙은 타입이면 그 온 경로, 아니면 빈 글")]
+    #[effects(alloc)]
+    fn own_type(t: &ast::TypeKind, unit: &str) -> String {
+        match t {
+            ast::TypeKind::Int(it) => String::new(),
+            ast::TypeKind::F64 => String::new(),
+            ast::TypeKind::Bool => String::new(),
+            ast::TypeKind::Unit => String::new(),
+            ast::TypeKind::Char => String::new(),
+            ast::TypeKind::String => String::new(),
+            ast::TypeKind::Str => String::new(),
+            ast::TypeKind::Array(e, n) => String::new(),
+            ast::TypeKind::ArrayN(e, p) => String::new(),
+            ast::TypeKind::Slice(e) => String::new(),
+            ast::TypeKind::Ref(m, e) => String::new(),
+            ast::TypeKind::Named(np, a) => { if np.len() == 1 { types::cat3(unit, "::", np[0].as_str()) } else { types::join(np.as_slice(), "::") } },
+            ast::TypeKind::Vec(e) => String::new(),
+            ast::TypeKind::Box(e) => String::new(),
+            ast::TypeKind::Param(s) => String::new(),
+            ast::TypeKind::Never => String::new(),
+            ast::TypeKind::Error => String::new(),
+        }
+    }
+
+    #[summary("열쇠의 경로 (종류 숫자와 쌍점 뒤)")]
+    #[effects(alloc)]
+    fn path_of(key: &str) -> String {
+        if key.len() >= 2 {
+            lexer::cut(key, 2, key.len())
+        } else {
+            String::new()
+        }
+    }
+
+    #[summary("t의 k의 목록에 v를 붙인다")]
+    #[effects(alloc)]
+    fn push_at(t: &mut table::Table<Vec<usize>>, k: &str, v: usize) -> () {
+        let mut list: Vec<usize> = match t.find(k) {
+            None => Vec::new(),
+            Some(at) => t.items[at].clone(),
+        };
+        list.push(v);
+        t.insert(k, list);
+    }
+
+    #[summary("글 s의 해시")]
+    #[effects(alloc)]
+    fn sha(s: &str) -> String {
+        sha256::hex(s.as_bytes())
+    }
+
+    #[summary("글의 순서로 줄 세운 사본")]
+    #[effects(alloc)]
+    fn sorted(xs: &[String]) -> Vec<String> {
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(xs);
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..ord.len()
+            invariant 0 <= i && i <= ord.len(),
+        {
+            if ord[i] < xs.len() {
+                out.push(xs[ord[i]].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("단위 unit에 쓴 trait의 온 경로: 한 마디가 그 단위의 trait이면 그것, 아니면 쓴 대로")]
+    #[effects(alloc)]
+    fn trait_path(traits: &Vec<String>, unit: &str, path: &[ast::Ident]) -> String {
+        let plain: String = fmt::path_str(path);
+        let local: String = types::cat3(unit, "::", plain.as_str());
+        if path.len() == 1 && types::has(traits.as_slice(), local.as_str()) {
+            local
+        } else {
+            plain
+        }
+    }
+
+    #[summary("타입 선언의 열쇠들: 안 단위 먼저")]
+    #[effects(alloc)]
+    fn type_paths(m: &ast::Mod, prefix: &str, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let inner: String = types::cat3(mp.as_str(), "::", "");
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            type_paths(&m.mods[s], inner.as_str(), out, f - 1);
+        }
+        for i in 0..m.types.len()
+            invariant 0 <= i && i <= m.types.len(),
+        {
+            out.push(types::cat7("1", ":", mp.as_str(), "::", m.types[i].name.name.as_str(), "", ""));
+        }
+    }
+
+    #[summary("#[uses]를 뺀 정의의 사본")]
+    #[effects(alloc)]
+    fn without_uses(d: &ast::FnDef) -> ast::FnDef {
+        let mut g: ast::FnDef = d.clone();
+        let mut kept: Vec<ast::Attr> = Vec::new();
+        for i in 0..d.attrs.len()
+            invariant 0 <= i && i <= d.attrs.len(),
+        {
+            if d.attrs[i].name.name != "uses" {
+                kept.push(d.attrs[i].clone());
+            }
+        }
+        g.attrs = kept;
+        g
+    }
+
+    #[summary("t에 적힌 k의 글, 없으면 빈 글")]
+    #[effects(alloc)]
+    fn word(t: &table::Table<String>, k: &str) -> String {
+        match t.find(k) {
+            None => String::new(),
+            Some(at) => t.items[at].clone(),
+        }
+    }
+}

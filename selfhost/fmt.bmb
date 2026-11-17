@@ -1,11 +1,68 @@
-#[summary("정규형 출력기: 한 프로그램에 한 글 (ADR-0019) (stage0 compiler/src/fmt.rs의 포트, 백로그 4D-02). 지금은 쓴 그대로의 글만: 이름을 지운 정체성 글과 한정 글은 검사기와 함께 옮긴다. f는 남은 깊이다")]
+#[summary("정규형 출력기: 한 프로그램에 한 글 (ADR-0019) (stage0 compiler/src/fmt.rs의 포트, 백로그 4D-02). 이름을 쓰는 방식이 셋이다(Names): 쓴 그대로, 다른 정의를 온 경로로 쓰는 한정 글(ADR-0019 §2), 이름을 지운 정체성 글(ADR-0059 §1, 해시는 identity가 센다). f는 남은 깊이다")]
 mod fmt {
+    #[summary("정체성 글에서 호출 경로가 가리키는 것: 정의(온 경로), 열거형(온 경로)의 k번째 변형, 내장")]
+    enum Callee { Def(String), Variant(String, usize), Plain }
+
+    #[summary("경로 path의 것과 자리 하나 (타입의 표의 자리, 변형이나 필드의 선언 자리)")]
+    struct Found { path: String, at: usize }
+
     #[summary("const의 이름으로 쓴 반복 횟수: 횟수의 자리와 그 이름")]
     struct LenName { file: u32, lo: u32, hi: u32, name: String }
 
-    struct Printer { out: String, lens: Vec<LenName> }
+    #[summary("이름을 쓰는 방식: 쓴 그대로, 한정(다른 정의를 온 경로로), 정체성의 참조 모으기(참조마다 열쇠를 적고 #?로 쓴다), 정체성(참조를 표 refs의 글로)")]
+    enum Mode { Plain, Qualify, Collect, Identity }
+
+    #[summary("출력기가 이름을 푸는 데 쓰는 것. 한정과 정체성은 검사기의 표(fns, adts, 식의 타입 types)와 찍는 정의의 단위 unit을 읽는다. 정체성은 그 위에 trait의 온 경로들 traits, 참조의 글 refs(열쇠는 종류 숫자 0 정의·1 타입·2 trait, 쌍점, 온 경로), 모은 열쇠 seen, 그리고 묶인 이름의 자리(binders: 이름에서 _k로, labels: 라벨에서 _k로)를 든다. 묶는 이름은 함수 안에서 하나뿐이라(E0303) 표 하나로 정의 전체를 든다")]
+    struct Names { mode: Mode, unit: String, fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, traits: Vec<String>, refs: table::Table<RefRow>, seen: Vec<String>, binders: table::Table<String>, labels: table::Table<String>, next: usize, next_label: usize }
+
+    struct Printer { out: String, lens: Vec<LenName>, names: Names }
 
     impl Printer {
+        #[summary("자리 span의 식이 가진, 선언된 구조체나 열거형: 온 경로와 표 adts의 자리. 참조와 Box는 벗긴다")]
+        #[effects(alloc)]
+        fn adt_at(self: &Printer, span: source::Span) -> Option<Found> {
+            let at: usize = match self.names.types.find(body::span_key(span).as_str()) {
+                None => { return None; },
+                Some(i) => i,
+            };
+            let full: String = peeled(&self.names.types.items[at], 100000);
+            if full.len() == 0 {
+                return None;
+            }
+            match self.names.adts.find(full.as_str()) {
+                None => None,
+                Some(k) => Some(Found { path: full, at: k }),
+            }
+        }
+
+        #[summary("이 단위의 타입 name에 인자를 붙인 것 (impl의 머리)")]
+        #[effects(alloc)]
+        fn applied_ty(self: &mut Printer, name: &str, args: &[ast::Type]) -> String {
+            let mut s: String = String::new();
+            if self.is_id() {
+                let mut one: Vec<String> = Vec::new();
+                one.push(String::from(name));
+                s = self.type_ref(one.as_slice());
+            } else {
+                s.push_str(name);
+            }
+            if args.len() > 0 {
+                s.push_str("<");
+                let mut i: usize = 0;
+                while i < args.len()
+                    decreases args.len() - i,
+                {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(self.ty(&args[i]).as_str());
+                    i = i + 1;
+                }
+                s.push_str(">");
+            }
+            s
+        }
+
         #[effects(alloc)]
         fn attr_line(self: &mut Printer, a: &ast::Attr, depth: usize) -> () {
             if a.name.name == "summary" {
@@ -14,9 +71,52 @@ mod fmt {
             let mut row: String = String::from("#[");
             row.push_str(a.name.name.as_str());
             row.push_str("(");
-            row.push_str(attr_args(a.args.as_slice()).as_str());
+            if a.name.name == "invariant" {
+                let mut i: usize = 0;
+                while i < a.args.len()
+                    decreases a.args.len() - i,
+                {
+                    if i > 0 {
+                        row.push_str(", ");
+                    }
+                    match &a.args[i] {
+                        ast::AttrArg::Ident(id) => row.push_str(self.uses_name(id.name.as_str()).as_str()),
+                        ast::AttrArg::Str(s, sp) => row.push_str(attr_arg(&a.args[i], 100).as_str()),
+                        ast::AttrArg::Pair(pk, pv) => row.push_str(attr_arg(&a.args[i], 100).as_str()),
+                    }
+                    i = i + 1;
+                }
+            } else {
+                row.push_str(attr_args(a.args.as_slice()).as_str());
+            }
             row.push_str(")]");
             self.line(depth, row.as_str());
+        }
+
+        #[summary("이름 name을 묶는다(매개변수, 지역 변수, 타입 매개변수, ..): 정체성 글에서는 묶인 자리 _k")]
+        #[effects(alloc)]
+        fn bind(self: &mut Printer, name: &str) -> String {
+            if !self.is_id() {
+                return String::from(name);
+            }
+            let mut b: String = String::from("_");
+            push_n(&mut b, self.names.next);
+            self.names.next = self.names.next.saturating_add(1);
+            self.names.binders.insert(name, b.clone());
+            b
+        }
+
+        #[summary("라벨 name을 묶는다: 정체성 글에서는 묶인 자리 _k")]
+        #[effects(alloc)]
+        fn bind_label(self: &mut Printer, name: &str) -> String {
+            if !self.is_id() {
+                return String::from(name);
+            }
+            let mut b: String = String::from("_");
+            push_n(&mut b, self.names.next_label);
+            self.names.next_label = self.names.next_label.saturating_add(1);
+            self.names.labels.insert(name, b.clone());
+            b
         }
 
         #[summary("prefix{ ... }suffix를 찍는다, 블록의 내용은 들여써서")]
@@ -52,12 +152,60 @@ mod fmt {
             self.line(depth, close.as_str());
         }
 
+        #[summary("trait 한정 b: 선언된 trait은 참조로, Copy·Eq·Ord는 이름으로")]
         #[effects(alloc)]
-        fn call_text(self: &mut Printer, ca: &ast::Call, f: usize) -> String
+        fn bound(self: &mut Printer, b: &[ast::Ident]) -> String {
+            let plain: String = path_str(b);
+            let local: String = types::cat3(self.names.unit.as_str(), "::", plain.as_str());
+            if b.len() == 1 && types::has(self.names.traits.as_slice(), local.as_str()) {
+                self.entity("2", local.as_str())
+            } else if types::has(self.names.traits.as_slice(), plain.as_str()) {
+                self.entity("2", plain.as_str())
+            } else {
+                plain
+            }
+        }
+
+        #[effects(alloc)]
+        fn call_text(self: &mut Printer, ca: &ast::Call, span: source::Span, f: usize) -> String
             decreases f,
         {
             let mut s: String = String::new();
             if f == 0 {
+                return s;
+            }
+            if self.is_id() {
+                let a: String = self.exprs(ca.args.as_slice(), f - 1);
+                let mut ts: String = String::new();
+                let mut n: usize = 0;
+                while n < ca.targs.len()
+                    decreases ca.targs.len() - n,
+                {
+                    ts.push_str("::[");
+                    push_n(&mut ts, ca.path.len().saturating_sub(1).saturating_sub(ca.targs[n].seg));
+                    ts.push_str("]<");
+                    let mut j: usize = 0;
+                    while j < ca.targs[n].args.len()
+                        decreases ca.targs[n].args.len() - j,
+                    {
+                        if j > 0 {
+                            ts.push_str(", ");
+                        }
+                        ts.push_str(self.ty(&ca.targs[n].args[j]).as_str());
+                        j = j + 1;
+                    }
+                    ts.push_str(">");
+                    n = n + 1;
+                }
+                s = match self.callee(ca.path.as_slice(), span) {
+                    Callee::Def(p) => self.def_ref(p.as_str()),
+                    Callee::Variant(tp, k) => self.variant_ref(tp.as_str(), k),
+                    Callee::Plain => path_str(ca.path.as_slice()),
+                };
+                s.push_str(ts.as_str());
+                s.push_str("(");
+                s.push_str(a.as_str());
+                s.push_str(")");
                 return s;
             }
             let mut written: bool = false;
@@ -85,6 +233,10 @@ mod fmt {
                 s.push_str(")");
                 return s;
             }
+            if self.qualified(ca.path.as_slice()) {
+                s.push_str(self.names.unit.as_str());
+                s.push_str("::");
+            }
             let mut k: usize = 0;
             while k < ca.path.len()
                 decreases ca.path.len() - k,
@@ -110,6 +262,30 @@ mod fmt {
             s.push_str(self.exprs(ca.args.as_slice(), f - 1).as_str());
             s.push_str(")");
             s
+        }
+
+        #[summary("호출 경로 path가 가리키는 것, 검사기가 푸는 대로: 이 단위의 f, T::f, Trait::f, 온 경로, 아니면 호출의 열거형 타입의 변형")]
+        #[effects(alloc)]
+        fn callee(self: &Printer, path: &[ast::Ident], span: source::Span) -> Callee {
+            let plain: String = path_str(path);
+            if path.len() <= 2 {
+                let local: String = types::cat3(self.names.unit.as_str(), "::", plain.as_str());
+                match self.names.fns.find(local.as_str()) {
+                    None => {},
+                    Some(at) => { if !self.names.fns.items[at].builtin && (path.len() == 1 || self.names.fns.items[at].in_impl || is_some_text(&self.names.fns.items[at].trait_of)) { return Callee::Def(local); } },
+                }
+            }
+            match self.names.fns.find(plain.as_str()) {
+                None => {},
+                Some(at) => { if !self.names.fns.items[at].builtin { return Callee::Def(plain); } },
+            }
+            if path.len() == 0 {
+                return Callee::Plain;
+            }
+            match self.variant_at(span, path[path.len() - 1].name.as_str()) {
+                None => Callee::Plain,
+                Some(v) => Callee::Variant(v.path, v.at),
+            }
         }
 
         #[summary("정수 변환 T::try_from(x).unwrap()의 x를 CAST 우선순위로 찍은 글")]
@@ -201,9 +377,9 @@ mod fmt {
                 head.push_str("move ");
             }
             head.push_str("|");
-            head.push_str(params_str(c.params.as_slice()).as_str());
+            head.push_str(self.params_text(c.params.as_slice(), false).as_str());
             head.push_str("| -> ");
-            head.push_str(ret_str(&c.ret).as_str());
+            head.push_str(self.ret_text(&c.ret, false).as_str());
             if c.pre.len() > 0 {
                 head.push_str(" requires ");
                 head.push_str(self.exprs(c.pre.as_slice(), f - 1).as_str());
@@ -220,6 +396,17 @@ mod fmt {
             head.push_str(" ");
             head.push_str(joined_lines(body.as_str()).as_str());
             head
+        }
+
+        #[summary("참조를 모으는 중인가")]
+        #[effects(pure)]
+        fn collecting(self: &Printer) -> bool {
+            match &self.names.mode {
+                Mode::Plain => false,
+                Mode::Qualify => false,
+                Mode::Collect => true,
+                Mode::Identity => false,
+            }
         }
 
         #[summary("조건이나 match의 대상: 구조체 식을 담으면 괄호로 싼다 (Rust는 거기서 괄호 없는 것을 받지 않는다)")]
@@ -257,6 +444,35 @@ mod fmt {
             s
         }
 
+        #[summary("경로 path의 함수, spec fn, trait 메서드의 참조")]
+        #[effects(alloc)]
+        fn def_ref(self: &mut Printer, path: &str) -> String {
+            let tr: Option<String> = match self.names.fns.find(path) {
+                None => None,
+                Some(at) => self.names.fns.items[at].trait_of.clone(),
+            };
+            match tr {
+                None => self.entity("0", path),
+                Some(t) => self.method_ref(t.as_str(), last_seg(path).as_str()),
+            }
+        }
+
+        #[summary("종류 kind(0 정의, 1 타입, 2 trait)와 온 경로 path의 것의 참조: 모으는 중이면 열쇠를 적고 #?, 아니면 표 refs의 글, 표에 없으면(검사된 프로그램에는 없다) #?와 경로")]
+        #[effects(alloc)]
+        fn entity(self: &mut Printer, kind: &str, path: &str) -> String {
+            let key: String = types::cat3(kind, ":", path);
+            if self.collecting() {
+                if !types::has(self.names.seen.as_slice(), key.as_str()) {
+                    self.names.seen.push(key.clone());
+                }
+                return String::from("#?");
+            }
+            match self.names.refs.find(key.as_str()) {
+                None => types::cat3("#?", path, ""),
+                Some(at) => self.names.refs.items[at].text.clone(),
+            }
+        }
+
         #[summary("e를 찍는다. 우선순위가 min보다 낮으면 괄호로 싼다")]
         #[effects(alloc)]
         fn expr(self: &mut Printer, e: &ast::Expr, min: u8, f: usize) -> String
@@ -291,9 +507,9 @@ mod fmt {
                 ast::ExprKind::CharLit(ch) => { let mut cs: String = String::new(); match char::from_u32(*ch) { None => cs.push('\0'), Some(c) => cs.push(c), } s = lexer::str_text(cs.as_str(), 39); },
                 ast::ExprKind::Bool(bo) => { if *bo { s.push_str("true"); } else { s.push_str("false"); } },
                 ast::ExprKind::Unit => s.push_str("()"),
-                ast::ExprKind::Var(id) => s.push_str(id.name.as_str()),
-                ast::ExprKind::Call(ca) => { s = self.call_text(ca, f - 1); },
-                ast::ExprKind::Method(me) => { if is_cast(me) { s = self.cast_operand(&*me.recv, f - 1); s.push_str(" as "); s.push_str(cast_name(&*me.recv).as_str()); } else { s = self.expr(&*me.recv, 13, f - 1); s.push_str("."); s.push_str(me.name.name.as_str()); s.push_str("("); s.push_str(self.exprs(me.args.as_slice(), f - 1).as_str()); s.push_str(")"); } },
+                ast::ExprKind::Var(id) => { s = self.local(id.name.as_str()); },
+                ast::ExprKind::Call(ca) => { s = self.call_text(ca, e.span, f - 1); },
+                ast::ExprKind::Method(me) => { if is_cast(me) && !self.is_id() { s = self.cast_operand(&*me.recv, f - 1); s.push_str(" as "); s.push_str(cast_name(&*me.recv).as_str()); } else { s = self.expr(&*me.recv, 13, f - 1); s.push_str("."); s.push_str(me.name.name.as_str()); s.push_str("("); s.push_str(self.exprs(me.args.as_slice(), f - 1).as_str()); s.push_str(")"); } },
                 ast::ExprKind::Index(ib, ii) => { s = self.expr(&**ib, 13, f - 1); s.push_str("["); s.push_str(self.expr(&**ii, 0, f - 1).as_str()); s.push_str("]"); },
                 ast::ExprKind::Unary(uo, ux) => { match uo { ast::UnOp::Neg => s.push_str("-"), ast::UnOp::Not => s.push_str("!"), } s.push_str(self.expr(&**ux, 12, f - 1).as_str()); },
                 ast::ExprKind::Binary(bop, bl, br) => { let p: u8 = bin_prec(bop); let mut lm: u8 = p; let mut rm2: u8 = p + 1; if p == 1 { lm = p + 1; rm2 = p; } else if p == 4 { lm = p + 1; } if splits_cast(bop) && prec(&**bl) == 11 { lm = 13; } s = self.expr(&**bl, lm, f - 1); s.push_str(" "); ast::push_bin_symbol(&mut s, bop); s.push_str(" "); s.push_str(self.expr(&**br, rm2, f - 1).as_str()); },
@@ -303,19 +519,19 @@ mod fmt {
                 ast::ExprKind::Array(ar) => { s.push_str("["); s.push_str(self.exprs(ar.as_slice(), f - 1).as_str()); s.push_str("]"); },
                 ast::ExprKind::Repeat(rp) => { s.push_str("["); s.push_str(self.expr(&*rp.value, 0, f - 1).as_str()); s.push_str("; "); s.push_str(self.count_text(rp).as_str()); s.push_str("]"); },
                 ast::ExprKind::Old(ox) => { s.push_str("old("); s.push_str(self.expr(&**ox, 0, f - 1).as_str()); s.push_str(")"); },
-                ast::ExprKind::Quant(qu) => { match &qu.q { ast::Quantifier::Forall => s.push_str("forall|"), ast::Quantifier::Exists => s.push_str("exists|"), } s.push_str(params_str(qu.binders.as_slice()).as_str()); s.push_str("| "); s.push_str(self.expr(&*qu.body, 0, f - 1).as_str()); },
+                ast::ExprKind::Quant(qu) => { match &qu.q { ast::Quantifier::Forall => s.push_str("forall|"), ast::Quantifier::Exists => s.push_str("exists|"), } s.push_str(self.params_text(qu.binders.as_slice(), true).as_str()); s.push_str("| "); s.push_str(self.expr(&*qu.body, 0, f - 1).as_str()); },
                 ast::ExprKind::Trigger(tx) => { s.push_str("#[trigger] "); s.push_str(self.expr(&**tx, 12, f - 1).as_str()); },
                 ast::ExprKind::Closure(cl) => { s = self.closure_text(&**cl, f - 1); },
-                ast::ExprKind::StructLit(sl) => { s.push_str(path_str(sl.path.as_slice()).as_str()); s.push_str(" { "); let mut i: usize = 0; while i < sl.fields.len() decreases sl.fields.len() - i, { if i > 0 { s.push_str(", "); } s.push_str(sl.fields[i].name.name.as_str()); s.push_str(": "); s.push_str(self.expr(&sl.fields[i].value, 0, f - 1).as_str()); i = i + 1; } match &sl.rest { None => {}, Some(r) => { if sl.fields.len() > 0 { s.push_str(", "); } s.push_str(".."); s.push_str(self.expr(&**r, 0, f - 1).as_str()); }, } s.push_str(" }"); },
-                ast::ExprKind::Path(pa) => s.push_str(path_str(pa.as_slice()).as_str()),
+                ast::ExprKind::StructLit(sl) => { s = self.struct_text(sl, e.span, f - 1); },
+                ast::ExprKind::Path(pa) => { s = self.path_text(pa.as_slice(), e.span); },
                 ast::ExprKind::Deref(dx) => { s.push_str("*"); s.push_str(self.expr(&**dx, 12, f - 1).as_str()); },
-                ast::ExprKind::Field(fx, fnm) => { if !is_capture_base(&**fx) { s = self.expr(&**fx, 13, f - 1); s.push_str("."); } s.push_str(fnm.name.as_str()); },
+                ast::ExprKind::Field(fx, fnm) => { if !is_capture_base(&**fx) { s = self.expr(&**fx, 13, f - 1); s.push_str("."); } s.push_str(self.field_name(fx.span, fnm.name.as_str()).as_str()); },
                 ast::ExprKind::Match(ma) => { s = self.one_line(e, f - 1); },
                 ast::ExprKind::Return(rv) => { s.push_str("return"); match rv { None => {}, Some(v) => { s.push_str(" "); s.push_str(self.expr(&**v, 0, f - 1).as_str()); }, } },
                 ast::ExprKind::Try(tr) => { s = self.expr(&**tr, 13, f - 1); s.push_str("?"); },
                 ast::ExprKind::Loop(lp) => { s = self.one_line(e, f - 1); },
-                ast::ExprKind::Break(bk) => { s.push_str("break"); match &bk.label { None => {}, Some(l) => { s.push_str(" '"); s.push_str(l.name.as_str()); }, } match &bk.value { None => {}, Some(bv) => { s.push_str(" "); s.push_str(self.expr(&**bv, 0, f - 1).as_str()); }, } },
-                ast::ExprKind::Continue(co) => { s.push_str("continue"); match co { None => {}, Some(cl2) => { s.push_str(" '"); s.push_str(cl2.name.as_str()); }, } },
+                ast::ExprKind::Break(bk) => { s.push_str("break"); match &bk.label { None => {}, Some(l) => { s.push_str(" '"); s.push_str(self.label(l.name.as_str()).as_str()); }, } match &bk.value { None => {}, Some(bv) => { s.push_str(" "); s.push_str(self.expr(&**bv, 0, f - 1).as_str()); }, } },
+                ast::ExprKind::Continue(co) => { s.push_str("continue"); match co { None => {}, Some(cl2) => { s.push_str(" '"); s.push_str(self.label(cl2.name.as_str()).as_str()); }, } },
                 ast::ExprKind::Range(rg) => { s = self.cond(&*rg.lo, f - 1); if rg.inclusive { s.push_str("..="); } else { s.push_str(".."); } s.push_str(self.cond(&*rg.hi, f - 1).as_str()); },
                 ast::ExprKind::Error => s.push_str("<error>"),
             }
@@ -359,6 +575,27 @@ mod fmt {
             s
         }
 
+        #[summary("자리 span의 식이 가진 구조체에서 필드 name의 선언 자리")]
+        #[effects(alloc)]
+        fn field_at(self: &Printer, span: source::Span, name: &str) -> Option<usize> {
+            if !self.is_id() {
+                return None;
+            }
+            match self.adt_at(span) {
+                None => None,
+                Some(a) => { if a.at < self.names.adts.items.len() { field_index(&self.names.adts.items[a.at].kind, name) } else { None } },
+            }
+        }
+
+        #[summary("필드의 이름: 정체성 글에서는 base_span의 식이 가진 구조체에서의 선언 자리")]
+        #[effects(alloc)]
+        fn field_name(self: &Printer, base_span: source::Span, name: &str) -> String {
+            match self.field_at(base_span, name) {
+                None => String::from(name),
+                Some(k) => { let mut s: String = String::new(); push_n(&mut s, k); s },
+            }
+        }
+
         #[summary("머리와 이름 순의 함수들: impl 블록의 몸")]
         #[effects(alloc)]
         fn fn_block(self: &mut Printer, head: &str, fs: &[ast::FnDef], depth: usize, f: usize) -> ()
@@ -393,15 +630,40 @@ mod fmt {
                     if i > 0 {
                         self.out.push_str("\n");
                     }
-                    self.function(&fs[ord[i]], depth.saturating_add(1), true, f - 1);
+                    self.function(&fs[ord[i]], depth.saturating_add(1), "", true, f - 1);
                 }
                 i = i + 1;
             }
             self.line(depth, "}");
         }
 
+        #[summary("for의 머리: 라벨, 범위, 변수의 순서로 묶는다")]
         #[effects(alloc)]
-        fn function(self: &mut Printer, d: &ast::FnDef, depth: usize, with_body: bool, f: usize) -> ()
+        fn for_head(self: &mut Printer, fo: &ast::For, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            let mut fhead: String = self.label_head(&fo.label);
+            let a: String = self.cond(&fo.lo, f - 1);
+            let b: String = self.cond(&fo.hi, f - 1);
+            fhead.push_str("for ");
+            fhead.push_str(self.bind(fo.var.name.as_str()).as_str());
+            fhead.push_str(" in ");
+            fhead.push_str(a.as_str());
+            if fo.inclusive {
+                fhead.push_str("..=");
+            } else {
+                fhead.push_str("..");
+            }
+            fhead.push_str(b.as_str());
+            fhead
+        }
+
+        #[summary("정의 하나. rename이 비지 않았으면 정의의 이름을 그것으로 쓴다 (해시는 _로)")]
+        #[effects(alloc)]
+        fn function(self: &mut Printer, d: &ast::FnDef, depth: usize, rename: &str, with_body: bool, f: usize) -> ()
             decreases f,
         {
             if f == 0 {
@@ -414,7 +676,9 @@ mod fmt {
                 decreases d.attrs.len() - i,
             {
                 if d.attrs[i].name.name == "rationale" {
-                    self.rationale_line(&d.attrs[i], depth);
+                    if self.is_plain() {
+                        self.rationale_line(&d.attrs[i], depth);
+                    }
                     done = true;
                 }
                 i = i + 1;
@@ -463,7 +727,7 @@ mod fmt {
                         decreases d.attrs[i].args.len() - u,
                     {
                         match &d.attrs[i].args[u] {
-                            ast::AttrArg::Ident(id) => uses.push(id.name.clone()),
+                            ast::AttrArg::Ident(id) => uses.push(self.uses_name(id.name.as_str())),
                             ast::AttrArg::Str(s, sp) => {},
                             ast::AttrArg::Pair(pk, pv) => {},
                         }
@@ -484,11 +748,16 @@ mod fmt {
                 ast::FnKind::Spec => sig.push_str("spec fn "),
                 ast::FnKind::Proof => sig.push_str("proof fn "),
             }
-            sig.push_str(d.name.name.as_str());
-            sig.push_str(generics_str(d.generics.as_slice()).as_str());
+            if rename.len() > 0 {
+                sig.push_str(rename);
+            } else {
+                sig.push_str(d.name.name.as_str());
+            }
+            sig.push_str(self.generics(d.generics.as_slice()).as_str());
             sig.push_str("(");
-            sig.push_str(params_str(d.params.as_slice()).as_str());
+            sig.push_str(self.params_text(d.params.as_slice(), true).as_str());
             sig.push_str(")");
+            let ret: String = self.ret_text(&d.ret, true);
             let is_proof: bool = match &d.kind {
                 ast::FnKind::Exec => false,
                 ast::FnKind::Spec => false,
@@ -496,7 +765,7 @@ mod fmt {
             };
             if !is_proof {
                 sig.push_str(" -> ");
-                sig.push_str(ret_str(&d.ret).as_str());
+                sig.push_str(ret.as_str());
             }
             let has_clauses: bool = d.pre.len() > 0 || d.post.len() > 0 || is_some(&d.measure);
             if !with_body {
@@ -512,6 +781,74 @@ mod fmt {
                 sig.push_str(" ");
                 self.block_open(&d.body, depth, sig.as_str(), "", f - 1);
             }
+        }
+
+        #[summary("<T: Copy, U: Copy + geo::Shape>, 또는 없음. 정체성 글에서는 매개변수를 묶고 한정을 참조로 쓴다")]
+        #[effects(alloc)]
+        fn generics(self: &mut Printer, gs: &[ast::TypeParam]) -> String {
+            if !self.is_id() {
+                return generics_str(gs);
+            }
+            let mut s: String = String::new();
+            if gs.len() == 0 {
+                return s;
+            }
+            s.push_str("<");
+            let mut i: usize = 0;
+            while i < gs.len()
+                decreases gs.len() - i,
+            {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                s.push_str(self.bind(gs[i].name.name.as_str()).as_str());
+                let mut k: usize = 0;
+                while k < gs[i].bounds.len()
+                    decreases gs[i].bounds.len() - k,
+                {
+                    if k == 0 {
+                        s.push_str(": ");
+                    } else {
+                        s.push_str(" + ");
+                    }
+                    s.push_str(self.bound(gs[i].bounds[k].as_slice()).as_str());
+                    k = k + 1;
+                }
+                i = i + 1;
+            }
+            s.push_str(">");
+            s
+        }
+
+        #[summary("정체성 글의 타입: 선언된 타입은 참조로, 타입 매개변수는 묶인 자리로, 내장은 이름으로")]
+        #[effects(alloc)]
+        fn id_kind(self: &mut Printer, t: &ast::TypeKind, f: usize) -> String
+            decreases f,
+        {
+            let mut s: String = String::new();
+            if f == 0 {
+                return s;
+            }
+            match t {
+                ast::TypeKind::Int(it) => push_kind(&mut s, t, 1),
+                ast::TypeKind::F64 => push_kind(&mut s, t, 1),
+                ast::TypeKind::Bool => push_kind(&mut s, t, 1),
+                ast::TypeKind::Unit => push_kind(&mut s, t, 1),
+                ast::TypeKind::Char => push_kind(&mut s, t, 1),
+                ast::TypeKind::String => push_kind(&mut s, t, 1),
+                ast::TypeKind::Str => push_kind(&mut s, t, 1),
+                ast::TypeKind::Array(e, n) => { s.push_str("["); s.push_str(self.id_kind(&e.kind, f - 1).as_str()); s.push_str("; "); std::num::push_u64(&mut s, *n); s.push_str("]"); },
+                ast::TypeKind::ArrayN(e, p) => { s.push_str("["); s.push_str(self.id_kind(&e.kind, f - 1).as_str()); s.push_str("; "); s.push_str(types::join(p.as_slice(), "::").as_str()); s.push_str("]"); },
+                ast::TypeKind::Slice(e) => { s.push_str("["); s.push_str(self.id_kind(&e.kind, f - 1).as_str()); s.push_str("]"); },
+                ast::TypeKind::Ref(m, e) => { s.push_str("&"); if *m { s.push_str("mut "); } s.push_str(self.id_kind(&e.kind, f - 1).as_str()); },
+                ast::TypeKind::Named(np, a) => { s = self.type_ref(np.as_slice()); if a.len() > 0 { s.push_str("<"); let mut j: usize = 0; while j < a.len() decreases a.len() - j, { if j > 0 { s.push_str(", "); } s.push_str(self.id_kind(&a[j].kind, f - 1).as_str()); j = j + 1; } s.push_str(">"); } },
+                ast::TypeKind::Vec(e) => { s.push_str("Vec<"); s.push_str(self.id_kind(&e.kind, f - 1).as_str()); s.push_str(">"); },
+                ast::TypeKind::Box(e) => { s.push_str("Box<"); s.push_str(self.id_kind(&e.kind, f - 1).as_str()); s.push_str(">"); },
+                ast::TypeKind::Param(pn) => { s = self.local(pn.as_str()); },
+                ast::TypeKind::Never => push_kind(&mut s, t, 1),
+                ast::TypeKind::Error => push_kind(&mut s, t, 1),
+            }
+            s
         }
 
         #[effects(alloc)]
@@ -548,6 +885,97 @@ mod fmt {
                 head.push_str(">");
             }
             self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
+        }
+
+        #[summary("정체성 글인가 (참조를 모으는 중이거나 쓰는 중)")]
+        #[effects(pure)]
+        fn is_id(self: &Printer) -> bool {
+            match &self.names.mode {
+                Mode::Plain => false,
+                Mode::Qualify => false,
+                Mode::Collect => true,
+                Mode::Identity => true,
+            }
+        }
+
+        #[summary("쓴 그대로의 글인가")]
+        #[effects(pure)]
+        fn is_plain(self: &Printer) -> bool {
+            match &self.names.mode {
+                Mode::Plain => true,
+                Mode::Qualify => false,
+                Mode::Collect => false,
+                Mode::Identity => false,
+            }
+        }
+
+        #[summary("라벨의 쓰임: 묶인 라벨이면 그 자리")]
+        #[effects(alloc)]
+        fn label(self: &Printer, name: &str) -> String {
+            if self.is_id() {
+                match self.names.labels.find(name) {
+                    None => {},
+                    Some(at) => { return self.names.labels.items[at].clone(); },
+                }
+            }
+            String::from(name)
+        }
+
+        #[summary("'l: (라벨을 묶는다), 또는 없음")]
+        #[effects(alloc)]
+        fn label_head(self: &mut Printer, l: &Option<ast::Ident>) -> String {
+            let mut s: String = String::new();
+            match l {
+                None => {},
+                Some(i) => { s.push_str("'"); s.push_str(self.bind_label(i.name.as_str()).as_str()); s.push_str(": "); },
+            }
+            s
+        }
+
+        #[summary("let T { a, b } = 의 머리: 타입은 정체성 글에서 참조로, 필드는 쓴 순서로 묶는다")]
+        #[effects(alloc)]
+        fn let_fields_head(self: &mut Printer, lf: &ast::LetFields) -> String {
+            let mut lhead: String = String::from("let ");
+            if self.is_id() {
+                let mut names: Vec<String> = Vec::new();
+                let mut k: usize = 0;
+                while k < lf.path.len()
+                    decreases lf.path.len() - k,
+                {
+                    names.push(lf.path[k].name.clone());
+                    k = k + 1;
+                }
+                lhead.push_str(self.type_ref(names.as_slice()).as_str());
+            } else {
+                lhead.push_str(self.path(lf.path.as_slice()).as_str());
+            }
+            lhead.push_str(" { ");
+            let mut i: usize = 0;
+            while i < lf.fields.len()
+                decreases lf.fields.len() - i,
+            {
+                if i > 0 {
+                    lhead.push_str(", ");
+                }
+                lhead.push_str(self.bind(lf.fields[i].name.as_str()).as_str());
+                i = i + 1;
+            }
+            lhead.push_str(" } = ");
+            lhead
+        }
+
+        #[summary("let [mut ]x: T = 의 머리")]
+        #[effects(alloc)]
+        fn let_head(self: &mut Printer, le: &ast::Let) -> String {
+            let mut head: String = String::from("let ");
+            if le.mutable {
+                head.push_str("mut ");
+            }
+            head.push_str(self.bind(le.name.name.as_str()).as_str());
+            head.push_str(": ");
+            head.push_str(self.ty(&le.ty).as_str());
+            head.push_str(" = ");
+            head
         }
 
         #[summary("들여쓴 한 줄")]
@@ -611,6 +1039,18 @@ mod fmt {
             }
         }
 
+        #[summary("묶인 이름의 쓰임: 묶인 이름이면 그 자리, 그 밖의 이름(None 등)은 쓴 대로")]
+        #[effects(alloc)]
+        fn local(self: &Printer, name: &str) -> String {
+            if self.is_id() {
+                match self.names.binders.find(name) {
+                    None => {},
+                    Some(at) => { return self.names.binders.items[at].clone(); },
+                }
+            }
+            String::from(name)
+        }
+
         #[summary("invariant와 decreases의 줄들")]
         #[effects(alloc)]
         fn loop_clauses(self: &mut Printer, invariants: &[ast::Expr], measure: Option<String>, depth: usize, f: usize) -> ()
@@ -635,7 +1075,7 @@ mod fmt {
                 return;
             }
             let mut row: String = String::from(head);
-            row.push_str(label_head(&lp.label).as_str());
+            row.push_str(self.label_head(&lp.label).as_str());
             let has: bool = is_some_box(&lp.measure);
             if lp.invariants.len() == 0 && !has {
                 row.push_str("loop ");
@@ -669,7 +1109,7 @@ mod fmt {
             while i < ma.arms.len()
                 decreases ma.arms.len() - i,
             {
-                let mut row: String = pat_str(&ma.arms[i].pat);
+                let mut row: String = self.pat(&ma.arms[i].pat, ma.scrut.span);
                 row.push_str(" => ");
                 row.push_str(self.expr(&ma.arms[i].body, 0, f - 1).as_str());
                 row.push_str(",");
@@ -679,6 +1119,28 @@ mod fmt {
             let mut close: String = String::from("}");
             close.push_str(suffix);
             self.line(depth, close.as_str());
+        }
+
+        #[summary("trait trait_path의 메서드 name: 정체성 글에서는 trait의 참조와 trait 안의 메서드 자리 (#<id>#k)")]
+        #[effects(alloc)]
+        fn method_ref(self: &mut Printer, trait_path: &str, name: &str) -> String {
+            if !self.is_id() {
+                return types::cat3(trait_path, "::", name);
+            }
+            let mut s: String = self.entity("2", trait_path);
+            if self.collecting() {
+                return String::from("#?#?");
+            }
+            let key: String = types::cat3("2", ":", trait_path);
+            let k: Option<usize> = match self.names.refs.find(key.as_str()) {
+                None => None,
+                Some(at) => decls::index_of(self.names.refs.items[at].methods.as_slice(), name),
+            };
+            match k {
+                None => s.push_str("#?"),
+                Some(n) => { s.push_str("#"); push_n(&mut s, n); },
+            }
+            s
         }
 
         #[effects(alloc)]
@@ -895,7 +1357,7 @@ mod fmt {
                         self.out.push_str("\n");
                     }
                     first = false;
-                    self.function(&m.fns[fns[i]], depth.saturating_add(1), true, f - 1);
+                    self.function(&m.fns[fns[i]], depth.saturating_add(1), "", true, f - 1);
                 }
                 i = i + 1;
             }
@@ -930,6 +1392,106 @@ mod fmt {
             self.expr_stmt(e, 0, "", f - 1);
             let text: String = std::mem::replace(&mut self.out, saved);
             joined_lines(text.as_str())
+        }
+
+        #[summary("x: T, y: U. bind면 이름을 묶는다 (함수와 한정자의 매개변수; 클로저의 것은 묶지 않는다)")]
+        #[effects(alloc)]
+        fn params_text(self: &mut Printer, ps: &[ast::Param], bind: bool) -> String {
+            let mut s: String = String::new();
+            let mut i: usize = 0;
+            while i < ps.len()
+                decreases ps.len() - i,
+            {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                if bind {
+                    s.push_str(self.bind(ps[i].name.name.as_str()).as_str());
+                } else {
+                    s.push_str(ps[i].name.name.as_str());
+                }
+                s.push_str(": ");
+                s.push_str(self.ty(&ps[i].ty).as_str());
+                i = i + 1;
+            }
+            s
+        }
+
+        #[summary("패턴: 정체성 글에서는 변형을 대상(자리 scrut)의 열거형 안의 자리로, 묶는 이름을 묶인 자리로")]
+        #[effects(alloc)]
+        fn pat(self: &mut Printer, p: &ast::Pat, scrut: source::Span) -> String {
+            if !self.is_id() {
+                return pat_str(p);
+            }
+            let v: Option<Found> = if p.path.len() > 0 {
+                self.variant_at(scrut, p.path[p.path.len() - 1].name.as_str())
+            } else {
+                None
+            };
+            let mut s: String = match v {
+                None => path_str(p.path.as_slice()),
+                Some(x) => self.variant_ref(x.path.as_str(), x.at),
+            };
+            if !p.parens {
+                return s;
+            }
+            s.push_str("(");
+            let mut i: usize = 0;
+            while i < p.binds.len()
+                decreases p.binds.len() - i,
+            {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                match &p.binds[i] {
+                    None => s.push_str("_"),
+                    Some(b) => s.push_str(self.bind(b.name.as_str()).as_str()),
+                }
+                i = i + 1;
+            }
+            s.push_str(")");
+            s
+        }
+
+        #[summary("경로: 한정 글에서는 이 단위의 f, T::f(impl의 함수), Trait::f(trait의 메서드)를 온 경로로, 검사기가 푸는 대로")]
+        #[effects(alloc)]
+        fn path(self: &Printer, path: &[ast::Ident]) -> String {
+            let plain: String = path_str(path);
+            if self.qualified(path) {
+                return types::cat3(self.names.unit.as_str(), "::", plain.as_str());
+            }
+            plain
+        }
+
+        #[summary("식으로 쓴 경로: 정체성 글에서는 식(자리 span)의 열거형의 변형이면 그 참조")]
+        #[effects(alloc)]
+        fn path_text(self: &mut Printer, pa: &[ast::Ident], span: source::Span) -> String {
+            if self.is_id() && pa.len() > 0 {
+                match self.variant_at(span, pa[pa.len() - 1].name.as_str()) {
+                    None => {},
+                    Some(v) => { return self.variant_ref(v.path.as_str(), v.at); },
+                }
+            }
+            self.path(pa)
+        }
+
+        #[summary("한정 글에서 경로 path가 이 단위의 정의를 가리키는가")]
+        #[effects(alloc)]
+        fn qualified(self: &Printer, path: &[ast::Ident]) -> bool {
+            let on: bool = match &self.names.mode {
+                Mode::Plain => false,
+                Mode::Qualify => true,
+                Mode::Collect => false,
+                Mode::Identity => false,
+            };
+            if !on || path.len() > 2 {
+                return false;
+            }
+            let local: String = types::cat3(self.names.unit.as_str(), "::", path_str(path).as_str());
+            match self.names.fns.find(local.as_str()) {
+                None => false,
+                Some(at) => path.len() == 1 || self.names.fns.items[at].in_impl || is_some_text(&self.names.fns.items[at].trait_of),
+            }
         }
 
         #[summary("#[rationale(..)] (ADR-0029 §1)")]
@@ -988,6 +1550,24 @@ mod fmt {
             }
         }
 
+        #[summary("묶인 이름을 잊는다 (새 정의, 또는 trait의 다음 메서드)")]
+        #[effects(alloc)]
+        fn reset_binders(self: &mut Printer) -> () {
+            self.names.binders = table::new::<String>();
+            self.names.labels = table::new::<String>();
+            self.names.next = 0;
+            self.names.next_label = 0;
+        }
+
+        #[summary("결과의 타입 T, 또는 (r: T). bind면 결과의 이름을 묶는다")]
+        #[effects(alloc)]
+        fn ret_text(self: &mut Printer, r: &ast::Ret, bind: bool) -> String {
+            match &r.name {
+                None => self.ty(&r.ty),
+                Some(n) => { let mut s: String = String::from("("); if bind { s.push_str(self.bind(n.name.as_str()).as_str()); } else { s.push_str(n.name.as_str()); } s.push_str(": "); s.push_str(self.ty(&r.ty).as_str()); s.push_str(")"); s },
+            }
+        }
+
         #[effects(alloc)]
         fn stmt(self: &mut Printer, s: &ast::Stmt, depth: usize, f: usize) -> ()
             decreases f,
@@ -996,21 +1576,64 @@ mod fmt {
                 return;
             }
             match s {
-                ast::Stmt::Let(le) => { let mut head: String = String::from("let "); if le.mutable { head.push_str("mut "); } head.push_str(le.name.name.as_str()); head.push_str(": "); head.push_str(type_str(&le.ty).as_str()); head.push_str(" = "); self.multiline_value(&le.init, depth, head.as_str(), ";", f - 1); },
+                ast::Stmt::Let(le) => { let head: String = self.let_head(le); self.multiline_value(&le.init, depth, head.as_str(), ";", f - 1); },
                 ast::Stmt::Assign(asg) => { let mut ahead: String = self.expr(&asg.target, 0, f - 1); ahead.push_str(" = "); self.multiline_value(&asg.value, depth, ahead.as_str(), ";", f - 1); },
-                ast::Stmt::While(wh) => { let mut whead: String = label_head(&wh.label); whead.push_str("while "); whead.push_str(self.cond(&wh.cond, f - 1).as_str()); self.line(depth, whead.as_str()); let wm: Option<String> = match &wh.measure { None => None, Some(x) => Some(self.expr(x, 0, f - 1)), }; self.loop_clauses(wh.invariants.as_slice(), wm, depth, f - 1); self.block_open(&wh.body, depth, "", "", f - 1); },
-                ast::Stmt::For(fo) => { let mut fhead: String = label_head(&fo.label); let a: String = self.cond(&fo.lo, f - 1); let b: String = self.cond(&fo.hi, f - 1); fhead.push_str("for "); fhead.push_str(fo.var.name.as_str()); fhead.push_str(" in "); fhead.push_str(a.as_str()); if fo.inclusive { fhead.push_str("..="); } else { fhead.push_str(".."); } fhead.push_str(b.as_str()); if fo.invariants.len() == 0 { fhead.push_str(" "); self.block_open(&fo.body, depth, fhead.as_str(), "", f - 1); } else { self.line(depth, fhead.as_str()); self.loop_clauses(fo.invariants.as_slice(), None, depth, f - 1); self.block_open(&fo.body, depth, "", "", f - 1); } },
+                ast::Stmt::While(wh) => { let mut whead: String = self.label_head(&wh.label); whead.push_str("while "); whead.push_str(self.cond(&wh.cond, f - 1).as_str()); self.line(depth, whead.as_str()); let wm: Option<String> = match &wh.measure { None => None, Some(x) => Some(self.expr(x, 0, f - 1)), }; self.loop_clauses(wh.invariants.as_slice(), wm, depth, f - 1); self.block_open(&wh.body, depth, "", "", f - 1); },
+                ast::Stmt::For(fo) => { let mut fhead: String = self.for_head(fo, f - 1); if fo.invariants.len() == 0 { fhead.push_str(" "); self.block_open(&fo.body, depth, fhead.as_str(), "", f - 1); } else { self.line(depth, fhead.as_str()); self.loop_clauses(fo.invariants.as_slice(), None, depth, f - 1); self.block_open(&fo.body, depth, "", "", f - 1); } },
                 ast::Stmt::Assert(asr) => { let mut row: String = String::from("assert("); row.push_str(self.expr(&asr.cond, 0, f - 1).as_str()); row.push_str(")"); match &asr.by { None => {}, Some(p) => { match p { ast::Prover::BitVector => row.push_str(" by (bit_vector)"), } }, } row.push_str(";"); self.line(depth, row.as_str()); },
-                ast::Stmt::Assume(asm) => { match &asm.rationale { None => {}, Some(ra) => self.rationale_line(ra, depth), } let mut urow: String = String::from("assume("); urow.push_str(self.expr(&asm.cond, 0, f - 1).as_str()); urow.push_str(");"); self.line(depth, urow.as_str()); },
+                ast::Stmt::Assume(asm) => { match &asm.rationale { None => {}, Some(ra) => { if self.is_plain() { self.rationale_line(ra, depth); } }, } let mut urow: String = String::from("assume("); urow.push_str(self.expr(&asm.cond, 0, f - 1).as_str()); urow.push_str(");"); self.line(depth, urow.as_str()); },
                 ast::Stmt::Proof(pb) => self.block_open(&pb.body, depth, "proof ", "", f - 1),
-                ast::Stmt::LetFields(lf) => { let mut lhead: String = String::from("let "); lhead.push_str(path_str(lf.path.as_slice()).as_str()); lhead.push_str(" { "); lhead.push_str(path_join(lf.fields.as_slice(), ", ").as_str()); lhead.push_str(" } = "); self.multiline_value(&lf.init, depth, lhead.as_str(), ";", f - 1); },
+                ast::Stmt::LetFields(lf) => { let lhead: String = self.let_fields_head(lf); self.multiline_value(&lf.init, depth, lhead.as_str(), ";", f - 1); },
                 ast::Stmt::Expr(e) => { if !self.lines_of(e, depth, "", "", f - 1) { let mut erow: String = self.expr(e, 0, f - 1); erow.push_str(";"); self.line(depth, erow.as_str()); } },
             }
         }
 
-        #[summary("정의의 #[summary(\"..\")] (ADR-0117)")]
+        #[summary("구조체 식: 정체성 글에서는 필드를 선언 자리로, 타입을 참조로 (식의 자리 span의 타입에서)")]
+        #[effects(alloc)]
+        fn struct_text(self: &mut Printer, sl: &ast::StructLit, span: source::Span, f: usize) -> String
+            decreases f,
+        {
+            let mut s: String = String::new();
+            if f == 0 {
+                return s;
+            }
+            let mut i: usize = 0;
+            while i < sl.fields.len()
+                decreases sl.fields.len() - i,
+            {
+                if i > 0 {
+                    s.push_str(", ");
+                }
+                s.push_str(self.field_name(span, sl.fields[i].name.name.as_str()).as_str());
+                s.push_str(": ");
+                s.push_str(self.expr(&sl.fields[i].value, 0, f - 1).as_str());
+                i = i + 1;
+            }
+            match &sl.rest {
+                None => {},
+                Some(r) => { if sl.fields.len() > 0 { s.push_str(", "); } s.push_str(".."); s.push_str(self.expr(&**r, 0, f - 1).as_str()); },
+            }
+            let named: Option<Found> = if self.is_id() {
+                self.adt_at(span)
+            } else {
+                None
+            };
+            let mut head: String = match named {
+                None => self.path(sl.path.as_slice()),
+                Some(a) => self.entity("1", a.path.as_str()),
+            };
+            head.push_str(" { ");
+            head.push_str(s.as_str());
+            head.push_str(" }");
+            head
+        }
+
+        #[summary("정의의 #[summary(\"..\")] (ADR-0117). 쓴 그대로의 글에만: 어느 해시도 읽지 않는다")]
         #[effects(alloc)]
         fn summary_line(self: &mut Printer, attrs: &[ast::Attr], depth: usize) -> () {
+            if !self.is_plain() {
+                return;
+            }
             let mut i: usize = 0;
             while i < attrs.len()
                 decreases attrs.len() - i,
@@ -1068,7 +1691,7 @@ mod fmt {
                     if i > 0 {
                         self.out.push_str("\n");
                     }
-                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), f - 1);
+                    self.trait_fn(&t.fns[ord[i]], depth.saturating_add(1), "", f - 1);
                 }
                 i = i + 1;
             }
@@ -1077,17 +1700,17 @@ mod fmt {
 
         #[summary("trait 메서드: 기본 몸, 또는 ;로 끝나는 시그니처")]
         #[effects(alloc)]
-        fn trait_fn(self: &mut Printer, tf: &ast::TraitFn, depth: usize, f: usize) -> ()
+        fn trait_fn(self: &mut Printer, tf: &ast::TraitFn, depth: usize, rename: &str, f: usize) -> ()
             decreases f,
         {
             if f == 0 {
                 return;
             }
             if tf.has_body {
-                self.function(&tf.f, depth, true, f - 1);
+                self.function(&tf.f, depth, rename, true, f - 1);
             } else {
                 let saved: String = std::mem::replace(&mut self.out, String::new());
-                self.function(&tf.f, depth, false, f - 1);
+                self.function(&tf.f, depth, rename, false, f - 1);
                 let sig: String = std::mem::replace(&mut self.out, saved);
                 let n: usize = sig.len();
                 if n >= 2 && sig.as_bytes()[n - 2] == 44 && sig.as_bytes()[n - 1] == 10 {
@@ -1097,6 +1720,38 @@ mod fmt {
                 }
                 self.out.push_str(";\n");
             }
+        }
+
+        #[summary("trait의 정체성 글 (ADR-0059 §1): 속성과, order(t.fns의 자리)의 순서로 이름 없는 메서드들")]
+        #[effects(alloc)]
+        fn trait_identity(self: &mut Printer, t: &ast::TraitDef, order: &[usize], f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut a: usize = 0;
+            while a < t.attrs.len()
+                decreases t.attrs.len() - a,
+            {
+                self.attr_line(&t.attrs[a], 0);
+                a = a + 1;
+            }
+            self.line(0, "trait _ {");
+            let mut k: usize = 0;
+            while k < order.len()
+                decreases order.len() - k,
+            {
+                if order[k] < t.fns.len() {
+                    if k > 0 {
+                        self.out.push_str("\n");
+                    }
+                    self.reset_binders();
+                    self.trait_fn(&t.fns[order[k]], 1, "_", f - 1);
+                }
+                k = k + 1;
+            }
+            self.line(0, "}");
         }
 
         #[summary("impl<..> Trait for T { .. }, 함수는 이름 순 (ADR-0046 §2)")]
@@ -1116,9 +1771,25 @@ mod fmt {
             self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
         }
 
+        #[summary("쓴 타입: 정체성 글에서는 이름 없이")]
+        #[effects(alloc)]
+        fn ty(self: &mut Printer, t: &ast::Type) -> String {
+            if self.is_id() {
+                self.id_kind(&t.kind, 100000)
+            } else {
+                type_str(t)
+            }
+        }
+
         #[summary("struct T { f: U, .. } / enum T { A, B(U), .. }를 한 줄로. 필드와 변형은 선언 순서를 지킨다 (ADR-0026 §6)")]
         #[effects(alloc)]
         fn type_def(self: &mut Printer, t: &ast::TypeDef, depth: usize) -> () {
+            self.type_def_as(t, depth, t.name.name.as_str());
+        }
+
+        #[summary("타입 선언을 이름 name으로. 정체성 글에서는 필드와 변형을 자리로: 그 타입들만 쓴다 (ADR-0059 §1)")]
+        #[effects(alloc)]
+        fn type_def_as(self: &mut Printer, t: &ast::TypeDef, depth: usize, name: &str) -> () {
             self.summary_line(t.attrs.as_slice(), depth);
             let mut a: usize = 0;
             while a < t.attrs.len()
@@ -1127,15 +1798,17 @@ mod fmt {
                 self.attr_line(&t.attrs[a], depth);
                 a = a + 1;
             }
+            let gens: String = self.generics(t.generics.as_slice());
+            let id: bool = self.is_id();
             let mut items: String = String::new();
             let mut row: String = String::new();
             match &t.kind {
-                ast::TypeDefKind::Struct(fs) => { row.push_str("struct "); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(", "); } items.push_str(fs[i].name.name.as_str()); items.push_str(": "); items.push_str(type_str(&fs[i].ty).as_str()); i = i + 1; } },
-                ast::TypeDefKind::Enum(vs) => { row.push_str("enum "); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(", "); } items.push_str(vs[k].name.name.as_str()); if vs[k].payload.len() > 0 { items.push_str("("); items.push_str(types_str(vs[k].payload.as_slice()).as_str()); items.push_str(")"); } k = k + 1; } },
+                ast::TypeDefKind::Struct(fs) => { row.push_str("struct "); let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if i > 0 { items.push_str(", "); } if !id { items.push_str(fs[i].name.name.as_str()); items.push_str(": "); } items.push_str(self.ty(&fs[i].ty).as_str()); i = i + 1; } },
+                ast::TypeDefKind::Enum(vs) => { row.push_str("enum "); let mut k: usize = 0; while k < vs.len() decreases vs.len() - k, { if k > 0 { items.push_str(", "); } if !id { items.push_str(vs[k].name.name.as_str()); } if id || vs[k].payload.len() > 0 { items.push_str("("); let mut j: usize = 0; while j < vs[k].payload.len() decreases vs[k].payload.len() - j, { if j > 0 { items.push_str(", "); } items.push_str(self.ty(&vs[k].payload[j]).as_str()); j = j + 1; } items.push_str(")"); } k = k + 1; } },
             }
-            row.push_str(t.name.name.as_str());
-            row.push_str(generics_str(t.generics.as_slice()).as_str());
-            if items.len() == 0 {
+            row.push_str(name);
+            row.push_str(gens.as_str());
+            if items.len() == 0 && !id {
                 row.push_str(" {}");
             } else {
                 row.push_str(" { ");
@@ -1144,7 +1817,62 @@ mod fmt {
             }
             self.line(depth, row.as_str());
         }
+
+        #[summary("단위에 쓴 타입 경로: 타입 매개변수(묶인 자리), 선언된 타입(참조), 내장(이름)")]
+        #[effects(alloc)]
+        fn type_ref(self: &mut Printer, path: &[String]) -> String {
+            if path.len() == 1 {
+                match self.names.binders.find(path[0].as_str()) {
+                    None => {},
+                    Some(at) => { return self.names.binders.items[at].clone(); },
+                }
+            }
+            let plain: String = types::join(path, "::");
+            let full: String = if path.len() == 1 {
+                types::cat3(self.names.unit.as_str(), "::", plain.as_str())
+            } else {
+                plain.clone()
+            };
+            if self.names.adts.has(full.as_str()) {
+                self.entity("1", full.as_str())
+            } else {
+                plain
+            }
+        }
+
+        #[summary("#[uses(name)]이나 #[invariant(name)]의 이름: 한정 글에서는 온 경로, 정체성 글에서는 참조")]
+        #[effects(alloc)]
+        fn uses_name(self: &mut Printer, name: &str) -> String {
+            if self.is_plain() {
+                return String::from(name);
+            }
+            match decls::uses_target(name, self.names.unit.as_str(), &self.names.fns) {
+                None => String::from(name),
+                Some(p) => { if self.is_id() { self.def_ref(p.as_str()) } else { p } },
+            }
+        }
+
+        #[summary("자리 span의 식이 가진 열거형에서 변형 name: 열거형의 온 경로와 변형의 선언 자리")]
+        #[effects(alloc)]
+        fn variant_at(self: &Printer, span: source::Span, name: &str) -> Option<Found> {
+            match self.adt_at(span) {
+                None => None,
+                Some(a) => { if a.at >= self.names.adts.items.len() { return None; } match variant_index(&self.names.adts.items[a.at].kind, name) { None => None, Some(k) => Some(Found { path: a.path, at: k }), } },
+            }
+        }
+
+        #[summary("열거형 tp의 k번째 변형의 참조: #<id>#k")]
+        #[effects(alloc)]
+        fn variant_ref(self: &mut Printer, tp: &str, k: usize) -> String {
+            let mut s: String = self.entity("1", tp);
+            s.push_str("#");
+            push_n(&mut s, k);
+            s
+        }
     }
+
+    #[summary("정체성 글이 참조 하나를 쓰는 글(#<id>, #self, #self<색>, #self.k)과, trait이면 그 메서드의 정체성 순서")]
+    struct RefRow { text: String, methods: Vec<String> }
 
     #[summary("최상위 단위 하나의 정규형")]
     struct Unit { name: String, text: String }
@@ -1318,8 +2046,17 @@ mod fmt {
     #[summary("식 하나의 정규형")]
     #[effects(alloc)]
     fn expr_text(e: &ast::Expr) -> String {
-        let mut pr: Printer = Printer { out: String::new(), lens: Vec::new() };
+        let mut pr: Printer = plain();
         pr.expr(e, 0, 1000000000)
+    }
+
+    #[summary("구조체의 필드 name의 선언 자리")]
+    #[effects(pure)]
+    fn field_index(k: &types::AdtKind, name: &str) -> Option<usize> {
+        match k {
+            types::AdtKind::Struct(fs) => { let mut i: usize = 0; while i < fs.len() decreases fs.len() - i, { if fs[i].name == name { return Some(i); } i = i + 1; } None },
+            types::AdtKind::Enum(vs) => None,
+        }
     }
 
     #[summary("프로그램 전체의 정규형: 최상위 단위마다 글 하나, 단위 이름 순 (ADR-0019 §3). 같은 이름이면 뒤의 것")]
@@ -1345,7 +2082,7 @@ mod fmt {
                     last = p.mods[ord[i + 1]].name.name != p.mods[ord[i]].name.name;
                 }
                 if last {
-                    let mut pr: Printer = Printer { out: String::new(), lens: Vec::new() };
+                    let mut pr: Printer = plain();
                     pr.module(&p.mods[ord[i]], 0, 1000000000);
                     out.push(Unit { name: p.mods[ord[i]].name.name.clone(), text: pr.out });
                 }
@@ -1457,6 +2194,12 @@ mod fmt {
         false
     }
 
+    #[summary("정체성 출력기: 검사기의 표와 trait의 온 경로들을 든다. 단위와 참조의 글은 찍을 때마다 정한다(names.unit, names.refs)")]
+    #[effects(alloc)]
+    fn identity(fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, tys: table::Table<ast::TypeKind>, traits: Vec<String>) -> Printer {
+        Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Identity, unit: String::new(), fns: fns, adts: adts, types: tys, traits: traits, refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
+    }
+
     #[summary("클로저가 잡은 값을 가리키는 self인가: 파일이 source::CAPTURE인 self, 또는 그것의 old")]
     #[effects(pure)]
     fn is_capture_base(base: &ast::Expr) -> bool {
@@ -1522,6 +2265,14 @@ mod fmt {
     }
 
     #[effects(pure)]
+    fn is_some_text(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[effects(pure)]
     fn is_unit(t: &ast::Type) -> bool {
         match &t.kind {
             ast::TypeKind::Int(it) => false,
@@ -1575,15 +2326,21 @@ mod fmt {
         o
     }
 
-    #[summary("'l: , 또는 없음")]
+    #[summary("경로의 마지막 마디 (:: 뒤). ::가 없으면 전체")]
     #[effects(alloc)]
-    fn label_head(l: &Option<ast::Ident>) -> String {
-        let mut s: String = String::new();
-        match l {
-            None => {},
-            Some(i) => { s.push_str("'"); s.push_str(i.name.as_str()); s.push_str(": "); },
+    fn last_seg(path: &str) -> String {
+        let n: usize = path.len();
+        let mut i: usize = n;
+        while i >= 2
+            invariant i <= n,
+            decreases i,
+        {
+            if path.as_bytes()[i - 1] == 58 && path.as_bytes()[i - 2] == 58 {
+                return lexer::cut(path, i, n);
+            }
+            i = i - 1;
         }
-        s
+        String::from(path)
     }
 
     #[summary("키들의 안정 정렬 순서: 자리의 열. 키는 바이트 사전순")]
@@ -1690,6 +2447,41 @@ mod fmt {
         path_join(p, "::")
     }
 
+    #[summary("참조와 Box를 벗긴 타입이 이름 붙은 타입이면 그 경로(::로 이은), 아니면 빈 글")]
+    #[effects(alloc)]
+    fn peeled(t: &ast::TypeKind, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match t {
+            ast::TypeKind::Int(it) => String::new(),
+            ast::TypeKind::F64 => String::new(),
+            ast::TypeKind::Bool => String::new(),
+            ast::TypeKind::Unit => String::new(),
+            ast::TypeKind::Char => String::new(),
+            ast::TypeKind::String => String::new(),
+            ast::TypeKind::Str => String::new(),
+            ast::TypeKind::Array(e, n) => String::new(),
+            ast::TypeKind::ArrayN(e, p) => String::new(),
+            ast::TypeKind::Slice(e) => String::new(),
+            ast::TypeKind::Ref(m, e) => peeled(&e.kind, f - 1),
+            ast::TypeKind::Named(np, a) => types::join(np.as_slice(), "::"),
+            ast::TypeKind::Vec(e) => String::new(),
+            ast::TypeKind::Box(e) => peeled(&e.kind, f - 1),
+            ast::TypeKind::Param(s) => String::new(),
+            ast::TypeKind::Never => String::new(),
+            ast::TypeKind::Error => String::new(),
+        }
+    }
+
+    #[summary("쓴 그대로 찍는 출력기")]
+    #[effects(alloc)]
+    fn plain() -> Printer {
+        Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Plain, unit: String::new(), fns: table::new::<types::FnSig>(), adts: table::new::<types::Adt>(), types: table::new::<ast::TypeKind>(), traits: Vec::new(), refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
+    }
+
     #[summary("식의 우선순위. 0은 안에 들 때 언제나 괄호로 싸는 꼴이다 (ADR-0019 §1)")]
     #[effects(alloc)]
     fn prec(e: &ast::Expr) -> u8 {
@@ -1761,10 +2553,22 @@ mod fmt {
         }
     }
 
+    #[summary("수 n을 십진으로 붙인다")]
+    #[effects(alloc)]
+    fn push_n(out: &mut String, n: usize) -> () {
+        std::num::push_u64(out, n as u64);
+    }
+
     #[summary("타입을 쓴 대로 덧붙인다. f는 남은 깊이")]
     #[effects(alloc)]
     fn push_type(out: &mut String, t: &ast::Type, f: usize) -> () {
         push_kind(out, &t.kind, f);
+    }
+
+    #[summary("단위 unit의 정의를 한정해 찍는 출력기 (ADR-0019 §2): 다른 정의를 온 경로로")]
+    #[effects(alloc)]
+    fn qualifying(fns: table::Table<types::FnSig>, unit: &str) -> Printer {
+        Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Qualify, unit: String::from(unit), fns: fns, adts: table::new::<types::Adt>(), types: table::new::<ast::TypeKind>(), traits: Vec::new(), refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
     }
 
     #[effects(pure)]
@@ -1894,5 +2698,14 @@ mod fmt {
             i = i + 1;
         }
         s
+    }
+
+    #[summary("열거형의 변형 name의 선언 자리")]
+    #[effects(pure)]
+    fn variant_index(k: &types::AdtKind, name: &str) -> Option<usize> {
+        match k {
+            types::AdtKind::Struct(fs) => None,
+            types::AdtKind::Enum(vs) => { let mut i: usize = 0; while i < vs.len() decreases vs.len() - i, { if vs[i].name == name { return Some(i); } i = i + 1; } None },
+        }
     }
 }

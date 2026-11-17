@@ -6,28 +6,12 @@ mod lib {
     #[summary("명령의 결과: ok면 표준 출력에 쓸 글, 아니면 진단의 JSONL")]
     struct Outcome { ok: bool, text: String }
 
-    #[summary("파일들을 한 프로그램으로 읽고 검사한다 (stage0 lib::check_sources, bmb check): 진단의 JSONL, 오류가 없으면 ok. 구문 오류가 있어도 읽힌 만큼을 검사한다")]
+    #[summary("bmb check: 파일들을 한 프로그램으로 읽고 검사한다. 진단은 JSONL, 오류가 있으면 ok가 거짓")]
     #[effects(alloc)]
-    #[uses(source::room, source::small)]
     fn check(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
-        let mut mods: Vec<ast::Mod> = Vec::new();
-        let mut k: usize = 0;
-        while k < files.len()
-            decreases files.len() - k,
-        {
-            if files[k].text.len() < 4294967295 && sm.files.len() < 4294967295 {
-                let id: u32 = sm.add(files[k].name.clone(), files[k].text.clone());
-                let toks: Vec<lexer::Token> = lexer::lex(id, files[k].text.as_str(), &mut diags);
-                let p: ast::Program = parser::parse(toks, &mut diags, files[k].text.as_str());
-                ast::append::<ast::Mod>(&mut mods, p.mods);
-            }
-            k = k + 1;
-        }
-        let mut program: ast::Program = ast::Program { mods: mods };
-        stdlib::add(&mut sm, &mut program, &mut diags);
-        let ck: body::Checked = body::check_resolved(program, &mut diags);
+        let ck: body::Checked = frontend(files, &mut sm, &mut diags);
         Outcome { ok: !diags.has_errors(), text: diags.to_jsonl(&sm) }
     }
 
@@ -150,6 +134,55 @@ mod lib {
             }
             out.push_str(units[u].text.as_str());
             u = u + 1;
+        }
+        Outcome { ok: true, text: out }
+    }
+
+    #[summary("앞단: 파일들을 한 프로그램으로 읽고, 그것이 부르는 라이브러리 단위를 붙이고(ADR-0092 §1), 검사한다 (stage0 lib.rs의 frontend)")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn frontend(files: &[Input], sm: &mut source::SourceMap, diags: &mut diag::Diags) -> body::Checked {
+        let mut mods: Vec<ast::Mod> = Vec::new();
+        let mut k: usize = 0;
+        while k < files.len()
+            decreases files.len() - k,
+        {
+            if files[k].text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let id: u32 = sm.add(files[k].name.clone(), files[k].text.clone());
+                let toks: Vec<lexer::Token> = lexer::lex(id, files[k].text.as_str(), diags);
+                let p: ast::Program = parser::parse(toks, diags, files[k].text.as_str());
+                ast::append::<ast::Mod>(&mut mods, p.mods);
+            }
+            k = k + 1;
+        }
+        let mut program: ast::Program = ast::Program { mods: mods };
+        stdlib::add(sm, &mut program, diags);
+        body::check_resolved(program, diags)
+    }
+
+    #[summary("bmb hash (ADR-0059 §1): 정의와 타입 선언마다 정체성과 몸·겉의 해시를 경로의 순서로, JSONL로. 오류가 있으면 진단만 내고 ok가 거짓")]
+    #[effects(alloc)]
+    fn hash(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let ck: body::Checked = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let rows: Vec<identity::DefHash> = identity::hashes(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+        let mut out: String = String::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            out.push_str("{\"def\":");
+            std::json::push_string(&mut out, rows[i].path.as_str());
+            out.push_str(",\"id\":\"");
+            out.push_str(rows[i].id.as_str());
+            out.push_str("\",\"body\":\"");
+            out.push_str(rows[i].body.as_str());
+            out.push_str("\",\"iface\":\"");
+            out.push_str(rows[i].iface.as_str());
+            out.push_str("\"}\n");
         }
         Outcome { ok: true, text: out }
     }

@@ -590,6 +590,49 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "hash",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "hash",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "hash",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "hash-together",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "hash",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "hash",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

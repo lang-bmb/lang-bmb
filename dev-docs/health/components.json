@@ -13,11 +13,12 @@
       ],
       "port": [
         "selfhost/diag.bmb",
-        "selfhost/source.bmb"
+        "selfhost/source.bmb",
+        "selfhost/sha256.bmb"
       ],
       "pin": {
         "stage0": "c9b9e2f7c2b8106a8c37fcbbff11b77eea00cc3d24bd18f74e957c422cbdffc1",
-        "port": "298b3816dc1ef4919dc349c987098181200253cb6ef853072c0b8f927d9fddb7"
+        "port": "ae536e196947afc9476e49a53b0127ebeb66c1cc6959246cebdfd5b6e4c628f0"
       },
       "ledger": {
         "session_tokens": null,
@@ -31,7 +32,8 @@
           "정렬은 색인의 삽입 정렬을 직접 썼고 색인의 범위는 실행 때 확인한다(`diag::placed`·`to_jsonl`). `std::slice::sort_indices`는 키가 `Ord` 하나라 네 겹의 순서에 쓰려면 네 번 돌려야 한다: 그대로 둠",
           "정규형이 주석을 버린다. 설명은 항목의 `#[summary]`로 옮겼다: 그대로 둠",
           "튜플이 없어 `line_col`은 구조체 `Pos`를 낸다: 그대로 둠",
-          "이 행의 배율은 포트 파일이 있는 `diag`·`source`(stage0 852줄)에 대한 것이다. `sha256`·`json`은 `lib/std`가 대신하고(467줄·945줄 대 82줄·311줄) 포트 줄에 세지 않는다. 구동기 `selfhost/main.bmb`는 국면마다 자라므로 C13의 포트 목록에는 P11에서 넣는다"
+          "이 행의 배율은 포트 파일이 있는 `diag`·`source`(stage0 852줄)에 대한 것이다. `sha256`·`json`은 `lib/std`가 대신하고(467줄·945줄 대 82줄·311줄) 포트 줄에 세지 않는다. 구동기 `selfhost/main.bmb`는 국면마다 자라므로 C13의 포트 목록에는 P11에서 넣는다",
+          "`4D-03f1`(`sha256`, `selfhost/sha256.bmb`): stage0 107줄이 174줄, 정의 6개. 상태와 낱말 열은 길이를 계약에 적은 `Vec<u32>`다(`h.len() == 8`), 상수 `K`는 함수 안의 배열 리터럴을 색인으로 읽는 `k(i)`다(전제 `i < 64`). `u32`의 `rotate_right`·`wrapping_add`·비트 연산은 내장이라 그대로다. `bmb verify` 첫 회에 1개 실패: 16진 자리를 글 `\"0123456789abcdef\"`의 조각 `&s[a..a + 1]`로 붙이던 것(문자 경계 E0820, 임의의 `&str`에서는 참이 아니다)을 `char::from_u32`로 바꿨다"
         ]
       }
     },
@@ -116,7 +118,8 @@
         "identity.rs"
       ],
       "port": [
-        "selfhost/fmt.bmb"
+        "selfhost/fmt.bmb",
+        "selfhost/identity.bmb"
       ],
       "pin": null,
       "ledger": {
@@ -124,10 +127,12 @@
         "gate_runs": null,
         "undecided_runs": null,
         "friction": [
-          "`fmt`는 `dump parse`가 쓰는 부분만 옮겼다(쓴 그대로의 정규형, 1,890줄). 이름을 지운 정체성 글, 한정 글, 해시(`fmt.rs`의 약 700줄)와 `identity.rs`는 P3에서 검사기와 함께 옮긴다: 이 행은 닫히지 않았고 고정하지 않는다. 배율은 옮긴 부분이 stage0 `fmt.rs` 전체와 견줘진 것이라 낮게 나온다",
+          "`fmt`는 처음에 `dump parse`가 쓰는 부분만 옮겼다(쓴 그대로의 정규형, 1,890줄). 정체성 글과 한정 글의 방식은 `4D-03f1`, `identity`는 `4D-03f2`에서 옮겼다. 한정 글의 함수(`qualified_text` 등)는 `4D-03f4`: 그때까지 이 행은 닫히지 않았고 고정하지 않는다",
           "`String`에 `pop`·`truncate`가 없다. 줄 끝을 고치는 두 곳(`}`와 `else`를 잇기, trait 메서드의 `;`)은 그 조각을 따로 받아 잘라 붙인다: 그대로 둠",
           "`sort_by`가 없어 이름 순서는 `std::slice::sort_indices`(키의 안정 정렬 순서)로 얻는다. 그 길이 전제를 실행 때 확인하던 것은 `4D-22`가 전제를 지워 걷었다(해소). 돌려받은 자리의 범위는 쓰는 곳에서 확인한다: 그대로 둠",
-          "`BTreeMap<(u32, u32, u32), String>`(길이 이름)은 구조체의 `Vec`와 뒤에서부터의 선형 탐색이다: 그대로 둠, 단위마다 몇 개뿐"
+          "`BTreeMap<(u32, u32, u32), String>`(길이 이름)은 구조체의 `Vec`와 뒤에서부터의 선형 탐색이다: 그대로 둠, 단위마다 몇 개뿐",
+          "`4D-03f1`(출력기의 이름 방식): 구조체가 참조를 들 수 없어 `Printer<'a>`의 `Option<IdMode<'a>>`(검사기의 표와 `&dyn Resolve`)는 출력기가 가진 값 `Names`가 됐다: 방식(`Mode`), 검사기의 표의 사본, 묶인 이름의 표. `dyn Resolve`의 두 구현(참조를 모으는 `Collect`, 성분을 해시하며 쓰는 `Final`)은 방식 둘(`Mode::Collect`·`Mode::Identity`)과 참조의 글을 담은 표 `refs`다: 정체성이 글을 찍기 전에 그 글이 가리키는 것들(참조 그래프의 간선)의 글을 표에 놓는다. `RefCell`로 모으던 열쇠는 출력기의 `seen`이다. 메서드 36개를 더했고 기존 자리 23곳을 바꿨다. `bmb check`의 첫 진단 2개(E0414, E0303), `bmb verify`는 첫 회에 전부 통과(1,451개)",
+          "`4D-03f2`(`identity`, `selfhost/identity.bmb`): stage0 791줄이 778줄, 정의 32개. 구문을 가리키던 참조(`Ent<'p>`의 `&'p FnDef` 등)는 사본이다(프로그램 하나를 한 번 더 든다). `Key`(열거형)는 종류 숫자와 경로를 이은 글이다: 글의 순서가 `Key`의 순서가 되도록 숫자를 골랐다(0 정의, 1 타입, 2 trait). `BTreeMap<Key, _>`은 `table::Table`, `BTreeSet<Key>`는 줄 세운 `Vec<String>`이다. Tarjan의 `while let Some(..) = frames.last_mut()`은 색인으로 읽는 `while`과 걸음의 한도(`fuel`, `decreases`)다: 끝남을 구조로 보이지 못한다. `&mut self.pr`와 `self`의 다른 필드를 함께 넘길 수 없어(E0410) 출력기는 `Ids` 밖에 두고 메서드마다 인자로 넘긴다. `bmb check`의 첫 진단 9개(E0414 넷, E0303 넷, E0426 하나: `match`의 갈래 순서), `bmb verify`는 첫 회에 전부 통과(1,485개). stage0과의 첫 대조에서 차이 하나(정의의 자리 열쇠: `body::DefRow`의 자리는 이름의 자리다), 고친 뒤 0"
         ]
       }
     },

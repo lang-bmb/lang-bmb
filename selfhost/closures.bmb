@@ -1092,7 +1092,7 @@ mod closures {
                 let mut msg2: String = String::from("a closure that captures (`");
                 push_joined(&mut msg2, caps.as_slice(), "`, `");
                 msg2.push_str("`) is written `move`");
-                let mut pr: fmt::Printer = fmt::Printer { out: String::new(), lens: Vec::new() };
+                let mut pr: fmt::Printer = fmt::plain();
                 let mut repl: String = String::from("move ");
                 repl.push_str(pr.closure_text(cl, 1000000000).as_str());
                 st.pending.push(diag::fix(diag::new("E0262", cl.span, msg2.as_str()), "write `move` before the closure: captures move into it (ADR-0053 §2)", Some(repl)));

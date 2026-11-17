@@ -1,0 +1,132 @@
+#[summary("identity hashes: recursive components, colour refinement, trait method order, nominal types")]
+mod idn {
+    #[summary("same structure as Sq: a different type, by its impls")]
+    struct Big { n: i64 }
+
+    impl Shape for Big {
+        #[effects(pure)]
+        fn area(self: &Big) -> i64 { self.n }
+
+        #[effects(pure)]
+        fn grow(self: &Big, by: i64) -> i64 { self.n.wrapping_add(by) }
+    }
+
+    enum Tree { Leaf, Node(Box<Tree>, i64, Box<Tree>) }
+
+    struct Pair<T: Copy> { a: T, b: T }
+
+    impl<T: Copy> Pair<T> {
+        #[effects(pure)]
+        fn first(self: &Pair<T>) -> T { self.a }
+
+        #[effects(pure)]
+        fn swap(self: &Pair<T>) -> Pair<T> { Pair { a: self.b, b: self.a } }
+    }
+
+    struct Sq { side: i64 }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 { self.side.wrapping_mul(self.side) }
+
+        #[effects(pure)]
+        fn grow(self: &Sq, by: i64) -> i64 { self.side.wrapping_add(by) }
+    }
+
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn grow(self: &Self, by: i64) -> i64;
+
+        #[effects(pure)]
+        fn twice(self: &Self) -> i64 { self.area().wrapping_add(self.area()) }
+    }
+
+    #[summary("alpha-equivalent to pong: a symmetric component, ordered by path")]
+    #[effects(pure)]
+    fn ping(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { pong(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn pong(m: u64) -> u64
+        decreases m,
+    {
+        if m == 0 { 0 } else { ping(m - 1) }
+    }
+
+    #[summary("alike once erased, told apart by refinement: even reaches a different leaf than odd")]
+    #[effects(pure)]
+    fn even(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 { leaf_a() } else { odd(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn odd(n: u64) -> bool
+        decreases n,
+    {
+        if n == 0 { leaf_b() } else { even(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn leaf_a() -> bool { true }
+
+    #[effects(pure)]
+    fn leaf_b() -> bool { false }
+
+    #[effects(pure)]
+    fn depth(t: &Tree, f: u64) -> u64
+        decreases f,
+    {
+        if f == 0 {
+            return 0;
+        }
+        match t {
+            Tree::Leaf => 0,
+            Tree::Node(l, v, r) => { let a: u64 = depth(&**l, f - 1); let b: u64 = depth(&**r, f - 1); if a < b { b.wrapping_add(1) } else { a.wrapping_add(1) } },
+        }
+    }
+
+    spec fn small(x: i64) -> bool { 0 <= x && x < 100 }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn clamp(x: i64) -> (r: i64)
+        ensures small(r),
+    {
+        if x < 0 { 0 } else if x > 99 { 99 } else { x }
+    }
+
+    #[effects(pure)]
+    fn total<S: Shape>(s: &S) -> i64 { s.area().wrapping_add(s.twice()) }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let p: Pair<i64> = Pair { a: 1, b: 2 };
+        let q: Pair<i64> = p.swap();
+        let b: i64 = q.b;
+        let mut sum: i64 = q.a;
+        'outer: for i in 0..3 {
+            for j in 0..3 {
+                if j > i {
+                    continue 'outer;
+                }
+                sum = sum.wrapping_add(b);
+            }
+        }
+        let t: Tree = Tree::Node(Box::new(Tree::Leaf), 1, Box::new(Tree::Leaf));
+        print_u64(depth(&t, 10));
+        print_i64(sum.wrapping_add(total::<Sq>(&Sq { side: 3 })).wrapping_add(total::<Big>(&Big { n: 4 })));
+        print_i64(clamp(sum));
+        print_u64(ping(3));
+        if even(4) && !odd(4) {
+            print_i64(p.first());
+        }
+    }
+}
