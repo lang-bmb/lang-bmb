@@ -1,0 +1,76 @@
+{
+ "id": "c20-state-gcalls",
+ "kind": "comprehend",
+ "family": "state",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions change the field `gcalls` of `body::Body`: assign it, add to it, remove from it, clear it, or pass it on as `&mut`? Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions change the field `gcalls` of `check::Checker`: assign it, add to it, remove from it, clear it, or pass it on as `&mut`? Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "check::Checker::call",
+   "check::Checker::check_recursion"
+  ],
+  "bmb": [
+   "body::Body::call_record",
+   "body::Body::check_recursion"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "answer",
+    {
+     "defs": [
+      "body::Body::call_record",
+      "body::Body::check_recursion"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "\\.gcalls\\b"
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "check::Checker::call",
+      "check::Checker::check_recursion"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "body::Body::check_recursion"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "check::Checker::check_recursion"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

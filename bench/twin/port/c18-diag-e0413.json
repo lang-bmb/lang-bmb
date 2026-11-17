@@ -1,0 +1,97 @@
+{
+ "id": "c18-diag-e0413",
+ "kind": "comprehend",
+ "family": "diag",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions report the diagnostic code `E0413`, that is, write the code in their own body? Leave out the table that lists every code. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions report the diagnostic code `E0413`, that is, write the code in their own body? Leave out the table that lists every code. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "moves::Mv::move_out",
+   "moves::Mv::stmt",
+   "moves::Mv::use_path",
+   "moves::Mv::use_var"
+  ],
+  "bmb": [
+   "moves::assign_field",
+   "moves::deref_expr",
+   "moves::expr",
+   "moves::field_expr",
+   "moves::match_expr",
+   "moves::use_path",
+   "moves::use_var"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "answer",
+    {
+     "defs": [
+      "moves::assign_field",
+      "moves::deref_expr",
+      "moves::expr",
+      "moves::field_expr",
+      "moves::match_expr",
+      "moves::use_path",
+      "moves::use_var"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "\"E0413\""
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "moves::Mv::move_out",
+      "moves::Mv::stmt",
+      "moves::Mv::use_path",
+      "moves::Mv::use_var"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "moves::deref_expr",
+       "moves::expr",
+       "moves::field_expr",
+       "moves::match_expr",
+       "moves::use_path",
+       "moves::use_var"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "moves::Mv::stmt",
+       "moves::Mv::use_path",
+       "moves::Mv::use_var"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

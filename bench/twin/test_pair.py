@@ -104,5 +104,36 @@ class Gate(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr[-4000:])
 
 
+class Port(unittest.TestCase):
+    """The comprehension tasks on the port twin (backlog 3P-02)."""
+
+    def test_rust_index_names_methods_by_their_type(self):
+        import index
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "compiler", "src"))
+            with open(os.path.join(d, "compiler", "src", "m.rs"), "w") as f:
+                f.write('fn free(x: i64) -> i64 {\n    x // "E0001"\n}\n\nimpl<\'a> T<\'a> {\n    pub fn get(&self) -> i64 {\n'
+                        '        free(self.x)\n    }\n}\n\nimpl Tr for U {\n    fn run(&mut self) {\n        self.n += 1;\n'
+                        '    }\n}\n\n#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n')
+            it = index.rust_index(d, ["m.rs"])
+        self.assertEqual(sorted(it), ["m::T::get", "m::U::run", "m::free"])
+        self.assertNotIn("E0001", it["m::free"])  # a comment is not the function's text
+        self.assertEqual(index.callers(it, "m::free"), {"m::T::get"})
+
+    def test_tasks_are_generated_and_the_index_agrees_with_the_map(self):
+        r = subprocess.run([sys.executable, os.path.join(HERE, "port_tasks.py"), "check"], capture_output=True,
+                           text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_oracles_pass_and_weak_controls_fail(self):
+        tasks = {t["id"]: t for t in pair.load_tasks(os.path.join(HERE, "port"))}
+        self.assertGreaterEqual(len(tasks), 20)
+        for family in ("callers", "diag"):
+            t = next(t for t in tasks.values() if t["family"] == family)
+            for arm in ("bmb", "rust"):
+                self.assertTrue(pair.run_task(t, arm, "oracle")["success"], (t["id"], arm))
+                self.assertFalse(pair.run_task(t, arm, "weak0", t["weak"][0][arm])["success"], (t["id"], arm))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,99 @@
+{
+ "id": "c05-callers-cond_expr",
+ "kind": "comprehend",
+ "family": "callers",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `parser::Parser::cond_expr` directly? Leave out `parser::Parser::cond_expr` itself unless it calls itself. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `parser::Parser::cond_expr` directly? Leave out `parser::Parser::cond_expr` itself unless it calls itself. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "parser::Parser::parse_if",
+   "parser::Parser::parse_if_let",
+   "parser::Parser::parse_match",
+   "parser::Parser::parse_while_inner"
+  ],
+  "bmb": [
+   "parser::Parser::parse_if",
+   "parser::Parser::parse_if_let",
+   "parser::Parser::parse_match",
+   "parser::Parser::parse_while_inner"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "parser::Parser::cond_expr",
+      "in",
+      "1"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::parse_if",
+      "parser::Parser::parse_if_let",
+      "parser::Parser::parse_match",
+      "parser::Parser::parse_while_inner"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])cond_expr\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::parse_if",
+      "parser::Parser::parse_if_let",
+      "parser::Parser::parse_match",
+      "parser::Parser::parse_while_inner"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_if_let",
+       "parser::Parser::parse_match",
+       "parser::Parser::parse_while_inner"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_if_let",
+       "parser::Parser::parse_match",
+       "parser::Parser::parse_while_inner"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

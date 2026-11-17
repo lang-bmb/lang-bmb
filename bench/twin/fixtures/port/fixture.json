@@ -1,0 +1,27 @@
+{
+ "about": "The port twin (ADR-0104): stage0's components C0~C4 and their port, taken from the repository at the task's commit. The Rust arm sees only the files of those components (they do not build alone: a comprehension task builds nothing).",
+ "bmb": {
+  "dir": "selfhost"
+ },
+ "rust": {
+  "dir": "compiler",
+  "files": [
+   "src/source.rs",
+   "src/diag.rs",
+   "src/sha256.rs",
+   "src/json.rs",
+   "src/lexer.rs",
+   "src/parser.rs",
+   "src/ast.rs",
+   "src/fmt.rs",
+   "src/identity.rs",
+   "src/check.rs",
+   "src/check/text.rs",
+   "src/moves.rs",
+   "src/consts.rs",
+   "src/closures.rs",
+   "src/refs.rs",
+   "src/stdlib.rs"
+  ]
+ }
+}

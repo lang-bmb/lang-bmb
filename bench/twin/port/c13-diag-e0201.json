@@ -1,0 +1,76 @@
+{
+ "id": "c13-diag-e0201",
+ "kind": "comprehend",
+ "family": "diag",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions report the diagnostic code `E0201`, that is, write the code in their own body? Leave out the table that lists every code. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions report the diagnostic code `E0201`, that is, write the code in their own body? Leave out the table that lists every code. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "check::Checker::settle_lets",
+   "check::Checker::stmt"
+  ],
+  "bmb": [
+   "body::Body::let_untyped",
+   "body::settle_diag"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "answer",
+    {
+     "defs": [
+      "body::Body::let_untyped",
+      "body::settle_diag"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "\"E0201\""
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "check::Checker::settle_lets",
+      "check::Checker::stmt"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "body::settle_diag"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "check::Checker::stmt"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

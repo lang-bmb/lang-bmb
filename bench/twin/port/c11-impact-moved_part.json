@@ -1,0 +1,129 @@
+{
+ "id": "c11-impact-moved_part",
+ "kind": "comprehend",
+ "family": "impact",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `moves::moved_part` directly, or call one of its direct callers (its callers up to two levels)? Leave out `moves::moved_part` itself unless it is called from one of them. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `moves::Mv::moved_part` directly, or call one of its direct callers (its callers up to two levels)? Leave out `moves::Mv::moved_part` itself unless it is called from one of them. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "moves::Mv::block",
+   "moves::Mv::drop_paths",
+   "moves::Mv::expr",
+   "moves::Mv::join_branches",
+   "moves::Mv::jump",
+   "moves::Mv::owned_now",
+   "moves::Mv::replace_at",
+   "moves::Mv::stmt",
+   "moves::Mv::use_path",
+   "moves::Mv::use_var",
+   "moves::check"
+  ],
+  "bmb": [
+   "moves::drop_paths",
+   "moves::expr",
+   "moves::field_expr",
+   "moves::has_moved_part",
+   "moves::replace_at",
+   "moves::use_path",
+   "moves::use_var"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "moves::moved_part",
+      "in",
+      "2"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "moves::drop_paths",
+      "moves::expr",
+      "moves::field_expr",
+      "moves::has_moved_part",
+      "moves::replace_at",
+      "moves::use_path",
+      "moves::use_var"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])moved_part\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "moves::Mv::block",
+      "moves::Mv::drop_paths",
+      "moves::Mv::expr",
+      "moves::Mv::join_branches",
+      "moves::Mv::jump",
+      "moves::Mv::owned_now",
+      "moves::Mv::replace_at",
+      "moves::Mv::stmt",
+      "moves::Mv::use_path",
+      "moves::Mv::use_var",
+      "moves::check"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "moves::expr",
+       "moves::field_expr",
+       "moves::has_moved_part",
+       "moves::replace_at",
+       "moves::use_path",
+       "moves::use_var"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "moves::Mv::drop_paths",
+       "moves::Mv::expr",
+       "moves::Mv::join_branches",
+       "moves::Mv::jump",
+       "moves::Mv::owned_now",
+       "moves::Mv::replace_at",
+       "moves::Mv::stmt",
+       "moves::Mv::use_path",
+       "moves::Mv::use_var",
+       "moves::check"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

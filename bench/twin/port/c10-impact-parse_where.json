@@ -1,0 +1,111 @@
+{
+ "id": "c10-impact-parse_where",
+ "kind": "comprehend",
+ "family": "impact",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `parser::Parser::parse_where` directly, or call one of its direct callers (its callers up to two levels)? Leave out `parser::Parser::parse_where` itself unless it is called from one of them. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `parser::Parser::parse_where` directly, or call one of its direct callers (its callers up to two levels)? Leave out `parser::Parser::parse_where` itself unless it is called from one of them. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "parser::Parser::impl_body",
+   "parser::Parser::parse_fn",
+   "parser::Parser::parse_impl",
+   "parser::Parser::parse_mod_inner",
+   "parser::Parser::parse_trait",
+   "parser::Parser::parse_type_def"
+  ],
+  "bmb": [
+   "parser::Parser::impl_body",
+   "parser::Parser::parse_fn",
+   "parser::Parser::parse_impl",
+   "parser::Parser::parse_mod_inner",
+   "parser::Parser::parse_trait",
+   "parser::Parser::parse_type_def"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "parser::Parser::parse_where",
+      "in",
+      "2"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::impl_body",
+      "parser::Parser::parse_fn",
+      "parser::Parser::parse_impl",
+      "parser::Parser::parse_mod_inner",
+      "parser::Parser::parse_trait",
+      "parser::Parser::parse_type_def"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])parse_where\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::impl_body",
+      "parser::Parser::parse_fn",
+      "parser::Parser::parse_impl",
+      "parser::Parser::parse_mod_inner",
+      "parser::Parser::parse_trait",
+      "parser::Parser::parse_type_def"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_fn",
+       "parser::Parser::parse_impl",
+       "parser::Parser::parse_mod_inner",
+       "parser::Parser::parse_trait",
+       "parser::Parser::parse_type_def"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_fn",
+       "parser::Parser::parse_impl",
+       "parser::Parser::parse_mod_inner",
+       "parser::Parser::parse_trait",
+       "parser::Parser::parse_type_def"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

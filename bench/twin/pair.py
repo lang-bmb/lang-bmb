@@ -185,8 +185,11 @@ if DOCS not in ("summary", "none", "all"):
 
 def strip_summaries(text):
     """BMB source without its definition summaries: the `///` lines go (a
-    fixture writes them only in that form, `doc_parity`)."""
-    return "".join(ln for ln in text.splitlines(keepends=True) if not ln.lstrip().startswith("///"))
+    fixture writes them in that form, `doc_parity`) and the `#[summary(..)]`
+    lines of definitions (the normal form's, as the port is written). A
+    unit's own summary, at the start of a line, stays."""
+    return "".join(ln for ln in text.splitlines(keepends=True)
+                   if not ln.lstrip().startswith("///") and not re.match(r"\s+#\[summary\(", ln))
 
 
 def bmb_sources(src, dest, docs):
@@ -211,6 +214,9 @@ def materialize(task, arm, dest):
     documentation condition `DOCS`: a workspace (`bmb import`) or a crate.
     A task with `commit` takes the fixture from that
     commit (`git archive`), so a task replays a fixed state."""
+    spec = repo_fixture(task["fixture"])
+    if spec:
+        return materialize_repo(task, arm, dest, spec[arm])
     src = os.path.join(fixture_dir(task["fixture"]), arm)
     if task.get("commit"):
         rel = os.path.relpath(src, ROOT)
@@ -227,6 +233,42 @@ def materialize(task, arm, dest):
         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("target"))
         if DOCS != "all":
             strip_crate(dest, docs=DOCS == "summary")
+    return dest
+
+
+def repo_fixture(name):
+    """The spec of a fixture that is part of the repository itself
+    (`fixtures/NAME/fixture.json`: the port twin, ADR-0104), or None."""
+    f = os.path.join(fixture_dir(name), "fixture.json")
+    if not os.path.exists(f):
+        return None
+    with open(f, encoding="utf-8") as h:
+        return json.load(h)
+
+
+def materialize_repo(task, arm, dest, spec):
+    """The arm's copy of a repository fixture at the task's commit: the
+    BMB directory imported as a workspace, or the listed files of the Rust
+    crate under `dest/src`."""
+    tmp = tempfile.mkdtemp(prefix="pair-src-")
+    try:
+        tar = subprocess.run(["git", "archive", task["commit"], spec["dir"]], cwd=ROOT, capture_output=True,
+                             check=True).stdout
+        subprocess.run(["tar", "-x", "-C", tmp], input=tar, check=True)
+        src = os.path.join(tmp, spec["dir"])
+        if arm == "bmb":
+            files = bmb_sources(src, os.path.join(tmp, "stripped"), DOCS)
+            r = subprocess.run([bmb_bin(), "import", dest, *files], capture_output=True, text=True)
+            if r.returncode != 0:
+                raise RuntimeError(f"bmb import failed: {r.stdout}{r.stderr}")
+        else:
+            for f in spec["files"]:
+                os.makedirs(os.path.dirname(os.path.join(dest, f)), exist_ok=True)
+                shutil.copy(os.path.join(src, f), os.path.join(dest, f))
+            if DOCS != "all":
+                strip_crate(dest, docs=DOCS == "summary")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return dest
 
 
@@ -594,7 +636,10 @@ class Scripted:
 def prompt(arm, task):
     with open(os.path.join(HERE, f"prompt-{arm}.md"), encoding="utf-8") as f:
         system = f.read()
-    return system, task["prompt"]
+    # A task of a twin whose two sides name things differently has one
+    # prompt per arm (the same question in the arm's names).
+    user = task["prompt"]
+    return system, user[arm] if isinstance(user, dict) else user
 
 
 def make_agent(kind, arm, task, script=None):
@@ -656,7 +701,8 @@ def run_task(task, arm, agent_kind, script=None):
                "wall_s": round(time.perf_counter() - t0, 3), "model_usage": agent.usage,
                "stop": getattr(agent, "stop", None)}
         if comprehend:
-            want, got = set(task["truth"]), set(answer or [])
+            truth = task["truth"]
+            want, got = set(truth[arm] if isinstance(truth, dict) else truth), set(answer or [])
             tp = len(want & got)
             row.update(precision=round(tp / len(got), 3) if got else (1.0 if not want else 0.0),
                        recall=round(tp / len(want), 3) if want else 1.0, answered=answer is not None)
@@ -820,7 +866,10 @@ def cmd_check(a):
     tasks = load_tasks(a.tasks)
     problems = []
     for fx in sorted({t["fixture"] for t in tasks}):
-        problems += check_twins(fx)
+        # A repository fixture's twins are compared by the port's own
+        # differential tests (tests/port/cases.json).
+        if not repo_fixture(fx):
+            problems += check_twins(fx)
     for t in tasks:
         for arm in ("bmb", "rust"):
             r = run_task(t, arm, "oracle")

@@ -1,0 +1,93 @@
+{
+ "id": "c07-callers-parse_unary",
+ "kind": "comprehend",
+ "family": "callers",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `parser::Parser::parse_unary` directly? Leave out `parser::Parser::parse_unary` itself unless it calls itself. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `parser::Parser::parse_unary` directly? Leave out `parser::Parser::parse_unary` itself unless it calls itself. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "parser::Parser::compound_assign",
+   "parser::Parser::parse_cast",
+   "parser::Parser::parse_unary_inner"
+  ],
+  "bmb": [
+   "parser::Parser::compound_assign",
+   "parser::Parser::parse_cast",
+   "parser::Parser::parse_unary_inner"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "parser::Parser::parse_unary",
+      "in",
+      "1"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::compound_assign",
+      "parser::Parser::parse_cast",
+      "parser::Parser::parse_unary_inner"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])parse_unary\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::compound_assign",
+      "parser::Parser::parse_cast",
+      "parser::Parser::parse_unary_inner"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_cast",
+       "parser::Parser::parse_unary_inner"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::parse_cast",
+       "parser::Parser::parse_unary_inner"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

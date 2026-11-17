@@ -1,0 +1,93 @@
+{
+ "id": "c03-callers-type_ref",
+ "kind": "comprehend",
+ "family": "callers",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `fmt::Printer::type_ref` directly? Leave out `fmt::Printer::type_ref` itself unless it calls itself. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `fmt::IdMode::type_ref` directly? Leave out `fmt::IdMode::type_ref` itself unless it calls itself. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "fmt::IdMode::ty",
+   "fmt::Printer::applied_ty",
+   "fmt::Printer::stmt"
+  ],
+  "bmb": [
+   "fmt::Printer::applied_ty",
+   "fmt::Printer::id_kind",
+   "fmt::Printer::let_fields_head"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "fmt::Printer::type_ref",
+      "in",
+      "1"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "fmt::Printer::applied_ty",
+      "fmt::Printer::id_kind",
+      "fmt::Printer::let_fields_head"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])type_ref\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "fmt::IdMode::ty",
+      "fmt::Printer::applied_ty",
+      "fmt::Printer::stmt"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "fmt::Printer::id_kind",
+       "fmt::Printer::let_fields_head"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "fmt::Printer::applied_ty",
+       "fmt::Printer::stmt"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

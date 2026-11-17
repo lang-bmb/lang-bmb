@@ -1,0 +1,123 @@
+{
+ "id": "c08-impact-edit_distance",
+ "kind": "comprehend",
+ "family": "impact",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions call `types::edit_distance` directly, or call one of its direct callers (its callers up to two levels)? Leave out `types::edit_distance` itself unless it is called from one of them. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions call `check::edit_distance` directly, or call one of its direct callers (its callers up to two levels)? Leave out `check::edit_distance` itself unless it is called from one of them. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "check::Checker::arm_variant",
+   "check::Checker::field_type_of",
+   "check::Checker::struct_lit",
+   "check::Checker::unknown_local",
+   "check::Checker::unknown_trait",
+   "check::Checker::unknown_type",
+   "check::Checker::variant_value",
+   "check::closest"
+  ],
+  "bmb": [
+   "body::Body::arm_variant",
+   "body::Body::field_type_of",
+   "body::Body::struct_lit",
+   "body::Body::unknown_local",
+   "body::Body::unknown_variant",
+   "decls::Checker::unknown_trait",
+   "decls::Checker::unknown_type",
+   "types::closest"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "query",
+    {
+     "name": "edges",
+     "args": [
+      "types::edit_distance",
+      "in",
+      "2"
+     ]
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "body::Body::arm_variant",
+      "body::Body::field_type_of",
+      "body::Body::struct_lit",
+      "body::Body::unknown_local",
+      "body::Body::unknown_variant",
+      "decls::Checker::unknown_trait",
+      "decls::Checker::unknown_type",
+      "types::closest"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "(?<![\\w])edit_distance\\s*(?:::<[^>]*>)?\\("
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "check::Checker::arm_variant",
+      "check::Checker::field_type_of",
+      "check::Checker::struct_lit",
+      "check::Checker::unknown_local",
+      "check::Checker::unknown_trait",
+      "check::Checker::unknown_type",
+      "check::Checker::variant_value",
+      "check::closest"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "body::Body::field_type_of",
+       "body::Body::struct_lit",
+       "body::Body::unknown_local",
+       "body::Body::unknown_variant",
+       "decls::Checker::unknown_trait",
+       "decls::Checker::unknown_type",
+       "types::closest"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "check::Checker::field_type_of",
+       "check::Checker::struct_lit",
+       "check::Checker::unknown_local",
+       "check::Checker::unknown_trait",
+       "check::Checker::unknown_type",
+       "check::Checker::variant_value",
+       "check::closest"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

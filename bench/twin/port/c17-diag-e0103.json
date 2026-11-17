@@ -1,0 +1,94 @@
+{
+ "id": "c17-diag-e0103",
+ "kind": "comprehend",
+ "family": "diag",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions report the diagnostic code `E0103`, that is, write the code in their own body? Leave out the table that lists every code. Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions report the diagnostic code `E0103`, that is, write the code in their own body? Leave out the table that lists every code. Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "parser::Parser::body_clauses",
+   "parser::Parser::compound_assign",
+   "parser::Parser::err_expected",
+   "parser::Parser::parse_clauses",
+   "parser::Parser::parse_impl"
+  ],
+  "bmb": [
+   "parser::Parser::body_clauses",
+   "parser::Parser::compound_assign",
+   "parser::Parser::err_expected",
+   "parser::Parser::parse_clauses",
+   "parser::Parser::parse_impl"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::body_clauses",
+      "parser::Parser::compound_assign",
+      "parser::Parser::err_expected",
+      "parser::Parser::parse_clauses",
+      "parser::Parser::parse_impl"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "\"E0103\""
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "parser::Parser::body_clauses",
+      "parser::Parser::compound_assign",
+      "parser::Parser::err_expected",
+      "parser::Parser::parse_clauses",
+      "parser::Parser::parse_impl"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::compound_assign",
+       "parser::Parser::err_expected",
+       "parser::Parser::parse_clauses",
+       "parser::Parser::parse_impl"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "parser::Parser::compound_assign",
+       "parser::Parser::err_expected",
+       "parser::Parser::parse_clauses",
+       "parser::Parser::parse_impl"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}

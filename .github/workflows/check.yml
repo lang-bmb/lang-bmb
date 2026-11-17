@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The port-twin tasks take the twin from a fixed commit (bench/twin/port).
+          fetch-depth: 0
       - name: Rust toolchain (pinned by rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - name: Pinned tools (z3, LLVM)

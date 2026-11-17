@@ -1,0 +1,88 @@
+{
+ "id": "c22-state-typed_uses",
+ "kind": "comprehend",
+ "family": "state",
+ "fixture": "port",
+ "commit": "c5d56302338a390dc4130146b68eb48b55a1d25b",
+ "prompt": {
+  "bmb": "Which functions change the field `typed_uses` of `body::Body`: assign it, add to it, remove from it, clear it, or pass it on as `&mut`? Answer with the full paths as the map shows them (for example `body::Body::call`).",
+  "rust": "Which functions change the field `typed_uses` of `check::Checker`: assign it, add to it, remove from it, clear it, or pass it on as `&mut`? Answer with `module::function`, or `module::Type::method` for a method of an `impl` block; the module is the file under `src/` with `::` for `/` (for example `check::Checker::call`, `check::text::Checker::text_arg`)."
+ },
+ "truth": {
+  "rust": [
+   "check::Checker::check_fn",
+   "check::Checker::expr",
+   "check::Checker::settle_lets",
+   "check::Checker::stmt"
+  ],
+  "bmb": [
+   "body::Body::check_fn",
+   "body::Body::expr",
+   "body::Body::let_typed",
+   "body::Body::settle_lets"
+  ]
+ },
+ "oracle": {
+  "bmb": [
+   [
+    "answer",
+    {
+     "defs": [
+      "body::Body::check_fn",
+      "body::Body::expr",
+      "body::Body::let_typed",
+      "body::Body::settle_lets"
+     ]
+    }
+   ]
+  ],
+  "rust": [
+   [
+    "grep",
+    {
+     "pattern": "\\.typed_uses\\b"
+    }
+   ],
+   [
+    "answer",
+    {
+     "defs": [
+      "check::Checker::check_fn",
+      "check::Checker::expr",
+      "check::Checker::settle_lets",
+      "check::Checker::stmt"
+     ]
+    }
+   ]
+  ]
+ },
+ "weak": [
+  {
+   "fails": "answer",
+   "bmb": [
+    [
+     "answer",
+     {
+      "defs": [
+       "body::Body::expr",
+       "body::Body::let_typed",
+       "body::Body::settle_lets"
+      ]
+     }
+    ]
+   ],
+   "rust": [
+    [
+     "answer",
+     {
+      "defs": [
+       "check::Checker::expr",
+       "check::Checker::settle_lets",
+       "check::Checker::stmt"
+      ]
+     }
+    ]
+   ]
+  }
+ ]
+}
