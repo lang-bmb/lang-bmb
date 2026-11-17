@@ -1,0 +1,61 @@
+#[summary("경로 호출")]
+mod k {
+    struct P { x: i64 }
+
+    impl P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 { self.x }
+
+        #[effects(pure)]
+        fn pick<U: Copy>(self: &P, u: U) -> U { u }
+
+        #[effects(pure)]
+        fn make(x: i64) -> P { P { x: x } }
+    }
+
+    trait A {
+        #[effects(pure)]
+        fn name(self: &Self) -> i64;
+    }
+
+    trait B {
+        #[effects(pure)]
+        fn tag(self: &Self) -> i64;
+    }
+
+    trait C {
+        #[effects(pure)]
+        fn tag(self: &Self) -> i64;
+    }
+
+    trait D {
+        #[effects(pure)]
+        fn only(self: &Self) -> i64;
+    }
+
+    impl A for P {
+        #[effects(pure)]
+        fn name(self: &P) -> i64 { 1 }
+    }
+
+    impl B for P {
+        #[effects(pure)]
+        fn tag(self: &P) -> i64 { 2 }
+    }
+
+    impl C for P {
+        #[effects(pure)]
+        fn tag(self: &P) -> i64 { 3 }
+    }
+
+    impl D for P {
+        #[effects(pure)]
+        fn only(self: &P) -> i64 { 4 }
+    }
+
+    #[effects(pure)]
+    fn f(p: P) -> i64 {
+        let q: P = P::make(1);
+        A::name(&p) + P::name(&q) + B::tag(&p) + C::tag(&q) + P::pick::<i64>(&p, 4) + D::only(&q)
+    }
+}

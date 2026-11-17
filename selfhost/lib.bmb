@@ -1,5 +1,8 @@
 #[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, check")]
 mod lib {
+    #[summary("앞단의 결과: 쓴 프로그램(라이브러리 단위를 붙인)과 그것을 검사한 것")]
+    struct Front { source: ast::Program, ck: body::Checked }
+
     #[summary("소스 파일 하나: 이름과 글")]
     struct Input { name: String, text: String }
 
@@ -11,7 +14,7 @@ mod lib {
     fn check(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
-        let ck: body::Checked = frontend(files, &mut sm, &mut diags);
+        let fe: Front = frontend(files, &mut sm, &mut diags);
         Outcome { ok: !diags.has_errors(), text: diags.to_jsonl(&sm) }
     }
 
@@ -101,6 +104,33 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
+    #[summary("bmb fmt: 프로그램의 정규형 (ADR-0019 §1), 단위 이름의 순서로 줄 하나를 사이에 두고. 경로로 쓴 메서드 호출은 메서드 문법이 된다(ADR-0051). 라이브러리 단위는 프로그램의 글이 아니다(ADR-0092 §1). 오류가 있으면 진단만 내고 ok가 거짓")]
+    #[effects(alloc)]
+    fn format(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let normal: ast::Program = methodize::methodize(&fe.source, &fe.ck.program, &fe.ck.b.c.fns, &fe.ck.b.c.adts, &fe.ck.b.types);
+        let units: Vec<fmt::Unit> = fmt::format_units(&normal);
+        let mut out: String = String::new();
+        let mut n: usize = 0;
+        for i in 0..units.len()
+            invariant 0 <= i && i <= units.len(),
+        {
+            if units[i].name != "std" {
+                if n > 0 {
+                    out.push_str("\n");
+                }
+                out.push_str(units[i].text.as_str());
+                n = n.saturating_add(1);
+            }
+        }
+        Outcome { ok: true, text: out }
+    }
+
     #[summary("파일들을 읽기만 한(검사하지 않은) 프로그램의 정규형: 파서의 차등 시험이 견주는 출력. 단위의 글을 이름 순으로 빈 줄 하나씩 사이에 둔다")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
@@ -141,7 +171,7 @@ mod lib {
     #[summary("앞단: 파일들을 한 프로그램으로 읽고, 그것이 부르는 라이브러리 단위를 붙이고(ADR-0092 §1), 검사한다 (stage0 lib.rs의 frontend)")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
-    fn frontend(files: &[Input], sm: &mut source::SourceMap, diags: &mut diag::Diags) -> body::Checked {
+    fn frontend(files: &[Input], sm: &mut source::SourceMap, diags: &mut diag::Diags) -> Front {
         let mut mods: Vec<ast::Mod> = Vec::new();
         let mut k: usize = 0;
         while k < files.len()
@@ -157,7 +187,8 @@ mod lib {
         }
         let mut program: ast::Program = ast::Program { mods: mods };
         stdlib::add(sm, &mut program, diags);
-        body::check_resolved(program, diags)
+        let ck: body::Checked = body::check_resolved(program.clone(), diags);
+        Front { source: program, ck: ck }
     }
 
     #[summary("bmb hash (ADR-0059 §1): 정의와 타입 선언마다 정체성과 몸·겉의 해시를 경로의 순서로, JSONL로. 오류가 있으면 진단만 내고 ok가 거짓")]
@@ -165,11 +196,11 @@ mod lib {
     fn hash(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
-        let ck: body::Checked = frontend(files, &mut sm, &mut diags);
+        let fe: Front = frontend(files, &mut sm, &mut diags);
         if diags.has_errors() {
             return Outcome { ok: false, text: diags.to_jsonl(&sm) };
         }
-        let rows: Vec<identity::DefHash> = identity::hashes(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+        let rows: Vec<identity::DefHash> = identity::hashes(&fe.ck.program, &fe.ck.b.c.fns, &fe.ck.b.c.adts, &fe.ck.b.types);
         let mut out: String = String::new();
         for i in 0..rows.len()
             invariant 0 <= i && i <= rows.len(),

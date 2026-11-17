@@ -633,6 +633,72 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "fmt",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "fmt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fmt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fmt-check",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "fmt",
+        "--check",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fmt",
+        "--check",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fmt-together",
+      "component": "C3",
+      "a": [
+        "{bmb}",
+        "fmt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fmt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

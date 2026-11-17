@@ -1,0 +1,471 @@
+#[summary("메서드 호출의 정규형 (ADR-0051, 백로그 2M-02) (stage0 check::methodize의 포트, 백로그 4D-03f3): 경로로 쓴 메서드 호출 T::f(a, ..)를 x.f(..)로 고쳐 쓴다, 그것이 같은 함수를 같은 방식으로 가리킬 때. 고쳐 쓴 것은 다시 검사한다: 정체성 해시(부르는 것을 정체성으로, ADR-0059)가 바뀌거나 검사가 통과하지 않는 정의는 호출을 경로로 남긴다 (타고난 함수가 trait의 것을 가린다, 두 trait이 그 이름을 가진다, ..)")]
+mod methodize {
+    #[summary("메서드인 호출 경로: 수신자가 참조인가(&x를 x로 쓴다)와 함수의 온 경로")]
+    struct Callee { by_ref: bool, path: String }
+
+    #[summary("고쳐 쓴 호출 하나: 그 정의의 자리(열쇠)와 그 함수의 온 경로")]
+    struct Conv { def: String, path: String }
+
+    #[summary("고쳐 쓰는 손님. keep_calls와 keep_defs는 경로로 남기는 호출과 정의(자리의 열쇠), mp는 걷는 단위, fk는 걷는 정의의 이름의 자리(body::DefRow의 자리), conv는 고쳐 쓴 호출들(호출의 자리에서)")]
+    struct Rewrite { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, keep_calls: table::Table<bool>, keep_defs: table::Table<bool>, mp: String, fk: String, conv: table::Table<Conv> }
+
+    impl ast::ExprFn for Rewrite {
+        #[effects(alloc)]
+        fn expr(self: &mut Rewrite, e: &mut ast::Expr) -> () {
+            let ck: String = body::span_key(e.span);
+            if self.keep_calls.has(ck.as_str()) {
+                return;
+            }
+            let ca: ast::Call = match call_of(e) {
+                None => { return; },
+                Some(c) => c,
+            };
+            if is_method(&ca.method) || ca.args.len() == 0 || ca.path.len() == 0 {
+                return;
+            }
+            let found: Callee = match method_callee(&self.fns, &self.adts, self.mp.as_str(), ca.path.as_slice(), ca.targs.as_slice()) {
+                None => { return; },
+                Some(m) => m,
+            };
+            let recv: ast::Expr = receiver(&ca.args[0], found.by_ref);
+            let mut rest: Vec<ast::Expr> = Vec::new();
+            for i in 1..ca.args.len()
+                invariant 1 <= i && i <= ca.args.len(),
+            {
+                let at: usize = i as usize;
+                if at < ca.args.len() {
+                    rest.push(ca.args[at].clone());
+                }
+            }
+            let span: source::Span = e.span;
+            *e = ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(recv), name: ca.path[ca.path.len() - 1].clone(), args: rest }), span: span };
+            let def: String = self.fk.clone();
+            self.conv.insert(ck.as_str(), Conv { def: def, path: found.path });
+        }
+    }
+
+    #[summary("x.f(..)로 쓴 호출들이 가리키는 경로를 모으는 손님 (검사기가 푼 프로그램에서)")]
+    struct Seen { calls: table::Table<String> }
+
+    impl ast::ExprFn for Seen {
+        #[effects(alloc)]
+        fn expr(self: &mut Seen, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => {},
+                ast::ExprKind::Float(q4_ek_float0) => {},
+                ast::ExprKind::ByteLit(q4_ek_bytelit0) => {},
+                ast::ExprKind::ByteStr(q4_ek_bytestr0) => {},
+                ast::ExprKind::StrLit(q4_ek_strlit0) => {},
+                ast::ExprKind::CharLit(q4_ek_charlit0) => {},
+                ast::ExprKind::Bool(q4_ek_bool0) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(q4_ek_var0) => {},
+                ast::ExprKind::Call(ca) => { if is_method(&ca.method) { self.calls.insert(body::span_key(e.span).as_str(), fmt::path_str(ca.path.as_slice())); } },
+                ast::ExprKind::Method(q4_ek_method0) => {},
+                ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => {},
+                ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => {},
+                ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => {},
+                ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => {},
+                ast::ExprKind::If(q4_ek_if0) => {},
+                ast::ExprKind::Block(q4_ek_block0) => {},
+                ast::ExprKind::Array(q4_ek_array0) => {},
+                ast::ExprKind::Repeat(q4_ek_repeat0) => {},
+                ast::ExprKind::Old(q4_ek_old0) => {},
+                ast::ExprKind::Quant(q4_ek_quant0) => {},
+                ast::ExprKind::Trigger(q4_ek_trigger0) => {},
+                ast::ExprKind::Closure(q4_ek_closure0) => {},
+                ast::ExprKind::StructLit(q4_ek_structlit0) => {},
+                ast::ExprKind::Path(q4_ek_path0) => {},
+                ast::ExprKind::Deref(q4_ek_deref0) => {},
+                ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => {},
+                ast::ExprKind::Match(q4_ek_match0) => {},
+                ast::ExprKind::Return(q4_ek_return0) => {},
+                ast::ExprKind::Try(q4_ek_try0) => {},
+                ast::ExprKind::Loop(q4_ek_loop0) => {},
+                ast::ExprKind::Break(q4_ek_break0) => {},
+                ast::ExprKind::Continue(q4_ek_continue0) => {},
+                ast::ExprKind::Range(q4_ek_range0) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("모든 정의와 타입 선언의 몸의 정체성 해시, 경로에서")]
+    #[effects(alloc)]
+    fn body_hashes(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> table::Table<String> {
+        let rows: Vec<identity::DefHash> = identity::hashes(p, fns, adts, tys);
+        let mut out: table::Table<String> = table::new::<String>();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            out.insert(rows[i].path.as_str(), rows[i].body.clone());
+        }
+        out
+    }
+
+    #[summary("e가 경로 호출이면 그것")]
+    #[effects(alloc)]
+    fn call_of(e: &ast::Expr) -> Option<ast::Call> {
+        match &e.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => None,
+            ast::ExprKind::Float(q4_ek_float0) => None,
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => None,
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => None,
+            ast::ExprKind::StrLit(q4_ek_strlit0) => None,
+            ast::ExprKind::CharLit(q4_ek_charlit0) => None,
+            ast::ExprKind::Bool(q4_ek_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(q4_ek_var0) => None,
+            ast::ExprKind::Call(ca) => Some(ca.clone()),
+            ast::ExprKind::Method(q4_ek_method0) => None,
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => None,
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => None,
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => None,
+            ast::ExprKind::Ref(q4_ek_ref0, q4_ek_ref1) => None,
+            ast::ExprKind::If(q4_ek_if0) => None,
+            ast::ExprKind::Block(q4_ek_block0) => None,
+            ast::ExprKind::Array(q4_ek_array0) => None,
+            ast::ExprKind::Repeat(q4_ek_repeat0) => None,
+            ast::ExprKind::Old(q4_ek_old0) => None,
+            ast::ExprKind::Quant(q4_ek_quant0) => None,
+            ast::ExprKind::Trigger(q4_ek_trigger0) => None,
+            ast::ExprKind::Closure(q4_ek_closure0) => None,
+            ast::ExprKind::StructLit(q4_ek_structlit0) => None,
+            ast::ExprKind::Path(q4_ek_path0) => None,
+            ast::ExprKind::Deref(q4_ek_deref0) => None,
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => None,
+            ast::ExprKind::Match(q4_ek_match0) => None,
+            ast::ExprKind::Return(q4_ek_return0) => None,
+            ast::ExprKind::Try(q4_ek_try0) => None,
+            ast::ExprKind::Loop(q4_ek_loop0) => None,
+            ast::ExprKind::Break(q4_ek_break0) => None,
+            ast::ExprKind::Continue(q4_ek_continue0) => None,
+            ast::ExprKind::Range(q4_ek_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("함수들을 차례로 고쳐 쓴다: 남기기로 한 정의는 건너뛴다")]
+    #[effects(alloc)]
+    fn each_fn(fs: &mut Vec<ast::FnDef>, v: &mut Rewrite) -> () {
+        let n: usize = fs.len();
+        for i in 0..n
+            invariant fs.len() == n,
+        {
+            v.fk = body::span_key(fs[i].name.span);
+            if !v.keep_defs.has(v.fk.as_str()) {
+                ast::fn_exprs_mut::<Rewrite>(&mut fs[i], v, true, 1000000000);
+            }
+        }
+    }
+
+    #[summary("첫 매개변수 k가 수신자인가: 참조면 Some(true), 값이면 Some(false)")]
+    #[effects(alloc)]
+    fn first_param(k: &ast::TypeKind, is_trait: bool, owner: &str) -> Option<bool> {
+        match k {
+            ast::TypeKind::Int(q4_tk_int0) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::F64 => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Bool => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Unit => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Char => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::String => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Str => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Slice(q4_tk_slice0) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Ref(m, inner) => { if own(&inner.kind, is_trait, owner) { Some(true) } else { None } },
+            ast::TypeKind::Named(q4_tk_named0, q4_tk_named1) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Vec(q4_tk_vec0) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Box(q4_tk_box0) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Param(q4_tk_param0) => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Never => { if own(k, is_trait, owner) { Some(false) } else { None } },
+            ast::TypeKind::Error => { if own(k, is_trait, owner) { Some(false) } else { None } },
+        }
+    }
+
+    #[summary("자리 x가 자리 c 안에 있는가")]
+    #[effects(pure)]
+    fn inside(c: source::Span, x: source::Span) -> bool {
+        c.file == x.file && c.lo <= x.lo && x.hi <= c.hi
+    }
+
+    #[effects(pure)]
+    fn is_method(m: &Option<ast::Adjust>) -> bool {
+        match m {
+            None => false,
+            Some(a) => true,
+        }
+    }
+
+    #[summary("단위 mp에 쓴 경로 호출 path가 메서드를 가리키는가: 타고난 impl 함수이거나 trait의 메서드이고, 수신자가 있고, 제 타입 매개변수가 없다")]
+    #[effects(alloc)]
+    fn method_callee(fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, mp: &str, path: &[ast::Ident], targs: &[ast::TArgs]) -> Option<Callee> {
+        let n: usize = path.len();
+        if n < 2 {
+            return None;
+        }
+        let mut head: String = String::new();
+        for i in 0..n - 1
+            invariant 0 <= i && i <= n - 1,
+        {
+            let at: usize = i as usize;
+            if at < path.len() {
+                if at > 0 {
+                    head.push_str("::");
+                }
+                head.push_str(path[at].name.as_str());
+            }
+        }
+        let name: String = path[n - 1].name.clone();
+        let local: String = types::cat3(mp, "::", head.as_str());
+        let mut owner: String = local.clone();
+        let at: usize = match fns.find(types::cat3(local.as_str(), "::", name.as_str()).as_str()) {
+            None => match fns.find(types::cat3(head.as_str(), "::", name.as_str()).as_str()) { None => { return None; }, Some(j) => { owner = head.clone(); j }, },
+            Some(i) => i,
+        };
+        let is_trait: bool = match &fns.items[at].trait_of {
+            None => false,
+            Some(t) => *t == owner,
+        };
+        let no_trait: bool = match &fns.items[at].trait_of {
+            None => true,
+            Some(t) => false,
+        };
+        let inherent: bool = fns.items[at].in_impl && no_trait && adts.has(owner.as_str());
+        if fns.items[at].builtin && !fns.items[at].in_impl || !(is_trait || inherent) || fns.items[at].generics.len() != fns.items[at].impl_generics {
+            return None;
+        }
+        for i in 0..targs.len()
+            invariant 0 <= i && i <= targs.len(),
+        {
+            if is_trait || targs[i].seg != n - 2 {
+                return None;
+            }
+        }
+        if fns.items[at].params.len() == 0 {
+            return None;
+        }
+        match first_param(&fns.items[at].params[0], is_trait, owner.as_str()) {
+            None => None,
+            Some(by_ref) => Some(Callee { by_ref: by_ref, path: types::cat3(owner.as_str(), "::", name.as_str()) }),
+        }
+    }
+
+    #[summary("프로그램 src의 메서드 호출을 정규형으로. fns, adts, tys는 src를 검사한 표이고 resolved는 검사기가 푼 src다 (body::check_resolved)")]
+    #[effects(alloc)]
+    fn methodize(src: &ast::Program, resolved: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> ast::Program {
+        let want: table::Table<String> = body_hashes(resolved, fns, adts, tys);
+        let mut keep_calls: table::Table<bool> = table::new::<bool>();
+        let mut keep_defs: table::Table<bool> = table::new::<bool>();
+        let mut p: ast::Program = src.clone();
+        let mut fuel: usize = 1000000000;
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            p = src.clone();
+            let mut v: Rewrite = Rewrite { fns: fns.clone(), adts: adts.clone(), keep_calls: keep_calls.clone(), keep_defs: keep_defs.clone(), mp: String::new(), fk: String::new(), conv: table::new::<Conv>() };
+            let total: usize = p.mods.len();
+            for i in 0..total
+                invariant p.mods.len() == total,
+            {
+                rewrite_mod(&mut p.mods[i], "", &mut v, 100000);
+            }
+            let convs: usize = v.conv.len();
+            if convs == 0 {
+                return p;
+            }
+            let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+            let ck: body::Checked = body::check_resolved(p.clone(), &mut d);
+            let calls_before: usize = keep_calls.len();
+            let defs_before: usize = keep_defs.len();
+            let mut seen: Seen = Seen { calls: table::new::<String>() };
+            let mut r: ast::Program = ck.program.clone();
+            ast::exprs_mut::<Seen>(&mut r, &mut seen);
+            for n in 0..convs
+                invariant 0 <= n && n <= convs,
+            {
+                match v.conv.nth(n as usize) {
+                    None => {},
+                    Some(at) => { let c: String = v.conv.key(n as usize); let same: bool = match seen.calls.find(c.as_str()) { None => false, Some(s) => seen.calls.items[s] == v.conv.items[at].path, }; if !same { keep_calls.insert(c.as_str(), true); } },
+                }
+            }
+            for x in 0..d.items.len()
+                invariant 0 <= x && x <= d.items.len(),
+            {
+                let mut best: String = String::new();
+                let mut width: u32 = 0;
+                for n in 0..convs
+                    invariant 0 <= n && n <= convs,
+                {
+                    let c: String = v.conv.key(n as usize);
+                    let cs: source::Span = body::key_span(c.as_str());
+                    if inside(cs, d.items[x].span) && cs.lo <= cs.hi {
+                        if best.len() == 0 || cs.hi - cs.lo < width {
+                            width = cs.hi - cs.lo;
+                            best = c.clone();
+                        }
+                    }
+                }
+                if best.len() > 0 {
+                    keep_calls.insert(best.as_str(), true);
+                } else {
+                    for n in 0..v.conv.items.len()
+                        invariant 0 <= n && n <= v.conv.items.len(),
+                    {
+                        keep_defs.insert(v.conv.items[n].def.as_str(), true);
+                    }
+                }
+            }
+            if !d.has_errors() && keep_calls.len() == calls_before {
+                let got: table::Table<String> = body_hashes(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+                let mut changed: table::Table<bool> = table::new::<bool>();
+                for n in 0..v.conv.items.len()
+                    invariant 0 <= n && n <= v.conv.items.len(),
+                {
+                    changed.insert(v.conv.items[n].def.as_str(), true);
+                }
+                let defs: Vec<body::DefRow> = body::defs_of(&ck.program, &ck.b.c.fns);
+                for n in 0..defs.len()
+                    invariant 0 <= n && n <= defs.len(),
+                {
+                    let fk: String = body::span_key(defs[n].span);
+                    if changed.has(fk.as_str()) && word(&want, defs[n].path.as_str()) != word(&got, defs[n].path.as_str()) {
+                        keep_defs.insert(fk.as_str(), true);
+                    }
+                }
+            }
+            if keep_calls.len() == calls_before && keep_defs.len() == defs_before {
+                return p;
+            }
+        }
+        p
+    }
+
+    #[summary("타입 k가 메서드의 임자인가: trait의 메서드면 Self, 타고난 함수면 그 타입")]
+    #[effects(alloc)]
+    fn own(k: &ast::TypeKind, is_trait: bool, owner: &str) -> bool {
+        match k {
+            ast::TypeKind::Int(q4_tk_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(q4_tk_array0, q4_tk_array1) => false,
+            ast::TypeKind::ArrayN(q4_tk_arrayn0, q4_tk_arrayn1) => false,
+            ast::TypeKind::Slice(q4_tk_slice0) => false,
+            ast::TypeKind::Ref(q4_tk_ref0, q4_tk_ref1) => false,
+            ast::TypeKind::Named(np, a) => !is_trait && types::join(np.as_slice(), "::") == owner,
+            ast::TypeKind::Vec(q4_tk_vec0) => false,
+            ast::TypeKind::Box(q4_tk_box0) => false,
+            ast::TypeKind::Param(p) => is_trait && p == "Self",
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("수신자: 참조로 받는 메서드에 넘긴 &x는 x로")]
+    #[effects(alloc)]
+    fn receiver(first: &ast::Expr, by_ref: bool) -> ast::Expr {
+        match &first.kind {
+            ast::ExprKind::Int(q4_ek_int0, q4_ek_int1) => first.clone(),
+            ast::ExprKind::Float(q4_ek_float0) => first.clone(),
+            ast::ExprKind::ByteLit(q4_ek_bytelit0) => first.clone(),
+            ast::ExprKind::ByteStr(q4_ek_bytestr0) => first.clone(),
+            ast::ExprKind::StrLit(q4_ek_strlit0) => first.clone(),
+            ast::ExprKind::CharLit(q4_ek_charlit0) => first.clone(),
+            ast::ExprKind::Bool(q4_ek_bool0) => first.clone(),
+            ast::ExprKind::Unit => first.clone(),
+            ast::ExprKind::Var(q4_ek_var0) => first.clone(),
+            ast::ExprKind::Call(q4_ek_call0) => first.clone(),
+            ast::ExprKind::Method(q4_ek_method0) => first.clone(),
+            ast::ExprKind::Index(q4_ek_index0, q4_ek_index1) => first.clone(),
+            ast::ExprKind::Unary(q4_ek_unary0, q4_ek_unary1) => first.clone(),
+            ast::ExprKind::Binary(q4_ek_binary0, q4_ek_binary1, q4_ek_binary2) => first.clone(),
+            ast::ExprKind::Ref(m, x) => { if by_ref { unboxed(x) } else { first.clone() } },
+            ast::ExprKind::If(q4_ek_if0) => first.clone(),
+            ast::ExprKind::Block(q4_ek_block0) => first.clone(),
+            ast::ExprKind::Array(q4_ek_array0) => first.clone(),
+            ast::ExprKind::Repeat(q4_ek_repeat0) => first.clone(),
+            ast::ExprKind::Old(q4_ek_old0) => first.clone(),
+            ast::ExprKind::Quant(q4_ek_quant0) => first.clone(),
+            ast::ExprKind::Trigger(q4_ek_trigger0) => first.clone(),
+            ast::ExprKind::Closure(q4_ek_closure0) => first.clone(),
+            ast::ExprKind::StructLit(q4_ek_structlit0) => first.clone(),
+            ast::ExprKind::Path(q4_ek_path0) => first.clone(),
+            ast::ExprKind::Deref(q4_ek_deref0) => first.clone(),
+            ast::ExprKind::Field(q4_ek_field0, q4_ek_field1) => first.clone(),
+            ast::ExprKind::Match(q4_ek_match0) => first.clone(),
+            ast::ExprKind::Return(q4_ek_return0) => first.clone(),
+            ast::ExprKind::Try(q4_ek_try0) => first.clone(),
+            ast::ExprKind::Loop(q4_ek_loop0) => first.clone(),
+            ast::ExprKind::Break(q4_ek_break0) => first.clone(),
+            ast::ExprKind::Continue(q4_ek_continue0) => first.clone(),
+            ast::ExprKind::Range(q4_ek_range0) => first.clone(),
+            ast::ExprKind::Error => first.clone(),
+        }
+    }
+
+    #[summary("단위 m과 그 안 단위의 메서드 호출을 고쳐 쓴다: 안 단위 먼저, 그다음 자유 함수, impl, trait 선언, trait impl의 순서")]
+    #[effects(alloc)]
+    fn rewrite_mod(m: &mut ast::Mod, prefix: &str, v: &mut Rewrite, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "");
+        let inner: String = types::cat3(mp.as_str(), "::", "");
+        let n: usize = m.mods.len();
+        for i in 0..n
+            invariant m.mods.len() == n,
+        {
+            rewrite_mod(&mut m.mods[i], inner.as_str(), v, f - 1);
+        }
+        v.mp = mp;
+        each_fn(&mut m.fns, v);
+        let ni: usize = m.impls.len();
+        for i in 0..ni
+            invariant m.impls.len() == ni,
+        {
+            each_fn(&mut m.impls[i].fns, v);
+        }
+        let nt: usize = m.traits.len();
+        for i in 0..nt
+            invariant m.traits.len() == nt,
+        {
+            let nf: usize = m.traits[i].fns.len();
+            for q in 0..nf
+                invariant m.traits.len() == nt && m.traits[i].fns.len() == nf,
+            {
+                v.fk = body::span_key(m.traits[i].fns[q].f.name.span);
+                if !v.keep_defs.has(v.fk.as_str()) {
+                    ast::fn_exprs_mut::<Rewrite>(&mut m.traits[i].fns[q].f, v, true, 1000000000);
+                }
+            }
+        }
+        let nx: usize = m.trait_impls.len();
+        for i in 0..nx
+            invariant m.trait_impls.len() == nx,
+        {
+            each_fn(&mut m.trait_impls[i].fns, v);
+        }
+    }
+
+    #[summary("상자 안의 식의 사본")]
+    #[effects(alloc)]
+    fn unboxed(x: &Box<ast::Expr>) -> ast::Expr {
+        ast::Expr { kind: x.kind.clone(), span: x.span }
+    }
+
+    #[summary("t에 적힌 k의 글, 없으면 빈 글")]
+    #[effects(alloc)]
+    fn word(t: &table::Table<String>, k: &str) -> String {
+        match t.find(k) {
+            None => String::new(),
+            Some(at) => t.items[at].clone(),
+        }
+    }
+}
