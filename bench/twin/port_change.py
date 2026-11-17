@@ -52,6 +52,13 @@ PER_FILE = {"rename": 3, "swap": 2}
 # sixty tool calls) and at least two (the function and one use).
 USES = (2, 6)
 
+# Targets left out after the shuffle (the others keep their places), with
+# the reason (found by `pair.py check`).
+EXCLUDE = {
+    "clone_blocked": "the Rust function declares a function inside it with the same parameter names: "
+                     "the cut of argument lists takes the inner declaration for a call",
+}
+
 PROMPT = {
     "rename": "Rename the function `{target}` to `{new}` and update every use of it. The program's behaviour "
               "must not change; change nothing else.",
@@ -415,6 +422,8 @@ def make(commit):
         for mod, t in pool:
             if len(picked) == COUNT[family]:
                 break
+            if index.simple(t["names"]["rust"]["target"]) in EXCLUDE:
+                continue
             if seen[mod] >= PER_FILE[family]:
                 continue
             seen[mod] += 1

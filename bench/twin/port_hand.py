@@ -96,7 +96,9 @@ class Hand:
         ch, twin = self.change, self.twin
         r_calls = []
         for f in sorted(self.files):
-            r_calls += [["edit_file", {"path": "src/" + f, "old": o, "new": n}]
+            # A removal takes its line break with it (no empty line stays
+            # in the function before it).
+            r_calls += [["edit_file", {"path": "src/" + f, "old": o if n else o + "\n", "new": n}]
                         for o, n in ch.edits_between(twin.files[f], self.files[f])]
         heads = {**twin.heads, **self.heads}
         units = defaultdict(list)
@@ -226,7 +228,10 @@ def move_sha(twin, ch):
                                         "bmb": {"target": "identity::sha", "to": "sha256::sha"}})
 
 
-TASKS = [inline_type_def, inline_sha, extract_reserved_name, extract_rationale_line, move_sha]
+# `move_sha` is written but not a task: after its BMB solution every
+# definition is proved and `bmb build` still refuses the program (backlog
+# 4D-37).
+TASKS = [inline_type_def, inline_sha, extract_reserved_name, extract_rationale_line]
 
 
 def tasks(twin, change):

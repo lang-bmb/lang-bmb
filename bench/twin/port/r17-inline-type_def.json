@@ -33,7 +33,7 @@
     "edit_file",
     {
      "path": "src/fmt.rs",
-     "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);",
+     "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);\n",
      "new": ""
     }
    ],
@@ -106,7 +106,7 @@
      "edit_file",
      {
       "path": "src/fmt.rs",
-      "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);",
+      "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);\n",
       "new": ""
      }
     ],
@@ -168,7 +168,7 @@
      "edit_file",
      {
       "path": "src/fmt.rs",
-      "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);",
+      "old": "    }\n\n    pub(crate) fn type_def(&mut self, t: &TypeDef, depth: usize) {\n        self.type_def_as(t, depth, &t.name.name);\n",
       "new": ""
      }
     ],
