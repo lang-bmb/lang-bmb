@@ -104,4 +104,5 @@
 | `d1-slices.txt` | 스칼라 원소의 슬라이스: 읽기와 쓰기의 매개변수, `len`, 범위로 자른 조각, 바이트열과 글 리터럴, `print_str`·`print_bytes` |
 | `d1-refs.txt` | 스칼라의 참조: 지역 변수의 자리, 참조 매개변수를 그대로 넘기기, 원소의 임시 자리와 되돌려 쓰기, 빌려준 값, `*x`의 읽기와 쓰기 |
 | `d1-bytes.txt` | 정수와 바이트들: `to_be_bytes`·`to_le_bytes`, `from_be_bytes`·`from_le_bytes`(부호와 폭) |
-| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`): 사례 `emit-run`이 견준다 |
+| `d2-structs.txt` | 구조체: 리터럴과 필드 읽기·쓰기(좁은 정수, `bool`, `f64`, 배열 필드, 안은 구조체), 값으로 넘기기와 돌려주기, 참조로 넘겨 고치기, `if`와 `loop`의 구조체 값, 가운데의 `return`, 구조체의 배열과 슬라이스, 필드의 스칼라 참조, 안은 배열 |
+| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`): 사례 `emit-run`이 견준다 |

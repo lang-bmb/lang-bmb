@@ -1,0 +1,95 @@
+#[summary("구조체: 리터럴과 필드 읽기·쓰기 (좁은 정수, bool, f64, 배열 필드, 안은 구조체), 값으로 넘기기와 돌려주기, 참조로 넘겨 고치기, if와 loop의 구조체 값, 가운데의 return, 구조체의 배열과 슬라이스, 필드의 스칼라 참조")]
+mod structs {
+    struct Point { x: i64, y: i64 }
+    struct Mixed { on: bool, small: u8, wide: i32, ratio: f64, tag: [u8; 3] }
+    struct Line { a: Point, b: Point }
+
+    #[effects(pure)]
+    fn origin() -> Point { Point { x: 0, y: 0 } }
+    #[effects(pure)]
+    fn moved(p: Point, dx: i64) -> Point { Point { x: p.x.wrapping_add(dx), y: p.y } }
+    #[effects(pure)]
+    fn shift(p: &mut Point, d: i64) -> () {
+        p.x = p.x.wrapping_add(d);
+        p.y = p.y.wrapping_sub(d);
+    }
+    #[effects(pure)]
+    fn sum(p: &Point) -> i64 { p.x.wrapping_add(p.y) }
+    #[effects(pure)]
+    fn mixed() -> Mixed { Mixed { on: true, small: 200, wide: -5, ratio: 0.25, tag: [1, 2, 3] } }
+    #[effects(pure)]
+    fn pick(c: bool, a: Point, b: Point) -> Point {
+        if c { a } else { b }
+    }
+    #[effects(pure)]
+    fn first_big(ps: &[Point], limit: i64) -> Point {
+        for i in 0..ps.len() {
+            if ps[i].x > limit {
+                return ps[i];
+            }
+        }
+        origin()
+    }
+    #[effects(pure)]
+    fn grow(start: Point) -> Point {
+        let mut p: Point = start;
+        loop
+            decreases 100 - p.x,
+        {
+            if p.x >= 100 {
+                break p;
+            }
+            p = moved(p, 30);
+        }
+    }
+    #[effects(pure)]
+    fn length2(l: &Line) -> i64 {
+        let dx: i64 = l.b.x.wrapping_sub(l.a.x);
+        let dy: i64 = l.b.y.wrapping_sub(l.a.y);
+        dx.wrapping_mul(dx).wrapping_add(dy.wrapping_mul(dy))
+    }
+    #[effects(pure)]
+    fn bump(v: &mut i64) -> () {
+        *v = (*v).wrapping_add(1000);
+    }
+    #[effects(pure)]
+    fn flip(b: &mut bool) -> () {
+        *b = !*b;
+    }
+    #[effects(io)]
+    fn main() -> () {
+        let mut p: Point = moved(origin(), 7);
+        shift(&mut p, 2);
+        print_i64(p.x);
+        print_i64(p.y);
+        print_i64(sum(&p));
+        let mut m: Mixed = mixed();
+        m.small = 255;
+        m.wide = -2147483648;
+        m.tag[1] = 9;
+        flip(&mut m.on);
+        if !m.on {
+            print_u64(u64::try_from(m.small).unwrap().wrapping_add(u64::try_from(m.tag[1]).unwrap()));
+        }
+        print_i64(i64::try_from(m.wide).unwrap());
+        print_f64(m.ratio, 2);
+        let q: Point = pick(false, p, Point { x: -1, y: -2 });
+        print_i64(q.y);
+        let ps: [Point; 3] = [Point { x: 1, y: 10 }, Point { x: 50, y: 20 }, Point { x: 90, y: 30 }];
+        print_i64(first_big(&ps, 40).y);
+        print_i64(first_big(&ps, 95).y);
+        let mut grid: [Point; 4] = [origin(); 4];
+        grid[2] = Point { x: 5, y: 6 };
+        grid[3].y = 77;
+        bump(&mut grid[3].y);
+        print_i64(grid[2].x.wrapping_add(grid[3].y));
+        print_i64(grow(Point { x: 5, y: 0 }).x);
+        let mut l: Line = Line { a: origin(), b: Point { x: 3, y: 4 } };
+        print_i64(length2(&l));
+        l.a = l.b;
+        l.b.x = 6;
+        print_i64(length2(&l));
+        let rows: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+        print_i64(rows[1][0].wrapping_mul(10).wrapping_add(rows[0][1]));
+    }
+}
