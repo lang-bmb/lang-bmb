@@ -1,0 +1,86 @@
+#[summary("스칼라 원소의 배열: 상수 리터럴과 셈하는 리터럴, 반복, 원소 읽기와 쓰기 (좁은 정수, bool, f64), 배열 전체의 대입, 값으로 넘기는 배열과 배열 결과, 배열 값의 if, len")]
+mod arrays {
+    #[effects(pure)]
+    fn table() -> [i64; 5] { [3, -1, 4, 1, -5] }
+    #[effects(pure)]
+    fn sum(a: [i64; 5]) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..a.len() {
+            s = s.wrapping_add(a[i]);
+        }
+        s
+    }
+    #[effects(pure)]
+    fn bytes() -> [u8; 4] { [255, 0, 128, 7] }
+    #[effects(pure)]
+    fn smalls() -> [i16; 3] { [-32768, 32767, -1] }
+    #[effects(pure)]
+    fn words() -> [u32; 2] { [4294967295, 1] }
+    #[effects(pure)]
+    fn signed_bytes() -> [i8; 3] { [-128, 127, -2] }
+    #[effects(pure)]
+    fn flags() -> [bool; 3] { [true, false, true] }
+    #[effects(pure)]
+    fn halves() -> [f64; 2] { [0.5, 2.25] }
+    #[effects(pure)]
+    fn computed(x: i64) -> [i64; 3] { [x, x.wrapping_mul(2), 7] }
+    #[effects(pure)]
+    fn one(x: u8) -> [u8; 1] { [x] }
+    #[effects(pure)]
+    fn fill(v: u16) -> [u16; 6] { [v; 6] }
+    #[effects(pure)]
+    fn swapped(a: [i64; 2]) -> [i64; 2] {
+        let mut b: [i64; 2] = a;
+        b = [b[1], b[0]];
+        b
+    }
+    #[effects(pure)]
+    fn pick(c: bool) -> [u8; 4] {
+        if c { bytes() } else { [1, 2, 3, 4] }
+    }
+    #[effects(pure)]
+    fn count_true(f: [bool; 3]) -> u64 {
+        let mut n: u64 = 0;
+        for i in 0..f.len() {
+            if f[i] {
+                n = n.wrapping_add(1);
+            }
+        }
+        n
+    }
+    #[effects(pure)]
+    fn write_all() -> i64 {
+        let mut a: [i32; 4] = [0; 4];
+        let mut f: [bool; 2] = [false; 2];
+        let mut d: [f64; 2] = [0.0; 2];
+        a[0] = -7;
+        a[3] = 2147483647;
+        f[1] = true;
+        d[0] = 1.5;
+        let mut r: i64 = i64::try_from(a[0]).unwrap().wrapping_add(i64::try_from(a[3]).unwrap());
+        if f[1] && !f[0] && d[0] > d[1] {
+            r = r.wrapping_add(1);
+        }
+        r
+    }
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(sum(table()));
+        let b: [u8; 4] = bytes();
+        print_u64(u64::try_from(b[0]).unwrap().wrapping_add(u64::try_from(b[2]).unwrap()));
+        let s: [i16; 3] = smalls();
+        print_i64(i64::try_from(s[0]).unwrap());
+        print_u64(u64::try_from(words()[0]).unwrap());
+        print_i64(i64::try_from(signed_bytes()[0]).unwrap());
+        print_u64(count_true(flags()));
+        print_f64(halves()[1], 2);
+        print_i64(computed(21)[1]);
+        print_u64(u64::try_from(one(9)[0]).unwrap());
+        print_u64(u64::try_from(fill(513)[5]).unwrap());
+        print_i64(swapped([10, 20])[0]);
+        print_u64(u64::try_from(pick(true)[2]).unwrap());
+        print_u64(u64::try_from(pick(false)[2]).unwrap());
+        print_i64(write_all());
+        print_u64(u64::try_from(fill(1).len()).unwrap());
+    }
+}

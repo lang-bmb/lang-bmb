@@ -1,0 +1,51 @@
+#[summary("스칼라의 참조: 지역 변수의 자리, 참조 매개변수를 그대로 넘기기, 원소의 임시 자리와 되돌려 쓰기 (좁은 정수와 bool), 값을 빌려주기, *x의 읽기와 쓰기")]
+mod refs {
+    #[effects(pure)]
+    fn add_to(x: &mut i64, d: i64) -> () {
+        *x = (*x).wrapping_add(d);
+    }
+    #[effects(pure)]
+    fn twice(x: &mut i64, d: i64) -> () {
+        add_to(x, d);
+        add_to(x, d);
+    }
+    #[effects(pure)]
+    fn read(x: &u8) -> u64 { u64::try_from(*x).unwrap() }
+    #[effects(pure)]
+    fn flip(b: &mut bool) -> () {
+        *b = !*b;
+    }
+    #[effects(pure)]
+    fn halve(x: &mut f64) -> () {
+        *x = *x / 2.0;
+    }
+    #[effects(pure)]
+    fn set_small(x: &mut i16, v: i16) -> () {
+        *x = v;
+    }
+    #[effects(io)]
+    fn main() -> () {
+        let mut n: i64 = 5;
+        add_to(&mut n, 10);
+        twice(&mut n, 100);
+        print_i64(n);
+        let mut a: [i64; 3] = [1, 2, 3];
+        add_to(&mut a[1], 40);
+        print_i64(a[1]);
+        let mut s: [i16; 2] = [0, 0];
+        set_small(&mut s[1], -300);
+        print_i64(i64::try_from(s[1]).unwrap());
+        let mut f: [bool; 2] = [false, true];
+        flip(&mut f[0]);
+        flip(&mut f[1]);
+        if f[0] && !f[1] {
+            print_i64(1);
+        }
+        let b: [u8; 2] = [200, 9];
+        print_u64(read(&b[0]));
+        print_u64(read(&7));
+        let mut h: f64 = 5.0;
+        halve(&mut h);
+        print_f64(h, 1);
+    }
+}

@@ -1,0 +1,65 @@
+#[summary("스칼라 원소의 슬라이스: 읽기와 쓰기의 매개변수, len, 범위로 자른 조각, 바이트열과 글 리터럴, print_str과 print_bytes")]
+mod slices {
+    #[effects(pure)]
+    fn total(v: &[i64]) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..v.len() {
+            s = s.wrapping_add(v[i]);
+        }
+        s
+    }
+    #[effects(pure)]
+    fn bump(v: &mut [u8], by: u8) -> () {
+        for i in 0..v.len() {
+            v[i] = v[i].wrapping_add(by);
+        }
+    }
+    #[effects(pure)]
+    fn first_or(v: &[u32], d: u32) -> u32 {
+        if v.len() > 0 { v[0] } else { d }
+    }
+    #[effects(pure)]
+    fn middle(v: &[i64]) -> i64
+        requires v.len() >= 3,
+    {
+        total(&v[1..v.len() - 1])
+    }
+    #[effects(pure)]
+    fn byte_sum(b: &[u8]) -> u64 {
+        let mut s: u64 = 0;
+        for i in 0..b.len() {
+            s = s.wrapping_add(u64::try_from(b[i]).unwrap());
+        }
+        s
+    }
+    #[effects(pure)]
+    fn any(f: &[bool]) -> bool {
+        let mut r: bool = false;
+        for i in 0..f.len() {
+            r = r || f[i];
+        }
+        r
+    }
+    #[effects(pure)]
+    fn text_len(s: &str) -> usize { s.len() }
+    #[effects(io)]
+    fn main() -> () {
+        let a: [i64; 5] = [1, 2, 3, 4, 5];
+        print_i64(total(&a));
+        print_i64(middle(&a));
+        print_i64(total(&a[0..0]));
+        let mut b: [u8; 3] = [250, 5, 6];
+        bump(&mut b, 10);
+        print_u64(byte_sum(&b));
+        let w: [u32; 2] = [7, 8];
+        print_u64(u64::try_from(first_or(&w, 1)).unwrap());
+        print_u64(u64::try_from(first_or(&w[2..2], 1)).unwrap());
+        print_u64(byte_sum(b"abc\n\x00\xff"));
+        let fl: [bool; 3] = [false, false, true];
+        if any(&fl) {
+            print_str("yes\n");
+        }
+        print_bytes(b"raw \"bytes\"\n");
+        print_u64(u64::try_from(text_len("한글 text")).unwrap());
+    }
+}

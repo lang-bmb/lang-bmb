@@ -1,0 +1,24 @@
+#[summary("정수와 바이트들: to_be_bytes와 to_le_bytes, from_be_bytes와 from_le_bytes (부호와 폭)")]
+mod bytes {
+    #[effects(pure)]
+    fn round_be(x: u32) -> u32 { u32::from_be_bytes(x.to_be_bytes()) }
+    #[effects(pure)]
+    fn swap(x: u32) -> u32 { u32::from_le_bytes(x.to_be_bytes()) }
+    #[effects(pure)]
+    fn neg16(b: [u8; 2]) -> i16 { i16::from_be_bytes(b) }
+    #[effects(pure)]
+    fn wide(x: i64) -> i64 { i64::from_le_bytes(x.to_le_bytes()) }
+    #[effects(pure)]
+    fn low(x: u64) -> u8 { x.to_le_bytes()[0] }
+    #[effects(pure)]
+    fn one(x: i8) -> i8 { i8::from_le_bytes(x.to_be_bytes()) }
+    #[effects(io)]
+    fn main() -> () {
+        print_u64(u64::try_from(round_be(305419896)).unwrap());
+        print_u64(u64::try_from(swap(305419896)).unwrap());
+        print_i64(i64::try_from(neg16([255, 254])).unwrap());
+        print_i64(wide(-1234567890123));
+        print_u64(u64::try_from(low(4660)).unwrap());
+        print_i64(i64::try_from(one(-128)).unwrap());
+    }
+}

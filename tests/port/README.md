@@ -100,4 +100,8 @@
 | `c3-methods.txt` | 정수 메서드를 폭과 부호마다: `wrapping_*`·`saturating_*`, 비트 메서드(회전, 세기, 뒤집기, 감기는 시프트, `is_power_of_two`), `MIN`·`MAX`, `f64::from` |
 | `c3-floats.txt` | `f64`의 메서드와 상수, `print_f64`(자릿수 검사와 런타임 조각) |
 | `c4-loops.txt` | 제어 흐름: `while`, `for`(닫힌 구간과 열린 구간, 부호와 폭), `loop`와 `break`의 값, 레이블로 떠나는 `break`·`continue`, 가운데의 `return` |
-| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`): 사례 `emit-run`이 견준다 |
+| `d1-arrays.txt` | 스칼라 원소의 배열: 상수 리터럴과 셈하는 리터럴, 반복, 원소 읽기와 쓰기(좁은 정수, `bool`, `f64`), 배열 전체의 대입, 값으로 넘기는 배열과 배열 결과, 배열 값의 `if`, `len` |
+| `d1-slices.txt` | 스칼라 원소의 슬라이스: 읽기와 쓰기의 매개변수, `len`, 범위로 자른 조각, 바이트열과 글 리터럴, `print_str`·`print_bytes` |
+| `d1-refs.txt` | 스칼라의 참조: 지역 변수의 자리, 참조 매개변수를 그대로 넘기기, 원소의 임시 자리와 되돌려 쓰기, 빌려준 값, `*x`의 읽기와 쓰기 |
+| `d1-bytes.txt` | 정수와 바이트들: `to_be_bytes`·`to_le_bytes`, `from_be_bytes`·`from_le_bytes`(부호와 폭) |
+| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`): 사례 `emit-run`이 견준다 |
