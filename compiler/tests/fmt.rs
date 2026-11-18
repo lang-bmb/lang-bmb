@@ -407,6 +407,46 @@ mod d {
     assert!(!ok && out.contains(r#"{"fn":"d::f""#), "{out}");
 }
 
+/// `bmb dump layout` (backlog 4D-05b): the LLVM types, sizes and type
+/// definitions the code generator gives the program's types. `layout`
+/// sizes an enum's payload area: a scalar counts as a word there, whatever
+/// its width in memory.
+#[test]
+fn layout_dump_shows_the_type_definitions() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    struct P { on: bool, x: u16, name: String }
+    enum E { A, B(u8, P), C(i64) }
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let p: P = P { on: true, x: 1, name: String::new() };
+        let e: E = E::B(2, p);
+        let a: [u8; 3] = [1, 2, 3];
+    }
+}
+"#;
+    let dump = |text: &str| bmb(&["dump", "layout"], &one("x.bmb", text));
+    let (ok, out) = dump(SRC);
+    assert!(ok && out.starts_with("---\n"), "{out}");
+    assert_eq!(dump(SRC).1, out);
+    for row in [
+        r#"{"of":"d::P","reg":"i64","mem":"%\"d::P\"","size":40,"align":8,"is":"data mem_elem mem holds_vec move","elem_of":"d::P","elem":{"kind":"i64","mem":"i64","align":8}}"#,
+        r#"{"of":"d::E","reg":"i64","mem":"%\"d::E\"","size":56,"align":8,"#,
+        r#"{"of":"[u8; 3]","reg":"i64","mem":"[3 x i8]","size":24,"align":8,"is":"mem_elem","elem_of":"u8","#,
+        r#"{"of":"u8","reg":"i64","mem":"i8","size":8,"align":8,"is":"scalar","elem_of":"u8","elem":{"kind":"u8","mem":"i8","align":1}}"#,
+        r#"{"uses_vec":true,"uses_heap":true,"main":"d::main"}"#,
+        "%\"d::P\" = type { i8, i16, %bmb.vec }\n",
+        "%\"d::E\" = type { i64, [6 x i64] }\n",
+        "%\"d::E::B\" = type { i64, i8, %\"d::P\" }\n",
+        "%\"d::E::C\" = type { i64, i64 }\n",
+    ] {
+        assert!(out.contains(row), "{row}\n{out}");
+    }
+    // A program that does not check has diagnostics and no rows.
+    let (ok, out) = dump(&SRC.replace("E::B(2, p)", "true"));
+    assert!(!ok && out.ends_with("---\n"), "{out}");
+}
+
 /// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
 /// parser and the checker's bodies, each the same text on every run.
 #[test]

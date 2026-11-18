@@ -961,6 +961,8 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 ///   every item (`fmt::qualified_hashes`).
 /// - `lowered`: the tables the code generator reads (`dump_lowered`,
 ///   backlog 4D-05a).
+/// - `layout`: how the code generator lays the types out
+///   (`codegen::dump_layout`, backlog 4D-05b), when the program checks.
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1049,6 +1051,14 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
         "lowered" => {
             let (_, t) = check::check_resolved(program, &mut diags);
             dump_lowered(&t, &|f| sm.name(f).to_string())
+        }
+        "layout" => {
+            let (r, t) = check::check_resolved(program, &mut diags);
+            if diags.has_errors() {
+                String::new()
+            } else {
+                codegen::dump_layout(&r, &t)
+            }
         }
         _ => check::dump_tables(
             program,

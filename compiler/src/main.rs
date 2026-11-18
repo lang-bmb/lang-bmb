@@ -190,6 +190,10 @@ const USAGE: &str = "usage:
                             a `u32`): signatures, data types, locals, the type of every
                             expression, the spans that are text, and each type's fields or
                             variants
+  bmb dump layout <file.bmb>...
+                            how the code generator lays the types out, when the program
+                            checks: each type's LLVM types, size and alignment, what the
+                            module's head depends on, and the LLVM type definitions
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1038,6 +1042,7 @@ fn run() -> ExitCode {
                         | "moves"
                         | "texts"
                         | "lowered"
+                        | "layout"
                 ) =>
         {
             let files = match read_files(&args[2..]) {

@@ -801,6 +801,54 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "layout",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "dump",
+        "layout",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "layout",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "layout-together",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "dump",
+        "layout",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "layout",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

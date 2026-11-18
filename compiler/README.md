@@ -46,6 +46,7 @@ cargo run -- dump parse a.bmb    # 파서의 프로그램을 검사 전에 정�
 cargo run -- dump types a.bmb    # 검사기의 몸 검사가 계산한 것(4D-03e1: 포트와 대조): `types`(해소된 프로그램, 정의마다 지역 변수, 식마다 타입, 타입 인자, 호출 간선, 효과, 재귀), `moves`(소유 값을 놓는 자리)
 cargo run -- dump texts a.bmb    # 증분 키가 읽는 한정 글(4D-03f4: 포트와 대조): 정의마다 한정 정규형과 부르는 쪽이 읽는 겉, 이어서 항목마다 한정 해시
 cargo run -- dump lowered a.bmb  # 코드 생성이 읽는 표(4D-05a: 포트와 대조, `Tables::lowered`: 글은 바이트, `char`는 `u32`): 함수의 시그니처, 데이터 타입, trait `impl`의 머리, 지역 변수, 식마다 타입, 타입 인자, 글인 자리, 이어서 표에 나오는 타입마다 참조를 벗긴 타입과 그 인스턴스의 필드·변형
+cargo run -- dump layout a.bmb   # 코드 생성의 타입 배치(4D-05b: 포트와 대조, 검사를 통과할 때): 표에 나오는 타입마다 레지스터 타입·메모리 타입·크기와 정렬·성립하는 술어·원소로서의 종류, 이어서 `Vec`을 드는가·힙 값을 갖는가·진입점, `---`, LLVM 타입 정의
 cargo run -- dump lower a.bmb    # 검사기의 몸 검사 앞 단계(4D-03a: 포트와 단계별 대조): `std`(이름을 든 라이브러리 단위를 더한 프로그램), `lower`(함수 값과 상수를 낮춘 뒤, 만든 이름과 상수의 값), `decls`(검사기가 모은 선언을 JSONL로). 그때까지의 진단, `---`, 그 단계의 글
 BMB_SOUND_ITERS=60 cargo test --release --test soundness  # 건전성 퍼징(1B-17): 증명·반례·빌드를 독립 해석기와 대조
 BMB_SOUND_ITERS=40 cargo test --release --test soundness_owned  # 소유 자료 퍼징(2O-05): 연결 리스트·Box·Vec 필드의 이동·교체·참조 match, 증명·반례·빌드·valgrind 해제를 해석기와 대조

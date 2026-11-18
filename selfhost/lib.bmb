@@ -1,4 +1,4 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, check")]
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, check")]
 mod lib {
     #[summary("앞단의 결과: 쓴 프로그램(라이브러리 단위를 붙인)과 그것을 검사한 것")]
     struct Front { source: ast::Program, ck: body::Checked }
@@ -68,6 +68,12 @@ mod lib {
             let lk: body::Checked = body::check_resolved(program.clone(), &mut diags);
             let low: lowered::Tables = lowered::tables(&lk);
             push_low(&mut body, &low, &sm);
+        } else if stage == "layout" {
+            let yk: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            if !diags.has_errors() {
+                let ylow: lowered::Tables = lowered::tables(&yk);
+                push_layout(&mut body, &yk, &ylow);
+            }
         } else if stage == "moves" {
             let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);
             push_moves(&mut body, &mk, &sm);
@@ -313,6 +319,39 @@ mod lib {
         std::num::push_u64(out, s.lo as u64);
         out.push_str(",\"hi\":");
         std::num::push_u64(out, s.hi as u64);
+    }
+
+    #[summary("dump layout의 글 (stage0 codegen::dump_layout, 백로그 4D-05b): 표에 나오는 타입마다 레지스터 타입, 메모리 타입, 크기와 정렬, 성립하는 술어, 원소로서의 종류. 이어서 모듈의 머리가 기대는 것(Vec을 드는가, 힙 값을 갖는가, 진입점), --- 한 줄, LLVM 타입 정의")]
+    #[effects(alloc)]
+    fn push_layout(out: &mut String, ck: &body::Checked, t: &lowered::Tables) -> () {
+        let mut shapes: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        let all: Vec<ast::TypeKind> = codegen::all_types(t);
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            push_shape(&mut shapes, &all[i]);
+        }
+        let none: Vec<String> = Vec::new();
+        let mut uses_vec: bool = false;
+        for n in 0..shapes.len()
+            invariant 0 <= n,
+        {
+            match shapes.nth(n) {
+                None => {},
+                Some(at) => { let lay: codegen::Lay = codegen::layout(&shapes.items[at], t); let kind: String = codegen::elem_kind(&shapes.items[at]); let mut is: Vec<String> = Vec::new(); if codegen::is_array(&shapes.items[at]) { is.push(String::from("array")); } if codegen::is_data(&shapes.items[at]) { is.push(String::from("data")); } if codegen::is_mem_elem(&shapes.items[at]) { is.push(String::from("mem_elem")); } if codegen::is_vec(&shapes.items[at]) { is.push(String::from("vec")); } if codegen::is_box(&shapes.items[at]) { is.push(String::from("box")); } if codegen::is_mem(&shapes.items[at]) { is.push(String::from("mem")); } if codegen::is_scalar_ty(&shapes.items[at]) { is.push(String::from("scalar")); } if codegen::holds_vec(&shapes.items[at], t) { is.push(String::from("holds_vec")); uses_vec = true; } if types::is_move_in(&lowered::value_ty(&shapes.items[at]), &t.adts, none.as_slice()) { is.push(String::from("move")); } if body::has_param(&shapes.items[at], 100000) { is.push(String::from("param")); } out.push_str("{\"of\":"); std::json::push_string(out, shapes.key(n).as_str()); out.push_str(",\"reg\":\""); out.push_str(codegen::llty(&shapes.items[at]).as_str()); out.push_str("\",\"mem\":"); std::json::push_string(out, codegen::mem_ty(&shapes.items[at]).as_str()); out.push_str(",\"size\":"); std::num::push_u64(out, lay.size); out.push_str(",\"align\":"); std::num::push_u64(out, lay.align); out.push_str(",\"is\":"); std::json::push_string(out, types::join(is.as_slice(), " ").as_str()); out.push_str(",\"elem_of\":"); std::json::push_string(out, types::text(&codegen::elem_of(&shapes.items[at])).as_str()); out.push_str(",\"elem\":{\"kind\":\""); out.push_str(kind.as_str()); out.push_str("\",\"mem\":\""); out.push_str(codegen::mem(kind.as_str()).as_str()); out.push_str("\",\"align\":"); std::num::push_u64(out, codegen::align(kind.as_str()) as u64); out.push_str("}}\n"); },
+            }
+        }
+        out.push_str("{\"uses_vec\":");
+        decls::push_bool(out, uses_vec);
+        out.push_str(",\"uses_heap\":");
+        decls::push_bool(out, codegen::uses_heap(t, uses_vec));
+        out.push_str(",\"main\":");
+        match codegen::entry(&ck.program, t) {
+            None => out.push_str("null"),
+            Some(m) => std::json::push_string(out, m.as_str()),
+        }
+        out.push_str("}\n---\n");
+        out.push_str(codegen::type_defs(t).as_str());
     }
 
     #[summary("dump lowered의 글 (stage0 lib::dump_lowered, 백로그 4D-05a): 낮춘 표의 시그니처, 데이터 타입, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자, 글인 자리, 이어서 표에 나오는 타입마다 참조를 벗긴 타입과 그 인스턴스의 필드·변형")]

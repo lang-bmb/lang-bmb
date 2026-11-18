@@ -1,0 +1,487 @@
+#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 지금은 타입의 배치와 LLVM 타입 정의 (4D-05b). 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+mod codegen {
+    #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
+    struct Lay { size: u64, align: u64 }
+
+    #[summary("원소 종류 elem의 메모리 정렬 (stage0 align): i1은 1, 좁은 정수는 제 폭, 나머지는 8")]
+    #[effects(pure)]
+    fn align(elem: &str) -> u32 {
+        if elem == "i1" {
+            return 1;
+        }
+        let b: u32 = narrow_bits(elem);
+        if b == 0 {
+            8
+        } else {
+            b / 8
+        }
+    }
+
+    #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처 순서로")]
+    #[effects(alloc)]
+    fn all_types(tb: &lowered::Tables) -> Vec<ast::TypeKind> {
+        let mut all: Vec<ast::TypeKind> = Vec::new();
+        for n in 0..tb.types.len()
+            invariant 0 <= n,
+        {
+            match tb.types.nth(n) {
+                None => {},
+                Some(at) => all.push(tb.types.items[at].clone()),
+            }
+        }
+        for n in 0..tb.locals.len()
+            invariant 0 <= n,
+        {
+            match tb.locals.nth(n) {
+                None => {},
+                Some(at) => { for v in 0..tb.locals.items[at].len() invariant 0 <= v, { match tb.locals.items[at].nth(v) { None => {}, Some(i) => all.push(tb.locals.items[at].items[i].clone()), } } },
+            }
+        }
+        for n in 0..tb.fns.len()
+            invariant 0 <= n,
+        {
+            match tb.fns.nth(n) {
+                None => {},
+                Some(at) => { if !tb.fns.items[at].builtin { for k in 0..tb.fns.items[at].params.len() invariant 0 <= k && k <= tb.fns.items[at].params.len(), { all.push(tb.fns.items[at].params[k].clone()); } all.push(tb.fns.items[at].ret.clone()); } },
+            }
+        }
+        all
+    }
+
+    #[summary("구조체나 열거형의 LLVM 타입 (stage0 data_ty): %\"geo::Point\"")]
+    #[effects(alloc)]
+    fn data_ty(t: &ast::TypeKind) -> String {
+        types::cat3("%\"", types::text(&lowered::value_ty(t)).as_str(), "\"")
+    }
+
+    #[summary("원소 종류 (stage0 elem_kind): 64비트보다 좁은 정수는 제 이름, 나머지는 레지스터 타입")]
+    #[effects(alloc)]
+    fn elem_kind(t: &ast::TypeKind) -> String {
+        match t {
+            ast::TypeKind::Int(it) => { if body::bits(*it) < 64 { body::int_text(*it) } else { llty(t) } },
+            ast::TypeKind::F64 => llty(t),
+            ast::TypeKind::Bool => llty(t),
+            ast::TypeKind::Unit => llty(t),
+            ast::TypeKind::Char => llty(t),
+            ast::TypeKind::String => llty(t),
+            ast::TypeKind::Str => llty(t),
+            ast::TypeKind::Array(ek_array0, ek_array1) => llty(t),
+            ast::TypeKind::ArrayN(ek_arrayn0, ek_arrayn1) => llty(t),
+            ast::TypeKind::Slice(ek_slice0) => llty(t),
+            ast::TypeKind::Ref(ek_ref0, ek_ref1) => llty(t),
+            ast::TypeKind::Named(ek_named0, ek_named1) => llty(t),
+            ast::TypeKind::Vec(ek_vec0) => llty(t),
+            ast::TypeKind::Box(ek_box0) => llty(t),
+            ast::TypeKind::Param(ek_param0) => llty(t),
+            ast::TypeKind::Never => llty(t),
+            ast::TypeKind::Error => llty(t),
+        }
+    }
+
+    #[summary("배열, 슬라이스, Vec의 원소 타입 (stage0 elem_of). 다른 참조는 가리키는 타입, 나머지는 그대로")]
+    #[effects(alloc)]
+    fn elem_of(t: &ast::TypeKind) -> ast::TypeKind {
+        match t {
+            ast::TypeKind::Int(eo_int0) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => t.clone(),
+            ast::TypeKind::String => t.clone(),
+            ast::TypeKind::Str => t.clone(),
+            ast::TypeKind::Array(ae, eo_n) => ae.kind.clone(),
+            ast::TypeKind::ArrayN(eo_arrayn0, eo_arrayn1) => t.clone(),
+            ast::TypeKind::Slice(eo_slice0) => t.clone(),
+            ast::TypeKind::Ref(eo_m, ri) => { match body::slice_elem(&ri.kind) { None => { match body::vec_elem(&ri.kind) { None => ri.kind.clone(), Some(e2) => e2, } }, Some(e1) => e1, } },
+            ast::TypeKind::Named(eo_named0, eo_named1) => t.clone(),
+            ast::TypeKind::Vec(ve) => ve.kind.clone(),
+            ast::TypeKind::Box(eo_box0) => t.clone(),
+            ast::TypeKind::Param(eo_param0) => t.clone(),
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
+        }
+    }
+
+    #[summary("진입점 (stage0 emit_with의 main): 단위의 main인 제네릭 아닌 실행 함수. 여럿이면 경로가 가장 뒤인 것")]
+    #[effects(alloc)]
+    fn entry(p: &ast::Program, tb: &lowered::Tables) -> Option<String> {
+        let rows: Vec<body::DefRow> = body::defs_of(p, &tb.fns);
+        let mut found: Option<String> = None;
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if rows[i].path == types::cat2(rows[i].unit.as_str(), "::main") {
+                match tb.fns.find(rows[i].path.as_str()) {
+                    None => {},
+                    Some(at) => { if is_exec(tb.fns.items[at].kind) && tb.fns.items[at].generics.len() == 0 { let later: bool = match &found { None => true, Some(prev) => rows[i].path.as_str() > prev.as_str(), }; if later { found = Some(rows[i].path.clone()); } } },
+                }
+            }
+        }
+        found
+    }
+
+    #[summary("값이 Vec을 어디엔가 드는가 (stage0 holds_vec): 참조, 필드, 페이로드, Box, 배열, 타입 인자를 지나")]
+    #[effects(alloc)]
+    fn holds_vec(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        let mut seen: Vec<String> = Vec::new();
+        holds_vec_in(t, tb, &mut seen, 100000)
+    }
+
+    #[effects(alloc)]
+    fn holds_vec_in(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match t {
+            ast::TypeKind::Int(hv_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, hv_n) => holds_vec_in(&ae.kind, tb, seen, f - 1),
+            ast::TypeKind::ArrayN(hv_arrayn0, hv_arrayn1) => false,
+            ast::TypeKind::Slice(se) => holds_vec_in(&se.kind, tb, seen, f - 1),
+            ast::TypeKind::Ref(hv_m, ri) => holds_vec_in(&ri.kind, tb, seen, f - 1),
+            ast::TypeKind::Named(hv_path, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if holds_vec_in(&args[i].kind, tb, seen, f - 1) { return true; } } if !types::add(seen, types::text(t).as_str()) { return false; } match lowered::struct_fields(t, tb) { None => {}, Some(fs) => { for j in 0..fs.len() invariant 0 <= j && j <= fs.len(), { if holds_vec_in(&fs[j].ty, tb, seen, f - 1) { return true; } } return false; }, } match lowered::enum_variants(t, tb) { None => false, Some(vs) => { for a in 0..vs.len() invariant 0 <= a && a <= vs.len(), { for b in 0..vs[a].tys.len() invariant 0 <= b && b <= vs[a].tys.len(), { if holds_vec_in(&vs[a].tys[b], tb, seen, f - 1) { return true; } } } false }, } },
+            ast::TypeKind::Vec(hv_e) => true,
+            ast::TypeKind::Box(be) => holds_vec_in(&be.kind, tb, seen, f - 1),
+            ast::TypeKind::Param(hv_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("슬라이스의 참조인가 (stage0 is_array)")]
+    #[effects(alloc)]
+    fn is_array(t: &ast::TypeKind) -> bool {
+        match body::ref_inner(t) {
+            None => false,
+            Some(inner) => body::is_slice(&inner),
+        }
+    }
+
+    #[summary("Box인가 (참조를 지나)")]
+    #[effects(alloc)]
+    fn is_box(t: &ast::TypeKind) -> bool {
+        body::is_box(&lowered::value_ty(t))
+    }
+
+    #[summary("구조체나 열거형인가 (참조를 지나)")]
+    #[effects(alloc)]
+    fn is_data(t: &ast::TypeKind) -> bool {
+        body::is_named(&lowered::value_ty(t))
+    }
+
+    #[effects(pure)]
+    fn is_exec(k: ast::FnKind) -> bool {
+        match k {
+            ast::FnKind::Exec => true,
+            ast::FnKind::Spec => false,
+            ast::FnKind::Proof => false,
+        }
+    }
+
+    #[summary("값이 메모리에 살고 주소로 넘겨지는가: 구조체, 열거형, Vec의 머리, Box")]
+    #[effects(alloc)]
+    fn is_mem(t: &ast::TypeKind) -> bool {
+        is_data(t) || is_vec(t) || is_box(t)
+    }
+
+    #[summary("배열의 원소로서 메모리에 덩어리로 사는가: is_mem이거나 고정 길이 배열")]
+    #[effects(alloc)]
+    fn is_mem_elem(t: &ast::TypeKind) -> bool {
+        is_mem(t) || body::is_array(&lowered::value_ty(t))
+    }
+
+    #[summary("정수, bool, f64인가")]
+    #[effects(pure)]
+    fn is_scalar_ty(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(sc_i) => true,
+            ast::TypeKind::F64 => true,
+            ast::TypeKind::Bool => true,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(sc_array0, sc_array1) => false,
+            ast::TypeKind::ArrayN(sc_arrayn0, sc_arrayn1) => false,
+            ast::TypeKind::Slice(sc_slice0) => false,
+            ast::TypeKind::Ref(sc_ref0, sc_ref1) => false,
+            ast::TypeKind::Named(sc_named0, sc_named1) => false,
+            ast::TypeKind::Vec(sc_vec0) => false,
+            ast::TypeKind::Box(sc_box0) => false,
+            ast::TypeKind::Param(sc_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("Vec인가 (참조를 지나)")]
+    #[effects(alloc)]
+    fn is_vec(t: &ast::TypeKind) -> bool {
+        body::is_vec(&lowered::value_ty(t))
+    }
+
+    #[summary("ts를 차례로 놓은 구조체의 배치 (stage0 layout의 fields). tag이면 i64 꼬리표가 앞에 온다")]
+    #[effects(alloc)]
+    fn lay_fields(ts: &[ast::TypeKind], tag: bool, tb: &lowered::Tables, f: usize) -> Lay
+        decreases f * 2 + 1,
+    {
+        let mut size: u64 = 0;
+        let mut al: u64 = 1;
+        if tag {
+            size = 8;
+            al = 8;
+        }
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            let l: Lay = layout_in(&ts[i], tb, f);
+            size = round_up(size, l.align).wrapping_add(l.size);
+            if l.align > al {
+                al = l.align;
+            }
+        }
+        Lay { size: round_up(size, al), align: al }
+    }
+
+    #[summary("t의 메모리에서의 크기와 정렬 (stage0 layout): 열거형의 페이로드 자리를 재는 데만 쓴다")]
+    #[effects(alloc)]
+    fn layout(t: &ast::TypeKind, tb: &lowered::Tables) -> Lay {
+        layout_in(t, tb, 100000)
+    }
+
+    #[effects(alloc)]
+    fn layout_in(t: &ast::TypeKind, tb: &lowered::Tables, f: usize) -> Lay
+        decreases f * 2,
+    {
+        let word: Lay = Lay { size: 8, align: 8 };
+        if f == 0 {
+            return word;
+        }
+        let v: ast::TypeKind = lowered::value_ty(t);
+        match &v {
+            ast::TypeKind::Int(ly_int0) => word,
+            ast::TypeKind::F64 => word,
+            ast::TypeKind::Bool => Lay { size: 1, align: 1 },
+            ast::TypeKind::Unit => Lay { size: 0, align: 1 },
+            ast::TypeKind::Char => word,
+            ast::TypeKind::String => word,
+            ast::TypeKind::Str => word,
+            ast::TypeKind::Array(ae, an) => { let el: Lay = layout_in(&ae.kind, tb, f - 1); Lay { size: el.size.wrapping_mul(*an), align: el.align } },
+            ast::TypeKind::ArrayN(ly_arrayn0, ly_arrayn1) => word,
+            ast::TypeKind::Slice(ly_slice0) => word,
+            ast::TypeKind::Ref(ly_ref0, ly_ref1) => word,
+            ast::TypeKind::Named(ly_path, ly_args) => { match lowered::struct_fields(&v, tb) { None => {}, Some(fs) => { let mut fts: Vec<ast::TypeKind> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { fts.push(fs[i].ty.clone()); } return lay_fields(fts.as_slice(), false, tb, f - 1); }, } let mut size: u64 = 8; match lowered::enum_variants(&v, tb) { None => {}, Some(vs) => { for k in 0..vs.len() invariant 0 <= k && k <= vs.len(), { let one: Lay = lay_fields(vs[k].tys.as_slice(), true, tb, f - 1); if one.size > size { size = one.size; } } }, } Lay { size: round_up(size, 8), align: 8 } },
+            ast::TypeKind::Vec(ly_e) => Lay { size: 24, align: 8 },
+            ast::TypeKind::Box(ly_box0) => word,
+            ast::TypeKind::Param(ly_param0) => word,
+            ast::TypeKind::Never => word,
+            ast::TypeKind::Error => word,
+        }
+    }
+
+    #[summary("스칼라의 레지스터 타입 (stage0 llty): bool은 i1, f64는 double, ()는 void, 나머지는 i64")]
+    #[effects(alloc)]
+    fn llty(t: &ast::TypeKind) -> String {
+        match t {
+            ast::TypeKind::Int(ll_int0) => String::from("i64"),
+            ast::TypeKind::F64 => String::from("double"),
+            ast::TypeKind::Bool => String::from("i1"),
+            ast::TypeKind::Unit => String::from("void"),
+            ast::TypeKind::Char => String::from("i64"),
+            ast::TypeKind::String => String::from("i64"),
+            ast::TypeKind::Str => String::from("i64"),
+            ast::TypeKind::Array(ll_array0, ll_array1) => String::from("i64"),
+            ast::TypeKind::ArrayN(ll_arrayn0, ll_arrayn1) => String::from("i64"),
+            ast::TypeKind::Slice(ll_slice0) => String::from("i64"),
+            ast::TypeKind::Ref(ll_ref0, ll_ref1) => String::from("i64"),
+            ast::TypeKind::Named(ll_named0, ll_named1) => String::from("i64"),
+            ast::TypeKind::Vec(ll_vec0) => String::from("i64"),
+            ast::TypeKind::Box(ll_box0) => String::from("i64"),
+            ast::TypeKind::Param(ll_param0) => String::from("i64"),
+            ast::TypeKind::Never => String::from("i64"),
+            ast::TypeKind::Error => String::from("i64"),
+        }
+    }
+
+    #[summary("배열 원소의 메모리 타입 (stage0 mem): bool과 좁은 정수는 제 폭")]
+    #[effects(alloc)]
+    fn mem(elem: &str) -> String {
+        if elem == "i1" {
+            return String::from("i8");
+        }
+        let b: u32 = narrow_bits(elem);
+        if b == 8 {
+            return String::from("i8");
+        }
+        if b == 16 {
+            return String::from("i16");
+        }
+        if b == 32 {
+            return String::from("i32");
+        }
+        String::from(elem)
+    }
+
+    #[summary("t의 값의 메모리에서의 LLVM 타입 (stage0 mem_ty): bool은 한 바이트")]
+    #[effects(alloc)]
+    fn mem_ty(t: &ast::TypeKind) -> String {
+        mem_ty_in(t, 100000)
+    }
+
+    #[effects(alloc)]
+    fn mem_ty_in(t: &ast::TypeKind, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::from("i64");
+        }
+        let v: ast::TypeKind = lowered::value_ty(t);
+        match &v {
+            ast::TypeKind::Int(it) => { let mut s: String = String::from("i"); std::num::push_u64(&mut s, body::bits(*it) as u64); s },
+            ast::TypeKind::F64 => String::from("double"),
+            ast::TypeKind::Bool => String::from("i8"),
+            ast::TypeKind::Unit => String::from("i64"),
+            ast::TypeKind::Char => String::from("i64"),
+            ast::TypeKind::String => String::from("i64"),
+            ast::TypeKind::Str => String::from("i64"),
+            ast::TypeKind::Array(ae, an) => { let mut s: String = String::from("["); std::num::push_u64(&mut s, *an); s.push_str(" x "); s.push_str(mem_ty_in(&ae.kind, f - 1).as_str()); s.push_str("]"); s },
+            ast::TypeKind::ArrayN(mt_arrayn0, mt_arrayn1) => String::from("i64"),
+            ast::TypeKind::Slice(mt_slice0) => String::from("i64"),
+            ast::TypeKind::Ref(mt_ref0, mt_ref1) => String::from("i64"),
+            ast::TypeKind::Named(mt_p, mt_a) => data_ty(&v),
+            ast::TypeKind::Vec(mt_e) => String::from("%bmb.vec"),
+            ast::TypeKind::Box(mt_b) => String::from("ptr"),
+            ast::TypeKind::Param(mt_param0) => String::from("i64"),
+            ast::TypeKind::Never => String::from("i64"),
+            ast::TypeKind::Error => String::from("i64"),
+        }
+    }
+
+    #[summary("원소 종류가 이름하는 좁은 정수의 폭 (stage0 narrow). 아니면 0")]
+    #[effects(pure)]
+    fn narrow_bits(elem: &str) -> u32 {
+        if elem == "i8" || elem == "u8" {
+            return 8;
+        }
+        if elem == "i16" || elem == "u16" {
+            return 16;
+        }
+        if elem == "i32" || elem == "u32" {
+            return 32;
+        }
+        0
+    }
+
+    #[summary("x를 a의 배수로 올린다 (stage0의 x.div_ceil(a) * a, 넘치면 감긴다). a가 0이면 x")]
+    #[effects(pure)]
+    fn round_up(x: u64, a: u64) -> u64 {
+        if a == 0 {
+            return x;
+        }
+        let r: u64 = x % a;
+        if r == 0 {
+            x
+        } else {
+            x.wrapping_add(a - r)
+        }
+    }
+
+    #[summary("프로그램이 쓰는 구조체와 열거형(인스턴스)의 LLVM 타입 정의 (stage0 type_defs): 구조체는 필드를 선언 순서로, 열거형은 꼬리표와 페이로드 자리, 페이로드 있는 변형마다 보는 타입 하나")]
+    #[effects(alloc)]
+    fn type_defs(tb: &lowered::Tables) -> String {
+        let mut seen: Vec<String> = Vec::new();
+        let mut out: String = String::new();
+        let all: Vec<ast::TypeKind> = all_types(tb);
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            visit(&all[i], tb, &mut seen, &mut out, 100000);
+        }
+        out
+    }
+
+    #[summary("프로그램이 힙 값을 갖는가 (stage0 emit_with의 uses_heap): Vec을 들거나, 식이나 지역 변수의 타입이 옮겨지는 값이다 (시그니처는 세지 않는다)")]
+    #[effects(alloc)]
+    fn uses_heap(tb: &lowered::Tables, uses_vec: bool) -> bool {
+        if uses_vec {
+            return true;
+        }
+        let none: Vec<String> = Vec::new();
+        for n in 0..tb.types.len()
+            invariant 0 <= n,
+        {
+            match tb.types.nth(n) {
+                None => {},
+                Some(at) => { if types::is_move_in(&lowered::value_ty(&tb.types.items[at]), &tb.adts, none.as_slice()) { return true; } },
+            }
+        }
+        for n in 0..tb.locals.len()
+            invariant 0 <= n,
+        {
+            match tb.locals.nth(n) {
+                None => {},
+                Some(at) => { for v in 0..tb.locals.items[at].len() invariant 0 <= v, { match tb.locals.items[at].nth(v) { None => {}, Some(i) => { if types::is_move_in(&lowered::value_ty(&tb.locals.items[at].items[i]), &tb.adts, none.as_slice()) { return true; } }, } } },
+            }
+        }
+        false
+    }
+
+    #[summary("열거형 t의 변형 v를 보는 타입 (stage0 view_ty): 꼬리표와 페이로드")]
+    #[effects(alloc)]
+    fn view_ty(t: &ast::TypeKind, v: &str) -> String {
+        types::cat5("%\"", types::text(&lowered::value_ty(t)).as_str(), "::", v, "\"")
+    }
+
+    #[effects(alloc)]
+    fn visit(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || body::has_param(t, 100000) {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(vi_int0) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, vi_n) => visit(&ae.kind, tb, seen, out, f - 1),
+            ast::TypeKind::ArrayN(vi_arrayn0, vi_arrayn1) => {},
+            ast::TypeKind::Slice(se) => visit(&se.kind, tb, seen, out, f - 1),
+            ast::TypeKind::Ref(vi_m, ri) => visit(&ri.kind, tb, seen, out, f - 1),
+            ast::TypeKind::Named(vi_p, vi_a) => visit_data(t, tb, seen, out, f - 1),
+            ast::TypeKind::Vec(ve) => visit(&ve.kind, tb, seen, out, f - 1),
+            ast::TypeKind::Box(be) => visit(&be.kind, tb, seen, out, f - 1),
+            ast::TypeKind::Param(vi_param0) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("타입 정의를 낼 구조체나 열거형 t (visit의 Named 갈래): 처음 볼 때만")]
+    #[effects(alloc)]
+    fn visit_data(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || !types::add(seen, types::text(t).as_str()) {
+            return;
+        }
+        match lowered::struct_fields(t, tb) {
+            None => {},
+            Some(fs) => { out.push_str(data_ty(t).as_str()); out.push_str(" = type { "); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i > 0 { out.push_str(", "); } out.push_str(mem_ty(&fs[i].ty).as_str()); } out.push_str(" }\n"); for j in 0..fs.len() invariant 0 <= j && j <= fs.len(), { visit(&fs[j].ty, tb, seen, out, f - 1); } return; },
+        }
+        match lowered::enum_variants(t, tb) {
+            None => {},
+            Some(vs) => { let words: u64 = layout(t, tb).size.wrapping_sub(8) / 8; out.push_str(data_ty(t).as_str()); out.push_str(" = type { i64, ["); std::num::push_u64(out, words); out.push_str(" x i64] }\n"); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if vs[i].tys.len() > 0 { out.push_str(view_ty(t, vs[i].name.as_str()).as_str()); out.push_str(" = type { i64"); for k in 0..vs[i].tys.len() invariant 0 <= k && k <= vs[i].tys.len(), { out.push_str(", "); out.push_str(mem_ty(&vs[i].tys[k]).as_str()); } out.push_str(" }\n"); } for p in 0..vs[i].tys.len() invariant 0 <= p && p <= vs[i].tys.len(), { visit(&vs[i].tys[p], tb, seen, out, f - 1); } } },
+        }
+    }
+}

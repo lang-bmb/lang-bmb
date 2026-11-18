@@ -382,6 +382,79 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
     out
 }
 
+/// `bmb dump layout` (backlog 4D-05b): how the code generator lays the
+/// program's types out, for a program that checks. Per distinct type of
+/// `all_types` (by its text): its register and in-memory LLVM types, its
+/// size and alignment under `layout`, the predicates that hold of it, and
+/// as an element its kind, in-memory type and alignment. Then what the
+/// module's head depends on (whether the program holds a `Vec`, whether it
+/// owns heap values, its entry point), a line `---`, and the LLVM type
+/// definitions (`type_defs`).
+pub fn dump_layout(p: &Program, t: &Tables) -> String {
+    let q = crate::diag::json_str;
+    let lowered = t.lowered();
+    let t = &lowered;
+    let mut shapes: BTreeMap<String, &TypeKind> = BTreeMap::new();
+    for x in all_types(t, &[]) {
+        shapes.entry(ty_str(x)).or_insert(x);
+    }
+    let mut out = String::new();
+    for (text, x) in &shapes {
+        let (size, al) = layout(x, t);
+        let is: Vec<&str> = [
+            ("array", is_array(x)),
+            ("data", is_data(x)),
+            ("mem_elem", is_mem_elem(x)),
+            ("vec", is_vec(x)),
+            ("box", is_box(x)),
+            ("mem", is_mem(x)),
+            ("scalar", is_scalar_ty(x)),
+            ("holds_vec", holds_vec(x, t)),
+            ("move", crate::check::is_move(value_ty(x), &t.adts)),
+            ("param", crate::check::has_param(x)),
+        ]
+        .iter()
+        .filter(|(_, on)| *on)
+        .map(|(n, _)| *n)
+        .collect();
+        let kind = elem_kind(x);
+        let _ = writeln!(
+            out,
+            "{{\"of\":{},\"reg\":\"{}\",\"mem\":{},\"size\":{size},\"align\":{al},\"is\":{},\"elem_of\":{},\"elem\":{{\"kind\":\"{kind}\",\"mem\":\"{}\",\"align\":{}}}}}",
+            q(text),
+            llty(x),
+            q(&mem_ty(x)),
+            q(&is.join(" ")),
+            q(&ty_str(&elem_of(x))),
+            mem(kind),
+            align(kind)
+        );
+    }
+    let uses_vec = shapes.values().any(|x| holds_vec(x, t));
+    // As `emit_with` asks: signatures do not count for the heap.
+    let owns = |x: &TypeKind| crate::check::is_move(value_ty(x), &t.adts);
+    let uses_heap =
+        uses_vec || t.types.values().any(owns) || t.locals.values().any(|m| m.values().any(owns));
+    let main = crate::check::defs_of(p, &t.fns)
+        .into_iter()
+        .filter(|(path, m, f)| {
+            f.kind == FnKind::Exec
+                && t.fns[path].generics.is_empty()
+                && f.name.name == "main"
+                && *path == format!("{m}::main")
+        })
+        .map(|(path, _, _)| path)
+        .max();
+    let _ = writeln!(
+        out,
+        "{{\"uses_vec\":{uses_vec},\"uses_heap\":{uses_heap},\"main\":{}}}",
+        main.map_or("null".to_string(), |m| q(&m))
+    );
+    out.push_str("---\n");
+    out.push_str(&type_defs(t, &[]));
+    out
+}
+
 /// The types of the program's values: its expressions, locals and
 /// signatures, and the instance types `extra`.
 fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
