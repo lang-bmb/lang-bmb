@@ -106,4 +106,6 @@
 | `d1-bytes.txt` | 정수와 바이트들: `to_be_bytes`·`to_le_bytes`, `from_be_bytes`·`from_le_bytes`(부호와 폭) |
 | `d2-structs.txt` | 구조체: 리터럴과 필드 읽기·쓰기(좁은 정수, `bool`, `f64`, 배열 필드, 안은 구조체), 값으로 넘기기와 돌려주기, 참조로 넘겨 고치기, `if`와 `loop`의 구조체 값, 가운데의 `return`, 구조체의 배열과 슬라이스, 필드의 스칼라 참조, 안은 배열 |
 | `d3-enums.txt` | 열거형과 `match`와 `?`: 변형 짓기(스칼라·구조체·배열 페이로드), `match`의 묶기와 값, `&mut`의 `match`로 페이로드 고치기, `Option`과 `Result`의 `?`, `Option`을 내는 메서드(`checked_*`, `try_from(..).ok()`, `checked_shl`), `std::mem::replace`·`swap` |
-| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`): 사례 `emit-run`이 견준다 |
+| `e1-vecs.txt` | `Vec`: `new`·`with_capacity`, `push`(자람), `len`, 색인, `as_slice`·`as_mut_slice`, 범위 조각, `pop`, `truncate`, `clone`, `copy_within`, 구조체의 `Vec`, `Vec`의 `Vec`, 값으로 넘기기와 돌려주기, 임시 `Vec`, 블록 끝의 해제 |
+| `e2-owned.txt` | 힙을 가진 값의 해제: `Box`와 재귀 자료(큰 스택), 힙을 가진 구조체와 열거형, 갈래마다 다른 해제, 가운데의 `return`·`break`·`?`, `match`가 옮기는 페이로드, 대입이 갈아치우는 값, 버리는 식의 값, 임시값, 힙을 가진 값의 `clone` |
+| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`, `e1-*`, `e2-*`): 사례 `emit-run`이 견준다 |

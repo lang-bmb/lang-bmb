@@ -1,0 +1,135 @@
+#[summary("힙을 가진 값의 해제: Box (새로 만들기, *b, 필드를 지나기, 재귀 자료), 힙을 가진 구조체와 열거형, 갈래마다 다른 해제, 가운데의 return과 break와 ?, match가 옮기는 페이로드와 묶지 않는 페이로드, 대입이 갈아치우는 값, 버리는 식의 값, 읽기만 하는 임시값, 힙을 가진 값의 clone (구조체, 재귀 열거형, Vec의 Vec)")]
+mod owned {
+    struct Bag { items: Vec<i64>, name: u8 }
+    enum Tree { Leaf(i64), Node(Box<Tree>, Box<Tree>) }
+    enum Slot { Empty, Full(Vec<i64>), Pair(Bag, i64) }
+
+    #[effects(alloc)]
+    fn bag(n: i64, name: u8) -> Bag
+        requires 0 <= n && n <= 100,
+    {
+        let mut v: Vec<i64> = Vec::new();
+        let mut i: i64 = 0;
+        while i < n
+            invariant 0 <= i && i <= n,
+            decreases n - i,
+        {
+            v.push(i.wrapping_mul(2));
+            i = i + 1;
+        }
+        Bag { items: v, name: name }
+    }
+    #[effects(pure)]
+    fn weight(b: &Bag) -> i64 {
+        let mut s: i64 = i64::try_from(b.name).unwrap();
+        for i in 0..b.items.len() {
+            s = s.wrapping_add(b.items[i]);
+        }
+        s
+    }
+    #[effects(alloc)]
+    fn depth(t: &Tree, fuel: u64) -> i64
+        decreases fuel,
+    {
+        if fuel == 0 {
+            return 0;
+        }
+        match t {
+            Tree::Leaf(v) => 1,
+            Tree::Node(l, r) => {
+                let a: i64 = depth(&**l, fuel - 1);
+                let b: i64 = depth(&**r, fuel - 1);
+                if a > b { a.wrapping_add(1) } else { b.wrapping_add(1) }
+            },
+        }
+    }
+    #[effects(alloc)]
+    fn pick(c: bool, a: Bag, b: Bag) -> Bag {
+        if c { a } else { b }
+    }
+    #[effects(alloc)]
+    fn early(b: Bag, limit: i64) -> i64 {
+        let extra: Vec<i64> = Vec::with_capacity(4);
+        if weight(&b) > limit {
+            return -1;
+        }
+        let n: i64 = i64::try_from(extra.len()).unwrap();
+        weight(&b).wrapping_add(n)
+    }
+    #[effects(alloc)]
+    fn search(limit: i64) -> i64
+        requires 0 <= limit && limit <= 50,
+    {
+        let mut i: i64 = 0;
+        loop
+            decreases 100 - i,
+        {
+            let b: Bag = bag(i, 0);
+            if weight(&b) >= limit || i >= 99 {
+                break i;
+            }
+            i = i + 1;
+        }
+    }
+    #[effects(alloc)]
+    fn open(s: Slot) -> i64 {
+        match s {
+            Slot::Empty => 0,
+            Slot::Full(v) => i64::try_from(v.len()).unwrap(),
+            Slot::Pair(b, n) => n,
+        }
+    }
+    #[effects(alloc)]
+    fn first(v: &Vec<i64>) -> Option<i64> {
+        if v.len() > 0 { Some(v[0]) } else { None }
+    }
+    #[effects(alloc)]
+    fn head_sum(a: Bag, b: Bag) -> Option<i64> {
+        let x: i64 = first(&a.items)?;
+        let y: i64 = first(&b.items)?;
+        Some(x.wrapping_add(y).wrapping_add(weight(&a)))
+    }
+    #[effects(alloc)]
+    fn or(o: Option<i64>, d: i64) -> i64 {
+        match o {
+            None => d,
+            Some(v) => v,
+        }
+    }
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let boxed: Box<i64> = Box::new(41);
+        print_i64((*boxed).wrapping_add(1));
+        let bb: Box<Bag> = Box::new(bag(4, 5));
+        print_i64(weight(&*bb));
+        print_i64(bb.items[3]);
+        let t: Tree = Tree::Node(Box::new(Tree::Leaf(1)), Box::new(Tree::Node(Box::new(Tree::Leaf(2)), Box::new(Tree::Leaf(3)))));
+        print_i64(depth(&t, 10));
+        print_i64(weight(&pick(true, bag(3, 1), bag(5, 2))));
+        print_i64(weight(&pick(false, bag(3, 1), bag(5, 2))));
+        print_i64(early(bag(4, 0), 100));
+        print_i64(early(bag(40, 0), 100));
+        print_i64(search(30));
+        print_i64(open(Slot::Empty));
+        print_i64(open(Slot::Full(Vec::with_capacity(8))));
+        print_i64(open(Slot::Pair(bag(2, 0), 77)));
+        print_i64(or(head_sum(bag(2, 1), bag(3, 0)), -9));
+        print_i64(or(head_sum(bag(2, 1), bag(0, 0)), -9));
+        let mut cur: Bag = bag(1, 9);
+        cur = bag(3, 9);
+        cur.items = Vec::new();
+        print_i64(weight(&cur));
+        bag(10, 0);
+        print_i64(weight(&bag(6, 0)));
+        let mut twin: Box<Bag> = bb.clone();
+        twin.items.push(100);
+        print_i64(weight(&*twin).wrapping_sub(weight(&*bb)));
+        let t2: Tree = t.clone();
+        print_i64(depth(&t2, 10));
+        let grid: Vec<Vec<i64>> = Vec::new();
+        let g2: Vec<Vec<i64>> = grid.clone();
+        print_u64(u64::try_from(g2.len()).unwrap());
+        let s2: Slot = Slot::Pair(bag(2, 0), 5);
+        print_i64(open(s2.clone()).wrapping_add(open(s2)));
+    }
+}

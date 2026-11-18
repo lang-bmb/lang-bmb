@@ -1,4 +1,4 @@
-#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 타입의 배치와 LLVM 타입 정의 (4D-05b), 스칼라 프로그램 (4D-05c), 스칼라 원소의 배열과 슬라이스 (4D-05d1), 구조체와 메모리 값 (4D-05d2), 열거형·match·? (4D-05d3). 옮기지 않은 구문은 Gen.todo에 까닭을 남긴다. 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 타입의 배치와 LLVM 타입 정의 (4D-05b), 스칼라 프로그램 (4D-05c), 스칼라 원소의 배열과 슬라이스 (4D-05d1), 구조체와 메모리 값 (4D-05d2), 열거형·match·? (4D-05d3), 힙의 값과 그 해제·복제 (4D-05e). 옮기지 않은 구문은 Gen.todo에 까닭을 남긴다. 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
 mod codegen {
     #[summary("어떤 타입이든의 자리 (stage0 any_place의 결과): 주소, 타입, 스칼라 자리면 그 레지스터 타입 (아니면 빈 글: 메모리 꼴), ok가 거짓이면 옮기지 않은 자리")]
     struct AnyPlace { ptr: String, ty: ast::TypeKind, reg: String, ok: bool }
@@ -30,11 +30,11 @@ mod codegen {
     #[summary("구조체의 필드: 차례와 타입")]
     struct FieldAt { k: usize, ty: ast::TypeKind }
 
-    #[summary("break나 continue가 떠날 수 있는 루프 (stage0 GLoop): 레이블(없으면 빈 글), continue가 가는 곳, break가 가는 곳, loop의 break e가 값을 두는 자리와 그 타입")]
-    struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind }
+    #[summary("break나 continue가 떠날 수 있는 루프 (stage0 GLoop): 레이블(없으면 빈 글), continue가 가는 곳, break가 가는 곳, loop의 break e가 값을 두는 자리와 그 타입, 루프가 시작할 때의 pending의 길이 (그 뒤의 임시값은 루프 안의 구역의 것이다)")]
+    struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
-    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤), globals는 이 함수의 상수들이고 consts는 그 줄 수")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop> }
+    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤), globals는 이 함수의 상수들이고 consts는 그 줄 수, pending은 힙 메모리를 가진 임시값들 (구역이 끝날 때 놓는다), clones는 복제 코드를 부른 타입의 글들")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String> }
 
     impl Gen {
         #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
@@ -206,7 +206,7 @@ mod codegen {
             CVal::Arr(ptr, n)
         }
 
-        #[summary("배열이나 슬라이스의 값 (stage0 array_of). Vec의 원소들은 아직 옮기지 않았다")]
+        #[summary("배열이나 슬라이스의 값, 또는 Vec의 원소들 (stage0 array_of): 임시 Vec은 구역이 끝날 때 놓는다")]
         #[effects(alloc)]
         fn array_of(self: &mut Gen, base: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -214,10 +214,14 @@ mod codegen {
             if f == 0 {
                 return self.todo_expr("nesting too deep", base);
             }
-            if is_vec(&self.ty(base, tb)) {
-                return self.todo_expr("the elements of a `Vec`", base);
+            if !is_vec(&self.ty(base, tb)) && !self.vec_var(base) {
+                return self.expr(base, ck, tb, f - 1);
             }
-            self.expr(base, ck, tb, f - 1)
+            let hdr: String = self.vec_hdr(base, ck, tb, f - 1);
+            if hdr == "undef" {
+                return CVal::Never;
+            }
+            self.vec_view(hdr.as_str())
         }
 
         #[summary("대입 (stage0 stmt의 Assign): 스칼라 지역 변수, 단위 값의 지역 변수, 배열 지역 변수 전체, 메모리 값의 지역 변수, 스칼라 원소, 스칼라 참조 매개변수를 지나는 *x, 그 밖의 자리 (필드, 메모리 원소, 참조를 지난 자리)는 값을 먼저 셈하고 자리에 쓴다")]
@@ -229,52 +233,48 @@ mod codegen {
                 self.todo_at("nesting too deep", a.span);
                 return;
             }
-            if self.replaces_at(a.span, ck) {
-                self.todo_at("an assignment that drops an owned value", a.span);
-                return;
-            }
             match &a.target.kind {
-                ast::ExprKind::Int(as_int0, as_int1) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Float(as_float0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::ByteLit(as_bytelit0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::ByteStr(as_bytestr0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::StrLit(as_strlit0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::CharLit(as_charlit0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Bool(as_bool0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Unit => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(&a.target, tb)) { let unit_v: CVal = self.expr(&a.value, ck, tb, f - 1); return; } match self.arr_slot(id.name.as_str()) { None => {}, Some(asl) => { if is_mem_elem(&asl.ety) { match self.local_ty(id.name.as_str(), tb) { None => self.todo_at("an assignment to an array without a type", a.span), Some(alt) => self.init_data_array(&a.value, asl.ptr.as_str(), &alt, ck, tb, f - 1), } } else { self.init_array(&a.value, asl.ptr.as_str(), asl.elem.as_str(), ck, tb, f - 1); } return; }, } match self.data_slot(id.name.as_str()) { None => {}, Some(dsl) => { let dval: CVal = self.expr(&a.value, ck, tb, f - 1); self.put(&dval, dsl.ptr.as_str(), &dsl.ty); return; }, } match self.scalar_slot(id.name.as_str()) { None => self.todo_at("an assignment to a local without a slot", a.span), Some(slot) => { let v: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.emit(types::cat7("store ", slot.ty.as_str(), " ", v.as_str(), ", ptr ", slot.ptr.as_str(), "").as_str()); }, } },
-                ast::ExprKind::Call(as_call0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Method(as_method0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Index(ib, ii) => { let scalar_elem: bool = match var_name(&**ib) { None => false, Some(bn) => { match self.arr_slot(bn.as_str()) { None => false, Some(isl) => !is_mem_elem(&isl.ety), } }, }; if scalar_elem { let ep: ElemPtr = self.elem_ptr(&a.target, &**ib, &**ii, ck, tb, f - 1); let ev: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.store_elem(ep.elem.as_str(), ev.as_str(), ep.ptr.as_str()); } else { self.assign_place(a, ck, tb, f - 1); } },
-                ast::ExprKind::Unary(as_unary0, as_unary1) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Binary(as_binary0, as_binary1, as_binary2) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Ref(as_ref0, as_ref1) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::If(as_if0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Block(as_block0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Array(as_array0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Repeat(as_repeat0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Old(as_old0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Quant(as_quant0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Trigger(as_trigger0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Closure(as_closure0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::StructLit(as_structlit0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Path(as_path0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Deref(dx) => { let through: Option<ScalarSlot> = match var_name(&**dx) { None => None, Some(dn) => self.scalar_slot(dn.as_str()), }; match through { None => self.assign_place(a, ck, tb, f - 1), Some(dslot) => { let dv: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.emit(types::cat7("store ", dslot.ty.as_str(), " ", dv.as_str(), ", ptr ", dslot.ptr.as_str(), "").as_str()); }, } },
-                ast::ExprKind::Field(as_field0, as_field1) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Match(as_match0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Return(as_return0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Try(as_try0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Loop(as_loop0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Break(as_break0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Continue(as_continue0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Range(as_range0) => self.assign_place(a, ck, tb, f - 1),
-                ast::ExprKind::Error => self.assign_place(a, ck, tb, f - 1),
+                ast::ExprKind::Int(as_int0, as_int1) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Float(as_float0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::ByteLit(as_bytelit0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::ByteStr(as_bytestr0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::StrLit(as_strlit0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::CharLit(as_charlit0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Bool(as_bool0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Unit => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(&a.target, tb)) { let unit_v: CVal = self.expr(&a.value, ck, tb, f - 1); return; } match self.arr_slot(id.name.as_str()) { None => {}, Some(asl) => { if is_mem_elem(&asl.ety) { match self.local_ty(id.name.as_str(), tb) { None => self.todo_at("an assignment to an array without a type", a.span), Some(alt) => self.init_data_array(&a.value, asl.ptr.as_str(), &alt, ck, tb, f - 1), } } else { self.init_array(&a.value, asl.ptr.as_str(), asl.elem.as_str(), ck, tb, f - 1); } return; }, } match self.data_slot(id.name.as_str()) { None => {}, Some(dsl) => { let dval: CVal = self.expr(&a.value, ck, tb, f - 1); if self.replaces(a.span, ck) { self.drop_at(dsl.ptr.as_str(), &dsl.ty, tb); } self.drop_moves(4, a.span, ck, tb); self.put(&dval, dsl.ptr.as_str(), &dsl.ty); return; }, } match self.scalar_slot(id.name.as_str()) { None => self.todo_at("an assignment to a local without a slot", a.span), Some(slot) => { let v: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.emit(types::cat7("store ", slot.ty.as_str(), " ", v.as_str(), ", ptr ", slot.ptr.as_str(), "").as_str()); }, } },
+                ast::ExprKind::Call(as_call0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Method(as_method0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Index(ib, ii) => { let scalar_elem: bool = match var_name(&**ib) { None => false, Some(bn) => { match self.arr_slot(bn.as_str()) { None => { match self.data_slot(bn.as_str()) { None => true, Some(vsl) => { match body::vec_elem(&lowered::value_ty(&vsl.ty)) { None => true, Some(vel) => !is_mem_elem(&vel), } }, } }, Some(isl) => !is_mem_elem(&isl.ety), } }, }; if scalar_elem { let ep: ElemPtr = self.elem_ptr(&a.target, &**ib, &**ii, ck, tb, f - 1); let ev: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.store_elem(ep.elem.as_str(), ev.as_str(), ep.ptr.as_str()); } else { self.assign_place(a, false, ck, tb, f - 1); } },
+                ast::ExprKind::Unary(as_unary0, as_unary1) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Binary(as_binary0, as_binary1, as_binary2) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Ref(as_ref0, as_ref1) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::If(as_if0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Block(as_block0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Array(as_array0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Repeat(as_repeat0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Old(as_old0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Quant(as_quant0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Trigger(as_trigger0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Closure(as_closure0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::StructLit(as_structlit0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Path(as_path0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Deref(dx) => { let through: Option<ScalarSlot> = match var_name(&**dx) { None => None, Some(dn) => self.scalar_slot(dn.as_str()), }; match through { None => self.assign_place(a, true, ck, tb, f - 1), Some(dslot) => { let dv: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.emit(types::cat7("store ", dslot.ty.as_str(), " ", dv.as_str(), ", ptr ", dslot.ptr.as_str(), "").as_str()); }, } },
+                ast::ExprKind::Field(as_field0, as_field1) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Match(as_match0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Return(as_return0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Try(as_try0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Loop(as_loop0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Break(as_break0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Continue(as_continue0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Range(as_range0) => self.assign_place(a, true, ck, tb, f - 1),
+                ast::ExprKind::Error => self.assign_place(a, true, ck, tb, f - 1),
             }
         }
 
-        #[summary("자리로의 대입 (stage0 stmt의 Assign의 마지막 갈래들): 값을 먼저 셈하고, 자리를 셈하고, 쓴다 (Rust의 차례)")]
+        #[summary("자리로의 대입 (stage0 stmt의 Assign의 마지막 갈래들): 값을 먼저 셈하고, 자리를 셈하고, 갈아치우는 옛 값을 놓고 (partial이면 일부가 옮겨진 자리의 남은 필드도), 쓴다 (Rust의 차례)")]
         #[effects(alloc)]
-        fn assign_place(self: &mut Gen, a: &ast::Assign, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+        fn assign_place(self: &mut Gen, a: &ast::Assign, partial: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
         {
             if f == 0 {
@@ -284,6 +284,12 @@ mod codegen {
             let v: CVal = self.expr(&a.value, ck, tb, f - 1);
             let pl: Place = self.place(&a.target, ck, tb, f - 1);
             if pl.ok {
+                if self.replaces(a.span, ck) {
+                    self.drop_at(pl.ptr.as_str(), &pl.ty, tb);
+                }
+                if partial {
+                    self.drop_moves(4, a.span, ck, tb);
+                }
                 self.put(&v, pl.ptr.as_str(), &pl.ty);
             }
         }
@@ -308,7 +314,7 @@ mod codegen {
                     self.emit(types::cat7("br i1 ", lv.as_str(), ", label %", end.as_str(), ", label %", rhs.as_str(), "").as_str());
                 }
                 self.block(rhs.as_str());
-                let rv: String = imm(&self.expr(r, ck, tb, f - 1));
+                let rv: String = imm(&self.region_expr(r, ck, tb, f - 1));
                 self.emit(types::cat4("store i1 ", rv.as_str(), ", ptr ", slot.as_str()).as_str());
                 self.emit(types::cat2("br label %", end.as_str()).as_str());
                 self.block(end.as_str());
@@ -476,7 +482,7 @@ mod codegen {
             self.out.push_str(":\n");
         }
 
-        #[summary("블록의 값 (stage0 block_expr): 문장들, 이어서 꼬리 식")]
+        #[summary("블록의 값 (stage0 block_expr): 문장들 (문장마다 그 임시값을 놓는다), 이어서 꼬리 식. 블록 끝에서 아직 가진 지역 변수를 놓는다 (값은 먼저 제 메모리로 옮긴다)")]
         #[effects(alloc)]
         fn block_expr(self: &mut Gen, b: &ast::Block, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -488,16 +494,35 @@ mod codegen {
             for i in 0..b.stmts.len()
                 invariant 0 <= i && i <= b.stmts.len(),
             {
+                let mark: usize = self.pending.len();
                 self.stmt(&b.stmts[i], ck, tb, f - 1);
+                let done: CVal = self.release(mark, CVal::Unit, tb);
             }
             let v: CVal = match &b.tail {
                 None => CVal::Unit,
-                Some(e) => self.expr(&**e, ck, tb, f - 1),
+                Some(e) => self.region_expr(&**e, ck, tb, f - 1),
             };
-            if self.drops_at(b.span, ck) {
-                self.todo_at("a block that drops owned values", b.span);
+            if !self.drops_at(b.span, ck) {
+                return v;
             }
-            v
+            let kept: CVal = self.detach(v);
+            self.drop_moves(0, b.span, ck, tb);
+            kept
+        }
+
+        #[summary("Box::new(v) (stage0 box_new): v를 셈하고, malloc의 메모리에 옮기고, 그 주소를 담은 칸이 값이다")]
+        #[effects(alloc)]
+        fn box_new(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 || c.args.len() != 1 {
+                return self.todo_expr("a `Box::new` without one argument", e);
+            }
+            let t: ast::TypeKind = self.ty(e, tb);
+            match body::box_inner(&t) {
+                None => self.todo_expr("a `Box::new` whose type is not a `Box`", e),
+                Some(inner) => { let v: CVal = self.expr(&c.args[0], ck, tb, f - 1); let h: String = self.t(); self.emit(types::cat4(h.as_str(), " = call ptr @bmb_box_alloc(i64 ", size_of(&inner).as_str(), ")").as_str()); self.put(&v, h.as_str(), &inner); let cell: String = self.temp(&t); self.emit(types::cat4("store ptr ", h.as_str(), ", ptr ", cell.as_str()).as_str()); CVal::Ptr(cell, t) },
+            }
         }
 
         #[summary("갈래 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.branch_drops)")]
@@ -564,8 +589,14 @@ mod codegen {
             if body::mem_op(c.path.as_slice()) && c.path.len() == 3 {
                 return self.mem_call(e, c, c.path[2].name == "replace", ck, tb, f - 1);
             }
-            if body::text_builtin(c.path.as_slice()) || body::is_box_new(c.path.as_slice()) || c.path.len() == 2 && (c.path[0].name == "Vec" || c.path[0].name == "String") && (c.path[1].name == "new" || c.path[1].name == "with_capacity") {
-                return self.todo_expr("a call of a built-in of text, `Vec` or `Box`", e);
+            if c.path.len() == 2 && (c.path[0].name == "Vec" || c.path[0].name == "String") && (c.path[1].name == "new" || c.path[1].name == "with_capacity") {
+                return self.vec_new(e, c, ck, tb, f - 1);
+            }
+            if body::text_builtin(c.path.as_slice()) {
+                return self.todo_expr("a call of a built-in of text (backlog 4D-05f)", e);
+            }
+            if body::is_box_new(c.path.as_slice()) {
+                return self.box_new(e, c, ck, tb, f - 1);
             }
             let target: String = self.resolve(c.path.as_slice(), tb);
             match tb.fns.find(target.as_str()) {
@@ -672,6 +703,15 @@ mod codegen {
             res
         }
 
+        #[summary("match나 ?가 그 값을 옮기는가 (검사기의 MoveInfo.consumed)")]
+        #[effects(alloc)]
+        fn consumed_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => types::has(ck.b.needs.items[at].moves.consumed.as_slice(), body::span_key(s).as_str()),
+            }
+        }
+
         #[summary("값을 옮긴다 (stage0 copy): memmove라 x = x도 된다")]
         #[effects(alloc)]
         fn copy(self: &mut Gen, dst: &str, src: &str, t: &ast::TypeKind) -> () {
@@ -679,6 +719,27 @@ mod codegen {
             line.push_str(size_of(t).as_str());
             line.push_str(", i1 false)");
             self.emit(line.as_str());
+        }
+
+        #[summary("a.copy_within(lo..hi, dest) (stage0 copy_within, ADR-0083): 범위들을 재고 memmove 한 번 (겹쳐도 된다)")]
+        #[effects(alloc)]
+        fn copy_within(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 || mc.args.len() != 2 {
+                return self.todo_expr("a `copy_within` without two arguments", e);
+            }
+            let t: ast::TypeKind = self.ty(&*mc.recv, tb);
+            let el: ast::TypeKind = if is_vec(&t) {
+                elem_of(&lowered::value_ty(&t))
+            } else {
+                elem_of(&t)
+            };
+            let av: CVal = self.array_of(&*mc.recv, ck, tb, f - 1);
+            match range_of(&mc.args[0]) {
+                None => self.todo_expr("a `copy_within` whose first argument is not a range", e),
+                Some(r) => { let lo: String = imm(&self.expr(&*r.lo, ck, tb, f - 1)); let hi: String = imm(&self.expr(&*r.hi, ck, tb, f - 1)); let dest: String = imm(&self.expr(&mc.args[1], ck, tb, f - 1)); if !is_arr(&av) { if !is_never(&av) { self.todo_at("a `copy_within` of a value that is not an array, a slice or a `Vec`", e.span); } return CVal::Never; } let ptr: String = arr_ptr(&av); let len: String = arr_len(&av); let a: String = self.t(); let b: String = self.t(); self.emit(types::cat5(a.as_str(), " = icmp ule i64 ", lo.as_str(), ", ", hi.as_str()).as_str()); self.emit(types::cat5(b.as_str(), " = icmp ule i64 ", hi.as_str(), ", ", len.as_str()).as_str()); let srcok: String = self.t(); self.emit(types::cat5(srcok.as_str(), " = and i1 ", a.as_str(), ", ", b.as_str()).as_str()); self.check(srcok.as_str(), "`copy_within` source range may be out of bounds"); let n0: String = self.t(); let room: String = self.t(); let c: String = self.t(); self.emit(types::cat5(n0.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()).as_str()); self.emit(types::cat5(room.as_str(), " = sub nuw i64 ", len.as_str(), ", ", n0.as_str()).as_str()); self.emit(types::cat5(c.as_str(), " = icmp ule i64 ", dest.as_str(), ", ", room.as_str()).as_str()); self.check(c.as_str(), "`copy_within` destination may be out of bounds"); let n: String = self.t(); let bytes: String = self.t(); let src: String = self.t(); let dst: String = self.t(); let et: String = mem_ty(&el); self.emit(types::cat5(n.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()).as_str()); self.emit(types::cat5(bytes.as_str(), " = mul nuw i64 ", n.as_str(), ", ", size_of(&el).as_str()).as_str()); self.emit(types::cat7(src.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", lo.as_str()).as_str()); self.emit(types::cat7(dst.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", dest.as_str()).as_str()); self.emit(types::cat7("call void @llvm.memmove.p0.p0.i64(ptr ", dst.as_str(), ", ptr ", src.as_str(), ", i64 ", bytes.as_str(), ", i1 false)").as_str()); CVal::Unit },
+            }
         }
 
         #[summary("메모리 값의 원소의 주소 (stage0 data_elem): 색인이 길이 안인지 잰다")]
@@ -698,6 +759,29 @@ mod codegen {
             match self.slots.find(name) {
                 None => None,
                 Some(at) => { match &self.slots.items[at] { Slot::Scalar(ds_p, ds_t) => None, Slot::Arr(ds_a) => None, Slot::Data(sl) => Some(DataSlot { ptr: sl.ptr.clone(), ty: sl.ty.clone() }), } },
+            }
+        }
+
+        #[summary("*b (stage0 expr의 Deref, Box의 것): 그 주소에 있는 값. 임시 Box에서 읽은 배열은 옮겨 둔다")]
+        #[effects(alloc)]
+        fn deref_box(self: &mut Gen, e: &ast::Expr, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let bv: CVal = self.expr(x, ck, tb, f - 1);
+            if is_never(&bv) {
+                return CVal::Never;
+            }
+            if !is_ptr(&bv) {
+                return self.todo_expr("a `Box` value that is not in memory", e);
+            }
+            let bt: ast::TypeKind = ptr_ty(&bv);
+            let temp: bool = self.read_temp(x, &bv, &bt, tb);
+            match body::box_inner(&bt) {
+                None => self.todo_expr("a `*` of a value that is not a `Box`", e),
+                Some(inner) => { let h: String = self.unbox(ptr_of(&bv).as_str()); let v: CVal = self.read(h.as_str(), &inner); if temp { self.keep(v, &inner) } else { v } },
             }
         }
 
@@ -748,6 +832,64 @@ mod codegen {
             CVal::Imm(res)
         }
 
+        #[summary("ptr에 있는 타입 t의 값이 힙 메모리를 가지면 놓는다 (stage0 drop_at)")]
+        #[effects(alloc)]
+        fn drop_at(self: &mut Gen, ptr: &str, t: &ast::TypeKind, tb: &lowered::Tables) -> () {
+            let vt: ast::TypeKind = lowered::value_ty(t);
+            if self.owns(&vt, tb) {
+                self.emit(types::cat5("call void ", glue(&vt).as_str(), "(ptr ", ptr, ")").as_str());
+            }
+        }
+
+        #[summary("자리 s에 적힌 경로들을 놓는다 (stage0 drop_block·drop_branch와 exits·partial_replaces의 루프). kind: 0 블록 끝, 1 갈래 끝, 2 함수나 루프를 떠남, 3 match의 갈래, 4 일부가 옮겨진 자리의 대입")]
+        #[effects(alloc)]
+        fn drop_moves(self: &mut Gen, kind: u8, s: source::Span, ck: &body::Checked, tb: &lowered::Tables) -> () {
+            let names: Vec<String> = self.move_names(kind, s, ck);
+            for i in 0..names.len()
+                invariant 0 <= i && i <= names.len(),
+            {
+                self.drop_path(names[i].as_str(), tb);
+            }
+        }
+
+        #[summary("지역 변수나 필드의 경로 p (s, s.buf)를 놓는다 (stage0 drop_path)")]
+        #[effects(alloc)]
+        fn drop_path(self: &mut Gen, p: &str, tb: &lowered::Tables) -> () {
+            let parts: Vec<String> = moves::split_dots(p);
+            if parts.len() == 0 {
+                return;
+            }
+            let mut ptr: String = String::new();
+            let mut ty: ast::TypeKind = ast::TypeKind::Error;
+            match self.data_slot(parts[0].as_str()) {
+                None => { match self.arr_slot(parts[0].as_str()) { None => { return; }, Some(asl) => { match self.local_ty(parts[0].as_str(), tb) { None => { return; }, Some(lt) => { ptr = asl.ptr; ty = lowered::value_ty(&lt); }, } }, } },
+                Some(dsl) => { ptr = dsl.ptr; ty = dsl.ty; },
+            }
+            for k in 1..parts.len()
+                invariant 1 <= k && k <= parts.len(),
+            {
+                match self.field_of(&ty, parts[k].as_str(), tb) {
+                    None => { self.todo.push(types::cat4("a drop of a field path that is not of structs: ", p, " in ", self.path.as_str())); return; },
+                    Some(fa) => { ptr = self.field_ptr(ptr.as_str(), &ty, fa.k); ty = fa.ty; },
+                }
+            }
+            self.drop_at(ptr.as_str(), &ty, tb);
+        }
+
+        #[summary("mark부터의 임시값을 놓는다 (지우지는 않는다: return과 break의 길에서, 그 구역은 다른 길에서 끝난다)")]
+        #[effects(alloc)]
+        fn drop_pending_from(self: &mut Gen, mark: usize, tb: &lowered::Tables) -> () {
+            for i in mark..self.pending.len()
+                invariant mark <= i,
+            {
+                if i < self.pending.len() {
+                    let pp: String = self.pending[i].ptr.clone();
+                    let pt: ast::TypeKind = self.pending[i].ty.clone();
+                    self.drop_at(pp.as_str(), &pt, tb);
+                }
+            }
+        }
+
         #[summary("블록 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.drops)")]
         #[effects(alloc)]
         fn drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
@@ -768,7 +910,7 @@ mod codegen {
             }
             let elem: String = match var_name(base) {
                 None => elem_kind(&elem_of(&self.ty(base, tb))),
-                Some(bn) => { match self.arr_slot(bn.as_str()) { None => { self.todo_at("an index into a local that is not an array or a slice", e.span); String::from("i64") }, Some(sl) => sl.elem, } },
+                Some(bn) => { match self.arr_slot(bn.as_str()) { None => { match self.data_slot(bn.as_str()) { None => { self.todo_at("an index into a local that is not an array, a slice or a `Vec`", e.span); String::from("i64") }, Some(vsl) => { match body::vec_elem(&lowered::value_ty(&vsl.ty)) { None => { self.todo_at("an index into a local that is not an array, a slice or a `Vec`", e.span); String::from("i64") }, Some(vel) => elem_kind(&vel), } }, } }, Some(sl) => sl.elem, } },
             };
             let av: CVal = self.array_of(base, ck, tb, f - 1);
             let i: String = imm(&self.expr(index, ck, tb, f - 1));
@@ -800,7 +942,7 @@ mod codegen {
                 Some(inner) => inner,
             };
             let et: ast::TypeKind = match body::array_elem(&whole) {
-                None => { match body::slice_elem(&whole) { None => { return self.todo_expr("a range of a value that is not an array or a slice", idx); }, Some(se) => se, } },
+                None => { match body::slice_elem(&whole) { None => { match body::vec_elem(&whole) { None => { return self.todo_expr("a range of a value that is not an array, a slice or a `Vec`", idx); }, Some(ve) => ve, } }, Some(se) => se, } },
                 Some(ae) => ae,
             };
             let av: CVal = self.array_of(base, ck, tb, f - 1);
@@ -884,7 +1026,7 @@ mod codegen {
                 ast::ExprKind::Index(ib, ii) => self.index_expr(e, &**ib, &**ii, ck, tb, f - 1),
                 ast::ExprKind::Unary(uop, ux) => self.unary(e, *uop, &**ux, ck, tb, f - 1),
                 ast::ExprKind::Binary(bop, lhs, rhs) => self.binary(e, *bop, &**lhs, &**rhs, ck, tb, f - 1),
-                ast::ExprKind::Ref(ref_m, ref_x) => self.expr(&**ref_x, ck, tb, f - 1),
+                ast::ExprKind::Ref(ref_m, ref_x) => self.ref_expr(&**ref_x, ck, tb, f - 1),
                 ast::ExprKind::If(ifx) => self.if_expr(e, ifx, ck, tb, f - 1),
                 ast::ExprKind::Block(b) => self.block_expr(b, ck, tb, f - 1),
                 ast::ExprKind::Array(ex_items) => self.array_lit(e, ck, tb, f - 1),
@@ -895,7 +1037,7 @@ mod codegen {
                 ast::ExprKind::Closure(ex_closure0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::StructLit(lit) => self.struct_lit(e, lit, ck, tb, f - 1),
                 ast::ExprKind::Path(segs) => self.path_expr(e, segs.as_slice(), ck, tb, f - 1),
-                ast::ExprKind::Deref(dx) => { if is_box(&self.ty(&**dx, tb)) { self.todo_expr("the value of a `Box`", e) } else { self.expr(&**dx, ck, tb, f - 1) } },
+                ast::ExprKind::Deref(dx) => { if body::is_box(&self.ty(&**dx, tb)) { self.deref_box(e, &**dx, ck, tb, f - 1) } else { self.expr(&**dx, ck, tb, f - 1) } },
                 ast::ExprKind::Field(fb, fname) => self.field_expr(e, &**fb, fname.name.as_str(), ck, tb, f - 1),
                 ast::ExprKind::Match(mx) => self.match_expr(e, mx, ck, tb, f - 1),
                 ast::ExprKind::Return(rx) => self.return_expr(e, rx, ck, tb, f - 1),
@@ -955,7 +1097,7 @@ mod codegen {
             CVal::Imm(r)
         }
 
-        #[summary("필드 읽기 (stage0 expr의 Field): 구조체 값의 주소에서 필드를 가리켜 읽는다")]
+        #[summary("필드 읽기 (stage0 expr의 Field): 구조체 값의 주소에서 (Box를 지나) 필드를 가리켜 읽는다. 임시값에서 읽은 배열은 그 임시값이 놓이기 전에 옮겨 둔다")]
         #[effects(alloc)]
         fn field_expr(self: &mut Gen, e: &ast::Expr, base: &ast::Expr, name: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -970,13 +1112,23 @@ mod codegen {
             if !is_ptr(&bv) {
                 return self.todo_expr("a field of a value that is not in memory", e);
             }
-            let bt: ast::TypeKind = ptr_ty(&bv);
-            if is_box(&bt) {
-                return self.todo_expr("a field through a `Box`", e);
+            let mut bt: ast::TypeKind = ptr_ty(&bv);
+            let mut bp: String = ptr_of(&bv);
+            let temp: bool = self.read_temp(base, &bv, &bt, tb);
+            let mut n: usize = 64;
+            while n > 0 && body::is_box(&bt)
+                invariant n <= 64,
+                decreases n,
+            {
+                n = n - 1;
+                match body::box_inner(&bt) {
+                    None => {},
+                    Some(inner) => { bp = self.unbox(bp.as_str()); bt = inner; },
+                }
             }
             match self.field_of(&bt, name, tb) {
                 None => self.todo_expr("a field of a type that is not a struct", e),
-                Some(fa) => { let p: String = self.field_ptr(ptr_of(&bv).as_str(), &bt, fa.k); self.read(p.as_str(), &fa.ty) },
+                Some(fa) => { let p: String = self.field_ptr(bp.as_str(), &bt, fa.k); let v: CVal = self.read(p.as_str(), &fa.ty); if temp { self.keep(v, &fa.ty) } else { v } },
             }
         }
 
@@ -1016,7 +1168,7 @@ mod codegen {
             }
             match self.local_ty(x.var.name.as_str(), tb) {
                 None => self.todo_at("a `for` variable without a type", x.span),
-                Some(t) => { let lt: String = llty(&t); let signed: bool = is_signed(&t); let ptr: String = self.alloca(lt.as_str()); let a: String = imm(&self.expr(&x.lo, ck, tb, f - 1)); self.emit(types::cat7("store ", lt.as_str(), " ", a.as_str(), ", ptr ", ptr.as_str(), "").as_str()); let b: String = imm(&self.expr(&x.hi, ck, tb, f - 1)); self.slots.insert(x.var.name.as_str(), Slot::Scalar(ptr.clone(), lt.clone())); let head: String = self.l("for"); let lb: String = self.l("body"); let next: String = self.l("next"); let end: String = self.l("endfor"); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(head.as_str()); let i1: String = self.t(); self.emit(types::cat5(i1.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); let c: String = self.t(); let op: String = if x.inclusive { if signed { String::from("sle") } else { String::from("ule") } } else if signed { String::from("slt") } else { String::from("ult") }; let mut cmp: String = types::cat5(c.as_str(), " = icmp ", op.as_str(), " ", lt.as_str()); cmp.push_str(" "); cmp.push_str(i1.as_str()); cmp.push_str(", "); cmp.push_str(b.as_str()); self.emit(cmp.as_str()); self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str()); self.block(lb.as_str()); let depth: usize = self.loops.len(); self.loops.push(GLoop { label: label_name(&x.label), head: next.clone(), end: end.clone(), slot: None, ty: ast::TypeKind::Unit }); let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1); self.loops.truncate(depth); self.emit(types::cat2("br label %", next.as_str()).as_str()); self.block(next.as_str()); let i2: String = self.t(); self.emit(types::cat5(i2.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); if x.inclusive { let at_end: String = self.t(); let step: String = self.l("step"); let mut eq: String = types::cat5(at_end.as_str(), " = icmp eq ", lt.as_str(), " ", i2.as_str()); eq.push_str(", "); eq.push_str(b.as_str()); self.emit(eq.as_str()); self.emit(types::cat7("br i1 ", at_end.as_str(), ", label %", end.as_str(), ", label %", step.as_str(), "").as_str()); self.block(step.as_str()); } let n: String = self.t(); self.emit(types::cat7(n.as_str(), " = add ", lt.as_str(), " ", i2.as_str(), ", 1", "").as_str()); self.emit(types::cat7("store ", lt.as_str(), " ", n.as_str(), ", ptr ", ptr.as_str(), "").as_str()); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(end.as_str()); },
+                Some(t) => { let lt: String = llty(&t); let signed: bool = is_signed(&t); let ptr: String = self.alloca(lt.as_str()); let a: String = imm(&self.region_expr(&x.lo, ck, tb, f - 1)); self.emit(types::cat7("store ", lt.as_str(), " ", a.as_str(), ", ptr ", ptr.as_str(), "").as_str()); let b: String = imm(&self.region_expr(&x.hi, ck, tb, f - 1)); self.slots.insert(x.var.name.as_str(), Slot::Scalar(ptr.clone(), lt.clone())); let head: String = self.l("for"); let lb: String = self.l("body"); let next: String = self.l("next"); let end: String = self.l("endfor"); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(head.as_str()); let i1: String = self.t(); self.emit(types::cat5(i1.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); let c: String = self.t(); let op: String = if x.inclusive { if signed { String::from("sle") } else { String::from("ule") } } else if signed { String::from("slt") } else { String::from("ult") }; let mut cmp: String = types::cat5(c.as_str(), " = icmp ", op.as_str(), " ", lt.as_str()); cmp.push_str(" "); cmp.push_str(i1.as_str()); cmp.push_str(", "); cmp.push_str(b.as_str()); self.emit(cmp.as_str()); self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str()); self.block(lb.as_str()); let depth: usize = self.loops.len(); self.loops.push(GLoop { label: label_name(&x.label), head: next.clone(), end: end.clone(), slot: None, ty: ast::TypeKind::Unit, mark: self.pending.len() }); let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1); self.loops.truncate(depth); self.emit(types::cat2("br label %", next.as_str()).as_str()); self.block(next.as_str()); let i2: String = self.t(); self.emit(types::cat5(i2.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); if x.inclusive { let at_end: String = self.t(); let step: String = self.l("step"); let mut eq: String = types::cat5(at_end.as_str(), " = icmp eq ", lt.as_str(), " ", i2.as_str()); eq.push_str(", "); eq.push_str(b.as_str()); self.emit(eq.as_str()); self.emit(types::cat7("br i1 ", at_end.as_str(), ", label %", end.as_str(), ", label %", step.as_str(), "").as_str()); self.block(step.as_str()); } let n: String = self.t(); self.emit(types::cat7(n.as_str(), " = add ", lt.as_str(), " ", i2.as_str(), ", 1", "").as_str()); self.emit(types::cat7("store ", lt.as_str(), " ", n.as_str(), ", ptr ", ptr.as_str(), "").as_str()); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(end.as_str()); },
             }
         }
 
@@ -1091,7 +1243,7 @@ mod codegen {
             let ty: ast::TypeKind = self.ty(e, tb);
             match body::array_elem(&ty) {
                 None => self.todo_expr("an `if` whose value is not an array", e),
-                Some(el) => { if !is_scalar_ty(&el) { return self.todo_expr("an `if` whose value is an array of values that are not scalars", e); } let elem: String = elem_kind(&el); let n: String = array_len_text(&ty); let buf: String = self.alloca(types::cat5("[", n.as_str(), " x ", mem(elem.as_str()).as_str(), "]").as_str()); let bytes: u64 = dec(n.as_str()).wrapping_mul(align(elem.as_str()) as u64); let c: String = imm(&self.expr(&*x.cond, ck, tb, f - 1)); let lthen: String = self.l("then"); let lelse: String = self.l("else"); let end: String = self.l("endif"); self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lthen.as_str(), ", label %", lelse.as_str(), "").as_str()); self.block(lthen.as_str()); let tv: CVal = self.block_expr(&x.then, ck, tb, f - 1); if is_arr(&tv) { self.memcpy(buf.as_str(), arr_ptr(&tv).as_str(), bytes); } if self.branch_drops_at(x.then.span, ck) { self.todo_at("a branch that drops owned values", x.then.span); } self.emit(types::cat2("br label %", end.as_str()).as_str()); self.block(lelse.as_str()); match &x.els { None => self.todo_at("an array `if` without an else", e.span), Some(other) => { let ev: CVal = self.expr(&**other, ck, tb, f - 1); if is_arr(&ev) { self.memcpy(buf.as_str(), arr_ptr(&ev).as_str(), bytes); } if self.branch_drops_at(other.span, ck) { self.todo_at("a branch that drops owned values", other.span); } }, } self.emit(types::cat2("br label %", end.as_str()).as_str()); self.block(end.as_str()); CVal::Arr(buf, n) },
+                Some(el) => { if !is_scalar_ty(&el) { return self.todo_expr("an `if` whose value is an array of values that are not scalars", e); } let elem: String = elem_kind(&el); let n: String = array_len_text(&ty); let buf: String = self.alloca(types::cat5("[", n.as_str(), " x ", mem(elem.as_str()).as_str(), "]").as_str()); let bytes: u64 = dec(n.as_str()).wrapping_mul(align(elem.as_str()) as u64); let c: String = imm(&self.region_expr(&*x.cond, ck, tb, f - 1)); let lthen: String = self.l("then"); let lelse: String = self.l("else"); let end: String = self.l("endif"); self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lthen.as_str(), ", label %", lelse.as_str(), "").as_str()); self.block(lthen.as_str()); let tv: CVal = self.block_expr(&x.then, ck, tb, f - 1); if is_arr(&tv) { self.memcpy(buf.as_str(), arr_ptr(&tv).as_str(), bytes); } self.drop_moves(1, x.then.span, ck, tb); self.emit(types::cat2("br label %", end.as_str()).as_str()); self.block(lelse.as_str()); match &x.els { None => self.todo_at("an array `if` without an else", e.span), Some(other) => { let ev: CVal = self.expr(&**other, ck, tb, f - 1); if is_arr(&ev) { self.memcpy(buf.as_str(), arr_ptr(&ev).as_str(), bytes); } self.drop_moves(1, other.span, ck, tb); }, } self.emit(types::cat2("br label %", end.as_str()).as_str()); self.block(end.as_str()); CVal::Arr(buf, n) },
             }
         }
 
@@ -1111,7 +1263,7 @@ mod codegen {
                 return self.todo_expr("an `if` whose value is a reference", e);
             }
             let slot: Option<String> = self.result_slot(&ty);
-            let c: String = imm(&self.expr(&*x.cond, ck, tb, f - 1));
+            let c: String = imm(&self.region_expr(&*x.cond, ck, tb, f - 1));
             let lthen: String = self.l("then");
             let lelse: String = self.l("else");
             let end: String = self.l("endif");
@@ -1119,14 +1271,12 @@ mod codegen {
             self.block(lthen.as_str());
             let tv: CVal = self.block_expr(&x.then, ck, tb, f - 1);
             self.store_result(&slot, &tv, &ty);
-            if self.branch_drops_at(x.then.span, ck) {
-                self.todo_at("a branch that drops owned values", x.then.span);
-            }
+            self.drop_moves(1, x.then.span, ck, tb);
             self.emit(types::cat2("br label %", end.as_str()).as_str());
             self.block(lelse.as_str());
             match &x.els {
                 None => {},
-                Some(other) => { let ev: CVal = self.expr(&**other, ck, tb, f - 1); self.store_result(&slot, &ev, &ty); if self.branch_drops_at(other.span, ck) { self.todo_at("a branch that drops owned values", other.span); } },
+                Some(other) => { let ev: CVal = self.expr(&**other, ck, tb, f - 1); self.store_result(&slot, &ev, &ty); self.drop_moves(1, other.span, ck, tb); },
             }
             self.emit(types::cat2("br label %", end.as_str()).as_str());
             self.block(end.as_str());
@@ -1168,6 +1318,10 @@ mod codegen {
             let ety: ast::TypeKind = self.ty(e, tb);
             if is_mem_elem(&ety) {
                 let av: CVal = self.array_of(base, ck, tb, f - 1);
+                let bt: ast::TypeKind = self.ty(base, tb);
+                if is_arr(&av) && body::is_array(&bt) && fresh(base) && self.owns(&bt, tb) {
+                    self.pending.push(Pend { ptr: arr_ptr(&av), ty: bt.clone() });
+                }
                 let di: String = imm(&self.expr(index, ck, tb, f - 1));
                 if !is_arr(&av) {
                     if !is_never(&av) {
@@ -1501,6 +1655,7 @@ mod codegen {
             }
             let slot: Option<String> = self.loops[k].slot.clone();
             let lt: ast::TypeKind = self.loops[k].ty.clone();
+            let jm: usize = self.loops[k].mark;
             let target: String = if brk {
                 self.loops[k].end.clone()
             } else {
@@ -1509,13 +1664,23 @@ mod codegen {
             if brk {
                 self.store_result(&slot, &v, &lt);
             }
-            if self.exits_at(e.span, ck) {
-                self.todo_at("a jump that drops owned values", e.span);
-            }
+            self.drop_pending_from(jm, tb);
+            self.drop_moves(2, e.span, ck, tb);
             self.emit(types::cat2("br label %", target.as_str()).as_str());
             let after: String = self.l("after_jump");
             self.block(after.as_str());
             CVal::Never
+        }
+
+        #[summary("놓일지도 모르는 메모리에서 읽은 값 v를 간직한다 (stage0 keep): 배열은 지금 옮겨 둔다 (메모리 값은 detach가 옮긴다)")]
+        #[effects(alloc)]
+        fn keep(self: &mut Gen, v: CVal, t: &ast::TypeKind) -> CVal {
+            if is_arr(&v) {
+                let tmp: String = self.temp(t);
+                self.copy(tmp.as_str(), arr_ptr(&v).as_str(), t);
+                return CVal::Arr(tmp, arr_len(&v));
+            }
+            v
         }
 
         #[summary("다음 레이블: base와 번호")]
@@ -1670,7 +1835,7 @@ mod codegen {
             self.emit(types::cat2("br label %", head.as_str()).as_str());
             self.block(head.as_str());
             let depth: usize = self.loops.len();
-            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: slot.clone(), ty: ty.clone() });
+            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: slot.clone(), ty: ty.clone(), mark: self.pending.len() });
             let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1);
             self.loops.truncate(depth);
             self.emit(types::cat2("br label %", head.as_str()).as_str());
@@ -1706,9 +1871,13 @@ mod codegen {
             }
             let sp: String = ptr_of(&sv);
             let st: ast::TypeKind = ptr_ty(&sv);
+            let consumed: bool = self.consumed_at(e.span, ck);
+            if !consumed {
+                let kept: bool = self.read_temp(&*mx.scrut, &sv, &st, tb);
+            }
             match lowered::enum_variants(&st, tb) {
                 None => self.todo_expr("a `match` on a value that is not an enum", e),
-                Some(vs) => { let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let mut labels: Vec<String> = Vec::new(); for a0 in 0..mx.arms.len() invariant 0 <= a0 && a0 <= mx.arms.len(), { labels.push(self.l("arm")); } let end: String = self.l("endmatch"); let mut cases: Vec<String> = Vec::new(); let mut ks: Vec<usize> = Vec::new(); for a1 in 0..mx.arms.len() invariant 0 <= a1 && a1 <= mx.arms.len(), { let k: usize = variant_at(vs.as_slice(), pat_name(&mx.arms[a1].pat).as_str()); if k >= vs.len() || a1 >= labels.len() { return self.todo_expr("a `match` arm of a variant the enum does not have", e); } let mut cs: String = String::from("i64 "); std::num::push_u64(&mut cs, k as u64); cs.push_str(", label %"); cs.push_str(labels[a1].as_str()); cases.push(cs); ks.push(k); } if labels.len() == 0 { return self.todo_expr("a `match` without arms", e); } self.emit(types::cat7("switch i64 ", tag.as_str(), ", label %", labels[labels.len() - 1].as_str(), " [ ", types::join(cases.as_slice(), " ").as_str(), " ]").as_str()); for a2 in 0..mx.arms.len() invariant 0 <= a2 && a2 <= mx.arms.len(), { if a2 < labels.len() && a2 < ks.len() && ks[a2] < vs.len() { self.block(labels[a2].as_str()); let vname: String = pat_name(&mx.arms[a2].pat); let mut backs: Vec<Back> = Vec::new(); for j in 0..mx.arms[a2].pat.binds.len() invariant 0 <= j && j <= mx.arms[a2].pat.binds.len(), { if j < vs[ks[a2]].tys.len() { match &mx.arms[a2].pat.binds[j] { None => {}, Some(id) => { let pt: ast::TypeKind = vs[ks[a2]].tys[j].clone(); let fp: String = self.t(); let mut jt: String = String::new(); std::num::push_u64(&mut jt, (j as u64).wrapping_add(1)); self.emit(types::cat7(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, vname.as_str()).as_str(), ", ptr ", sp.as_str(), ", i32 0, i32 ", jt.as_str()).as_str()); let by_mut: bool = match self.local_ty(id.name.as_str(), tb) { None => false, Some(blt) => types::is_ref_mut(&blt), }; if by_mut { let vt: ast::TypeKind = lowered::value_ty(&pt); if is_mem(&vt) { self.slots.insert(id.name.as_str(), Slot::Data(DataSlot { ptr: fp, ty: vt })); } else if body::is_array(&vt) { let bety: ast::TypeKind = elem_of(&vt); self.slots.insert(id.name.as_str(), Slot::Arr(ArrSlot { ptr: fp, len: array_len_text(&vt), elem: elem_kind(&bety), ety: bety })); } else { let blt2: String = llty(&vt); let btmp: String = self.alloca(blt2.as_str()); let bx: String = self.load_mem(fp.as_str(), &vt); self.emit(types::cat7("store ", blt2.as_str(), " ", bx.as_str(), ", ptr ", btmp.as_str(), "").as_str()); backs.push(Back { tmp: btmp.clone(), elem: String::new(), ptr: fp, lt: blt2.clone(), mem: true, ty: vt }); self.slots.insert(id.name.as_str(), Slot::Scalar(btmp, blt2)); } } else { self.bind(id.name.as_str(), fp.as_str(), &pt); } }, } } } let av: CVal = self.expr(&mx.arms[a2].body, ck, tb, f - 1); for b in 0..backs.len() invariant 0 <= b && b <= backs.len(), { let wx: String = self.t(); self.emit(types::cat5(wx.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str()); let wp: String = backs[b].ptr.clone(); let wt: ast::TypeKind = backs[b].ty.clone(); self.put(&CVal::Imm(wx), wp.as_str(), &wt); } self.store_result(&slot, &av, &rt); if self.arm_drops_at(mx.arms[a2].body.span, ck) || self.branch_drops_at(mx.arms[a2].body.span, ck) { self.todo_at("a `match` arm that drops owned values", mx.arms[a2].body.span); } self.emit(types::cat2("br label %", end.as_str()).as_str()); } } self.block(end.as_str()); self.load_result(&slot, &rt) },
+                Some(vs) => { let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let mut labels: Vec<String> = Vec::new(); for a0 in 0..mx.arms.len() invariant 0 <= a0 && a0 <= mx.arms.len(), { labels.push(self.l("arm")); } let end: String = self.l("endmatch"); let mut cases: Vec<String> = Vec::new(); let mut ks: Vec<usize> = Vec::new(); for a1 in 0..mx.arms.len() invariant 0 <= a1 && a1 <= mx.arms.len(), { let k: usize = variant_at(vs.as_slice(), pat_name(&mx.arms[a1].pat).as_str()); if k >= vs.len() || a1 >= labels.len() { return self.todo_expr("a `match` arm of a variant the enum does not have", e); } let mut cs: String = String::from("i64 "); std::num::push_u64(&mut cs, k as u64); cs.push_str(", label %"); cs.push_str(labels[a1].as_str()); cases.push(cs); ks.push(k); } if labels.len() == 0 { return self.todo_expr("a `match` without arms", e); } self.emit(types::cat7("switch i64 ", tag.as_str(), ", label %", labels[labels.len() - 1].as_str(), " [ ", types::join(cases.as_slice(), " ").as_str(), " ]").as_str()); for a2 in 0..mx.arms.len() invariant 0 <= a2 && a2 <= mx.arms.len(), { if a2 < labels.len() && a2 < ks.len() && ks[a2] < vs.len() { self.block(labels[a2].as_str()); let vname: String = pat_name(&mx.arms[a2].pat); let mut backs: Vec<Back> = Vec::new(); for j in 0..mx.arms[a2].pat.binds.len() invariant 0 <= j && j <= mx.arms[a2].pat.binds.len(), { if j < vs[ks[a2]].tys.len() { let pt: ast::TypeKind = vs[ks[a2]].tys[j].clone(); match &mx.arms[a2].pat.binds[j] { None => { if consumed && self.owns(&pt, tb) { let np: String = self.t(); let mut nj: String = String::new(); std::num::push_u64(&mut nj, (j as u64).wrapping_add(1)); self.emit(types::cat7(np.as_str(), " = getelementptr inbounds ", view_ty(&st, vname.as_str()).as_str(), ", ptr ", sp.as_str(), ", i32 0, i32 ", nj.as_str()).as_str()); self.drop_at(np.as_str(), &pt, tb); } }, Some(id) => { let fp: String = self.t(); let mut jt: String = String::new(); std::num::push_u64(&mut jt, (j as u64).wrapping_add(1)); self.emit(types::cat7(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, vname.as_str()).as_str(), ", ptr ", sp.as_str(), ", i32 0, i32 ", jt.as_str()).as_str()); let by_mut: bool = match self.local_ty(id.name.as_str(), tb) { None => false, Some(blt) => types::is_ref_mut(&blt), }; if by_mut { let vt: ast::TypeKind = lowered::value_ty(&pt); if is_mem(&vt) { self.slots.insert(id.name.as_str(), Slot::Data(DataSlot { ptr: fp, ty: vt })); } else if body::is_array(&vt) { let bety: ast::TypeKind = elem_of(&vt); self.slots.insert(id.name.as_str(), Slot::Arr(ArrSlot { ptr: fp, len: array_len_text(&vt), elem: elem_kind(&bety), ety: bety })); } else { let blt2: String = llty(&vt); let btmp: String = self.alloca(blt2.as_str()); let bx: String = self.load_mem(fp.as_str(), &vt); self.emit(types::cat7("store ", blt2.as_str(), " ", bx.as_str(), ", ptr ", btmp.as_str(), "").as_str()); backs.push(Back { tmp: btmp.clone(), elem: String::new(), ptr: fp, lt: blt2.clone(), mem: true, ty: vt }); self.slots.insert(id.name.as_str(), Slot::Scalar(btmp, blt2)); } } else { self.bind(id.name.as_str(), fp.as_str(), &pt); } }, } } } let av: CVal = self.region_expr(&mx.arms[a2].body, ck, tb, f - 1); for b in 0..backs.len() invariant 0 <= b && b <= backs.len(), { let wx: String = self.t(); self.emit(types::cat5(wx.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str()); let wp: String = backs[b].ptr.clone(); let wt: ast::TypeKind = backs[b].ty.clone(); self.put(&CVal::Imm(wx), wp.as_str(), &wt); } self.store_result(&slot, &av, &rt); let owned: Vec<String> = self.move_names(3, mx.arms[a2].body.span, ck); for o in 0..owned.len() invariant 0 <= o && o <= owned.len(), { if has_dot(owned[o].as_str()) { self.drop_path(owned[o].as_str(), tb); } else { match self.data_slot(owned[o].as_str()) { None => {}, Some(osl) => self.drop_at(osl.ptr.as_str(), &osl.ty, tb), } } } self.drop_moves(1, mx.arms[a2].body.span, ck, tb); self.emit(types::cat2("br label %", end.as_str()).as_str()); } } self.block(end.as_str()); self.load_result(&slot, &rt) },
             }
         }
 
@@ -1770,8 +1939,27 @@ mod codegen {
                 None => {},
                 Some(cv) => { let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); let needs: bool = body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)); if name == "unwrap" { if needs { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); } let kept: String = if needs { self.in_range_of(v.as_str(), is_signed(&st), cv.target) } else { String::from("true") }; return self.option(e, kept.as_str(), v.as_str(), tb); },
             }
+            if name == "copy_within" {
+                return self.copy_within(e, mc, ck, tb, f - 1);
+            }
+            if self.is_text_expr(&*mc.recv, tb) && (name == "push_str" || name == "push" || name == "as_str" || name == "as_bytes" || name == "is_char_boundary") || name == "len_utf8" {
+                return self.todo_expr("a method of text (backlog 4D-05f)", e);
+            }
             let rt: ast::TypeKind = self.ty(&*mc.recv, tb);
             let vt: ast::TypeKind = lowered::value_ty(&rt);
+            if name == "clone" && self.owns(&vt, tb) && !plain_vec(&vt, tb) {
+                let csrc: String = self.vec_hdr(&*mc.recv, ck, tb, f - 1);
+                if csrc == "undef" {
+                    return CVal::Never;
+                }
+                let cdst: String = self.temp(&vt);
+                self.emit(types::cat7("call void ", clone_name(&vt).as_str(), "(ptr ", cdst.as_str(), ", ptr ", csrc.as_str(), ")").as_str());
+                self.clones.push(types::text(&vt));
+                return CVal::Ptr(cdst, vt);
+            }
+            if is_vec(&rt) {
+                return self.vec_method(e, mc, ck, tb, f - 1);
+            }
             if name == "len" && mc.args.len() == 0 && (body::is_array(&vt) || is_array(&vt)) {
                 let lv: CVal = self.expr(&*mc.recv, ck, tb, f - 1);
                 if is_arr(&lv) {
@@ -1797,6 +1985,17 @@ mod codegen {
             match body::int_of(&rt) {
                 None => self.todo_expr("a method of a value that is not a scalar", e),
                 Some(i) => { if name == "len" { return self.todo_expr("the length of an integer", e); } let rv: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1)); if (name == "checked_shl" || name == "checked_shr") && mc.args.len() == 1 { let sn: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); let sok: String = self.t(); let mut sw: String = String::new(); std::num::push_u64(&mut sw, body::bits(i) as u64); self.emit(types::cat5(sok.as_str(), " = icmp ult i64 ", sn.as_str(), ", ", sw.as_str()).as_str()); let wname: String = if name == "checked_shl" { String::from("wrapping_shl") } else { String::from("wrapping_shr") }; let sv: String = imm(&self.bit_method(wname.as_str(), i, rv.as_str(), sn.as_str())); return self.option(e, sok.as_str(), sv.as_str(), tb); } if name == "to_be_bytes" || name == "to_le_bytes" { return self.to_bytes(rv.as_str(), i, name == "to_le_bytes"); } if name == "is_power_of_two" { let ones: String = imm(&self.bit_method("count_ones", i, rv.as_str(), "")); let pr: String = self.t(); self.emit(types::cat4(pr.as_str(), " = icmp eq i64 ", ones.as_str(), ", 1").as_str()); return CVal::Imm(pr); } if body::bit_method(name.as_str()) > 0 { let n: String = if mc.args.len() > 0 { imm(&self.expr(&mc.args[0], ck, tb, f - 1)) } else { String::new() }; return self.bit_method(name.as_str(), i, rv.as_str(), n.as_str()); } if mc.args.len() != 1 { return self.todo_expr("an integer method without one argument", e); } let b: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); self.int_method(e, name.as_str(), rv.as_str(), b.as_str(), i, tb) },
+            }
+        }
+
+        #[summary("자리 s에 적힌 경로들 (검사기의 MoveInfo). kind는 drop_moves의 것")]
+        #[effects(alloc)]
+        fn move_names(self: &Gen, kind: u8, s: source::Span, ck: &body::Checked) -> Vec<String> {
+            let none: Vec<String> = Vec::new();
+            let key: String = body::span_key(s);
+            match ck.b.needs.find(self.base.as_str()) {
+                None => none,
+                Some(at) => { if kind == 0 { match ck.b.needs.items[at].moves.drops.find(key.as_str()) { None => none, Some(i) => ck.b.needs.items[at].moves.drops.items[i].clone(), } } else if kind == 1 { match ck.b.needs.items[at].moves.branch_drops.find(key.as_str()) { None => none, Some(i) => ck.b.needs.items[at].moves.branch_drops.items[i].clone(), } } else if kind == 2 { match ck.b.needs.items[at].moves.exits.find(key.as_str()) { None => none, Some(i) => ck.b.needs.items[at].moves.exits.items[i].clone(), } } else if kind == 3 { match ck.b.needs.items[at].moves.arm_drops.find(key.as_str()) { None => none, Some(i) => ck.b.needs.items[at].moves.arm_drops.items[i].clone(), } } else { match ck.b.needs.items[at].moves.partial_replaces.find(key.as_str()) { None => none, Some(i) => ck.b.needs.items[at].moves.partial_replaces.items[i].clone(), } } },
             }
         }
 
@@ -1849,6 +2048,13 @@ mod codegen {
             CVal::Ptr(tmp, t)
         }
 
+        #[summary("타입 t의 값이 힙 메모리를 갖는가 (stage0 check::is_move)")]
+        #[effects(alloc)]
+        fn owns(self: &Gen, t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+            let none: Vec<String> = Vec::new();
+            types::is_move_in(t, &tb.adts, none.as_slice())
+        }
+
         #[summary("경로 식 (stage0 expr의 Path 갈래들): 정수 타입의 MIN·MAX, f64의 상수, 아니면 페이로드 없는 변형")]
         #[effects(alloc)]
         fn path_expr(self: &mut Gen, e: &ast::Expr, segs: &[ast::Ident], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -1895,7 +2101,7 @@ mod codegen {
                 ast::ExprKind::Var(id) => { match self.data_slot(id.name.as_str()) { None => { self.todo_at("a place that is a local not in memory", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(sl) => Place { ptr: sl.ptr, ty: sl.ty, ok: true }, } },
                 ast::ExprKind::Call(pl_call0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Method(pl_method0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
-                ast::ExprKind::Index(ib, ii) => { match var_name(&**ib) { None => { let ap: Place = self.place(&**ib, ck, tb, f - 1); if !ap.ok { return ap; } let avt: ast::TypeKind = lowered::value_ty(&ap.ty); if !body::is_array(&avt) { self.todo_at("an element of a place that is not an array", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } let ael: ast::TypeKind = elem_of(&avt); let ai: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let aep: String = self.data_elem(ap.ptr.as_str(), array_len_text(&avt).as_str(), ai.as_str(), &ael); Place { ptr: aep, ty: ael, ok: true } }, Some(bn) => { match self.arr_slot(bn.as_str()) { None => { self.todo_at("an element of a local that is not an array or a slice", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(asl) => { let vi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let vep: String = self.data_elem(asl.ptr.as_str(), asl.len.as_str(), vi.as_str(), &asl.ety); Place { ptr: vep, ty: asl.ety, ok: true } }, } }, } },
+                ast::ExprKind::Index(ib, ii) => { match var_name(&**ib) { None => { let ap: Place = self.place(&**ib, ck, tb, f - 1); if !ap.ok { return ap; } let avt: ast::TypeKind = lowered::value_ty(&ap.ty); if !body::is_array(&avt) && !body::is_vec(&avt) { self.todo_at("an element of a place that is not an array or a `Vec`", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } let ael: ast::TypeKind = elem_of(&avt); let aview: CVal = if body::is_vec(&avt) { self.vec_view(ap.ptr.as_str()) } else { CVal::Arr(ap.ptr.clone(), array_len_text(&avt)) }; let ai: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let aep: String = self.data_elem(arr_ptr(&aview).as_str(), arr_len(&aview).as_str(), ai.as_str(), &ael); Place { ptr: aep, ty: ael, ok: true } }, Some(bn) => { match self.arr_slot(bn.as_str()) { None => { match self.data_slot(bn.as_str()) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vsl) => { match body::vec_elem(&lowered::value_ty(&vsl.ty)) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vel) => { let vview: CVal = self.vec_view(vsl.ptr.as_str()); let wi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let wep: String = self.data_elem(arr_ptr(&vview).as_str(), arr_len(&vview).as_str(), wi.as_str(), &vel); Place { ptr: wep, ty: vel, ok: true } }, } }, } }, Some(asl) => { let vi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let vep: String = self.data_elem(asl.ptr.as_str(), asl.len.as_str(), vi.as_str(), &asl.ety); Place { ptr: vep, ty: asl.ety, ok: true } }, } }, } },
                 ast::ExprKind::Unary(pl_unary0, pl_unary1) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Binary(pl_binary0, pl_binary1, pl_binary2) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Ref(pl_m, rx) => self.place(&**rx, ck, tb, f - 1),
@@ -1909,8 +2115,8 @@ mod codegen {
                 ast::ExprKind::Closure(pl_closure0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::StructLit(pl_structlit0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Path(pl_path0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
-                ast::ExprKind::Deref(dx) => { let dp: Place = self.place(&**dx, ck, tb, f - 1); if dp.ok && is_box(&dp.ty) { self.todo_at("a place through a `Box`", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } dp },
-                ast::ExprKind::Field(fb, fname) => { let bp: Place = self.place(&**fb, ck, tb, f - 1); if !bp.ok { return bp; } if is_box(&bp.ty) { self.todo_at("a field through a `Box`", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } match self.field_of(&bp.ty, fname.name.as_str(), tb) { None => { self.todo_at("a field of a type that is not a struct", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(fa) => { let fp: String = self.field_ptr(bp.ptr.as_str(), &bp.ty, fa.k); Place { ptr: fp, ty: fa.ty, ok: true } }, } },
+                ast::ExprKind::Deref(dx) => { let dp: Place = self.place(&**dx, ck, tb, f - 1); let reference: bool = match var_name(&**dx) { None => false, Some(rn) => { match self.local_ty(rn.as_str(), tb) { None => false, Some(rlt) => body::is_ref(&rlt), } }, }; if dp.ok && !reference { match body::box_inner(&dp.ty) { None => {}, Some(binner) => { let bh: String = self.unbox(dp.ptr.as_str()); return Place { ptr: bh, ty: binner, ok: true }; }, } } dp },
+                ast::ExprKind::Field(fb, fname) => { let bp: Place = self.place(&**fb, ck, tb, f - 1); if !bp.ok { return bp; } let mut fbt: ast::TypeKind = bp.ty.clone(); let mut fbp: String = bp.ptr.clone(); let mut n: usize = 64; while n > 0 && body::is_box(&fbt) invariant n <= 64, decreases n, { n = n - 1; match body::box_inner(&fbt) { None => {}, Some(finner) => { fbp = self.unbox(fbp.as_str()); fbt = finner; }, } } match self.field_of(&fbt, fname.name.as_str(), tb) { None => { self.todo_at("a field of a type that is not a struct", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(fa) => { let fp: String = self.field_ptr(fbp.as_str(), &fbt, fa.k); Place { ptr: fp, ty: fa.ty, ok: true } }, } },
                 ast::ExprKind::Match(pl_match0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Return(pl_return0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Try(pl_try0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
@@ -1959,6 +2165,64 @@ mod codegen {
                 return CVal::Imm(r);
             }
             self.read(p.ptr.as_str(), &p.ty)
+        }
+
+        #[summary("식 e에서 나온, 읽히기만 하는 임시값 v (stage0 read_temp): 힙 메모리를 가지면 구역이 끝날 때 놓게 적는다. 적었으면 참")]
+        #[effects(alloc)]
+        fn read_temp(self: &mut Gen, e: &ast::Expr, v: &CVal, t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+            if is_ptr(v) && fresh(e) && self.owns(t, tb) {
+                self.pending.push(Pend { ptr: ptr_of(v), ty: t.clone() });
+                return true;
+            }
+            false
+        }
+
+        #[summary("&e (stage0 expr의 Ref): 임시값은 구역이 끝날 때까지 산다")]
+        #[effects(alloc)]
+        fn ref_expr(self: &mut Gen, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", x);
+            }
+            let v: CVal = self.expr(x, ck, tb, f - 1);
+            let vt: ast::TypeKind = lowered::value_ty(&self.ty(x, tb));
+            let kept: bool = self.read_temp(x, &v, &vt, tb);
+            v
+        }
+
+        #[summary("구역 하나로서의 식 (stage0 region): 그 안에서 남긴 임시값을 끝에서 놓는다")]
+        #[effects(alloc)]
+        fn region_expr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let mark: usize = self.pending.len();
+            let v: CVal = self.expr(e, ck, tb, f - 1);
+            self.release(mark, v, tb)
+        }
+
+        #[summary("mark부터의 임시값을 놓고 지운다 (stage0 release). 놓이는 메모리를 가리킬지 모르는 메모리 값은 먼저 제 메모리로 옮긴다")]
+        #[effects(alloc)]
+        fn release(self: &mut Gen, mark: usize, v: CVal, tb: &lowered::Tables) -> CVal {
+            if self.pending.len() <= mark {
+                return v;
+            }
+            let kept: CVal = self.detach(v);
+            self.drop_pending_from(mark, tb);
+            self.pending.truncate(mark);
+            kept
+        }
+
+        #[summary("대입 자리 s가 가진 옛 값을 갈아치우는가 (검사기의 MoveInfo.replaces)")]
+        #[effects(alloc)]
+        fn replaces(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => types::has(ck.b.needs.items[at].moves.replaces.as_slice(), body::span_key(s).as_str()),
+            }
         }
 
         #[summary("대입 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.replaces와 partial_replaces)")]
@@ -2012,9 +2276,8 @@ mod codegen {
                 Some(rv) => self.expr(&**rv, ck, tb, f - 1),
             };
             let v: CVal = self.detach(v0);
-            if self.exits_at(e.span, ck) {
-                self.todo_at("a `return` that drops owned values", e.span);
-            }
+            self.drop_pending_from(0, tb);
+            self.drop_moves(2, e.span, ck, tb);
             self.emit_return(&v);
             let after: String = self.l("after_return");
             self.block(after.as_str());
@@ -2225,7 +2488,7 @@ mod codegen {
                 ast::Stmt::Assume(st_u) => {},
                 ast::Stmt::Proof(st_p) => {},
                 ast::Stmt::LetFields(lf) => self.todo_at("a `let` of fields", lf.span),
-                ast::Stmt::Expr(ex) => { let v: CVal = self.expr(ex, ck, tb, f - 1); },
+                ast::Stmt::Expr(ex) => { let v: CVal = self.expr(ex, ck, tb, f - 1); if is_ptr(&v) { let dt: ast::TypeKind = ptr_ty(&v); self.drop_at(ptr_of(&v).as_str(), &dt, tb); } },
             }
         }
 
@@ -2375,6 +2638,9 @@ mod codegen {
             }
             let sp: String = ptr_of(&sv);
             let st: ast::TypeKind = ptr_ty(&sv);
+            if !self.consumed_at(e.span, ck) {
+                let kept: bool = self.read_temp(x, &sv, &st, tb);
+            }
             let kind: u8 = body::try_variants(&st);
             if kind == 0 {
                 return self.todo_expr("a `?` on a value that is not an `Option` or a `Result`", e);
@@ -2392,7 +2658,7 @@ mod codegen {
             let rt: ast::TypeKind = self.ret.clone();
             match lowered::enum_variants(&st, tb) {
                 None => self.todo_expr("a `?` on a value that is not an enum", e),
-                Some(vs) => { match lowered::enum_variants(&rt, tb) { None => self.todo_expr("a `?` in a function whose result is not an enum", e), Some(rvs) => { let k_ok: usize = variant_at(vs.as_slice(), ok.as_str()); let k_bad_in: usize = variant_at(vs.as_slice(), bad.as_str()); let k_bad: usize = variant_at(rvs.as_slice(), bad.as_str()); if k_ok >= vs.len() || k_bad_in >= vs.len() || k_bad >= rvs.len() || vs[k_ok].tys.len() == 0 { return self.todo_expr("a `?` whose variants are not found", e); } let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let is_ok: String = self.t(); let mut kt: String = String::new(); std::num::push_u64(&mut kt, k_ok as u64); self.emit(types::cat5(is_ok.as_str(), " = icmp eq i64 ", tag.as_str(), ", ", kt.as_str()).as_str()); let ok_l: String = self.l("try_ok"); let bad_l: String = self.l("try_out"); self.emit(types::cat7("br i1 ", is_ok.as_str(), ", label %", ok_l.as_str(), ", label %", bad_l.as_str(), "").as_str()); self.block(bad_l.as_str()); let out: String = self.temp(&rt); let out_tag: String = self.field_ptr(out.as_str(), &rt, 0); let mut bt: String = String::new(); std::num::push_u64(&mut bt, k_bad as u64); self.emit(types::cat4("store i64 ", bt.as_str(), ", ptr ", out_tag.as_str()).as_str()); if vs[k_bad_in].tys.len() == 1 { let src: String = self.t(); let dst: String = self.t(); self.emit(types::cat5(src.as_str(), " = getelementptr inbounds ", view_ty(&st, bad.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); self.emit(types::cat5(dst.as_str(), " = getelementptr inbounds ", view_ty(&rt, bad.as_str()).as_str(), ", ptr ", types::cat2(out.as_str(), ", i32 0, i32 1").as_str()).as_str()); let bpt: ast::TypeKind = vs[k_bad_in].tys[0].clone(); self.copy(dst.as_str(), src.as_str(), &bpt); } if self.exits_at(e.span, ck) { self.todo_at("a `?` that drops owned values", e.span); } self.emit_return(&CVal::Ptr(out, rt.clone())); self.block(ok_l.as_str()); let pt: ast::TypeKind = lowered::value_ty(&vs[k_ok].tys[0]); let fp: String = self.t(); self.emit(types::cat5(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, ok.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); if is_mem(&pt) { let mtmp: String = self.temp(&pt); self.copy(mtmp.as_str(), fp.as_str(), &pt); return CVal::Ptr(mtmp, pt); } if body::is_array(&pt) { let atmp: String = self.temp(&pt); self.copy(atmp.as_str(), fp.as_str(), &pt); return CVal::Arr(atmp, array_len_text(&pt)); } CVal::Imm(self.load_mem(fp.as_str(), &pt)) }, } },
+                Some(vs) => { match lowered::enum_variants(&rt, tb) { None => self.todo_expr("a `?` in a function whose result is not an enum", e), Some(rvs) => { let k_ok: usize = variant_at(vs.as_slice(), ok.as_str()); let k_bad_in: usize = variant_at(vs.as_slice(), bad.as_str()); let k_bad: usize = variant_at(rvs.as_slice(), bad.as_str()); if k_ok >= vs.len() || k_bad_in >= vs.len() || k_bad >= rvs.len() || vs[k_ok].tys.len() == 0 { return self.todo_expr("a `?` whose variants are not found", e); } let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let is_ok: String = self.t(); let mut kt: String = String::new(); std::num::push_u64(&mut kt, k_ok as u64); self.emit(types::cat5(is_ok.as_str(), " = icmp eq i64 ", tag.as_str(), ", ", kt.as_str()).as_str()); let ok_l: String = self.l("try_ok"); let bad_l: String = self.l("try_out"); self.emit(types::cat7("br i1 ", is_ok.as_str(), ", label %", ok_l.as_str(), ", label %", bad_l.as_str(), "").as_str()); self.block(bad_l.as_str()); let out: String = self.temp(&rt); let out_tag: String = self.field_ptr(out.as_str(), &rt, 0); let mut bt: String = String::new(); std::num::push_u64(&mut bt, k_bad as u64); self.emit(types::cat4("store i64 ", bt.as_str(), ", ptr ", out_tag.as_str()).as_str()); if vs[k_bad_in].tys.len() == 1 { let src: String = self.t(); let dst: String = self.t(); self.emit(types::cat5(src.as_str(), " = getelementptr inbounds ", view_ty(&st, bad.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); self.emit(types::cat5(dst.as_str(), " = getelementptr inbounds ", view_ty(&rt, bad.as_str()).as_str(), ", ptr ", types::cat2(out.as_str(), ", i32 0, i32 1").as_str()).as_str()); let bpt: ast::TypeKind = vs[k_bad_in].tys[0].clone(); self.copy(dst.as_str(), src.as_str(), &bpt); } self.drop_pending_from(0, tb); self.drop_moves(2, e.span, ck, tb); self.emit_return(&CVal::Ptr(out, rt.clone())); self.block(ok_l.as_str()); let pt: ast::TypeKind = lowered::value_ty(&vs[k_ok].tys[0]); let fp: String = self.t(); self.emit(types::cat5(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, ok.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); if is_mem(&pt) { let mtmp: String = self.temp(&pt); self.copy(mtmp.as_str(), fp.as_str(), &pt); return CVal::Ptr(mtmp, pt); } if body::is_array(&pt) { let atmp: String = self.temp(&pt); self.copy(atmp.as_str(), fp.as_str(), &pt); return CVal::Arr(atmp, array_len_text(&pt)); } CVal::Imm(self.load_mem(fp.as_str(), &pt)) }, } },
             }
         }
 
@@ -2442,6 +2708,14 @@ mod codegen {
             CVal::Imm(r)
         }
 
+        #[summary("Box의 칸 cell이 가리키는 값의 주소 (stage0 unbox)")]
+        #[effects(alloc)]
+        fn unbox(self: &mut Gen, cell: &str) -> String {
+            let h: String = self.t();
+            self.emit(types::cat3(h.as_str(), " = load ptr, ptr ", cell).as_str());
+            h
+        }
+
         #[summary("열거형 t의 변형 vname을 인자들로 짓는다 (stage0 variant): 페이로드는 셈하는 차례로 옮긴다")]
         #[effects(alloc)]
         fn variant(self: &mut Gen, e: &ast::Expr, t: &ast::TypeKind, vname: &str, args: &[ast::Expr], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -2454,6 +2728,213 @@ mod codegen {
                 None => self.todo_expr("a call or a path that is not a function, a constant or a variant", e),
                 Some(vs) => { let k: usize = variant_at(vs.as_slice(), vname); if k >= vs.len() { return self.todo_expr("a variant the enum does not have", e); } let tmp: String = self.temp(t); let tag: String = self.field_ptr(tmp.as_str(), t, 0); let mut kt: String = String::new(); std::num::push_u64(&mut kt, k as u64); self.emit(types::cat4("store i64 ", kt.as_str(), ", ptr ", tag.as_str()).as_str()); for j in 0..args.len() invariant 0 <= j && j <= args.len(), { if j < vs[k].tys.len() { let val: CVal = self.expr(&args[j], ck, tb, f - 1); let p: String = self.t(); let mut jt: String = String::new(); std::num::push_u64(&mut jt, (j as u64).wrapping_add(1)); self.emit(types::cat7(p.as_str(), " = getelementptr inbounds ", view_ty(t, vname).as_str(), ", ptr ", tmp.as_str(), ", i32 0, i32 ", jt.as_str()).as_str()); let pty: ast::TypeKind = vs[k].tys[j].clone(); self.put(&val, p.as_str(), &pty); } } CVal::Ptr(tmp, lowered::value_ty(t)) },
             }
+        }
+
+        #[summary("Vec의 머리 hdr의 k째 칸의 주소 (stage0 vec_field): 0 버퍼, 1 길이, 2 용량")]
+        #[effects(alloc)]
+        fn vec_field(self: &mut Gen, hdr: &str, k: u32) -> String {
+            let p: String = self.t();
+            let mut kt: String = String::new();
+            std::num::push_u64(&mut kt, k as u64);
+            self.emit(types::cat5(p.as_str(), " = getelementptr inbounds %bmb.vec, ptr ", hdr, ", i32 0, i32 ", kt.as_str()).as_str());
+            p
+        }
+
+        #[summary("읽히기만 하는 Vec 식의 머리 (stage0 vec_hdr): 자리면 제 머리, 임시값이면 구역이 끝날 때 놓는다. 옮기지 못하면 undef")]
+        #[effects(alloc)]
+        fn vec_hdr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", e.span);
+                return String::from("undef");
+            }
+            let v: CVal = self.expr(e, ck, tb, f - 1);
+            if !is_ptr(&v) {
+                if !is_never(&v) {
+                    self.todo_at("a `Vec` value that is not in memory", e.span);
+                }
+                return String::from("undef");
+            }
+            if fresh(e) {
+                self.pending.push(Pend { ptr: ptr_of(&v), ty: lowered::value_ty(&self.ty(e, tb)) });
+            }
+            ptr_of(&v)
+        }
+
+        #[summary("Vec의 메서드 (stage0 vec_method): len, as_slice, as_mut_slice, clone (원소가 힙을 갖지 않는 것), truncate, push, pop")]
+        #[effects(alloc)]
+        fn vec_method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let vt: ast::TypeKind = lowered::value_ty(&self.ty(&*mc.recv, tb));
+            let el: ast::TypeKind = elem_of(&vt);
+            let hdr: String = self.vec_hdr(&*mc.recv, ck, tb, f - 1);
+            if hdr == "undef" {
+                return CVal::Never;
+            }
+            let m: String = mc.name.name.clone();
+            if m == "len" {
+                let lp: String = self.vec_field(hdr.as_str(), 1);
+                let r: String = self.t();
+                self.emit(types::cat3(r.as_str(), " = load i64, ptr ", lp.as_str()).as_str());
+                return CVal::Imm(r);
+            }
+            if m == "as_slice" || m == "as_mut_slice" {
+                return self.vec_view(hdr.as_str());
+            }
+            if m == "clone" {
+                let dst: String = self.temp(&vt);
+                self.emit(types::cat7("call void @bmb_vec_clone(ptr ", dst.as_str(), ", ptr ", hdr.as_str(), ", i64 ", size_of(&el).as_str(), ")").as_str());
+                return CVal::Ptr(dst, vt);
+            }
+            if m == "truncate" && mc.args.len() == 1 {
+                let n: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1));
+                let lp2: String = self.vec_field(hdr.as_str(), 1);
+                let len: String = self.t();
+                let r2: String = self.t();
+                self.emit(types::cat3(len.as_str(), " = load i64, ptr ", lp2.as_str()).as_str());
+                self.emit(types::cat7(r2.as_str(), " = call i64 @llvm.umin.i64(i64 ", len.as_str(), ", i64 ", n.as_str(), ")", "").as_str());
+                if self.owns(&el, tb) {
+                    let buf: String = self.t();
+                    self.emit(types::cat3(buf.as_str(), " = load ptr, ptr ", hdr.as_str()).as_str());
+                    let i: String = self.alloca("i64");
+                    self.emit(types::cat4("store i64 ", r2.as_str(), ", ptr ", i.as_str()).as_str());
+                    let head: String = self.l("cut");
+                    let lb: String = self.l("cutb");
+                    let end: String = self.l("cutd");
+                    self.emit(types::cat2("br label %", head.as_str()).as_str());
+                    self.block(head.as_str());
+                    let k: String = self.t();
+                    let c: String = self.t();
+                    self.emit(types::cat3(k.as_str(), " = load i64, ptr ", i.as_str()).as_str());
+                    self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", k.as_str(), ", ", len.as_str()).as_str());
+                    self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str());
+                    self.block(lb.as_str());
+                    let ep: String = self.t();
+                    self.emit(types::cat7(ep.as_str(), " = getelementptr inbounds ", mem_ty(&el).as_str(), ", ptr ", buf.as_str(), ", i64 ", k.as_str()).as_str());
+                    self.drop_at(ep.as_str(), &el, tb);
+                    let k2: String = self.t();
+                    self.emit(types::cat4(k2.as_str(), " = add nuw i64 ", k.as_str(), ", 1").as_str());
+                    self.emit(types::cat4("store i64 ", k2.as_str(), ", ptr ", i.as_str()).as_str());
+                    self.emit(types::cat2("br label %", head.as_str()).as_str());
+                    self.block(end.as_str());
+                }
+                self.emit(types::cat4("store i64 ", r2.as_str(), ", ptr ", lp2.as_str()).as_str());
+                return CVal::Unit;
+            }
+            if m == "push" && mc.args.len() == 1 {
+                let x0: CVal = self.expr(&mc.args[0], ck, tb, f - 1);
+                let x: CVal = self.detach(x0);
+                let lp3: String = self.vec_field(hdr.as_str(), 1);
+                let cp: String = self.vec_field(hdr.as_str(), 2);
+                let len3: String = self.t();
+                let cap: String = self.t();
+                let full: String = self.t();
+                self.emit(types::cat3(len3.as_str(), " = load i64, ptr ", lp3.as_str()).as_str());
+                self.emit(types::cat3(cap.as_str(), " = load i64, ptr ", cp.as_str()).as_str());
+                self.emit(types::cat5(full.as_str(), " = icmp eq i64 ", len3.as_str(), ", ", cap.as_str()).as_str());
+                let grow: String = self.l("grow");
+                let put: String = self.l("put");
+                self.emit(types::cat7("br i1 ", full.as_str(), ", label %", grow.as_str(), ", label %", put.as_str(), "").as_str());
+                self.block(grow.as_str());
+                self.emit(types::cat5("call void @bmb_vec_grow(ptr ", hdr.as_str(), ", i64 ", size_of(&el).as_str(), ")").as_str());
+                self.emit(types::cat2("br label %", put.as_str()).as_str());
+                self.block(put.as_str());
+                let buf3: String = self.t();
+                self.emit(types::cat3(buf3.as_str(), " = load ptr, ptr ", hdr.as_str()).as_str());
+                let p3: String = self.t();
+                self.emit(types::cat7(p3.as_str(), " = getelementptr inbounds ", mem_ty(&el).as_str(), ", ptr ", buf3.as_str(), ", i64 ", len3.as_str()).as_str());
+                self.put(&x, p3.as_str(), &el);
+                let n3: String = self.t();
+                self.emit(types::cat4(n3.as_str(), " = add nuw i64 ", len3.as_str(), ", 1").as_str());
+                self.emit(types::cat4("store i64 ", n3.as_str(), ", ptr ", lp3.as_str()).as_str());
+                return CVal::Unit;
+            }
+            if m == "pop" {
+                let ot: ast::TypeKind = self.ty(e, tb);
+                if !is_data(&ot) {
+                    return self.todo_expr("a `pop` whose type is not known", e);
+                }
+                let out: String = self.temp(&ot);
+                let lp4: String = self.vec_field(hdr.as_str(), 1);
+                let len4: String = self.t();
+                let some: String = self.t();
+                self.emit(types::cat3(len4.as_str(), " = load i64, ptr ", lp4.as_str()).as_str());
+                self.emit(types::cat4(some.as_str(), " = icmp ne i64 ", len4.as_str(), ", 0").as_str());
+                let tag: String = self.field_ptr(out.as_str(), &ot, 0);
+                let k4: String = self.t();
+                self.emit(types::cat4(k4.as_str(), " = zext i1 ", some.as_str(), " to i64").as_str());
+                self.emit(types::cat4("store i64 ", k4.as_str(), ", ptr ", tag.as_str()).as_str());
+                let take: String = self.l("pop");
+                let done: String = self.l("popped");
+                self.emit(types::cat7("br i1 ", some.as_str(), ", label %", take.as_str(), ", label %", done.as_str(), "").as_str());
+                self.block(take.as_str());
+                let last: String = self.t();
+                self.emit(types::cat4(last.as_str(), " = sub nuw i64 ", len4.as_str(), ", 1").as_str());
+                self.emit(types::cat4("store i64 ", last.as_str(), ", ptr ", lp4.as_str()).as_str());
+                let buf4: String = self.t();
+                self.emit(types::cat3(buf4.as_str(), " = load ptr, ptr ", hdr.as_str()).as_str());
+                let src: String = self.t();
+                self.emit(types::cat7(src.as_str(), " = getelementptr inbounds ", mem_ty(&el).as_str(), ", ptr ", buf4.as_str(), ", i64 ", last.as_str()).as_str());
+                let dst4: String = self.t();
+                self.emit(types::cat5(dst4.as_str(), " = getelementptr inbounds ", view_ty(&ot, "Some").as_str(), ", ptr ", types::cat2(out.as_str(), ", i32 0, i32 1").as_str()).as_str());
+                self.copy(dst4.as_str(), src.as_str(), &el);
+                self.emit(types::cat2("br label %", done.as_str()).as_str());
+                self.block(done.as_str());
+                return CVal::Ptr(out, ot);
+            }
+            self.todo_expr("a `Vec` method that is not ported", e)
+        }
+
+        #[summary("Vec::new()와 Vec::with_capacity(n), String의 것도 (stage0 vec_new): 용량이 최대 길이 안인지 재고 버퍼를 잡는다")]
+        #[effects(alloc)]
+        fn vec_new(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let t: ast::TypeKind = self.ty(e, tb);
+            if !body::is_vec(&t) {
+                return self.todo_expr("a `Vec::new` whose type is not a `Vec`", e);
+            }
+            let el: ast::TypeKind = elem_of(&t);
+            let hdr: String = self.temp(&t);
+            let n: String = if c.args.len() > 0 {
+                let nv: String = imm(&self.expr(&c.args[0], ck, tb, f - 1));
+                let cc: String = self.t();
+                self.emit(types::cat5(cc.as_str(), " = icmp ule i64 ", nv.as_str(), ", ", vec_len_max(&el).as_str()).as_str());
+                self.check(cc.as_str(), "the capacity may exceed the maximum length");
+                nv
+            } else {
+                String::from("0")
+            };
+            self.emit(types::cat7("call void @bmb_vec_alloc(ptr ", hdr.as_str(), ", i64 ", n.as_str(), ", i64 ", size_of(&el).as_str(), ")").as_str());
+            CVal::Ptr(hdr, t)
+        }
+
+        #[summary("e가 Vec인 지역 변수나 매개변수를 이름하는가 (stage0 vec_var): 대입의 대상은 타입의 기록이 없다")]
+        #[effects(alloc)]
+        fn vec_var(self: &Gen, e: &ast::Expr) -> bool {
+            match var_name(e) {
+                None => false,
+                Some(n) => { match self.data_slot(n.as_str()) { None => false, Some(sl) => is_vec(&sl.ty), } },
+            }
+        }
+
+        #[summary("Vec의 머리 hdr의 버퍼와 길이를 지금 읽는다 (stage0 vec_view): push가 버퍼를 옮길 수 있다")]
+        #[effects(alloc)]
+        fn vec_view(self: &mut Gen, hdr: &str) -> CVal {
+            let buf: String = self.t();
+            self.emit(types::cat3(buf.as_str(), " = load ptr, ptr ", hdr).as_str());
+            let lp: String = self.vec_field(hdr, 1);
+            let len: String = self.t();
+            self.emit(types::cat3(len.as_str(), " = load i64, ptr ", lp.as_str()).as_str());
+            CVal::Arr(buf, len)
         }
 
         #[summary("while 문장 (stage0 stmt의 While)")]
@@ -2470,11 +2951,11 @@ mod codegen {
             let end: String = self.l("endwhile");
             self.emit(types::cat2("br label %", head.as_str()).as_str());
             self.block(head.as_str());
-            let c: String = imm(&self.expr(&x.cond, ck, tb, f - 1));
+            let c: String = imm(&self.region_expr(&x.cond, ck, tb, f - 1));
             self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str());
             self.block(lb.as_str());
             let depth: usize = self.loops.len();
-            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: None, ty: ast::TypeKind::Unit });
+            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: None, ty: ast::TypeKind::Unit, mark: self.pending.len() });
             let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1);
             self.loops.truncate(depth);
             self.emit(types::cat2("br label %", head.as_str()).as_str());
@@ -2497,6 +2978,9 @@ mod codegen {
 
     #[summary("모듈 (stage0 Module): IR의 글, 진입점, 옮기지 않은 구문을 만난 까닭들")]
     struct Module { ir: String, main: Option<String>, todo: Vec<String> }
+
+    #[summary("힙 메모리를 가진 임시값 (stage0 Gen.pending의 한 칸): 주소와 타입. 읽히기만 하고 옮겨지지 않았으니 그 구역이 끝날 때 놓는다")]
+    struct Pend { ptr: String, ty: ast::TypeKind }
 
     #[summary("자리 (stage0 place의 결과): 주소와 타입. ok가 거짓이면 옮기지 않은 자리다")]
     struct Place { ptr: String, ty: ast::TypeKind, ok: bool }
@@ -2626,6 +3110,17 @@ mod codegen {
         s
     }
 
+    #[summary("재귀가 있는 프로그램의 스택 (stage0 sys::big_stack, ADR-0091 §5): main을 256 MiB 스택의 스레드에서 돌리고 기다린다. 스레드가 뜨지 않으면 프로세스의 스택에서 돌린다")]
+    #[effects(alloc)]
+    fn big_stack(main: &str) -> String {
+        let mut s: String = String::from("declare i32 @pthread_attr_init(ptr)\ndeclare i32 @pthread_attr_setstacksize(ptr, i64)\ndeclare i32 @pthread_create(ptr, ptr, ptr, ptr)\ndeclare i32 @pthread_join(i64, ptr)\ndefine internal ptr @bmb_main_thread(ptr %u) {\n  call void ");
+        s.push_str(main);
+        s.push_str("()\n  ret ptr null\n}\ndefine internal void @bmb_big_stack() {\nentry:\n  %attr = alloca [64 x i8]\n  call i32 @pthread_attr_init(ptr %attr)\n  call i32 @pthread_attr_setstacksize(ptr %attr, i64 268435456)\n  %t = alloca i64\n  %rc = call i32 @pthread_create(ptr %t, ptr %attr, ptr @bmb_main_thread, ptr null)\n  %fail = icmp ne i32 %rc, 0\n  br i1 %fail, label %direct, label %join\ndirect:\n  call void ");
+        s.push_str(main);
+        s.push_str("()\n  ret void\njoin:\n  %tv = load i64, ptr %t\n  call i32 @pthread_join(i64 %tv, ptr null)\n  ret void\n}\n");
+        s
+    }
+
     #[summary("비트 연산의 명령: and, or, xor")]
     #[effects(alloc)]
     fn bit_inst(op: ast::BinOp) -> String {
@@ -2649,6 +3144,94 @@ mod codegen {
             ast::BinOp::BitXor => String::from("xor"),
             ast::BinOp::Shl => String::from("xor"),
             ast::BinOp::Shr => String::from("xor"),
+        }
+    }
+
+    #[summary("복제 코드의 원소마다 도는 루프 (stage0 clone_glue의 each): n개의 원소를 dp와 sp에서 가리켜 e의 복제 코드를 부른다")]
+    #[effects(alloc)]
+    fn clone_each(n: &str, dp: &str, sp: &str, e: &ast::TypeKind) -> String {
+        let mut s: String = String::from("  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, ");
+        s.push_str(n);
+        s.push_str("\n  br i1 %more, label %body, label %done\nbody:\n  %de = getelementptr inbounds ");
+        s.push_str(dp);
+        s.push_str(", i64 %i\n  %se = getelementptr inbounds ");
+        s.push_str(sp);
+        s.push_str(", i64 %i\n  call void ");
+        s.push_str(clone_name(e).as_str());
+        s.push_str("(ptr %de, ptr %se)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n");
+        s
+    }
+
+    #[summary("프로그램이 복제하는 타입과 그것이 든 타입의 복제 코드 (stage0 clone_glue, ADR-0141 §4): @\"bmb_clone.<타입>\"(ptr %dst, ptr %src)가 %src의 값과 같고 제 메모리를 가진 값을 %dst에 짓는다. called는 함수들이 복제 코드를 부른 타입의 글들")]
+    #[effects(alloc)]
+    fn clone_glue(tb: &lowered::Tables, called: &[String]) -> String {
+        let mut seen: Vec<String> = Vec::new();
+        let mut out: String = String::new();
+        if called.len() == 0 {
+            return out;
+        }
+        let all: Vec<ast::TypeKind> = all_types(tb);
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            let vt: ast::TypeKind = lowered::value_ty(&all[i]);
+            if types::has(called, types::text(&vt).as_str()) {
+                clone_visit(&vt, tb, &mut seen, &mut out, 100000);
+            }
+        }
+        out
+    }
+
+    #[summary("타입 t의 복제 코드의 이름 (stage0 clone_glue_name)")]
+    #[effects(alloc)]
+    fn clone_name(t: &ast::TypeKind) -> String {
+        types::cat3("@\"bmb_clone.", types::text(t).as_str(), "\"")
+    }
+
+    #[summary("clone_glue의 한 타입: 바이트를 옮기고, 메모리를 가진 부분을 다시 짓는다. 그것이 부르는 타입들로 내려간다")]
+    #[effects(alloc)]
+    fn clone_visit(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, f: usize) -> ()
+        decreases f,
+    {
+        let none: Vec<String> = Vec::new();
+        let name: String = types::text(t);
+        if f == 0 || !types::is_move_in(t, &tb.adts, none.as_slice()) || types::has(seen.as_slice(), name.as_str()) {
+            return;
+        }
+        seen.push(name);
+        let mut text: String = String::new();
+        let mut inner: Vec<ast::TypeKind> = Vec::new();
+        if body::is_array(t) {
+            let ae: ast::TypeKind = elem_of(t);
+            let m: String = mem_ty(t);
+            text.push_str(clone_each(array_len_text(t).as_str(), types::cat2(m.as_str(), ", ptr %dst, i64 0").as_str(), types::cat2(m.as_str(), ", ptr %src, i64 0").as_str(), &ae).as_str());
+            inner.push(ae.clone());
+        } else if body::is_vec(t) {
+            let ve: ast::TypeKind = elem_of(t);
+            text.push_str(types::cat3("  call void @bmb_vec_clone(ptr %dst, ptr %src, i64 ", size_of(&ve).as_str(), ")\n").as_str());
+            if types::is_move_in(&ve, &tb.adts, none.as_slice()) {
+                let vm: String = mem_ty(&ve);
+                text.push_str("  %db = load ptr, ptr %dst\n  %sb = load ptr, ptr %src\n  %lp = getelementptr inbounds %bmb.vec, ptr %src, i32 0, i32 1\n  %n = load i64, ptr %lp\n");
+                text.push_str(clone_each("%n", types::cat2(vm.as_str(), ", ptr %db").as_str(), types::cat2(vm.as_str(), ", ptr %sb").as_str(), &ve).as_str());
+                inner.push(ve.clone());
+            }
+        } else if body::is_box(t) {
+            match body::box_inner(t) {
+                None => {},
+                Some(be) => { text.push_str(types::cat3("  %h = load ptr, ptr %src\n  %n = call ptr @bmb_box_alloc(i64 ", size_of(&be).as_str(), ")\n").as_str()); if types::is_move_in(&be, &tb.adts, none.as_slice()) { text.push_str(types::cat3("  call void ", clone_name(&be).as_str(), "(ptr %n, ptr %h)\n").as_str()); inner.push(be.clone()); } else { text.push_str(types::cat3("  call void @llvm.memcpy.p0.p0.i64(ptr %n, ptr %h, i64 ", size_of(&be).as_str(), ", i1 false)\n").as_str()); } text.push_str("  store ptr %n, ptr %dst\n"); },
+            }
+        } else {
+            text.push_str(types::cat3("  call void @llvm.memcpy.p0.p0.i64(ptr %dst, ptr %src, i64 ", size_of(t).as_str(), ", i1 false)\n").as_str());
+            match lowered::struct_fields(t, tb) {
+                None => { let vs: Vec<types::VariantSig> = match lowered::enum_variants(t, tb) { None => Vec::new(), Some(found) => found, }; text.push_str("  %tag = load i64, ptr %src\n"); let mut cases: String = String::new(); let mut arms: String = String::new(); for k in 0..vs.len() invariant 0 <= k && k <= vs.len(), { let mut any: bool = false; for j in 0..vs[k].tys.len() invariant 0 <= j && j <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j], &tb.adts, none.as_slice()) { any = true; } } if any { let mut kt2: String = String::new(); std::num::push_u64(&mut kt2, k as u64); cases.push_str(types::cat4(" i64 ", kt2.as_str(), ", label %v", kt2.as_str()).as_str()); arms.push_str(types::cat3("v", kt2.as_str(), ":\n").as_str()); let w: String = view_ty(t, vs[k].name.as_str()); for j2 in 0..vs[k].tys.len() invariant 0 <= j2 && j2 <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j2], &tb.adts, none.as_slice()) { let mut jt: String = String::new(); std::num::push_u64(&mut jt, j2 as u64); let mut j1: String = String::new(); std::num::push_u64(&mut j1, (j2 as u64).wrapping_add(1)); let dreg: String = types::cat4("%d", kt2.as_str(), ".", jt.as_str()); let sreg: String = types::cat4("%s", kt2.as_str(), ".", jt.as_str()); arms.push_str(types::cat7("  ", dreg.as_str(), " = getelementptr inbounds ", w.as_str(), ", ptr %dst, i32 0, i32 ", j1.as_str(), "\n").as_str()); arms.push_str(types::cat7("  ", sreg.as_str(), " = getelementptr inbounds ", w.as_str(), ", ptr %src, i32 0, i32 ", j1.as_str(), "\n").as_str()); arms.push_str(types::cat7("  call void ", clone_name(&vs[k].tys[j2]).as_str(), "(ptr ", dreg.as_str(), ", ptr ", sreg.as_str(), ")\n").as_str()); inner.push(vs[k].tys[j2].clone()); } } arms.push_str("  br label %done\n"); } } text.push_str(types::cat5("  switch i64 %tag, label %done [", cases.as_str(), " ]\n", arms.as_str(), "done:\n").as_str()); },
+                Some(fs) => { let d: String = data_ty(t); for k3 in 0..fs.len() invariant 0 <= k3 && k3 <= fs.len(), { if types::is_move_in(&fs[k3].ty, &tb.adts, none.as_slice()) { let mut kt: String = String::new(); std::num::push_u64(&mut kt, k3 as u64); text.push_str(types::cat7("  %d", kt.as_str(), " = getelementptr inbounds ", d.as_str(), ", ptr %dst, i32 0, i32 ", kt.as_str(), "\n").as_str()); text.push_str(types::cat7("  %s", kt.as_str(), " = getelementptr inbounds ", d.as_str(), ", ptr %src, i32 0, i32 ", kt.as_str(), "\n").as_str()); text.push_str(types::cat7("  call void ", clone_name(&fs[k3].ty).as_str(), "(ptr %d", kt.as_str(), ", ptr %s", kt.as_str(), ")\n").as_str()); inner.push(fs[k3].ty.clone()); } } },
+            }
+        }
+        out.push_str(types::cat5("define internal void ", clone_name(t).as_str(), "(ptr %dst, ptr %src) {\nentry:\n", text.as_str(), "  ret void\n}\n").as_str());
+        for x in 0..inner.len()
+            invariant 0 <= x && x <= inner.len(),
+        {
+            clone_visit(&inner[x], tb, seen, out, f - 1);
         }
     }
 
@@ -2809,6 +3392,88 @@ mod codegen {
         v
     }
 
+    #[summary("힙 메모리를 가진 모든 타입의 놓는 코드 (stage0 drop_glue, ADR-0047 §4): @\"bmb_drop.<타입>\"(ptr %p)가 %p의 값을 놓는다. Vec은 원소들과 버퍼, Box는 값과 메모리, 구조체는 필드를 선언 순서로, 열거형은 제 변형의 페이로드를 차례로")]
+    #[effects(alloc)]
+    fn drop_glue(tb: &lowered::Tables, todo: &mut Vec<String>) -> String {
+        let mut seen: Vec<String> = Vec::new();
+        let mut out: String = String::new();
+        let all: Vec<ast::TypeKind> = all_types(tb);
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            drop_visit(&all[i], tb, &mut seen, &mut out, todo, 100000);
+        }
+        out
+    }
+
+    #[summary("drop_glue의 한 타입: 제 코드를 내고, 그것이 부르는 타입들로 내려간다")]
+    #[effects(alloc)]
+    fn drop_visit(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, todo: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || body::has_param(t, 100000) {
+            return;
+        }
+        match body::slice_elem(t) {
+            None => {},
+            Some(se) => { drop_visit(&se, tb, seen, out, todo, f - 1); return; },
+        }
+        match body::ref_inner(t) {
+            None => {},
+            Some(ri) => { drop_visit(&ri, tb, seen, out, todo, f - 1); return; },
+        }
+        if !body::is_vec(t) && !body::is_box(t) && !body::is_named(t) && !body::is_array(t) {
+            return;
+        }
+        let none: Vec<String> = Vec::new();
+        let name: String = types::text(t);
+        if !types::is_move_in(t, &tb.adts, none.as_slice()) || types::has(seen.as_slice(), name.as_str()) {
+            return;
+        }
+        seen.push(name);
+        let mut text: String = String::new();
+        let mut inner: Vec<ast::TypeKind> = Vec::new();
+        let each: String = String::from("  br i1 %more, label %body, label %done\nbody:\n");
+        if body::is_array(t) {
+            let ae: ast::TypeKind = elem_of(t);
+            text.push_str("  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, ");
+            text.push_str(array_len_text(t).as_str());
+            text.push_str("\n");
+            text.push_str(each.as_str());
+            text.push_str(types::cat5("  %ep = getelementptr inbounds ", mem_ty(t).as_str(), ", ptr %p, i64 0, i64 %i\n  call void ", glue(&ae).as_str(), "(ptr %ep)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n").as_str());
+            inner.push(ae);
+        } else if body::is_vec(t) {
+            let ve: ast::TypeKind = elem_of(t);
+            if types::is_move_in(&ve, &tb.adts, none.as_slice()) {
+                text.push_str("  %b0 = load ptr, ptr %p\n  %lp = getelementptr inbounds %bmb.vec, ptr %p, i32 0, i32 1\n  %n = load i64, ptr %lp\n  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, %n\n");
+                text.push_str(each.as_str());
+                text.push_str(types::cat5("  %ep = getelementptr inbounds ", mem_ty(&ve).as_str(), ", ptr %b0, i64 %i\n  call void ", glue(&ve).as_str(), "(ptr %ep)\n  %j = add nuw i64 %i, 1\n  br label %head\ndone:\n").as_str());
+                inner.push(ve.clone());
+            }
+            text.push_str("  %b = load ptr, ptr %p\n  call void @free(ptr %b)\n");
+        } else if body::is_box(t) {
+            text.push_str("  %h = load ptr, ptr %p\n");
+            match body::box_inner(t) {
+                None => {},
+                Some(be) => { if types::is_move_in(&be, &tb.adts, none.as_slice()) { text.push_str(types::cat3("  call void ", glue(&be).as_str(), "(ptr %h)\n").as_str()); inner.push(be.clone()); } },
+            }
+            text.push_str("  call void @free(ptr %h)\n");
+        } else if body::is_child(t) {
+            todo.push(String::from("a child process value (the system interface)"));
+        } else {
+            match lowered::struct_fields(t, tb) {
+                None => { let vs: Vec<types::VariantSig> = match lowered::enum_variants(t, tb) { None => Vec::new(), Some(found) => found, }; text.push_str("  %tag = load i64, ptr %p\n"); let mut cases: String = String::new(); let mut arms: String = String::new(); for k in 0..vs.len() invariant 0 <= k && k <= vs.len(), { let mut any: bool = false; for j in 0..vs[k].tys.len() invariant 0 <= j && j <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j], &tb.adts, none.as_slice()) { any = true; } } if any { let mut kt2: String = String::new(); std::num::push_u64(&mut kt2, k as u64); cases.push_str(types::cat4(" i64 ", kt2.as_str(), ", label %v", kt2.as_str()).as_str()); arms.push_str(types::cat3("v", kt2.as_str(), ":\n").as_str()); for j2 in 0..vs[k].tys.len() invariant 0 <= j2 && j2 <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j2], &tb.adts, none.as_slice()) { let mut jt: String = String::new(); std::num::push_u64(&mut jt, j2 as u64); let mut j1: String = String::new(); std::num::push_u64(&mut j1, (j2 as u64).wrapping_add(1)); let reg: String = types::cat4("%v", kt2.as_str(), ".", jt.as_str()); arms.push_str(types::cat7("  ", reg.as_str(), " = getelementptr inbounds ", view_ty(t, vs[k].name.as_str()).as_str(), ", ptr %p, i32 0, i32 ", j1.as_str(), "\n").as_str()); arms.push_str(types::cat5("  call void ", glue(&vs[k].tys[j2]).as_str(), "(ptr ", reg.as_str(), ")\n").as_str()); inner.push(vs[k].tys[j2].clone()); } } arms.push_str("  br label %done\n"); } } text.push_str(types::cat5("  switch i64 %tag, label %done [", cases.as_str(), " ]\n", arms.as_str(), "done:\n").as_str()); },
+                Some(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if types::is_move_in(&fs[k].ty, &tb.adts, none.as_slice()) { let mut kt: String = String::new(); std::num::push_u64(&mut kt, k as u64); text.push_str(types::cat7("  %f", kt.as_str(), " = getelementptr inbounds ", data_ty(t).as_str(), ", ptr %p, i32 0, i32 ", kt.as_str(), "\n").as_str()); text.push_str(types::cat5("  call void ", glue(&fs[k].ty).as_str(), "(ptr %f", kt.as_str(), ")\n").as_str()); inner.push(fs[k].ty.clone()); } } },
+            }
+        }
+        out.push_str(types::cat5("define internal void ", glue(t).as_str(), "(ptr %p) {\nentry:\n", text.as_str(), "  ret void\n}\n").as_str());
+        for x in 0..inner.len()
+            invariant 0 <= x && x <= inner.len(),
+        {
+            drop_visit(&inner[x], tb, seen, out, todo, f - 1);
+        }
+    }
+
     #[summary("원소 종류 (stage0 elem_kind): 64비트보다 좁은 정수는 제 이름, 나머지는 레지스터 타입")]
     #[effects(alloc)]
     fn elem_kind(t: &ast::TypeKind) -> String {
@@ -2861,7 +3526,7 @@ mod codegen {
     #[effects(alloc)]
     fn emit(ck: &body::Checked, tb: &lowered::Tables) -> Module {
         let mut todo: Vec<String> = Vec::new();
-        let mut ir: String = codegen_text::head();
+        let mut ir: String = String::new();
         let all: Vec<ast::TypeKind> = all_types(tb);
         let none: Vec<String> = Vec::new();
         let mut heap: bool = false;
@@ -2872,20 +3537,31 @@ mod codegen {
                 heap = true;
             }
         }
-        if heap {
-            todo.push(String::from("a program with owned heap values (backlog 4D-05e)"));
+        let mut uses_vec: bool = false;
+        for j in 0..all.len()
+            invariant 0 <= j && j <= all.len(),
+        {
+            if holds_vec(&all[j], tb) {
+                uses_vec = true;
+            }
         }
-        ir.push_str(type_defs(tb).as_str());
+        if uses_heap(tb, uses_vec) {
+            ir.push_str(codegen_text::heap_runtime().as_str());
+        }
+        if uses_vec {
+            ir.push_str(codegen_text::vec_runtime().as_str());
+        }
         ir.push_str(codegen_text::head_rest().as_str());
         let defs: Vec<Def> = sorted_defs(&ck.program, tb);
         let mut main: Option<String> = None;
         let mut print_f64: bool = false;
+        let mut clones: Vec<String> = Vec::new();
         for i in 0..defs.len()
             invariant 0 <= i && i <= defs.len(),
         {
             match tb.fns.find(defs[i].path.as_str()) {
                 None => {},
-                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
+                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
             }
         }
         if print_f64 {
@@ -2893,9 +3569,17 @@ mod codegen {
         }
         match &main {
             None => {},
-            Some(m) => { if has_recursive_exec(ck, tb) { todo.push(String::from("a program with recursion: the large stack (backlog 4D-05h)")); } ir.push_str("\ndefine i32 @main() {\n  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void "); ir.push_str(fn_sym(m.as_str()).as_str()); ir.push_str("()\n  call void @bmb_flush_out()\n  ret i32 0\n}\n"); },
+            Some(m) => { let run: String = if has_recursive_exec(ck, tb) { ir.push_str(big_stack(fn_sym(m.as_str()).as_str()).as_str()); String::from("@bmb_big_stack") } else { fn_sym(m.as_str()) }; ir.push_str("\ndefine i32 @main() {\n  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void "); ir.push_str(run.as_str()); ir.push_str("()\n  call void @bmb_flush_out()\n  ret i32 0\n}\n"); },
         }
-        Module { ir: ir, main: main, todo: todo }
+        let mut whole: String = codegen_text::head();
+        if uses_vec {
+            whole.push_str("%bmb.vec = type { ptr, i64, i64 }\n");
+        }
+        whole.push_str(type_defs(tb).as_str());
+        whole.push_str(drop_glue(tb, &mut todo).as_str());
+        whole.push_str(clone_glue(tb, clones.as_slice()).as_str());
+        whole.push_str(ir.as_str());
+        Module { ir: whole, main: main, todo: todo }
     }
 
     #[summary("진입점 (stage0 emit_with의 main): 단위의 main인 제네릭 아닌 실행 함수. 여럿이면 경로가 가장 뒤인 것")]
@@ -3084,6 +3768,67 @@ mod codegen {
     #[effects(alloc)]
     fn fn_sym(path: &str) -> String {
         types::cat3("@\"", path, "\"")
+    }
+
+    #[summary("식이 제 값을 내는가 (stage0 fresh): 호출, 리터럴, 블록 따위. 자리나 그 일부(변수, 필드, *, 색인, &)가 아니다")]
+    #[effects(pure)]
+    fn fresh(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(fr_int0, fr_int1) => true,
+            ast::ExprKind::Float(fr_float0) => true,
+            ast::ExprKind::ByteLit(fr_bytelit0) => true,
+            ast::ExprKind::ByteStr(fr_bytestr0) => true,
+            ast::ExprKind::StrLit(fr_strlit0) => true,
+            ast::ExprKind::CharLit(fr_charlit0) => true,
+            ast::ExprKind::Bool(fr_bool0) => true,
+            ast::ExprKind::Unit => true,
+            ast::ExprKind::Var(fr_v) => false,
+            ast::ExprKind::Call(fr_call0) => true,
+            ast::ExprKind::Method(fr_method0) => true,
+            ast::ExprKind::Index(fr_i, fr_j) => false,
+            ast::ExprKind::Unary(fr_unary0, fr_unary1) => true,
+            ast::ExprKind::Binary(fr_binary0, fr_binary1, fr_binary2) => true,
+            ast::ExprKind::Ref(fr_m, fr_r) => false,
+            ast::ExprKind::If(fr_if0) => true,
+            ast::ExprKind::Block(fr_block0) => true,
+            ast::ExprKind::Array(fr_array0) => true,
+            ast::ExprKind::Repeat(fr_repeat0) => true,
+            ast::ExprKind::Old(fr_old0) => true,
+            ast::ExprKind::Quant(fr_quant0) => true,
+            ast::ExprKind::Trigger(fr_trigger0) => true,
+            ast::ExprKind::Closure(fr_closure0) => true,
+            ast::ExprKind::StructLit(fr_structlit0) => true,
+            ast::ExprKind::Path(fr_path0) => true,
+            ast::ExprKind::Deref(fr_d) => false,
+            ast::ExprKind::Field(fr_b, fr_n) => false,
+            ast::ExprKind::Match(fr_match0) => true,
+            ast::ExprKind::Return(fr_return0) => true,
+            ast::ExprKind::Try(fr_try0) => true,
+            ast::ExprKind::Loop(fr_loop0) => true,
+            ast::ExprKind::Break(fr_break0) => true,
+            ast::ExprKind::Continue(fr_continue0) => true,
+            ast::ExprKind::Range(fr_range0) => true,
+            ast::ExprKind::Error => true,
+        }
+    }
+
+    #[summary("타입 t의 놓는 코드의 이름 (stage0 glue)")]
+    #[effects(alloc)]
+    fn glue(t: &ast::TypeKind) -> String {
+        types::cat3("@\"bmb_drop.", types::text(t).as_str(), "\"")
+    }
+
+    #[summary("경로에 점이 있는가 (필드의 경로)")]
+    #[effects(pure)]
+    fn has_dot(p: &str) -> bool {
+        for i in 0..p.len()
+            invariant 0 <= i && i <= p.len(),
+        {
+            if p.as_bytes()[i] == 46 {
+                return true;
+            }
+        }
+        false
     }
 
     #[summary("재귀하는 실행 함수가 있는가 (stage0 emit_with의 deep)")]
@@ -3553,7 +4298,7 @@ mod codegen {
     #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
     #[effects(alloc)]
     fn lower_fn(def: &Def, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new() };
+        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new(), pending: Vec::new(), clones: Vec::new() };
         let mut params: Vec<String> = Vec::new();
         for i in 0..def.d.params.len()
             invariant 0 <= i && i <= def.d.params.len(),
@@ -3723,6 +4468,16 @@ mod codegen {
             return String::new();
         }
         p.path[p.path.len() - 1].name.clone()
+    }
+
+    #[summary("원소가 힙 메모리를 갖지 않는 Vec인가 (그 clone은 Vec의 것이다)")]
+    #[effects(alloc)]
+    fn plain_vec(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        let none: Vec<String> = Vec::new();
+        match body::vec_elem(t) {
+            None => false,
+            Some(el) => !types::is_move_in(&el, &tb.adts, none.as_slice()),
+        }
     }
 
     #[summary("메모리에 사는 값의 주소. 아니면 undef")]
@@ -3950,6 +4705,16 @@ mod codegen {
             }
         }
         vs.len()
+    }
+
+    #[summary("Vec<T>의 최대 길이 (stage0 vec_len_max, ADR-0017 §3)")]
+    #[effects(alloc)]
+    fn vec_len_max(e: &ast::TypeKind) -> String {
+        if body::is_bool(e) || body::is_named(e) {
+            String::from("9223372036854775807")
+        } else {
+            String::from("1152921504606846975")
+        }
     }
 
     #[summary("열거형 t의 변형 v를 보는 타입 (stage0 view_ty): 꼬리표와 페이로드")]

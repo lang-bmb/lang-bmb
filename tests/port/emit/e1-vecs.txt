@@ -1,0 +1,122 @@
+#[summary("Vec: new와 with_capacity, push (자람), len, 색인 읽기와 쓰기, as_slice와 as_mut_slice, 범위 조각, pop, truncate, clone, copy_within, 구조체의 Vec, Vec의 Vec (원소를 놓는 코드), 값으로 넘기기와 돌려주기, 임시 Vec, 블록 끝의 해제")]
+mod vecs {
+    struct Point { x: i64, y: i64 }
+
+    #[effects(alloc)]
+    fn range(n: i64) -> Vec<i64>
+        requires 0 <= n && n <= 1000,
+    {
+        let mut v: Vec<i64> = Vec::new();
+        let mut i: i64 = 0;
+        while i < n
+            invariant 0 <= i && i <= n,
+            decreases n - i,
+        {
+            v.push(i);
+            i = i + 1;
+        }
+        v
+    }
+    #[effects(pure)]
+    fn total(v: &[i64]) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..v.len() {
+            s = s.wrapping_add(v[i]);
+        }
+        s
+    }
+    #[effects(pure)]
+    fn sum_vec(v: &Vec<i64>) -> i64 {
+        let mut s: i64 = 0;
+        for i in 0..v.len() {
+            s = s.wrapping_add(v[i]);
+        }
+        s
+    }
+    #[effects(alloc)]
+    fn consume(v: Vec<i64>) -> i64 {
+        total(v.as_slice())
+    }
+    #[effects(pure)]
+    fn double(v: &mut Vec<u8>) -> () {
+        for i in 0..v.len() {
+            v[i] = v[i].wrapping_mul(2);
+        }
+    }
+    #[effects(pure)]
+    fn zero(s: &mut [u8]) -> () {
+        for i in 0..s.len() {
+            s[i] = 0;
+        }
+    }
+    #[effects(alloc)]
+    fn points(n: i64) -> Vec<Point>
+        requires 0 <= n && n <= 100,
+    {
+        let mut ps: Vec<Point> = Vec::with_capacity(2);
+        let mut i: i64 = 0;
+        while i < n
+            invariant 0 <= i && i <= n,
+            decreases n - i,
+        {
+            ps.push(Point { x: i, y: i.wrapping_mul(i) });
+            i = i + 1;
+        }
+        ps
+    }
+    #[effects(alloc)]
+    fn rows() -> Vec<Vec<i64>> {
+        let mut out: Vec<Vec<i64>> = Vec::new();
+        out.push(range(3));
+        out.push(range(5));
+        out.push(Vec::new());
+        out
+    }
+    #[effects(alloc)]
+    fn last_or(v: &mut Vec<i64>, d: i64) -> i64 {
+        match v.pop() {
+            None => d,
+            Some(x) => x,
+        }
+    }
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let v: Vec<i64> = range(10);
+        print_i64(sum_vec(&v));
+        print_i64(total(&v[2..5]));
+        print_u64(u64::try_from(v.len()).unwrap());
+        print_i64(consume(v));
+        print_i64(sum_vec(&range(101)));
+        print_u64(u64::try_from(range(7).len()).unwrap());
+        let mut b: Vec<u8> = Vec::with_capacity(1);
+        b.push(100);
+        b.push(200);
+        b.push(3);
+        double(&mut b);
+        print_u64(u64::try_from(b[0]).unwrap().wrapping_add(u64::try_from(b[1]).unwrap()).wrapping_add(u64::try_from(b[2]).unwrap()));
+        let c: Vec<u8> = b.clone();
+        zero(b.as_mut_slice());
+        b[1] = 7;
+        print_u64(u64::try_from(b[1]).unwrap().wrapping_add(u64::try_from(c[1]).unwrap()));
+        let mut w: Vec<i64> = range(6);
+        w.copy_within(0..3, 3);
+        print_i64(sum_vec(&w));
+        w.truncate(4);
+        print_i64(sum_vec(&w));
+        print_i64(last_or(&mut w, -1));
+        w.truncate(0);
+        print_i64(last_or(&mut w, -1));
+        let ps: Vec<Point> = points(5);
+        print_i64(ps[4].y.wrapping_add(ps[3].x));
+        let mut r: Vec<Vec<i64>> = rows();
+        print_i64(sum_vec(&r[1]));
+        r[0].push(40);
+        print_i64(sum_vec(&r[0]));
+        r.truncate(1);
+        print_u64(u64::try_from(r.len()).unwrap());
+        {
+            let inner: Vec<i64> = range(4);
+            print_i64(inner[3]);
+        }
+    }
+}
