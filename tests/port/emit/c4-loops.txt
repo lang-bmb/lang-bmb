@@ -1,0 +1,117 @@
+#[summary("제어 흐름: while, for(닫힌 구간과 열린 구간, 부호와 폭), loop와 break의 값, 레이블로 떠나는 break와 continue, 가운데의 return")]
+mod loops {
+    #[effects(pure)]
+    fn sum_to(n: i64) -> i64
+        requires 0 <= n && n <= 1000,
+    {
+        let mut s: i64 = 0;
+        let mut i: i64 = 0;
+        while i < n
+            invariant 0 <= i && i <= n && s <= i * 1000,
+            decreases n - i,
+        {
+            i = i + 1;
+            s = s + i;
+        }
+        s
+    }
+    #[effects(pure)]
+    fn count_u8() -> u64 {
+        let mut c: u64 = 0;
+        for i in 0..=u8_max() {
+            c = c.wrapping_add(i as u64);
+        }
+        c
+    }
+    #[effects(pure)]
+    fn u8_max() -> u8 { 255 }
+    #[effects(pure)]
+    fn down(lo: i32, hi: i32) -> i64 {
+        let mut c: i64 = 0;
+        for k in lo..hi {
+            if k % 3 == 0 {
+                continue;
+            }
+            c = c.wrapping_add(i64::try_from(k).unwrap());
+        }
+        c
+    }
+    #[effects(pure)]
+    fn first_square_above(x: u64) -> u64 {
+        let mut k: u64 = 0;
+        loop
+            decreases 4294967296 - k,
+        {
+            if k >= 4294967295 {
+                break 0;
+            }
+            if k * k > x {
+                break k;
+            }
+            k = k + 1;
+        }
+    }
+    #[effects(pure)]
+    fn grid(n: usize) -> usize {
+        let mut hits: usize = 0;
+        'outer: for a in 0..n {
+            for b in 0..n {
+                if b > a {
+                    continue 'outer;
+                }
+                if a + b > 12 {
+                    break 'outer;
+                }
+                hits = hits.wrapping_add(1);
+            }
+        }
+        hits
+    }
+    #[effects(pure)]
+    fn early(x: i64) -> i64 {
+        if x < 0 {
+            return -1;
+        }
+        let mut y: i64 = x;
+        while y > 9
+            decreases y,
+        {
+            if y == 42 {
+                return 420;
+            }
+            y = y / 2;
+        }
+        y
+    }
+    #[effects(pure)]
+    fn unit_return(x: bool) -> () {
+        if x {
+            return;
+        }
+    }
+    #[effects(pure)]
+    fn spin(limit: u16) -> u16 {
+        let mut n: u16 = 0;
+        loop
+            decreases 65536 - n as u64,
+        {
+            if n == limit || n == 65535 {
+                return n;
+            }
+            n = n + 1;
+        }
+    }
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(sum_to(100));
+        print_u64(count_u8());
+        print_i64(down(-7, 20));
+        print_u64(first_square_above(1000000));
+        print_u64(u64::try_from(grid(10)).unwrap());
+        print_i64(early(-5));
+        print_i64(early(84));
+        print_i64(early(1000));
+        unit_return(true);
+        print_u64(u64::try_from(spin(300)).unwrap());
+    }
+}

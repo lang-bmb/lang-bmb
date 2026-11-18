@@ -9,8 +9,11 @@ mod codegen {
     #[summary("낮출 정의 하나: 경로, 단위, 구문")]
     struct Def { path: String, unit: String, d: ast::FnDef }
 
-    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다)")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool }
+    #[summary("break나 continue가 떠날 수 있는 루프 (stage0 GLoop): 레이블(없으면 빈 글), continue가 가는 곳, break가 가는 곳, loop의 break e가 값을 두는 자리와 그 레지스터 타입")]
+    struct GLoop { label: String, head: String, end: String, slot: Option<String>, lt: String }
+
+    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤)")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop> }
 
     impl Gen {
         #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
@@ -361,6 +364,15 @@ mod codegen {
             }
         }
 
+        #[summary("자리 s에서 함수나 루프를 떠나며 놓는 값이 있는가 (검사기의 MoveInfo.exits)")]
+        #[effects(alloc)]
+        fn exits_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => ck.b.needs.items[at].moves.exits.has(body::span_key(s).as_str()),
+            }
+        }
+
         #[summary("식의 값 (stage0 expr). 지금은 리터럴, 스칼라 지역 변수, 단항·이항 연산, 블록, 스칼라의 if, 제네릭 아닌 함수의 호출")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
@@ -399,11 +411,11 @@ mod codegen {
                 ast::ExprKind::Deref(ex_deref0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Field(ex_field0, ex_field1) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Match(ex_match0) => self.todo_expr("an expression not lowered yet", e),
-                ast::ExprKind::Return(ex_return0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Return(rx) => self.return_expr(e, rx, ck, tb, f - 1),
                 ast::ExprKind::Try(ex_try0) => self.todo_expr("an expression not lowered yet", e),
-                ast::ExprKind::Loop(ex_loop0) => self.todo_expr("an expression not lowered yet", e),
-                ast::ExprKind::Break(ex_break0) => self.todo_expr("an expression not lowered yet", e),
-                ast::ExprKind::Continue(ex_continue0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Loop(lp) => self.loop_expr(e, lp, ck, tb, f - 1),
+                ast::ExprKind::Break(bk) => self.jump(e, &bk.label, &bk.value, true, ck, tb, f - 1),
+                ast::ExprKind::Continue(cl) => { let no_value: Option<Box<ast::Expr>> = None; self.jump(e, cl, &no_value, false, ck, tb, f - 1) },
                 ast::ExprKind::Range(ex_range0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Error => self.todo_expr("an expression not lowered yet", e),
             }
@@ -460,6 +472,21 @@ mod codegen {
         #[effects(alloc)]
         fn fits(self: &mut Gen, v: &str, i: ast::IntTy) -> String {
             self.in_range_of(v, body::signed(i), i)
+        }
+
+        #[summary("for 문장 (stage0 stmt의 For): 끝 값을 한 번 재고, i를 lo부터 i < hi(<=)인 동안. continue는 걸음으로 간다. lo..=hi는 i == hi에서 떠나 i + 1이 타입의 끝을 넘지 않는다")]
+        #[effects(alloc)]
+        fn for_stmt(self: &mut Gen, x: &ast::For, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", x.span);
+                return;
+            }
+            match self.local_ty(x.var.name.as_str(), tb) {
+                None => self.todo_at("a `for` variable without a type", x.span),
+                Some(t) => { let lt: String = llty(&t); let signed: bool = is_signed(&t); let ptr: String = self.alloca(lt.as_str()); let a: String = imm(&self.expr(&x.lo, ck, tb, f - 1)); self.emit(types::cat7("store ", lt.as_str(), " ", a.as_str(), ", ptr ", ptr.as_str(), "").as_str()); let b: String = imm(&self.expr(&x.hi, ck, tb, f - 1)); self.slots.insert(x.var.name.as_str(), Slot::Scalar(ptr.clone(), lt.clone())); let head: String = self.l("for"); let lb: String = self.l("body"); let next: String = self.l("next"); let end: String = self.l("endfor"); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(head.as_str()); let i1: String = self.t(); self.emit(types::cat5(i1.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); let c: String = self.t(); let op: String = if x.inclusive { if signed { String::from("sle") } else { String::from("ule") } } else if signed { String::from("slt") } else { String::from("ult") }; let mut cmp: String = types::cat5(c.as_str(), " = icmp ", op.as_str(), " ", lt.as_str()); cmp.push_str(" "); cmp.push_str(i1.as_str()); cmp.push_str(", "); cmp.push_str(b.as_str()); self.emit(cmp.as_str()); self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str()); self.block(lb.as_str()); let depth: usize = self.loops.len(); self.loops.push(GLoop { label: label_name(&x.label), head: next.clone(), end: end.clone(), slot: None, lt: String::new() }); let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1); self.loops.truncate(depth); self.emit(types::cat2("br label %", next.as_str()).as_str()); self.block(next.as_str()); let i2: String = self.t(); self.emit(types::cat5(i2.as_str(), " = load ", lt.as_str(), ", ptr ", ptr.as_str()).as_str()); if x.inclusive { let at_end: String = self.t(); let step: String = self.l("step"); let mut eq: String = types::cat5(at_end.as_str(), " = icmp eq ", lt.as_str(), " ", i2.as_str()); eq.push_str(", "); eq.push_str(b.as_str()); self.emit(eq.as_str()); self.emit(types::cat7("br i1 ", at_end.as_str(), ", label %", end.as_str(), ", label %", step.as_str(), "").as_str()); self.block(step.as_str()); } let n: String = self.t(); self.emit(types::cat7(n.as_str(), " = add ", lt.as_str(), " ", i2.as_str(), ", 1", "").as_str()); self.emit(types::cat7("store ", lt.as_str(), " ", n.as_str(), ", ptr ", ptr.as_str(), "").as_str()); self.emit(types::cat2("br label %", head.as_str()).as_str()); self.block(end.as_str()); },
+            }
         }
 
         #[summary("스칼라나 단위 값의 if (stage0 expr의 If): 결과의 자리에 두 갈래가 쓰고 끝에서 읽는다")]
@@ -615,6 +642,55 @@ mod codegen {
             types::has(tb.text.as_slice(), body::span_key(e.span).as_str())
         }
 
+        #[summary("break와 continue (stage0 jump): 레이블의 루프(없으면 가장 안쪽)로. break e는 값을 루프의 자리에 둔다")]
+        #[effects(alloc)]
+        fn jump(self: &mut Gen, e: &ast::Expr, label: &Option<ast::Ident>, value: &Option<Box<ast::Expr>>, brk: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let want: String = label_name(label);
+            let mut k: usize = self.loops.len();
+            let mut found: bool = false;
+            while k > 0 && !found
+                invariant k <= self.loops.len(),
+                decreases k,
+            {
+                k = k - 1;
+                if want.len() == 0 || self.loops[k].label == want {
+                    found = true;
+                }
+            }
+            if !found || k >= self.loops.len() {
+                return self.todo_expr("a `break` or `continue` outside a loop", e);
+            }
+            let v: CVal = match value {
+                None => CVal::Unit,
+                Some(x) => self.expr(&**x, ck, tb, f - 1),
+            };
+            if k >= self.loops.len() {
+                return CVal::Never;
+            }
+            let slot: Option<String> = self.loops[k].slot.clone();
+            let lt: String = self.loops[k].lt.clone();
+            let target: String = if brk {
+                self.loops[k].end.clone()
+            } else {
+                self.loops[k].head.clone()
+            };
+            if brk {
+                self.store_result(&slot, &v, lt.as_str());
+            }
+            if self.exits_at(e.span, ck) {
+                self.todo_at("a jump that drops owned values", e.span);
+            }
+            self.emit(types::cat2("br label %", target.as_str()).as_str());
+            let after: String = self.l("after_jump");
+            self.block(after.as_str());
+            CVal::Never
+        }
+
         #[summary("다음 레이블: base와 번호")]
         #[effects(alloc)]
         fn l(self: &mut Gen, base: &str) -> String {
@@ -658,6 +734,44 @@ mod codegen {
             match tb.locals.find(self.base.as_str()) {
                 None => None,
                 Some(at) => { match tb.locals.items[at].find(name) { None => None, Some(i) => Some(tb.locals.items[at].items[i].clone()), } },
+            }
+        }
+
+        #[summary("loop 식 (stage0 loop_expr): break e의 값은 결과의 자리로. 끝나지 않는 loop의 값은 없다")]
+        #[effects(alloc)]
+        fn loop_expr(self: &mut Gen, e: &ast::Expr, x: &ast::Loop, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let ty: ast::TypeKind = self.ty(e, tb);
+            let never: bool = body::is_never(&ty);
+            if !never && (is_mem(&ty) || body::is_array(&ty)) {
+                return self.todo_expr("a `loop` whose value is not a scalar", e);
+            }
+            let lt: String = llty(&ty);
+            let slot: Option<String> = if never || decls::is_unit(&ty) || types::is_error(&ty) {
+                None
+            } else {
+                Some(self.alloca(lt.as_str()))
+            };
+            let head: String = self.l("loop");
+            let end: String = self.l("endloop");
+            self.emit(types::cat2("br label %", head.as_str()).as_str());
+            self.block(head.as_str());
+            let depth: usize = self.loops.len();
+            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: slot.clone(), lt: lt.clone() });
+            let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1);
+            self.loops.truncate(depth);
+            self.emit(types::cat2("br label %", head.as_str()).as_str());
+            self.block(end.as_str());
+            if never {
+                return CVal::Never;
+            }
+            match &slot {
+                None => CVal::Unit,
+                Some(sl) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", lt.as_str(), ", ptr ", sl.as_str()).as_str()); CVal::Imm(r) },
             }
         }
 
@@ -760,6 +874,27 @@ mod codegen {
             }
         }
 
+        #[summary("return (stage0 return_expr): 값을 돌려주고, 뒤의 코드는 닿지 않는 블록에 둔다")]
+        #[effects(alloc)]
+        fn return_expr(self: &mut Gen, e: &ast::Expr, x: &Option<Box<ast::Expr>>, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let v: CVal = match x {
+                None => CVal::Unit,
+                Some(rv) => self.expr(&**rv, ck, tb, f - 1),
+            };
+            if self.exits_at(e.span, ck) {
+                self.todo_at("a `return` that drops owned values", e.span);
+            }
+            self.emit_return(&v);
+            let after: String = self.l("after_return");
+            self.block(after.as_str());
+            CVal::Never
+        }
+
         #[summary("스칼라 지역 변수 name의 자리와 레지스터 타입")]
         #[effects(alloc)]
         fn scalar_slot(self: &Gen, name: &str) -> Option<ScalarSlot> {
@@ -834,8 +969,8 @@ mod codegen {
             match st {
                 ast::Stmt::Let(x) => self.let_stmt(x, ck, tb, f - 1),
                 ast::Stmt::Assign(a) => self.assign(a, ck, tb, f - 1),
-                ast::Stmt::While(w) => self.todo_at("a `while`", w.span),
-                ast::Stmt::For(fo) => self.todo_at("a `for`", fo.span),
+                ast::Stmt::While(w) => self.while_stmt(w, ck, tb, f - 1),
+                ast::Stmt::For(fo) => self.for_stmt(fo, ck, tb, f - 1),
                 ast::Stmt::Assert(st_a) => {},
                 ast::Stmt::Assume(st_u) => {},
                 ast::Stmt::Proof(st_p) => {},
@@ -926,6 +1061,31 @@ mod codegen {
                 Some(i) => { if body::signed(i) { self.emit(types::cat4(r.as_str(), " = xor i64 ", nv.as_str(), ", -1").as_str()); } else { self.emit(types::cat5(r.as_str(), " = xor i64 ", nv.as_str(), ", ", int_max(i).as_str()).as_str()); } },
             }
             CVal::Imm(r)
+        }
+
+        #[summary("while 문장 (stage0 stmt의 While)")]
+        #[effects(alloc)]
+        fn while_stmt(self: &mut Gen, x: &ast::While, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", x.span);
+                return;
+            }
+            let head: String = self.l("while");
+            let lb: String = self.l("body");
+            let end: String = self.l("endwhile");
+            self.emit(types::cat2("br label %", head.as_str()).as_str());
+            self.block(head.as_str());
+            let c: String = imm(&self.expr(&x.cond, ck, tb, f - 1));
+            self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lb.as_str(), ", label %", end.as_str(), "").as_str());
+            self.block(lb.as_str());
+            let depth: usize = self.loops.len();
+            self.loops.push(GLoop { label: label_name(&x.label), head: head.clone(), end: end.clone(), slot: None, lt: String::new() });
+            let body_v: CVal = self.block_expr(&x.body, ck, tb, f - 1);
+            self.loops.truncate(depth);
+            self.emit(types::cat2("br label %", head.as_str()).as_str());
+            self.block(end.as_str());
         }
     }
 
@@ -1695,6 +1855,15 @@ mod codegen {
         body::is_vec(&lowered::value_ty(t))
     }
 
+    #[summary("루프의 레이블의 이름. 없으면 빈 글")]
+    #[effects(alloc)]
+    fn label_name(l: &Option<ast::Ident>) -> String {
+        match l {
+            None => String::new(),
+            Some(id) => id.name.clone(),
+        }
+    }
+
     #[summary("ts를 차례로 놓은 구조체의 배치 (stage0 layout의 fields). tag이면 i64 꼬리표가 앞에 온다")]
     #[effects(alloc)]
     fn lay_fields(ts: &[ast::TypeKind], tag: bool, tb: &lowered::Tables, f: usize) -> Lay
@@ -1781,7 +1950,7 @@ mod codegen {
     #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
     #[effects(alloc)]
     fn lower_fn(def: &Def, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), ret: sig.ret.clone(), todo: Vec::new(), print_f64: false };
+        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new() };
         let mut params: Vec<String> = Vec::new();
         for i in 0..def.d.params.len()
             invariant 0 <= i && i <= def.d.params.len(),

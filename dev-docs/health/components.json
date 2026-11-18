@@ -287,10 +287,10 @@
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": 7,
+        "gate_runs": 8,
         "undecided_runs": 0,
         "friction": [
-          "닫히지 않은 행이다: 낮춘 표, 타입 배치, 모듈의 뼈대, 스칼라 식·문장·메서드(`4D-05a`~`4D-05c3`)뿐이고 `dump lowered`·`dump layout`과 허용 목록의 `emit-llvm --all-checks`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a`·`4D-05b`·`4D-38`·`4D-05c1`·`4D-05c2` 1번씩 첫 회에 전부, `4D-05c3` 2번: 첫 회에 `bit_method`의 `w - 1`이 E0803으로 떨어졌다)",
+          "닫히지 않은 행이다: 낮춘 표, 타입 배치, 스칼라 프로그램의 코드 생성(`4D-05a`~`4D-05c4`)뿐이고 `dump lowered`·`dump layout`과 허용 목록의 `emit-llvm --all-checks`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a`·`4D-05b`·`4D-38`·`4D-05c1`·`4D-05c2` 1번씩 첫 회에 전부, `4D-05c3` 2번: 첫 회에 `bit_method`의 `w - 1`이 E0803으로 떨어졌다, `4D-05c4` 1번)",
           "상수 IR 글을 들 수단이 없다(`include_str!`·`const`의 긴 글): `scripts/codegen_text.py`가 stage0의 `bmb dump runtime`에서 `selfhost/codegen_text.bmb`를 만들고 게이트가 신선도를 본다: 우회, `std_units`와 같은 까닭",
           "`Gen`이 표를 든 참조를 필드로 가질 수 없어(참조는 2급) 표(`&lowered::Tables`, `&body::Checked`)를 메서드마다 매개변수로 넘긴다: 그대로 둠",
           "한 함수 안에서 이름 하나는 타입 하나라(E0303) 갈래가 35개인 `expr`의 묶는 이름을 갈래마다 달리 지었다(`uop`·`ux`, `bop`·`lhs`·`rhs`, `ifx`): 같은 마찰이 세 번째다(`4D-05a`, `4D-05c1`). 그대로 둠, 언어의 선택이지만 큰 `match`에서 비용이 는다",

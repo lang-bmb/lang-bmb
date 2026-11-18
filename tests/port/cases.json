@@ -881,6 +881,31 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "emit-run",
+      "component": "C8",
+      "a": [
+        "python3",
+        "{root}/scripts/port_emit.py",
+        "exec",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/scripts/port_emit.py",
+        "exec",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "tests/port/emit/*.txt"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

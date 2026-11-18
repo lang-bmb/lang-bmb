@@ -11,6 +11,11 @@ does lower; the differential test compares those with stage0 byte for byte.
         stage0's (BMB) instead, so the two sides agree there. Exit 3 when
         the input and the allow-list disagree: a listed input that stage1
         no longer lowers, or an unlisted one that it does.
+    port_emit.py exec COMPILER FILE       one side of the `emit-run` case: for
+        an input of the allow-list with a `main`, COMPILER's IR built with
+        clang and run: its stdout and exit code. Exit 3 when the output
+        differs from the expected one next to the input (`FILE` with the
+        extension `.out`). Other inputs print one line and do nothing.
     port_emit.py write STAGE1 [BMB]       regenerate the allow-list from the
         tracked inputs of the `emit` case (stage1 lowers them and stage0
         writes IR for them)
@@ -70,6 +75,40 @@ def run(stage1, bmb, args):
     return r.returncode
 
 
+def execute(compiler, src):
+    name = os.path.relpath(os.path.abspath(src), ROOT)
+    if name not in listed():
+        print("not in ported.txt")
+        return 0
+    with tempfile.TemporaryDirectory() as d:
+        ll, exe = os.path.join(d, "p.ll"), os.path.join(d, "p")
+        r = subprocess.run([compiler, "emit-llvm", "--all-checks", src, "-o", ll], capture_output=True)
+        if r.returncode != 0 or not os.path.exists(ll):
+            sys.stderr.write(f"port_emit: {name}: no IR (exit {r.returncode})\n")
+            sys.stderr.buffer.write(r.stderr)
+            return 3
+        with open(ll, "rb") as f:
+            if b"\ndefine i32 @main(" not in f.read():
+                print("no main")
+                return 0
+        # As `bmb build` does (compiler/src/toolchain.rs).
+        r = subprocess.run(["clang", "-O2", "-Wno-override-module", "-o", exe, ll], capture_output=True)
+        if r.returncode != 0:
+            sys.stderr.write(f"port_emit: {name}: clang failed\n")
+            sys.stderr.buffer.write(r.stderr)
+            return 3
+        r = subprocess.run([exe], capture_output=True, stdin=subprocess.DEVNULL, timeout=60)
+    sys.stdout.buffer.write(r.stdout)
+    print(f"exit {r.returncode}")
+    want = os.path.splitext(os.path.abspath(src))[0] + ".out"
+    if os.path.exists(want):
+        with open(want, "rb") as f:
+            if f.read() != r.stdout:
+                sys.stderr.write(f"port_emit: {name}: the output differs from {os.path.relpath(want, ROOT)}\n")
+                return 3
+    return 0
+
+
 def write(stage1, bmb):
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     import difftest
@@ -97,6 +136,8 @@ def main():
     a = sys.argv[1:]
     if len(a) >= 3 and a[0] == "run":
         return run(a[1], a[2], a[3:])
+    if len(a) == 3 and a[0] == "exec":
+        return execute(a[1], a[2])
     if len(a) >= 2 and a[0] == "write":
         return write(a[1], a[2] if len(a) > 2 else os.path.join(ROOT, "target", "debug", "bmb"))
     print(__doc__)
