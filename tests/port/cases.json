@@ -849,6 +849,38 @@
         ],
         "chunk": 40
       }
+    },
+    {
+      "name": "emit",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "emit-llvm",
+        "--all-checks",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "b": [
+        "python3",
+        "{root}/scripts/port_emit.py",
+        "run",
+        "{build:stage1}",
+        "{bmb}",
+        "--all-checks",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/emit/*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

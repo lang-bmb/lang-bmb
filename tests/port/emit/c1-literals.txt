@@ -1,0 +1,41 @@
+#[summary("리터럴을 돌려주는 함수: 정수의 폭마다, bool, f64, char, 바이트, 단위 값, 부호를 바꾼 리터럴")]
+mod lits {
+    #[effects(pure)]
+    fn a() -> i64 { 42 }
+    #[effects(pure)]
+    fn b() -> i64 { -9223372036854775807 }
+    #[effects(pure)]
+    fn c() -> u64 { 18446744073709551615 }
+    #[effects(pure)]
+    fn d() -> u8 { 255 }
+    #[effects(pure)]
+    fn e() -> i8 { -128 }
+    #[effects(pure)]
+    fn f() -> bool { true }
+    #[effects(pure)]
+    fn g() -> bool { false }
+    #[effects(pure)]
+    fn h() -> f64 { 1.5 }
+    #[effects(pure)]
+    fn i() -> f64 { -0.0 }
+    #[effects(pure)]
+    fn j() -> f64 { 1.0e308 }
+    #[effects(pure)]
+    fn k() -> char { 'a' }
+    #[effects(pure)]
+    fn l() -> char { '한' }
+    #[effects(pure)]
+    fn m() -> u8 { b'z' }
+    #[effects(pure)]
+    fn n() -> () { () }
+    #[effects(pure)]
+    fn o() -> () { }
+    #[effects(pure)]
+    fn p() -> u32 { 0xFFFF_FFFF }
+    #[effects(pure)]
+    fn q() -> usize { 0b1010 }
+    #[effects(pure)]
+    fn r() -> i32 { -0o17 }
+    #[effects(pure)]
+    fn s() -> i16 { -32768 }
+}

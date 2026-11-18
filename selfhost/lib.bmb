@@ -1,5 +1,8 @@
 #[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, check")]
 mod lib {
+    #[summary("emit-llvm의 결과: 진단의 JSONL, 모듈의 글, 옮기지 않은 구문의 까닭들")]
+    struct Emitted { ok: bool, diags: String, ir: String, todo: Vec<String> }
+
     #[summary("앞단의 결과: 쓴 프로그램(라이브러리 단위를 붙인)과 그것을 검사한 것")]
     struct Front { source: ast::Program, ck: body::Checked }
 
@@ -119,17 +122,18 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("bmb emit-llvm --all-checks의 뼈대 (stage0 lib::emit_llvm_sources_with, 백로그 4D-05a): 검사하고 낮춘 표를 짓는다. 오류가 있으면 ok가 거짓이고 글은 진단의 JSONL. 모듈의 글은 코드 생성을 옮기면서 는다 (4D-05b부터): 지금은 빈 글")]
+    #[summary("bmb emit-llvm --all-checks (stage0 lib::emit_llvm_sources_with, 백로그 4D-05): 검사하고 낮춘 표로 모듈을 짓는다. 오류가 있으면 ok가 거짓. 아니면 ir이 모듈의 글이고, todo가 비어 있지 않으면 아직 옮기지 않은 구문을 만난 것이라 ir을 쓰지 않는다")]
     #[effects(alloc)]
-    fn emit_llvm(files: &[Input]) -> Outcome {
+    fn emit_llvm(files: &[Input]) -> Emitted {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let fe: Front = frontend(files, &mut sm, &mut diags);
         if diags.has_errors() {
-            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+            return Emitted { ok: false, diags: diags.to_jsonl(&sm), ir: String::new(), todo: Vec::new() };
         }
         let low: lowered::Tables = lowered::tables(&fe.ck);
-        Outcome { ok: true, text: String::new() }
+        let m: codegen::Module = codegen::emit(&fe.ck, &low);
+        Emitted { ok: true, diags: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo }
     }
 
     #[summary("bmb fmt: 프로그램의 정규형 (ADR-0019 §1), 단위 이름의 순서로 줄 하나를 사이에 두고. 경로로 쓴 메서드 호출은 메서드 문법이 된다(ADR-0051). 라이브러리 단위는 프로그램의 글이 아니다(ADR-0092 §1). 오류가 있으면 진단만 내고 ok가 거짓")]

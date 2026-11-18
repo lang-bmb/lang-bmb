@@ -16,9 +16,10 @@
 | `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
 | `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
 | `types/` | 검사기 2패스(몸 검사)의 경계 입력(같은 이유로 `.txt`) |
+| `emit/` | 코드 생성의 입력(같은 이유로 `.txt`)과 허용 목록 `ported.txt`(포트가 IR을 내는 입력: `scripts/port_emit.py write`가 만든다) |
 | `gen/` | 검사를 통과하는 생성 프로그램의 얼린 표본 40개(`4D-36`: `tests/fmt_fuzz.rs`의 생성기, `BMB_FMT_FUZZ_EXPORT`). 변형 입력과 달리 검사 뒤의 단계(해시, 정규형, 한정 글)까지 간다. 생성기가 바뀌어도 다시 만들지 않는다 |
 
-포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `moves`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `dump moves`로: 함수마다 소유 값이 놓이는 자리), `moves-together`. `hash`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `hash`로: 정의와 타입 선언의 정체성 해시), `hash-together`. `fmt`(같은 파일들을 하나씩 `fmt`로: 검사한 프로그램의 정규형, 경로로 쓴 메서드 호출은 메서드 문법으로), `fmt-check`(`fmt --check`: 종료 코드와 표준 오류), `fmt-together`. `texts`(같은 파일들을 하나씩 `dump texts`로: 증분 키가 읽는 한정 글과 한정 해시), `texts-together`. `lowered`(같은 파일들을 하나씩 `dump lowered`로: 코드 생성이 읽는 낮춘 표, 글은 바이트이고 `char`는 `u32`: 시그니처, 데이터 타입, 지역 변수, 식의 타입, 글인 자리, 타입마다 참조를 벗긴 타입과 필드·변형), `lowered-together`. `layout`(같은 파일들을 하나씩 `dump layout`으로: 검사를 통과하면 타입마다 LLVM 타입·크기·정렬·술어, 모듈의 머리가 기대는 것, LLVM 타입 정의), `layout-together`.
+포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `moves`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `dump moves`로: 함수마다 소유 값이 놓이는 자리), `moves-together`. `hash`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `hash`로: 정의와 타입 선언의 정체성 해시), `hash-together`. `fmt`(같은 파일들을 하나씩 `fmt`로: 검사한 프로그램의 정규형, 경로로 쓴 메서드 호출은 메서드 문법으로), `fmt-check`(`fmt --check`: 종료 코드와 표준 오류), `fmt-together`. `texts`(같은 파일들을 하나씩 `dump texts`로: 증분 키가 읽는 한정 글과 한정 해시), `texts-together`. `lowered`(같은 파일들을 하나씩 `dump lowered`로: 코드 생성이 읽는 낮춘 표, 글은 바이트이고 `char`는 `u32`: 시그니처, 데이터 타입, 지역 변수, 식의 타입, 글인 자리, 타입마다 참조를 벗긴 타입과 필드·변형), `lowered-together`. `layout`(같은 파일들을 하나씩 `dump layout`으로: 검사를 통과하면 타입마다 LLVM 타입·크기·정렬·술어, 모듈의 머리가 기대는 것, LLVM 타입 정의), `layout-together`. `emit`(추적되는 `.bmb`와 `emit/`·`types/`·`gen/`의 파일을 하나씩 `emit-llvm --all-checks`로: 포트 쪽은 `scripts/port_emit.py run`을 지난다. 허용 목록 `emit/ported.txt`의 입력은 포트의 IR·표준 출력·종료 코드를 stage0과 바이트로 견주고, 목록 밖의 입력은 포트가 "옮기지 않았다"로 끝나는지만 본다. 목록과 포트의 행동이 어긋나면(목록의 입력을 내지 못하거나 목록 밖의 입력을 내면) 실패한다).
 
 `lexer/`의 파일:
 
@@ -82,3 +83,13 @@
 | `moves-ok.txt` | 오류 없는 이동: 놓는 자리의 종류마다(`drops`, `arm_drops`, `branch_drops`, `consumed`, `exits`, `replaces`) |
 | `identity.txt` | 정체성 해시: 이름으로 가르는 타입(구조가 같은 두 구조체와 그 trait `impl`이 한 성분), 되부름 성분의 순서(지운 글로 같은 두 함수의 경로 순서, 색 정제로 갈리는 두 함수), trait 메서드의 순서와 기본 몸, 일반화 `impl`, 변형·필드·라벨의 자리 |
 | `by-path.txt` | 경로로 쓴 메서드 호출의 정규형(`compiler/tests/fmt.rs`의 `BY_PATH`): 메서드 문법이 되는 것(타고난 함수, 하나뿐인 trait 메서드)과 경로로 남는 것(타고난 함수가 가리는 trait 메서드, 두 trait이 가진 이름, 제 타입 매개변수가 있는 함수, 수신자가 없는 함수) |
+
+`emit/`의 파일(이름의 머리가 그것을 연 백로그 조각이다):
+
+| 파일 | 내용 |
+| --- | --- |
+| `c1-empty-main.txt` | 몸이 빈 `main`: 모듈의 머리와 `@main` |
+| `c1-literals.txt` | 리터럴을 돌려주는 함수: 정수의 폭과 진법, 부호를 바꾼 리터럴, `bool`, `f64`(`-0.0`), `char`, 바이트, 단위 값 |
+| `c1-params.txt` | 스칼라 매개변수의 자리, 읽기, 넘기지 않는 단위 값의 매개변수 |
+| `c1-units.txt` | 여러 단위와 안 단위의 정의가 경로 순서로, 내지 않는 명세·증명·제네릭 함수 |
+| `c1-no-main.txt` | `main`이 없는 프로그램 |

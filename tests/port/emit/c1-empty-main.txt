@@ -1,0 +1,6 @@
+#[summary("몸이 빈 main")]
+mod m {
+    #[effects(io)]
+    fn main() -> () {
+    }
+}

@@ -78,6 +78,8 @@ class Difftest(unittest.TestCase):
             ["{build:p}", "{bmb}", "-x", "{inputs}"], ["f", "g"], {"p": "/b/p"}, "/t/bmb"
         )
         self.assertEqual(argv, ["/b/p", "/t/bmb", "-x", "f", "g"])
+        rooted = difftest.argv_of(["{root}/scripts/x.py"], [], {}, "/t/bmb")
+        self.assertEqual(rooted, [os.path.join(difftest.ROOT, "scripts/x.py")])
 
     def test_input_sets(self):
         runs, n = difftest.runs_of(

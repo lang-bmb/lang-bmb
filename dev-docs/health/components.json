@@ -281,15 +281,18 @@
       ],
       "port": [
         "selfhost/lowered.bmb",
-        "selfhost/codegen.bmb"
+        "selfhost/codegen.bmb",
+        "selfhost/codegen_text.bmb"
       ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": 2,
+        "gate_runs": 4,
         "undecided_runs": 0,
         "friction": [
-          "닫히지 않은 행이다: 낮춘 표와 타입 배치(`4D-05a`·`4D-05b`)뿐이고 `dump lowered`·`dump layout`을 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a` 1번, `4D-05b` 1번, 둘 다 첫 회에 전부 증명)",
+          "닫히지 않은 행이다: 낮춘 표, 타입 배치, 모듈의 뼈대(`4D-05a`·`4D-05b`·`4D-05c1`)뿐이고 `dump lowered`·`dump layout`과 허용 목록의 `emit-llvm --all-checks`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a`·`4D-05b`·`4D-38`·`4D-05c1` 1번씩, 모두 첫 회에 전부 증명)",
+          "상수 IR 글을 들 수단이 없다(`include_str!`·`const`의 긴 글): `scripts/codegen_text.py`가 stage0의 `bmb dump runtime`에서 `selfhost/codegen_text.bmb`를 만들고 게이트가 신선도를 본다: 우회, `std_units`와 같은 까닭",
+          "`Gen`이 표를 든 참조를 필드로 가질 수 없어(참조는 2급) 표(`&lowered::Tables`, `&body::Checked`)를 메서드마다 매개변수로 넘긴다: 그대로 둠",
           "`old`는 예약어라 묶는 이름으로 쓸 수 없다(E0103 `expected binding or `_``): 진단이 예약어라고 말하지 않는다. 이름을 바꿨다(`prev`): 우회, 진단의 글은 고칠 후보",
           "`u64`의 배치 산술(`size.div_ceil(a) * a + s`)은 넘침 의무가 생긴다: stage0의 릴리스 빌드처럼 감기는 연산(`wrapping_add`·`wrapping_mul`·`wrapping_sub`)으로 쓰고 0으로 나눔은 갈래로 막았다(`round_up`): 그대로 둠",
           "와일드카드 갈래가 없어 `TypeKind`의 17갈래를 세 곳에 더 쓴다(`lower_in`·`struct_fields`·`enum_variants`): 그대로 둠, 언어의 선택(ADR-0026)",

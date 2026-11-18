@@ -19,7 +19,9 @@ run. The cases file:
 `builds` are made once: `{"bmb": FILE}` (or a list of globs, the files of one
 program) with `bmb build` (so the program is proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`. In an argv,
 `{build:NAME}` is a built program, `{bmb}` the compiler under test and
-`{inputs}` the run's files (it becomes several arguments).
+`{inputs}` the run's files (it becomes several arguments); a word that
+starts with `{root}/` is a path in the repository (a run's directory is a
+temporary one).
 
 Input sets (paths are relative to the repository):
     {"files": GLOB.., "chunk": N}   git-tracked files matching any glob, N
@@ -99,6 +101,8 @@ def argv_of(template, files, built, bmb):
             out.append(bmb)
         elif word.startswith("{build:") and word.endswith("}"):
             out.append(built[word[7:-1]])
+        elif word.startswith("{root}/"):
+            out.append(os.path.join(ROOT, word[7:]))
         else:
             out.append(word)
     return out

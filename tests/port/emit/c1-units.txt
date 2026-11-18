@@ -1,0 +1,26 @@
+#[summary("여러 단위와 안 단위: 정의는 경로 순서로 나온다. main은 뒤 단위에 있다")]
+mod zeta {
+    #[effects(pure)]
+    fn one() -> i64 { 1 }
+    #[summary("안 단위")]
+    mod inner {
+        #[effects(pure)]
+        fn two() -> i64 { 2 }
+    }
+    #[effects(io)]
+    fn main() -> () { }
+}
+
+#[summary("앞 단위: 명세 함수와 증명 함수는 내지 않는다")]
+mod alpha {
+    spec fn pos(x: i64) -> bool { x > 0 }
+    proof fn lemma(x: i64)
+        requires pos(x),
+        ensures pos(x),
+    {
+    }
+    #[effects(pure)]
+    fn three() -> i64 { 3 }
+    #[effects(pure)]
+    fn generic<T: Copy>(x: T) -> i64 { 4 }
+}

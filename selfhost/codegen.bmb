@@ -1,7 +1,166 @@
 #[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 지금은 타입의 배치와 LLVM 타입 정의 (4D-05b). 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
 mod codegen {
+    #[summary("식의 값 (stage0 CVal): 레지스터 값이나 상수의 글, 단위 값, 끝나지 않는 식의 값")]
+    enum CVal { Imm(String), Unit, Never }
+
+    #[summary("낮출 정의 하나: 경로, 단위, 구문")]
+    struct Def { path: String, unit: String, d: ast::FnDef }
+
+    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다)")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, ret: ast::TypeKind, todo: Vec<String> }
+
+    impl Gen {
+        #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
+        #[effects(alloc)]
+        fn alloca(self: &mut Gen, ty: &str) -> String {
+            let p: String = self.t();
+            self.allocas.push_str("  ");
+            self.allocas.push_str(p.as_str());
+            self.allocas.push_str(" = alloca ");
+            self.allocas.push_str(ty);
+            self.allocas.push_str("\n");
+            p
+        }
+
+        #[summary("블록의 값 (stage0 block_expr): 문장들, 이어서 꼬리 식. 지금은 문장 없는 블록만")]
+        #[effects(alloc)]
+        fn block_expr(self: &mut Gen, b: &ast::Block, ck: &body::Checked, tb: &lowered::Tables) -> CVal {
+            if b.stmts.len() > 0 {
+                self.todo_at("statements", b.span);
+                return CVal::Never;
+            }
+            if self.drops_at(b.span, ck) {
+                self.todo_at("a block that drops owned values", b.span);
+                return CVal::Never;
+            }
+            match &b.tail {
+                None => CVal::Unit,
+                Some(e) => self.expr(&**e, tb),
+            }
+        }
+
+        #[summary("블록 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.drops)")]
+        #[effects(alloc)]
+        fn drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => ck.b.needs.items[at].moves.drops.has(body::span_key(s).as_str()),
+            }
+        }
+
+        #[summary("몸에 명령 한 줄")]
+        #[effects(alloc)]
+        fn emit(self: &mut Gen, line: &str) -> () {
+            self.out.push_str("  ");
+            self.out.push_str(line);
+            self.out.push_str("\n");
+        }
+
+        #[summary("함수를 끝낸다 (stage0 emit_return): ()는 ret void, 스칼라는 그 값")]
+        #[effects(alloc)]
+        fn emit_return(self: &mut Gen, rv: &CVal) -> () {
+            if ret_in_memory(&self.ret) {
+                self.todo.push(types::cat2("a result in memory in ", self.path.as_str()));
+                return;
+            }
+            let ret: String = llty(&self.ret);
+            if ret == "void" {
+                self.emit("ret void");
+            } else {
+                self.emit(types::cat4("ret ", ret.as_str(), " ", imm(rv).as_str()).as_str());
+            }
+        }
+
+        #[summary("식의 값 (stage0 expr). 지금은 리터럴, 부호 바꾼 리터럴, 스칼라 지역 변수")]
+        #[effects(alloc)]
+        #[uses(wide::divisor)]
+        fn expr(self: &mut Gen, e: &ast::Expr, tb: &lowered::Tables) -> CVal {
+            match &e.kind {
+                ast::ExprKind::Int(v, ex_r) => { let mut s: String = String::new(); wide::push_radix(&mut s, *v, 10); CVal::Imm(s) },
+                ast::ExprKind::Float(bits) => CVal::Imm(f64_const(*bits)),
+                ast::ExprKind::ByteLit(b) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *b as u64); CVal::Imm(s) },
+                ast::ExprKind::ByteStr(ex_bs) => self.todo_expr("a byte string", e),
+                ast::ExprKind::StrLit(ex_sl) => self.todo_expr("a string literal", e),
+                ast::ExprKind::CharLit(c) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *c as u64); CVal::Imm(s) },
+                ast::ExprKind::Bool(on) => { if *on { CVal::Imm(String::from("true")) } else { CVal::Imm(String::from("false")) } },
+                ast::ExprKind::Unit => CVal::Unit,
+                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } match self.slots.find(id.name.as_str()) { None => self.todo_expr("a name without a slot", e), Some(at) => { match &self.slots.items[at] { Slot::Scalar(ptr, ty) => { let line: String = types::cat4(" = load ", ty.as_str(), ", ptr ", ptr.as_str()); let r: String = self.t(); self.emit(types::cat2(r.as_str(), line.as_str()).as_str()); CVal::Imm(r) }, } }, } },
+                ast::ExprKind::Call(ex_call) => self.todo_expr("a call", e),
+                ast::ExprKind::Method(ex_m) => self.todo_expr("a method call", e),
+                ast::ExprKind::Index(ex_ib, ex_ii) => self.todo_expr("an index", e),
+                ast::ExprKind::Unary(op, x) => { if !is_neg(*op) { return self.todo_expr("a unary operator", e); } match &x.kind { ast::ExprKind::Int(nv, ng_r) => { if body::is_f64(&self.ty(&**x, tb)) { return self.todo_expr("a negation", e); } let mut s: String = String::from("-"); wide::push_radix(&mut s, *nv, 10); CVal::Imm(s) }, ast::ExprKind::Float(nb) => { if body::is_f64(&self.ty(&**x, tb)) { CVal::Imm(f64_const(*nb ^ 9223372036854775808)) } else { self.todo_expr("a negation", e) } }, ast::ExprKind::ByteLit(ng_bytelit0) => self.todo_expr("a negation", e), ast::ExprKind::ByteStr(ng_bytestr0) => self.todo_expr("a negation", e), ast::ExprKind::StrLit(ng_strlit0) => self.todo_expr("a negation", e), ast::ExprKind::CharLit(ng_charlit0) => self.todo_expr("a negation", e), ast::ExprKind::Bool(ng_bool0) => self.todo_expr("a negation", e), ast::ExprKind::Unit => self.todo_expr("a negation", e), ast::ExprKind::Var(ng_var0) => self.todo_expr("a negation", e), ast::ExprKind::Call(ng_call0) => self.todo_expr("a negation", e), ast::ExprKind::Method(ng_method0) => self.todo_expr("a negation", e), ast::ExprKind::Index(ng_index0, ng_index1) => self.todo_expr("a negation", e), ast::ExprKind::Unary(ng_unary0, ng_unary1) => self.todo_expr("a negation", e), ast::ExprKind::Binary(ng_binary0, ng_binary1, ng_binary2) => self.todo_expr("a negation", e), ast::ExprKind::Ref(ng_ref0, ng_ref1) => self.todo_expr("a negation", e), ast::ExprKind::If(ng_if0) => self.todo_expr("a negation", e), ast::ExprKind::Block(ng_block0) => self.todo_expr("a negation", e), ast::ExprKind::Array(ng_array0) => self.todo_expr("a negation", e), ast::ExprKind::Repeat(ng_repeat0) => self.todo_expr("a negation", e), ast::ExprKind::Old(ng_old0) => self.todo_expr("a negation", e), ast::ExprKind::Quant(ng_quant0) => self.todo_expr("a negation", e), ast::ExprKind::Trigger(ng_trigger0) => self.todo_expr("a negation", e), ast::ExprKind::Closure(ng_closure0) => self.todo_expr("a negation", e), ast::ExprKind::StructLit(ng_structlit0) => self.todo_expr("a negation", e), ast::ExprKind::Path(ng_path0) => self.todo_expr("a negation", e), ast::ExprKind::Deref(ng_deref0) => self.todo_expr("a negation", e), ast::ExprKind::Field(ng_field0, ng_field1) => self.todo_expr("a negation", e), ast::ExprKind::Match(ng_match0) => self.todo_expr("a negation", e), ast::ExprKind::Return(ng_return0) => self.todo_expr("a negation", e), ast::ExprKind::Try(ng_try0) => self.todo_expr("a negation", e), ast::ExprKind::Loop(ng_loop0) => self.todo_expr("a negation", e), ast::ExprKind::Break(ng_break0) => self.todo_expr("a negation", e), ast::ExprKind::Continue(ng_continue0) => self.todo_expr("a negation", e), ast::ExprKind::Range(ng_range0) => self.todo_expr("a negation", e), ast::ExprKind::Error => self.todo_expr("a negation", e), } },
+                ast::ExprKind::Binary(ex_op, ex_l, ex_rr) => self.todo_expr("a binary operator", e),
+                ast::ExprKind::Ref(ex_rm, ex_rx) => self.todo_expr("a reference", e),
+                ast::ExprKind::If(ex_if) => self.todo_expr("an `if`", e),
+                ast::ExprKind::Block(ex_b) => self.todo_expr("a block", e),
+                ast::ExprKind::Array(ex_a) => self.todo_expr("an array", e),
+                ast::ExprKind::Repeat(ex_rp) => self.todo_expr("an array repeat", e),
+                ast::ExprKind::Old(ex_o) => self.todo_expr("`old`", e),
+                ast::ExprKind::Quant(ex_q) => self.todo_expr("a quantifier", e),
+                ast::ExprKind::Trigger(ex_t) => self.todo_expr("a trigger", e),
+                ast::ExprKind::Closure(ex_c) => self.todo_expr("a closure", e),
+                ast::ExprKind::StructLit(ex_s) => self.todo_expr("a struct literal", e),
+                ast::ExprKind::Path(ex_p) => self.todo_expr("a path", e),
+                ast::ExprKind::Deref(ex_d) => self.todo_expr("a dereference", e),
+                ast::ExprKind::Field(ex_fb, ex_fn) => self.todo_expr("a field", e),
+                ast::ExprKind::Match(ex_mt) => self.todo_expr("a `match`", e),
+                ast::ExprKind::Return(ex_rt) => self.todo_expr("a `return`", e),
+                ast::ExprKind::Try(ex_tr) => self.todo_expr("a `?`", e),
+                ast::ExprKind::Loop(ex_lp) => self.todo_expr("a `loop`", e),
+                ast::ExprKind::Break(ex_bk) => self.todo_expr("a `break`", e),
+                ast::ExprKind::Continue(ex_ct) => self.todo_expr("a `continue`", e),
+                ast::ExprKind::Range(ex_rg) => self.todo_expr("a range", e),
+                ast::ExprKind::Error => self.todo_expr("an error expression", e),
+            }
+        }
+
+        #[summary("다음 %tN")]
+        #[effects(alloc)]
+        fn t(self: &mut Gen) -> String {
+            self.tmp = self.tmp.wrapping_add(1);
+            let mut s: String = String::from("%t");
+            std::num::push_u64(&mut s, self.tmp as u64);
+            s
+        }
+
+        #[summary("옮기지 않은 구문 what을 자리 s에서 만났다고 적는다")]
+        #[effects(alloc)]
+        fn todo_at(self: &mut Gen, what: &str, s: source::Span) -> () {
+            let mut m: String = String::from(what);
+            m.push_str(" in ");
+            m.push_str(self.path.as_str());
+            m.push_str(" at bytes ");
+            std::num::push_u64(&mut m, s.lo as u64);
+            m.push_str("..");
+            std::num::push_u64(&mut m, s.hi as u64);
+            self.todo.push(m);
+        }
+
+        #[summary("옮기지 않은 식: 까닭을 적고 끝나지 않는 값으로 둔다")]
+        #[effects(alloc)]
+        fn todo_expr(self: &mut Gen, what: &str, e: &ast::Expr) -> CVal {
+            self.todo_at(what, e.span);
+            CVal::Never
+        }
+
+        #[summary("식 e의 타입 (낮춘 표에서)")]
+        #[effects(alloc)]
+        fn ty(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
+            match tb.types.find(body::span_key(e.span).as_str()) {
+                None => ast::TypeKind::Error,
+                Some(at) => tb.types.items[at].clone(),
+            }
+        }
+    }
+
     #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
     struct Lay { size: u64, align: u64 }
+
+    #[summary("모듈 (stage0 Module): IR의 글, 진입점, 옮기지 않은 구문을 만난 까닭들")]
+    struct Module { ir: String, main: Option<String>, todo: Vec<String> }
+
+    #[summary("지역 이름의 자리 (stage0 Slot). 지금은 스칼라: 자리의 이름과 레지스터 타입")]
+    enum Slot { Scalar(String, String) }
 
     #[summary("원소 종류 elem의 메모리 정렬 (stage0 align): i1은 1, 좁은 정수는 제 폭, 나머지는 8")]
     #[effects(pure)]
@@ -111,6 +270,43 @@ mod codegen {
         }
     }
 
+    #[summary("프로그램의 모듈 (stage0 emit_with, 전체 검사 모드): 머리, 타입 정의, 제네릭 아닌 실행 함수를 경로 순서로, @main. 옮기지 않은 구문을 만나면 todo에 까닭이 남는다")]
+    #[effects(alloc)]
+    fn emit(ck: &body::Checked, tb: &lowered::Tables) -> Module {
+        let mut todo: Vec<String> = Vec::new();
+        let mut ir: String = codegen_text::head();
+        let all: Vec<ast::TypeKind> = all_types(tb);
+        let none: Vec<String> = Vec::new();
+        let mut heap: bool = false;
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            if holds_vec(&all[i], tb) || types::is_move_in(&lowered::value_ty(&all[i]), &tb.adts, none.as_slice()) {
+                heap = true;
+            }
+        }
+        if heap {
+            todo.push(String::from("a program with owned heap values (backlog 4D-05e)"));
+        }
+        ir.push_str(type_defs(tb).as_str());
+        ir.push_str(codegen_text::head_rest().as_str());
+        let defs: Vec<Def> = sorted_defs(&ck.program, tb);
+        let mut main: Option<String> = None;
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            match tb.fns.find(defs[i].path.as_str()) {
+                None => {},
+                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
+            }
+        }
+        match &main {
+            None => {},
+            Some(m) => { if has_recursive_exec(ck, tb) { todo.push(String::from("a program with recursion: the large stack (backlog 4D-05h)")); } ir.push_str("\ndefine i32 @main() {\n  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void "); ir.push_str(fn_sym(m.as_str()).as_str()); ir.push_str("()\n  call void @bmb_flush_out()\n  ret i32 0\n}\n"); },
+        }
+        Module { ir: ir, main: main, todo: todo }
+    }
+
     #[summary("진입점 (stage0 emit_with의 main): 단위의 main인 제네릭 아닌 실행 함수. 여럿이면 경로가 가장 뒤인 것")]
     #[effects(alloc)]
     fn entry(p: &ast::Program, tb: &lowered::Tables) -> Option<String> {
@@ -127,6 +323,95 @@ mod codegen {
             }
         }
         found
+    }
+
+    #[summary("f64 상수의 LLVM 16진 꼴 (stage0 f64_const): 0x와 대문자 16진 열여섯 자리")]
+    #[effects(alloc)]
+    fn f64_const(bits: u64) -> String {
+        let mut s: String = String::from("0x");
+        let mut k: u64 = 16;
+        while k > 0
+            invariant k <= 16,
+            decreases k,
+        {
+            k = k - 1;
+            let d: u32 = (bits >> 4 * k & 15) as u32;
+            if d < 10 {
+                lexer::push_code(&mut s, 48 + d);
+            } else {
+                lexer::push_code(&mut s, 55 + d);
+            }
+        }
+        s
+    }
+
+    #[summary("m의 몸 있는 함수를 이름의 자리로 모은다 (body::defs_walk와 같은 것을 걷는다)")]
+    #[effects(alloc)]
+    fn fn_defs(m: &ast::Mod, out: &mut table::Table<ast::FnDef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            fn_defs(&m.mods[i], out, f - 1);
+        }
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            out.insert(body::span_key(m.fns[i].name.span).as_str(), m.fns[i].clone());
+        }
+        for i in 0..m.impls.len()
+            invariant 0 <= i && i <= m.impls.len(),
+        {
+            for j in 0..m.impls[i].fns.len()
+                invariant 0 <= j && j <= m.impls[i].fns.len(),
+            {
+                out.insert(body::span_key(m.impls[i].fns[j].name.span).as_str(), m.impls[i].fns[j].clone());
+            }
+        }
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            for j in 0..m.trait_impls[i].fns.len()
+                invariant 0 <= j && j <= m.trait_impls[i].fns.len(),
+            {
+                out.insert(body::span_key(m.trait_impls[i].fns[j].name.span).as_str(), m.trait_impls[i].fns[j].clone());
+            }
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            for j in 0..m.traits[i].fns.len()
+                invariant 0 <= j && j <= m.traits[i].fns.len(),
+            {
+                if m.traits[i].fns[j].has_body {
+                    out.insert(body::span_key(m.traits[i].fns[j].f.name.span).as_str(), m.traits[i].fns[j].f.clone());
+                }
+            }
+        }
+    }
+
+    #[summary("함수의 LLVM 이름 (stage0 fn_sym): @\"경로\"")]
+    #[effects(alloc)]
+    fn fn_sym(path: &str) -> String {
+        types::cat3("@\"", path, "\"")
+    }
+
+    #[summary("재귀하는 실행 함수가 있는가 (stage0 emit_with의 deep)")]
+    #[effects(alloc)]
+    fn has_recursive_exec(ck: &body::Checked, tb: &lowered::Tables) -> bool {
+        for n in 0..ck.b.recursive.len()
+            invariant 0 <= n,
+        {
+            match tb.fns.find(ck.b.recursive.key(n).as_str()) {
+                None => {},
+                Some(at) => { if is_exec(tb.fns.items[at].kind) { return true; } },
+            }
+        }
+        false
     }
 
     #[summary("값이 Vec을 어디엔가 드는가 (stage0 holds_vec): 참조, 필드, 페이로드, Box, 배열, 타입 인자를 지나")]
@@ -161,6 +446,16 @@ mod codegen {
             ast::TypeKind::Param(hv_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("스칼라로 쓰는 값의 글 (stage0 CVal::imm): 단위 값은 0, 끝나지 않는 값은 undef")]
+    #[effects(alloc)]
+    fn imm(v: &CVal) -> String {
+        match v {
+            CVal::Imm(s) => s.clone(),
+            CVal::Unit => String::from("0"),
+            CVal::Never => String::from("undef"),
         }
     }
 
@@ -204,6 +499,14 @@ mod codegen {
     #[effects(alloc)]
     fn is_mem_elem(t: &ast::TypeKind) -> bool {
         is_mem(t) || body::is_array(&lowered::value_ty(t))
+    }
+
+    #[effects(pure)]
+    fn is_neg(op: ast::UnOp) -> bool {
+        match op {
+            ast::UnOp::Neg => true,
+            ast::UnOp::Not => false,
+        }
     }
 
     #[summary("정수, bool, f64인가")]
@@ -319,6 +622,46 @@ mod codegen {
         }
     }
 
+    #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
+    #[effects(alloc)]
+    fn lower_fn(def: &Def, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
+        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), ret: sig.ret.clone(), todo: Vec::new() };
+        let mut params: Vec<String> = Vec::new();
+        for i in 0..def.d.params.len()
+            invariant 0 <= i && i <= def.d.params.len(),
+        {
+            if i < sig.params.len() {
+                let n: String = def.d.params[i].name.name.clone();
+                if body::is_ref(&sig.params[i]) || is_mem(&sig.params[i]) || body::is_array(&sig.params[i]) {
+                    g.todo_at("a parameter that is not a scalar", def.d.params[i].name.span);
+                } else if !decls::is_unit(&sig.params[i]) {
+                    let lt: String = llty(&sig.params[i]);
+                    let reg: String = types::cat3("%\"", n.as_str(), "\"");
+                    params.push(types::cat3(lt.as_str(), " ", reg.as_str()));
+                    let ptr: String = g.alloca(lt.as_str());
+                    g.emit(types::cat7("store ", lt.as_str(), " ", reg.as_str(), ", ptr ", ptr.as_str(), "").as_str());
+                    g.slots.insert(n.as_str(), Slot::Scalar(ptr, lt));
+                }
+            }
+        }
+        let rv: CVal = g.block_expr(&def.d.body, ck, tb);
+        g.emit_return(&rv);
+        let mut frag: String = String::from("\n");
+        frag.push_str(g.globals.as_str());
+        frag.push_str("define internal ");
+        frag.push_str(llty(&sig.ret).as_str());
+        frag.push_str(" ");
+        frag.push_str(fn_sym(def.path.as_str()).as_str());
+        frag.push_str("(");
+        frag.push_str(types::join(params.as_slice(), ", ").as_str());
+        frag.push_str(") {\nentry:\n");
+        frag.push_str(g.allocas.as_str());
+        frag.push_str(g.out.as_str());
+        frag.push_str("}\n");
+        g.out = frag;
+        g
+    }
+
     #[summary("배열 원소의 메모리 타입 (stage0 mem): bool과 좁은 정수는 제 폭")]
     #[effects(alloc)]
     fn mem(elem: &str) -> String {
@@ -388,6 +731,12 @@ mod codegen {
         0
     }
 
+    #[summary("결과를 부른 쪽의 메모리에 쓰는가 (stage0 ret_in_memory): 메모리에 사는 값이거나 배열")]
+    #[effects(alloc)]
+    fn ret_in_memory(ret: &ast::TypeKind) -> bool {
+        is_mem(ret) || body::is_array(ret)
+    }
+
     #[summary("x를 a의 배수로 올린다 (stage0의 x.div_ceil(a) * a, 넘치면 감긴다). a가 0이면 x")]
     #[effects(pure)]
     fn round_up(x: u64, a: u64) -> u64 {
@@ -400,6 +749,37 @@ mod codegen {
         } else {
             x.wrapping_add(a - r)
         }
+    }
+
+    #[summary("몸 있는 정의를 경로 순서로 (stage0 emit_with의 defs): body::defs_of의 줄마다 그 구문")]
+    #[effects(alloc)]
+    fn sorted_defs(p: &ast::Program, tb: &lowered::Tables) -> Vec<Def> {
+        let mut by_span: table::Table<ast::FnDef> = table::new::<ast::FnDef>();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            fn_defs(&p.mods[i], &mut by_span, 100000);
+        }
+        let rows: Vec<body::DefRow> = body::defs_of(p, &tb.fns);
+        let mut by_path: table::Table<Def> = table::new::<Def>();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            match by_span.find(body::span_key(rows[i].span).as_str()) {
+                None => {},
+                Some(at) => { if !by_path.has(rows[i].path.as_str()) { by_path.insert(rows[i].path.as_str(), Def { path: rows[i].path.clone(), unit: rows[i].unit.clone(), d: by_span.items[at].clone() }); } },
+            }
+        }
+        let mut out: Vec<Def> = Vec::new();
+        for n in 0..by_path.len()
+            invariant 0 <= n,
+        {
+            match by_path.nth(n) {
+                None => {},
+                Some(at) => out.push(by_path.items[at].clone()),
+            }
+        }
+        out
     }
 
     #[summary("프로그램이 쓰는 구조체와 열거형(인스턴스)의 LLVM 타입 정의 (stage0 type_defs): 구조체는 필드를 선언 순서로, 열거형은 꼬리표와 페이로드 자리, 페이로드 있는 변형마다 보는 타입 하나")]

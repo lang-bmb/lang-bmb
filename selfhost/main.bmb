@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, check, fmt, hash, emit-llvm --all-checks(뼈대: 검사까지)")]
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, check, fmt, hash, emit-llvm --all-checks(옮긴 구문만: 나머지는 까닭을 적고 종료 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -103,7 +103,7 @@ mod main {
             }
             match ir_path {
                 None => {},
-                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Outcome = lib::emit_llvm(units.as_slice()); if !er.ok { print_str(er.text.as_str()); std::process::exit(1); } eprint_str("stage1: emit-llvm: the code generator is not ported yet (backlog 4D-05): nothing written to "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); } },
+                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Emitted = lib::emit_llvm(units.as_slice()); print_str(er.diags.as_str()); if !er.ok { std::process::exit(1); } if er.todo.len() > 0 { eprint_str("stage1: emit-llvm: not ported yet (backlog 4D-05), nothing written:\n"); for q in 0..er.todo.len() invariant 0 <= q && q <= er.todo.len(), { eprint_str("  "); eprint_str(er.todo[q].as_str()); eprint_str("\n"); } std::process::exit(2); } match std::fs::write(to.as_str(), er.ir.as_bytes()) { Ok(done) => {}, Err(why) => { eprint_str("bmb: cannot write "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); }, } return; } },
             }
             eprint_str("usage: stage1 emit-llvm --all-checks FILE.. -o OUT.ll\n");
             std::process::exit(2);

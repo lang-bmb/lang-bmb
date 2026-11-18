@@ -194,6 +194,7 @@ const USAGE: &str = "usage:
                             how the code generator lays the types out, when the program
                             checks: each type's LLVM types, size and alignment, what the
                             module's head depends on, and the LLVM type definitions
+  bmb dump runtime          the code generator's constant IR texts by name, as JSONL
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1029,6 +1030,16 @@ fn run() -> ExitCode {
         // Each front-end stage's output, for comparing another
         // implementation stage by stage (backlog 4A-03): the tokens, and
         // the parsed program in normal form before any check.
+        // The code generator's constant IR texts (backlog 4D-05c1).
+        Some("dump") if args.len() == 2 && args[1] == "runtime" => {
+            for (name, text) in bmb::codegen::runtime_texts() {
+                println!(
+                    "{{\"name\":\"{name}\",\"text\":{}}}",
+                    bmb::diag::json_str(&text)
+                );
+            }
+            ExitCode::SUCCESS
+        }
         Some("dump")
             if args.len() > 2
                 && matches!(

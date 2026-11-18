@@ -1,0 +1,17 @@
+#[summary("스칼라 매개변수: 자리를 받고, 읽어 돌려주거나 쓰지 않는다. 단위 값의 매개변수는 넘기지 않는다")]
+mod params {
+    #[effects(pure)]
+    fn id(x: i64) -> i64 { x }
+    #[effects(pure)]
+    fn second(x: i64, y: bool, z: f64) -> bool { y }
+    #[effects(pure)]
+    fn third(x: u8, y: bool, z: f64) -> f64 { z }
+    #[effects(pure)]
+    fn unused(x: i32, y: u16) -> () { }
+    #[effects(pure)]
+    fn unit_in(u: (), x: char) -> char { x }
+    #[effects(pure)]
+    fn unit_out(u: ()) -> () { u }
+    #[effects(pure)]
+    fn konst(x: usize) -> usize { 7 }
+}
