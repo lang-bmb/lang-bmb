@@ -1,0 +1,181 @@
+#[summary("코드 생성이 읽는 표 (stage0 verify::Tables::lowered와 check::lower의 포트, 백로그 4D-05a): 글은 바이트이고 char는 u32다 (ADR-0050 §3·§4). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+mod lowered {
+    #[summary("낮춘 표. text는 값이 글인 식의 자리(body::span_key, 열쇠 순서): 바이트 뜻이 다른 연산을 이것으로 가른다")]
+    struct Tables { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, trait_impls: Vec<types::TraitImplInfo>, locals: table::Table<table::Table<ast::TypeKind>>, types: table::Table<ast::TypeKind>, targs: table::Table<Vec<ast::TypeKind>>, text: Vec<String> }
+
+    #[summary("열거형 t(참조를 지나)의 변형과 페이로드 타입을 선언 순서로 (stage0 verify::enum_variants). Option은 None·Some, Result는 Ok·Err. 제네릭이면 인스턴스 t의 타입")]
+    #[effects(alloc)]
+    fn enum_variants(t: &ast::TypeKind, tb: &Tables) -> Option<Vec<types::VariantSig>> {
+        let v: ast::TypeKind = match body::ref_inner(t) {
+            None => t.clone(),
+            Some(inner) => inner,
+        };
+        match &v {
+            ast::TypeKind::Int(ev_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(ev_ae, ev_an) => None,
+            ast::TypeKind::ArrayN(ev_ne, ev_nn) => None,
+            ast::TypeKind::Slice(ev_se) => None,
+            ast::TypeKind::Ref(ev_rm, ev_ri) => None,
+            ast::TypeKind::Named(path, args) => { let p: String = types::join(path.as_slice(), "::"); let mut out: Vec<types::VariantSig> = Vec::new(); if p == "Option" && args.len() == 1 { let none: Vec<ast::TypeKind> = Vec::new(); out.push(types::VariantSig { name: String::from("None"), tys: none }); let mut some: Vec<ast::TypeKind> = Vec::new(); some.push(args[0].kind.clone()); out.push(types::VariantSig { name: String::from("Some"), tys: some }); return Some(out); } if p == "Result" && args.len() == 2 { let mut ok: Vec<ast::TypeKind> = Vec::new(); ok.push(args[0].kind.clone()); out.push(types::VariantSig { name: String::from("Ok"), tys: ok }); let mut err: Vec<ast::TypeKind> = Vec::new(); err.push(args[1].kind.clone()); out.push(types::VariantSig { name: String::from("Err"), tys: err }); return Some(out); } match tb.adts.find(p.as_str()) { None => None, Some(at) => { let m: types::Subst = types::adt_subst(&tb.adts.items[at], &v); match &tb.adts.items[at].kind { types::AdtKind::Struct(ev_fs) => None, types::AdtKind::Enum(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { let mut tys: Vec<ast::TypeKind> = Vec::new(); for k in 0..vs[i].tys.len() invariant 0 <= k && k <= vs[i].tys.len(), { tys.push(types::subst(&vs[i].tys[k], &m)); } out.push(types::VariantSig { name: vs[i].name.clone(), tys: tys }); } Some(out) }, } }, } },
+            ast::TypeKind::Vec(ev_ve) => None,
+            ast::TypeKind::Box(ev_be) => None,
+            ast::TypeKind::Param(ev_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[effects(alloc)]
+    fn low_type(x: &ast::Type, f: usize) -> ast::Type
+        decreases f * 2 + 1,
+    {
+        ast::Type { kind: lower_in(&x.kind, f), span: x.span }
+    }
+
+    #[summary("증명기와 코드 생성이 보는 t (stage0 check::lower): String은 Vec<u8>, str은 [u8], char는 u32")]
+    #[effects(alloc)]
+    fn lower(t: &ast::TypeKind) -> ast::TypeKind {
+        lower_in(t, 100000)
+    }
+
+    #[effects(alloc)]
+    fn lower_all(ts: &[ast::TypeKind]) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            out.push(lower(&ts[i]));
+        }
+        out
+    }
+
+    #[effects(alloc)]
+    fn lower_in(t: &ast::TypeKind, f: usize) -> ast::TypeKind
+        decreases f * 2,
+    {
+        if f == 0 {
+            return t.clone();
+        }
+        match t {
+            ast::TypeKind::Int(lw_it) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => ast::TypeKind::Int(ast::IntTy::U32),
+            ast::TypeKind::String => ast::TypeKind::Vec(Box::new(types::ty(ast::TypeKind::Int(ast::IntTy::U8)))),
+            ast::TypeKind::Str => ast::TypeKind::Slice(Box::new(types::ty(ast::TypeKind::Int(ast::IntTy::U8)))),
+            ast::TypeKind::Array(ae, an) => ast::TypeKind::Array(Box::new(low_type(&**ae, f - 1)), *an),
+            ast::TypeKind::ArrayN(lw_ne, lw_nn) => t.clone(),
+            ast::TypeKind::Slice(se) => ast::TypeKind::Slice(Box::new(low_type(&**se, f - 1))),
+            ast::TypeKind::Ref(rm, ri) => ast::TypeKind::Ref(*rm, Box::new(low_type(&**ri, f - 1))),
+            ast::TypeKind::Named(path, args) => { let mut out: Vec<ast::Type> = Vec::new(); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { out.push(low_type(&args[i], f - 1)); } ast::TypeKind::Named(path.clone(), out) },
+            ast::TypeKind::Vec(ve) => ast::TypeKind::Vec(Box::new(low_type(&**ve, f - 1))),
+            ast::TypeKind::Box(be) => ast::TypeKind::Box(Box::new(low_type(&**be, f - 1))),
+            ast::TypeKind::Param(lw_pn) => t.clone(),
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
+        }
+    }
+
+    #[summary("구조체 t(참조를 지나)의 필드를 선언 순서로 (stage0 verify::struct_fields). 제네릭이면 인스턴스 t의 타입")]
+    #[effects(alloc)]
+    fn struct_fields(t: &ast::TypeKind, tb: &Tables) -> Option<Vec<types::FieldSig>> {
+        let v: ast::TypeKind = match body::ref_inner(t) {
+            None => t.clone(),
+            Some(inner) => inner,
+        };
+        match &v {
+            ast::TypeKind::Int(sf_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(sf_ae, sf_an) => None,
+            ast::TypeKind::ArrayN(sf_ne, sf_nn) => None,
+            ast::TypeKind::Slice(sf_se) => None,
+            ast::TypeKind::Ref(sf_rm, sf_ri) => None,
+            ast::TypeKind::Named(path, sf_args) => { match tb.adts.find(types::join(path.as_slice(), "::").as_str()) { None => None, Some(at) => { let m: types::Subst = types::adt_subst(&tb.adts.items[at], &v); match &tb.adts.items[at].kind { types::AdtKind::Struct(fs) => { let mut out: Vec<types::FieldSig> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(types::FieldSig { name: fs[i].name.clone(), ty: types::subst(&fs[i].ty, &m) }); } Some(out) }, types::AdtKind::Enum(sf_vs) => None, } }, } },
+            ast::TypeKind::Vec(sf_ve) => None,
+            ast::TypeKind::Box(sf_be) => None,
+            ast::TypeKind::Param(sf_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("검사한 프로그램의 표를 낮춘 것 (stage0 Tables::lowered): 시그니처, 필드와 페이로드, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자")]
+    #[effects(alloc)]
+    fn tables(ck: &body::Checked) -> Tables {
+        let mut fns: table::Table<types::FnSig> = table::new::<types::FnSig>();
+        for n in 0..ck.b.c.fns.len()
+            invariant 0 <= n,
+        {
+            match ck.b.c.fns.nth(n) {
+                None => {},
+                Some(at) => { let mut s: types::FnSig = ck.b.c.fns.items[at].clone(); s.params = lower_all(ck.b.c.fns.items[at].params.as_slice()); s.ret = lower(&ck.b.c.fns.items[at].ret); fns.insert(ck.b.c.fns.key(n).as_str(), s); },
+            }
+        }
+        let mut adts: table::Table<types::Adt> = table::new::<types::Adt>();
+        for n in 0..ck.b.c.adts.len()
+            invariant 0 <= n,
+        {
+            match ck.b.c.adts.nth(n) {
+                None => {},
+                Some(at) => { let mut a: types::Adt = ck.b.c.adts.items[at].clone(); a.kind = match &ck.b.c.adts.items[at].kind { types::AdtKind::Struct(fs) => { let mut low: Vec<types::FieldSig> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { low.push(types::FieldSig { name: fs[i].name.clone(), ty: lower(&fs[i].ty) }); } types::AdtKind::Struct(low) }, types::AdtKind::Enum(vs) => { let mut lowv: Vec<types::VariantSig> = Vec::new(); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { lowv.push(types::VariantSig { name: vs[i].name.clone(), tys: lower_all(vs[i].tys.as_slice()) }); } types::AdtKind::Enum(lowv) }, }; adts.insert(ck.b.c.adts.key(n).as_str(), a); },
+            }
+        }
+        let mut trait_impls: Vec<types::TraitImplInfo> = Vec::new();
+        for i in 0..ck.b.c.trait_impls.len()
+            invariant 0 <= i && i <= ck.b.c.trait_impls.len(),
+        {
+            let mut ti: types::TraitImplInfo = ck.b.c.trait_impls[i].clone();
+            ti.head = lower(&ck.b.c.trait_impls[i].head);
+            trait_impls.push(ti);
+        }
+        let mut locals: table::Table<table::Table<ast::TypeKind>> = table::new::<table::Table<ast::TypeKind>>();
+        for n in 0..ck.b.locals.len()
+            invariant 0 <= n,
+        {
+            match ck.b.locals.nth(n) {
+                None => {},
+                Some(at) => { let mut vars: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>(); for v in 0..ck.b.locals.items[at].len() invariant 0 <= v, { match ck.b.locals.items[at].nth(v) { None => {}, Some(i) => vars.insert(ck.b.locals.items[at].key(v).as_str(), lower(&ck.b.locals.items[at].items[i])), } } locals.insert(ck.b.locals.key(n).as_str(), vars); },
+            }
+        }
+        let mut tys: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        for n in 0..ck.b.types.len()
+            invariant 0 <= n,
+        {
+            match ck.b.types.nth(n) {
+                None => {},
+                Some(at) => tys.insert(ck.b.types.key(n).as_str(), lower(&ck.b.types.items[at])),
+            }
+        }
+        let mut targs: table::Table<Vec<ast::TypeKind>> = table::new::<Vec<ast::TypeKind>>();
+        for n in 0..ck.b.targs.len()
+            invariant 0 <= n,
+        {
+            match ck.b.targs.nth(n) {
+                None => {},
+                Some(at) => targs.insert(ck.b.targs.key(n).as_str(), lower_all(ck.b.targs.items[at].as_slice())),
+            }
+        }
+        Tables { fns: fns, adts: adts, trait_impls: trait_impls, locals: locals, types: tys, targs: targs, text: ck.text.clone() }
+    }
+
+    #[summary("참조를 벗긴 타입 (stage0 verify::value_ty): 슬라이스의 참조는 그대로")]
+    #[effects(alloc)]
+    fn value_ty(t: &ast::TypeKind) -> ast::TypeKind {
+        match body::ref_inner(t) {
+            None => t.clone(),
+            Some(inner) => { if body::is_slice(&inner) { t.clone() } else { inner } },
+        }
+    }
+}

@@ -959,6 +959,8 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 ///   qualified normal form and the surface a caller reads
 ///   (`fmt::qualified_text`, `fmt::caller_text`), then the qualified hash of
 ///   every item (`fmt::qualified_hashes`).
+/// - `lowered`: the tables the code generator reads (`dump_lowered`,
+///   backlog 4D-05a).
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1044,6 +1046,10 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
             }
             out
         }
+        "lowered" => {
+            let (_, t) = check::check_resolved(program, &mut diags);
+            dump_lowered(&t, &|f| sm.name(f).to_string())
+        }
         _ => check::dump_tables(
             program,
             &mut diags,
@@ -1057,6 +1063,110 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
     } else {
         Ok(out)
     }
+}
+
+/// `bmb dump lowered` (backlog 4D-05a): the tables the code generator
+/// reads (`Tables::lowered`: text as bytes, a `char` as a `u32`), as JSONL
+/// rows. Per function its parameter and result types; per data type its
+/// fields or variants; per trait `impl` its head; per definition its
+/// locals; the type of every expression and the type arguments of every
+/// generic call by span; the spans whose value is text (`Tables::text`);
+/// then per distinct type the tables mention, the type without its
+/// reference (`verify::value_ty`) and the fields or variants of the
+/// instance (`verify::struct_fields`, `verify::enum_variants`).
+fn dump_lowered(t: &verify::Tables, file: &dyn Fn(u32) -> String) -> String {
+    use check::ty_str;
+    let q = diag::json_str;
+    let t = &t.lowered();
+    let list = |xs: Vec<String>| format!("[{}]", xs.join(","));
+    let tys = |ts: &[ast::TypeKind]| list(ts.iter().map(|x| q(&ty_str(x))).collect());
+    let fields = |fs: &[(String, ast::TypeKind)]| {
+        list(
+            fs.iter()
+                .map(|(n, x)| format!("[{},{}]", q(n), q(&ty_str(x))))
+                .collect(),
+        )
+    };
+    let variants = |vs: &[(String, Vec<ast::TypeKind>)]| {
+        list(
+            vs.iter()
+                .map(|(n, ps)| format!("[{},{}]", q(n), tys(ps)))
+                .collect(),
+        )
+    };
+    let at =
+        |k: &(u32, u32, u32)| format!("\"file\":{},\"lo\":{},\"hi\":{}", q(&file(k.0)), k.1, k.2);
+    let mut out = String::new();
+    for (path, s) in &t.fns {
+        out.push_str(&format!(
+            "{{\"fn\":{},\"params\":{},\"ret\":{}}}\n",
+            q(path),
+            tys(&s.params),
+            q(&ty_str(&s.ret))
+        ));
+    }
+    for (path, a) in &t.adts {
+        let (kind, body) = match &a.kind {
+            check::AdtKind::Struct(fs) => ("struct", fields(fs)),
+            check::AdtKind::Enum(vs) => ("enum", variants(vs)),
+        };
+        out.push_str(&format!(
+            "{{\"adt\":{},\"kind\":\"{kind}\",\"body\":{body}}}\n",
+            q(path)
+        ));
+    }
+    for i in &t.trait_impls {
+        out.push_str(&format!(
+            "{{\"impl\":{},\"for\":{}}}\n",
+            q(&i.trait_path),
+            q(&ty_str(&i.head))
+        ));
+    }
+    for (path, vars) in &t.locals {
+        let vars: Vec<(String, ast::TypeKind)> =
+            vars.iter().map(|(n, x)| (n.clone(), x.clone())).collect();
+        out.push_str(&format!(
+            "{{\"locals\":{},\"vars\":{}}}\n",
+            q(path),
+            fields(&vars)
+        ));
+    }
+    for (k, ty) in &t.types {
+        out.push_str(&format!("{{{},\"type\":{}}}\n", at(k), q(&ty_str(ty))));
+    }
+    for (k, ts) in &t.targs {
+        out.push_str(&format!("{{{},\"targs\":{}}}\n", at(k), tys(ts)));
+    }
+    for k in &t.text {
+        out.push_str(&format!("{{{},\"text\":true}}\n", at(k)));
+    }
+    // The types the code generator lays out (`codegen::all_types`).
+    let mut shapes: BTreeMap<String, &ast::TypeKind> = BTreeMap::new();
+    let mut all: Vec<&ast::TypeKind> = t.types.values().collect();
+    all.extend(t.locals.values().flat_map(|m| m.values()));
+    for sig in t.fns.values().filter(|s| !s.builtin) {
+        all.extend(sig.params.iter());
+        all.push(&sig.ret);
+    }
+    for x in all {
+        shapes.entry(ty_str(x)).or_insert(x);
+    }
+    for (text, x) in &shapes {
+        let mut row = format!(
+            "{{\"of\":{},\"value\":{}",
+            q(text),
+            q(&ty_str(verify::value_ty(x)))
+        );
+        if let Some(fs) = verify::struct_fields(x, t) {
+            row.push_str(&format!(",\"fields\":{}", fields(&fs)));
+        }
+        if let Some(vs) = verify::enum_variants(x, t) {
+            row.push_str(&format!(",\"variants\":{}", variants(&vs)));
+        }
+        out.push_str(&row);
+        out.push_str("}\n");
+    }
+    out
 }
 
 /// The tokens of `files` as JSONL (`bmb dump tokens`, backlog 4A-03): one

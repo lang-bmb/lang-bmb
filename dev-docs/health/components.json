@@ -279,13 +279,19 @@
         "codegen/sys.rs",
         "codegen/text.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/lowered.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": null,
-        "undecided_runs": null,
-        "friction": []
+        "gate_runs": 1,
+        "undecided_runs": 0,
+        "friction": [
+          "닫히지 않은 행이다: 낮춘 표와 관측점(`4D-05a`)뿐이고 `dump lowered`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a` 1번, 첫 회에 전부 증명)",
+          "와일드카드 갈래가 없어 `TypeKind`의 17갈래를 세 곳에 더 쓴다(`lower_in`·`struct_fields`·`enum_variants`): 그대로 둠, 언어의 선택(ADR-0026)",
+          "한 함수 안에서 이름 하나는 타입 하나다(E0303): `match`의 두 갈래가 같은 이름으로 다른 타입을 묶을 수 없어 이름을 나눴다(`fs`·`sf`, `vs`·`ev`): 그대로 둠"
+        ]
       }
     },
     {

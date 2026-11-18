@@ -368,6 +368,45 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
+/// `bmb dump lowered` (backlog 4D-05a): the tables the code generator
+/// reads, text as bytes and a `char` as a `u32`.
+#[test]
+fn lowered_dump_shows_text_as_bytes() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    struct P<T> { name: String, x: T }
+    enum E { A, B(char, String) }
+    #[effects(alloc)]
+    fn f(s: &str, c: char) -> String {
+        let p: P<char> = P { name: String::from(s), x: c };
+        let o: Option<char> = Some(g(&p));
+        String::new()
+    }
+    #[effects(pure)]
+    fn g(p: &P<char>) -> char { p.x }
+}
+"#;
+    let dump = |text: &str| bmb(&["dump", "lowered"], &one("x.bmb", text));
+    let (ok, out) = dump(SRC);
+    assert!(ok && out.starts_with("---\n"), "{out}");
+    assert_eq!(dump(SRC).1, out);
+    for row in [
+        r#"{"fn":"d::f","params":["&[u8]","u32"],"ret":"Vec<u8>"}"#,
+        r#"{"adt":"d::E","kind":"enum","body":[["A",[]],["B",["u32","Vec<u8>"]]]}"#,
+        r#"{"adt":"d::P","kind":"struct","body":[["name","Vec<u8>"],["x","T"]]}"#,
+        r#"{"locals":"d::f","vars":[["c","u32"],["o","Option<u32>"],["p","d::P<u32>"],["s","&[u8]"]]}"#,
+        r#""text":true}"#,
+        r#"{"of":"&[u8]","value":"&[u8]"}"#,
+        r#"{"of":"&d::P<u32>","value":"d::P<u32>","fields":[["name","Vec<u8>"],["x","u32"]]}"#,
+        r#"{"of":"Option<u32>","value":"Option<u32>","variants":[["None",[]],["Some",["u32"]]]}"#,
+    ] {
+        assert!(out.contains(row), "{row}\n{out}");
+    }
+    // The checker goes on after a finding: the rows are there with it.
+    let (ok, out) = dump(&SRC.replace("String::new()", "true"));
+    assert!(!ok && out.contains(r#"{"fn":"d::f""#), "{out}");
+}
+
 /// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
 /// parser and the checker's bodies, each the same text on every run.
 #[test]

@@ -1,4 +1,4 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, check")]
+#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, check")]
 mod lib {
     #[summary("앞단의 결과: 쓴 프로그램(라이브러리 단위를 붙인)과 그것을 검사한 것")]
     struct Front { source: ast::Program, ck: body::Checked }
@@ -64,6 +64,10 @@ mod lib {
             if !diags.has_errors() {
                 push_texts(&mut body, &tk);
             }
+        } else if stage == "lowered" {
+            let lk: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            let low: lowered::Tables = lowered::tables(&lk);
+            push_low(&mut body, &low, &sm);
         } else if stage == "moves" {
             let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);
             push_moves(&mut body, &mk, &sm);
@@ -107,6 +111,19 @@ mod lib {
             return Outcome { ok: false, text: diags.to_jsonl(&sm) };
         }
         Outcome { ok: true, text: out }
+    }
+
+    #[summary("bmb emit-llvm --all-checks의 뼈대 (stage0 lib::emit_llvm_sources_with, 백로그 4D-05a): 검사하고 낮춘 표를 짓는다. 오류가 있으면 ok가 거짓이고 글은 진단의 JSONL. 모듈의 글은 코드 생성을 옮기면서 는다 (4D-05b부터): 지금은 빈 글")]
+    #[effects(alloc)]
+    fn emit_llvm(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let low: lowered::Tables = lowered::tables(&fe.ck);
+        Outcome { ok: true, text: String::new() }
     }
 
     #[summary("bmb fmt: 프로그램의 정규형 (ADR-0019 §1), 단위 이름의 순서로 줄 하나를 사이에 두고. 경로로 쓴 메서드 호출은 메서드 문법이 된다(ADR-0051). 라이브러리 단위는 프로그램의 글이 아니다(ADR-0092 §1). 오류가 있으면 진단만 내고 ok가 거짓")]
@@ -267,6 +284,25 @@ mod lib {
         }
     }
 
+    #[summary("[[이름,타입],..]")]
+    #[effects(alloc)]
+    fn push_fields(out: &mut String, fs: &[types::FieldSig]) -> () {
+        out.push_str("[");
+        for i in 0..fs.len()
+            invariant 0 <= i && i <= fs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            std::json::push_string(out, fs[i].name.as_str());
+            out.push_str(",");
+            std::json::push_string(out, types::text(&fs[i].ty).as_str());
+            out.push_str("]");
+        }
+        out.push_str("]");
+    }
+
     #[summary("\"file\":..,\"lo\":..,\"hi\":.. (표의 열쇠 k의 자리)")]
     #[effects(alloc)]
     fn push_key(out: &mut String, k: &str, sm: &source::SourceMap) -> () {
@@ -277,6 +313,92 @@ mod lib {
         std::num::push_u64(out, s.lo as u64);
         out.push_str(",\"hi\":");
         std::num::push_u64(out, s.hi as u64);
+    }
+
+    #[summary("dump lowered의 글 (stage0 lib::dump_lowered, 백로그 4D-05a): 낮춘 표의 시그니처, 데이터 타입, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자, 글인 자리, 이어서 표에 나오는 타입마다 참조를 벗긴 타입과 그 인스턴스의 필드·변형")]
+    #[effects(alloc)]
+    fn push_low(out: &mut String, t: &lowered::Tables, sm: &source::SourceMap) -> () {
+        let mut shapes: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        for n in 0..t.fns.len()
+            invariant 0 <= n,
+        {
+            match t.fns.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"fn\":"); std::json::push_string(out, t.fns.key(n).as_str()); out.push_str(",\"params\":"); decls::push_types(out, t.fns.items[at].params.as_slice()); out.push_str(",\"ret\":"); std::json::push_string(out, types::text(&t.fns.items[at].ret).as_str()); out.push_str("}\n"); },
+            }
+        }
+        for n in 0..t.adts.len()
+            invariant 0 <= n,
+        {
+            match t.adts.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"adt\":"); std::json::push_string(out, t.adts.key(n).as_str()); match &t.adts.items[at].kind { types::AdtKind::Struct(fs) => { out.push_str(",\"kind\":\"struct\",\"body\":"); push_fields(out, fs.as_slice()); }, types::AdtKind::Enum(vs) => { out.push_str(",\"kind\":\"enum\",\"body\":"); push_variants(out, vs.as_slice()); }, } out.push_str("}\n"); },
+            }
+        }
+        for i in 0..t.trait_impls.len()
+            invariant 0 <= i && i <= t.trait_impls.len(),
+        {
+            out.push_str("{\"impl\":");
+            std::json::push_string(out, t.trait_impls[i].trait_path.as_str());
+            out.push_str(",\"for\":");
+            std::json::push_string(out, types::text(&t.trait_impls[i].head).as_str());
+            out.push_str("}\n");
+        }
+        for n in 0..t.locals.len()
+            invariant 0 <= n,
+        {
+            match t.locals.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"locals\":"); std::json::push_string(out, t.locals.key(n).as_str()); out.push_str(",\"vars\":["); for v in 0..t.locals.items[at].len() invariant 0 <= v, { match t.locals.items[at].nth(v) { None => {}, Some(i) => { if v > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(out, t.locals.items[at].key(v).as_str()); out.push_str(","); std::json::push_string(out, types::text(&t.locals.items[at].items[i]).as_str()); out.push_str("]"); }, } } out.push_str("]}\n"); },
+            }
+        }
+        for n in 0..t.types.len()
+            invariant 0 <= n,
+        {
+            match t.types.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{"); push_key(out, t.types.key(n).as_str(), sm); out.push_str(",\"type\":"); std::json::push_string(out, types::text(&t.types.items[at]).as_str()); out.push_str("}\n"); push_shape(&mut shapes, &t.types.items[at]); },
+            }
+        }
+        for n in 0..t.targs.len()
+            invariant 0 <= n,
+        {
+            match t.targs.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{"); push_key(out, t.targs.key(n).as_str(), sm); out.push_str(",\"targs\":"); decls::push_types(out, t.targs.items[at].as_slice()); out.push_str("}\n"); },
+            }
+        }
+        for i in 0..t.text.len()
+            invariant 0 <= i && i <= t.text.len(),
+        {
+            out.push_str("{");
+            push_key(out, t.text[i].as_str(), sm);
+            out.push_str(",\"text\":true}\n");
+        }
+        for n in 0..t.locals.len()
+            invariant 0 <= n,
+        {
+            match t.locals.nth(n) {
+                None => {},
+                Some(at) => { for v in 0..t.locals.items[at].len() invariant 0 <= v, { match t.locals.items[at].nth(v) { None => {}, Some(i) => push_shape(&mut shapes, &t.locals.items[at].items[i]), } } },
+            }
+        }
+        for n in 0..t.fns.len()
+            invariant 0 <= n,
+        {
+            match t.fns.nth(n) {
+                None => {},
+                Some(at) => { if !t.fns.items[at].builtin { for k in 0..t.fns.items[at].params.len() invariant 0 <= k && k <= t.fns.items[at].params.len(), { push_shape(&mut shapes, &t.fns.items[at].params[k]); } push_shape(&mut shapes, &t.fns.items[at].ret); } },
+            }
+        }
+        for n in 0..shapes.len()
+            invariant 0 <= n,
+        {
+            match shapes.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"of\":"); std::json::push_string(out, shapes.key(n).as_str()); out.push_str(",\"value\":"); std::json::push_string(out, types::text(&lowered::value_ty(&shapes.items[at])).as_str()); match lowered::struct_fields(&shapes.items[at], t) { None => {}, Some(sf) => { out.push_str(",\"fields\":"); push_fields(out, sf.as_slice()); }, } match lowered::enum_variants(&shapes.items[at], t) { None => {}, Some(ev) => { out.push_str(",\"variants\":"); push_variants(out, ev.as_slice()); }, } out.push_str("}\n"); },
+            }
+        }
     }
 
     #[summary("낮추기가 만든 이름, 함수 값을 넘긴 자리, const와 그 값을 줄마다 (dump lower)")]
@@ -364,6 +486,15 @@ mod lib {
         {
             push_move_head(out, path, kind, sorted[i].as_str(), sm);
             out.push_str("}\n");
+        }
+    }
+
+    #[summary("타입 x를 그 글로 shapes에: 같은 글이 있으면 그대로 둔다")]
+    #[effects(alloc)]
+    fn push_shape(shapes: &mut table::Table<ast::TypeKind>, x: &ast::TypeKind) -> () {
+        let k: String = types::text(x);
+        if !shapes.has(k.as_str()) {
+            shapes.insert(k.as_str(), x.clone());
         }
     }
 
@@ -523,5 +654,24 @@ mod lib {
             out.push_str(units[u].text.as_str());
             u = u + 1;
         }
+    }
+
+    #[summary("[[이름,[타입,..]],..]")]
+    #[effects(alloc)]
+    fn push_variants(out: &mut String, vs: &[types::VariantSig]) -> () {
+        out.push_str("[");
+        for i in 0..vs.len()
+            invariant 0 <= i && i <= vs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            std::json::push_string(out, vs[i].name.as_str());
+            out.push_str(",");
+            decls::push_types(out, vs[i].tys.as_slice());
+            out.push_str("]");
+        }
+        out.push_str("]");
     }
 }

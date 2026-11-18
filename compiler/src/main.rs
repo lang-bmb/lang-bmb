@@ -185,6 +185,11 @@ const USAGE: &str = "usage:
                             the qualified texts the incremental keys read, when the program
                             checks: per definition its qualified normal form and the surface
                             a caller reads, then every item's qualified hash
+  bmb dump lowered <file.bmb>...
+                            the tables the code generator reads (text as bytes, a `char` as
+                            a `u32`): signatures, data types, locals, the type of every
+                            expression, the spans that are text, and each type's fields or
+                            variants
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
 Any <file.bmb> argument may also be a workspace directory (its src/*.bmb).
@@ -1024,7 +1029,15 @@ fn run() -> ExitCode {
             if args.len() > 2
                 && matches!(
                     args[1].as_str(),
-                    "tokens" | "parse" | "std" | "lower" | "decls" | "types" | "moves" | "texts"
+                    "tokens"
+                        | "parse"
+                        | "std"
+                        | "lower"
+                        | "decls"
+                        | "types"
+                        | "moves"
+                        | "texts"
+                        | "lowered"
                 ) =>
         {
             let files = match read_files(&args[2..]) {

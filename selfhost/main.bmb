@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, check, fmt, hash")]
+#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, check, fmt, hash, emit-llvm --all-checks(뼈대: 검사까지)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -29,7 +29,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts") {
+        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts" || args[2] == "lowered") {
             let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
             let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
             print_str(sr.text.as_str());
@@ -81,6 +81,33 @@ mod main {
             }
             return;
         }
+        if args.len() > 1 && args[1] == "emit-llvm" {
+            let mut srcs: Vec<String> = Vec::new();
+            let mut ir_path: Option<String> = None;
+            let mut all_checks: bool = false;
+            let mut a: usize = 2;
+            while a < args.len()
+                decreases args.len() - a,
+            {
+                if args[a] == "-o" && a + 1 < args.len() {
+                    ir_path = Some(args[a + 1].clone());
+                    a = a + 2;
+                } else {
+                    if args[a] == "--all-checks" {
+                        all_checks = true;
+                    } else {
+                        srcs.push(args[a].clone());
+                    }
+                    a = a + 1;
+                }
+            }
+            match ir_path {
+                None => {},
+                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Outcome = lib::emit_llvm(units.as_slice()); if !er.ok { print_str(er.text.as_str()); std::process::exit(1); } eprint_str("stage1: emit-llvm: the code generator is not ported yet (backlog 4D-05): nothing written to "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); } },
+            }
+            eprint_str("usage: stage1 emit-llvm --all-checks FILE.. -o OUT.ll\n");
+            std::process::exit(2);
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -90,7 +117,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE..\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
         std::process::exit(2);
     }
 

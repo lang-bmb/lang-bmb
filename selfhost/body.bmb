@@ -5725,8 +5725,8 @@ mod body {
     #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
     struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
 
-    #[summary("검사를 마친 프로그램: 메서드 호출이 경로 호출로 풀리고 상수의 쓰임이 리터럴 나무가 된 프로그램, 검사기의 표, 신뢰되지 않을 수 있는 정의들")]
-    struct Checked { program: ast::Program, b: Body, untrusted: Vec<String> }
+    #[summary("검사를 마친 프로그램: 메서드 호출이 경로 호출로 풀리고 상수의 쓰임이 리터럴 나무가 된 프로그램, 검사기의 표, 신뢰되지 않을 수 있는 정의들, 값이 글인 식의 자리(stage0 Tables::text: 상수의 리터럴 나무를 짓기 전의 types에서, 열쇠 순서)")]
+    struct Checked { program: ast::Program, b: Body, untrusted: Vec<String>, text: Vec<String> }
 
     #[summary("const의 쓰임마다 그 값의 리터럴 나무로 고쳐 쓰는 손님 (stage0 consts::literal_tree): 마디마다 제 자리(파일 source::CONST_VALUES, next부터)와 타입을 types에 적는다")]
     struct ConstTrees { uses: table::Table<ConstUse>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, next: u32 }
@@ -6579,11 +6579,20 @@ mod body {
             diags.aliases.push(b.aliases[i].clone());
         }
         diags.items = once_each(b.c.diags.as_slice(), lowered.quiet.as_slice());
+        let mut text: Vec<String> = Vec::new();
+        for n in 0..b.types.len()
+            invariant 0 <= n,
+        {
+            match b.types.nth(n) {
+                None => {},
+                Some(at) => { if is_text(&b.types.items[at]) { text.push(b.types.key(n)); } },
+            }
+        }
         let mut trees: ConstTrees = ConstTrees { uses: b.const_uses.clone(), adts: b.c.adts.clone(), types: b.types.clone(), next: 0 };
         ast::exprs_mut::<ConstTrees>(&mut program, &mut trees);
         b.types = trees.types;
         let untrusted: Vec<String> = b.may_untrusted();
-        Checked { program: program, b: b, untrusted: untrusted }
+        Checked { program: program, b: b, untrusted: untrusted, text: text }
     }
 
     #[summary("프로그램을 한 번 검사한 검사기. 진단은 그 앞 단계의 것(base)에서 시작한다: 상수의 검사가 평가기의 진단을 거기서 뺀다")]
