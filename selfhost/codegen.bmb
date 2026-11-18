@@ -1,5 +1,8 @@
-#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 타입의 배치와 LLVM 타입 정의 (4D-05b), 스칼라 프로그램 (4D-05c), 스칼라 원소의 배열과 슬라이스 (4D-05d1), 구조체와 메모리 값 (4D-05d2). 옮기지 않은 구문은 Gen.todo에 까닭을 남긴다. 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 타입의 배치와 LLVM 타입 정의 (4D-05b), 스칼라 프로그램 (4D-05c), 스칼라 원소의 배열과 슬라이스 (4D-05d1), 구조체와 메모리 값 (4D-05d2), 열거형·match·? (4D-05d3). 옮기지 않은 구문은 Gen.todo에 까닭을 남긴다. 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
 mod codegen {
+    #[summary("어떤 타입이든의 자리 (stage0 any_place의 결과): 주소, 타입, 스칼라 자리면 그 레지스터 타입 (아니면 빈 글: 메모리 꼴), ok가 거짓이면 옮기지 않은 자리")]
+    struct AnyPlace { ptr: String, ty: ast::TypeKind, reg: String, ok: bool }
+
     #[summary("배열이나 슬라이스인 지역 이름의 자리 (stage0 Slot::Arr): 첫 원소의 주소, 길이의 글, 원소 종류, 원소 타입")]
     struct ArrSlot { ptr: String, len: String, elem: String, ety: ast::TypeKind }
 
@@ -46,6 +49,92 @@ mod codegen {
             p
         }
 
+        #[summary("any_place의 변수 아닌 갈래: place의 자리 (메모리 꼴)")]
+        #[effects(alloc)]
+        fn any_other(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", e.span);
+                return AnyPlace { ptr: String::from("undef"), ty: ast::TypeKind::Error, reg: String::new(), ok: false };
+            }
+            let pl: Place = self.place(e, ck, tb, f - 1);
+            AnyPlace { ptr: pl.ptr, ty: pl.ty, reg: String::new(), ok: pl.ok }
+        }
+
+        #[summary("어떤 타입이든의 자리 (stage0 any_place): 변수와 스칼라 참조를 지난 *x는 제 자리 (스칼라면 레지스터 꼴), 나머지는 place. &는 벗긴다")]
+        #[effects(alloc)]
+        fn any_place(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", e.span);
+                return AnyPlace { ptr: String::from("undef"), ty: ast::TypeKind::Error, reg: String::new(), ok: false };
+            }
+            match &e.kind {
+                ast::ExprKind::Int(ap_int0, ap_int1) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Float(ap_float0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::ByteLit(ap_bytelit0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::ByteStr(ap_bytestr0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::StrLit(ap_strlit0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::CharLit(ap_charlit0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Bool(ap_bool0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Unit => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Var(id) => self.any_var(e, id.name.as_str(), ck, tb, f - 1),
+                ast::ExprKind::Call(ap_call0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Method(ap_method0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Index(ap_index0, ap_index1) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Unary(ap_unary0, ap_unary1) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Binary(ap_binary0, ap_binary1, ap_binary2) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Ref(ap_m, rx) => self.any_place(&**rx, ck, tb, f - 1),
+                ast::ExprKind::If(ap_if0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Block(ap_block0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Array(ap_array0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Repeat(ap_repeat0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Old(ap_old0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Quant(ap_quant0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Trigger(ap_trigger0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Closure(ap_closure0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::StructLit(ap_structlit0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Path(ap_path0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Deref(dx) => { let through: bool = match var_name(&**dx) { None => false, Some(dn) => { match self.scalar_slot(dn.as_str()) { None => false, Some(ds) => true, } }, }; if through { match var_name(&**dx) { None => self.any_other(e, ck, tb, f - 1), Some(dn2) => self.any_var(e, dn2.as_str(), ck, tb, f - 1), } } else { self.any_other(e, ck, tb, f - 1) } },
+                ast::ExprKind::Field(ap_field0, ap_field1) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Match(ap_match0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Return(ap_return0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Try(ap_try0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Loop(ap_loop0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Break(ap_break0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Continue(ap_continue0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Range(ap_range0) => self.any_other(e, ck, tb, f - 1),
+                ast::ExprKind::Error => self.any_other(e, ck, tb, f - 1),
+            }
+        }
+
+        #[summary("any_place의 변수 갈래: 스칼라 자리는 레지스터 꼴, 배열과 메모리 값은 제 자리")]
+        #[effects(alloc)]
+        fn any_var(self: &mut Gen, e: &ast::Expr, name: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
+            decreases f,
+        {
+            let t: ast::TypeKind = match self.local_ty(name, tb) {
+                None => ast::TypeKind::Error,
+                Some(lt) => lowered::value_ty(&lt),
+            };
+            match self.scalar_slot(name) {
+                None => {},
+                Some(ss) => { return AnyPlace { ptr: ss.ptr, ty: t, reg: ss.ty, ok: true }; },
+            }
+            match self.arr_slot(name) {
+                None => {},
+                Some(asl) => { return AnyPlace { ptr: asl.ptr, ty: t, reg: String::new(), ok: true }; },
+            }
+            match self.data_slot(name) {
+                None => {},
+                Some(dsl) => { return AnyPlace { ptr: dsl.ptr, ty: dsl.ty, reg: String::new(), ok: true }; },
+            }
+            self.todo_at("a place that is a local without a slot", e.span);
+            AnyPlace { ptr: String::from("undef"), ty: ast::TypeKind::Error, reg: String::new(), ok: false }
+        }
+
         #[summary("산술 (stage0 arith): 넘침을 재고 넘치면 멈춘다 (전체 검사 모드: 증명된 의무가 없다)")]
         #[effects(alloc)]
         fn arith(self: &mut Gen, inst: &str, a: &str, b: &str, signed: bool) -> CVal {
@@ -69,6 +158,15 @@ mod codegen {
             self.check(ok.as_str(), types::cat3("`", inst, "` may overflow").as_str());
             self.emit(types::cat4(r.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 0").as_str());
             CVal::Imm(r)
+        }
+
+        #[summary("갈래의 몸 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.arm_drops)")]
+        #[effects(alloc)]
+        fn arm_drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => ck.b.needs.items[at].moves.arm_drops.has(body::span_key(s).as_str()),
+            }
         }
 
         #[summary("배열이나 슬라이스인 지역 변수 name의 자리")]
@@ -262,6 +360,33 @@ mod codegen {
             }
         }
 
+        #[summary("새 지역 변수 name에 src에 있는 타입 t의 값의 사본 (stage0 bind): 단위 값은 자리가 없다")]
+        #[effects(alloc)]
+        fn bind(self: &mut Gen, name: &str, src: &str, t: &ast::TypeKind) -> () {
+            let vt: ast::TypeKind = lowered::value_ty(t);
+            if decls::is_unit(&vt) {
+                return;
+            }
+            if is_mem(&vt) {
+                let mp: String = self.temp(&vt);
+                self.copy(mp.as_str(), src, &vt);
+                self.slots.insert(name, Slot::Data(DataSlot { ptr: mp, ty: vt }));
+                return;
+            }
+            if body::is_array(&vt) {
+                let ap: String = self.temp(&vt);
+                self.copy(ap.as_str(), src, &vt);
+                let ety: ast::TypeKind = elem_of(&vt);
+                self.slots.insert(name, Slot::Arr(ArrSlot { ptr: ap, len: array_len_text(&vt), elem: elem_kind(&ety), ety: ety }));
+                return;
+            }
+            let v: String = self.load_mem(src, &vt);
+            let lt: String = llty(&vt);
+            let ptr: String = self.alloca(lt.as_str());
+            self.emit(types::cat7("store ", lt.as_str(), " ", v.as_str(), ", ptr ", ptr.as_str(), "").as_str());
+            self.slots.insert(name, Slot::Scalar(ptr, lt));
+        }
+
         #[summary("비트 메서드 (stage0 bit_method): 제 폭으로 잘라 LLVM의 내장 함수를 부르고 다시 넓힌다. 세는 메서드의 결과는 0으로 넓힌다")]
         #[effects(alloc)]
         fn bit_method(self: &mut Gen, m: &str, i: ast::IntTy, a: &str, n: &str) -> CVal {
@@ -436,9 +561,15 @@ mod codegen {
                 None => {},
                 Some(bi) => { return self.from_bytes(e, c, bi, ck, tb, f - 1); },
             }
+            if body::mem_op(c.path.as_slice()) && c.path.len() == 3 {
+                return self.mem_call(e, c, c.path[2].name == "replace", ck, tb, f - 1);
+            }
+            if body::text_builtin(c.path.as_slice()) || body::is_box_new(c.path.as_slice()) || c.path.len() == 2 && (c.path[0].name == "Vec" || c.path[0].name == "String") && (c.path[1].name == "new" || c.path[1].name == "with_capacity") {
+                return self.todo_expr("a call of a built-in of text, `Vec` or `Box`", e);
+            }
             let target: String = self.resolve(c.path.as_slice(), tb);
             match tb.fns.find(target.as_str()) {
-                None => self.todo_expr("a call that is not of a function (a variant or a built-in)", e),
+                None => { if c.path.len() == 0 { return self.todo_expr("a call without a path", e); } let vt: ast::TypeKind = self.ty(e, tb); self.variant(e, &vt, c.path[c.path.len() - 1].name.as_str(), c.args.as_slice(), ck, tb, f - 1) },
                 Some(at) => { let bytes_out: bool = target == "print_str" || target == "print_bytes"; let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64" || bytes_out; if tb.fns.items[at].builtin && !print || tb.fns.items[at].generics.len() > 0 || has_trait(&tb.fns.items[at]) || tb.targs.has(body::span_key(e.span).as_str()) { return self.todo_expr("a call of a built-in, a generic function or a trait method", e); } let mut flat: Vec<String> = Vec::new(); let mut backs: Vec<Back> = Vec::new(); for k in 0..c.args.len() invariant 0 <= k && k <= c.args.len(), { let aty: ast::TypeKind = self.ty(&c.args[k], tb); let pk: u32 = if k < tb.fns.items[at].params.len() { param_kind(&tb.fns.items[at].params[k]) } else { 0 }; if pk == 9 { return self.todo_expr("an argument for a parameter that is not ported (a reference to an array or to a reference)", &c.args[k]); } if pk == 2 && k < tb.fns.items[at].params.len() { match body::ref_inner(&tb.fns.items[at].params[k]) { None => {}, Some(inner) => { let rp: String = self.scalar_ref(&c.args[k], &inner, types::is_ref_mut(&tb.fns.items[at].params[k]), &mut backs, ck, tb, f - 1); flat.push(types::cat2("ptr ", rp.as_str())); }, } } else { let av: CVal = self.expr(&c.args[k], ck, tb, f - 1); match &av { CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())), CVal::Arr(ap, an) => { flat.push(types::cat2("ptr ", ap.as_str())); if pk != 3 { flat.push(types::cat2("i64 ", an.as_str())); } }, CVal::Ptr(pp, pt) => { if pk == 5 { let ptmp: String = self.temp(pt); self.copy(ptmp.as_str(), pp.as_str(), pt); flat.push(types::cat2("ptr ", ptmp.as_str())); } else { flat.push(types::cat2("ptr ", pp.as_str())); } }, CVal::Unit => {}, CVal::Never => { if pk == 1 { flat.push(String::from("ptr undef")); flat.push(String::from("i64 undef")); } else if pk == 3 || pk == 4 || pk == 5 { flat.push(String::from("ptr undef")); } else if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } }, } } } if target == "print_f64" { if flat.len() != 2 { return self.todo_expr("a `print_f64` whose arguments are not two values", e); } let pc: String = self.t(); self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str()); self.check(pc.as_str(), "`print_f64` decimals above 65535"); self.print_f64 = true; } let ret: ast::TypeKind = if print { ast::TypeKind::Unit } else { tb.fns.items[at].ret.clone() }; let callee: String = if bytes_out { String::from("@bmb_print_bytes") } else if print { types::cat2("@bmb_", target.as_str()) } else { fn_sym(target.as_str()) }; let args: String = types::join(flat.as_slice(), ", "); let res: CVal = if ret_in_memory(&ret) { let out: String = self.temp(&ret); let sep: String = if flat.len() > 0 { String::from(", ") } else { String::new() }; self.emit(types::cat7("call void ", callee.as_str(), "(ptr ", out.as_str(), sep.as_str(), args.as_str(), ")").as_str()); self.read(out.as_str(), &ret) } else if decls::is_unit(&ret) { self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str()); CVal::Unit } else { let r: String = self.t(); self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str()); CVal::Imm(r) }; for b in 0..backs.len() invariant 0 <= b && b <= backs.len(), { let x: String = self.t(); self.emit(types::cat5(x.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str()); let be: String = backs[b].elem.clone(); let bp: String = backs[b].ptr.clone(); if backs[b].mem { let bt: ast::TypeKind = backs[b].ty.clone(); self.put(&CVal::Imm(x), bp.as_str(), &bt); } else { self.store_elem(be.as_str(), x.as_str(), bp.as_str()); } } res },
             }
         }
@@ -456,6 +587,89 @@ mod codegen {
             self.emit("call void @bmb_trap()");
             self.emit("unreachable");
             self.block(ok.as_str());
+        }
+
+        #[summary("checked_* (stage0 int_method의 checked 갈래들과 narrow_method의 마지막 갈래): 덧셈·뺄셈·곱셈은 넘치지 않을 때 Some, 나눗셈·나머지는 나누는 수가 0이 아니고 MIN / -1이 아닐 때 Some. 좁은 타입은 값이 제 범위 안일 때만 Some")]
+        #[effects(alloc)]
+        fn checked_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy, tb: &lowered::Tables) -> CVal {
+            let signed: bool = body::signed(i);
+            let sg: String = if signed {
+                String::from("s")
+            } else {
+                String::from("u")
+            };
+            let r: String = self.t();
+            let res: CVal = if op == "checked_add" || op == "checked_sub" || op == "checked_mul" {
+                let base: String = if op == "checked_add" {
+                    String::from("add")
+                } else if op == "checked_sub" {
+                    String::from("sub")
+                } else {
+                    String::from("mul")
+                };
+                let pair: String = self.t();
+                let v: String = self.t();
+                let ovf: String = self.t();
+                let mut pl: String = types::cat5(pair.as_str(), " = call {i64, i1} @llvm.", sg.as_str(), base.as_str(), ".with.overflow.i64(i64 ");
+                pl.push_str(a);
+                pl.push_str(", i64 ");
+                pl.push_str(b);
+                pl.push_str(")");
+                self.emit(pl.as_str());
+                self.emit(types::cat4(v.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 0").as_str());
+                self.emit(types::cat4(ovf.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 1").as_str());
+                self.emit(types::cat4(r.as_str(), " = xor i1 ", ovf.as_str(), ", true").as_str());
+                self.option(e, r.as_str(), v.as_str(), tb)
+            } else {
+                self.emit(types::cat4(r.as_str(), " = icmp ne i64 ", b, ", 0").as_str());
+                let ok: String = if signed {
+                    let m: String = self.t();
+                    let n: String = self.t();
+                    let both: String = self.t();
+                    let fine: String = self.t();
+                    let ok2: String = self.t();
+                    self.emit(types::cat5(m.as_str(), " = icmp eq i64 ", a, ", ", int_min(i).as_str()).as_str());
+                    self.emit(types::cat4(n.as_str(), " = icmp eq i64 ", b, ", -1").as_str());
+                    self.emit(types::cat5(both.as_str(), " = and i1 ", m.as_str(), ", ", n.as_str()).as_str());
+                    self.emit(types::cat4(fine.as_str(), " = xor i1 ", both.as_str(), ", true").as_str());
+                    self.emit(types::cat5(ok2.as_str(), " = and i1 ", r.as_str(), ", ", fine.as_str()).as_str());
+                    ok2
+                } else {
+                    r.clone()
+                };
+                let d: String = self.t();
+                let q: String = self.t();
+                let inst: String = if op == "checked_div" {
+                    String::from("div")
+                } else {
+                    String::from("rem")
+                };
+                self.emit(types::cat7(d.as_str(), " = select i1 ", ok.as_str(), ", i64 ", b, ", i64 1", "").as_str());
+                self.emit(types::cat7(q.as_str(), " = ", sg.as_str(), inst.as_str(), " i64 ", a, types::cat2(", ", d.as_str()).as_str()).as_str());
+                self.option(e, ok.as_str(), q.as_str(), tb)
+            };
+            if body::bits(i) == 64 || !is_ptr(&res) {
+                return res;
+            }
+            let ptr: String = ptr_of(&res);
+            let ty: ast::TypeKind = ptr_ty(&res);
+            let p: String = self.t();
+            self.emit(types::cat5(p.as_str(), " = getelementptr inbounds ", view_ty(&ty, "Some").as_str(), ", ptr ", types::cat2(ptr.as_str(), ", i32 0, i32 1").as_str()).as_str());
+            let nv: String = self.t();
+            let tagp: String = self.t();
+            let tag: String = self.t();
+            let some: String = self.t();
+            let k: String = self.t();
+            self.emit(types::cat3(nv.as_str(), " = load i64, ptr ", p.as_str()).as_str());
+            let fits: String = self.fits(nv.as_str(), i);
+            self.emit(types::cat5(tagp.as_str(), " = getelementptr inbounds ", data_ty(&ty).as_str(), ", ptr ", types::cat2(ptr.as_str(), ", i32 0, i32 0").as_str()).as_str());
+            self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str());
+            self.emit(types::cat4(some.as_str(), " = icmp ne i64 ", tag.as_str(), ", 0").as_str());
+            let both2: String = self.t();
+            self.emit(types::cat5(both2.as_str(), " = and i1 ", some.as_str(), ", ", fits.as_str()).as_str());
+            self.emit(types::cat4(k.as_str(), " = zext i1 ", both2.as_str(), " to i64").as_str());
+            self.emit(types::cat4("store i64 ", k.as_str(), ", ptr ", tagp.as_str()).as_str());
+            res
         }
 
         #[summary("값을 옮긴다 (stage0 copy): memmove라 x = x도 된다")]
@@ -664,7 +878,7 @@ mod codegen {
                 ast::ExprKind::CharLit(ch) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *ch as u64); CVal::Imm(s) },
                 ast::ExprKind::Bool(on) => { if *on { CVal::Imm(String::from("true")) } else { CVal::Imm(String::from("false")) } },
                 ast::ExprKind::Unit => CVal::Unit,
-                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } match self.arr_slot(id.name.as_str()) { None => {}, Some(asl) => { return CVal::Arr(asl.ptr, asl.len); }, } match self.data_slot(id.name.as_str()) { None => {}, Some(dsl) => { return CVal::Ptr(dsl.ptr, dsl.ty); }, } match self.scalar_slot(id.name.as_str()) { None => self.todo_expr("a name that is not a scalar or array local", e), Some(slot) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", slot.ty.as_str(), ", ptr ", slot.ptr.as_str()).as_str()); CVal::Imm(r) }, } },
+                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } if id.name == "None" && !self.slots.has("None") { let no_args: Vec<ast::Expr> = Vec::new(); let nt: ast::TypeKind = self.ty(e, tb); return self.variant(e, &nt, "None", no_args.as_slice(), ck, tb, f - 1); } match self.arr_slot(id.name.as_str()) { None => {}, Some(asl) => { return CVal::Arr(asl.ptr, asl.len); }, } match self.data_slot(id.name.as_str()) { None => {}, Some(dsl) => { return CVal::Ptr(dsl.ptr, dsl.ty); }, } match self.scalar_slot(id.name.as_str()) { None => self.todo_expr("a name that is not a scalar or array local", e), Some(slot) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", slot.ty.as_str(), ", ptr ", slot.ptr.as_str()).as_str()); CVal::Imm(r) }, } },
                 ast::ExprKind::Call(c) => self.call(e, c, ck, tb, f - 1),
                 ast::ExprKind::Method(mc) => self.method(e, mc, ck, tb, f - 1),
                 ast::ExprKind::Index(ib, ii) => self.index_expr(e, &**ib, &**ii, ck, tb, f - 1),
@@ -680,12 +894,12 @@ mod codegen {
                 ast::ExprKind::Trigger(ex_trigger0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Closure(ex_closure0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::StructLit(lit) => self.struct_lit(e, lit, ck, tb, f - 1),
-                ast::ExprKind::Path(segs) => self.path_const(e, segs.as_slice()),
+                ast::ExprKind::Path(segs) => self.path_expr(e, segs.as_slice(), ck, tb, f - 1),
                 ast::ExprKind::Deref(dx) => { if is_box(&self.ty(&**dx, tb)) { self.todo_expr("the value of a `Box`", e) } else { self.expr(&**dx, ck, tb, f - 1) } },
                 ast::ExprKind::Field(fb, fname) => self.field_expr(e, &**fb, fname.name.as_str(), ck, tb, f - 1),
-                ast::ExprKind::Match(ex_match0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Match(mx) => self.match_expr(e, mx, ck, tb, f - 1),
                 ast::ExprKind::Return(rx) => self.return_expr(e, rx, ck, tb, f - 1),
-                ast::ExprKind::Try(ex_try0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Try(tx) => self.try_expr(e, &**tx, ck, tb, f - 1),
                 ast::ExprKind::Loop(lp) => self.loop_expr(e, lp, ck, tb, f - 1),
                 ast::ExprKind::Break(bk) => self.jump(e, &bk.label, &bk.value, true, ck, tb, f - 1),
                 ast::ExprKind::Continue(cl) => { let no_value: Option<Box<ast::Expr>> = None; self.jump(e, cl, &no_value, false, ck, tb, f - 1) },
@@ -1160,9 +1374,9 @@ mod codegen {
             self.block(end.as_str());
         }
 
-        #[summary("정수 메서드 (stage0 int_method, narrow_method): wrapping_*은 64비트에서 셈하고 제 폭으로 자르고, saturating_*은 내장 함수나 넘침 깃발로 끝 값에 붙인다. checked_*은 Option이라 아직 옮기지 않았다")]
+        #[summary("정수 메서드 (stage0 int_method, narrow_method): wrapping_*은 64비트에서 셈하고 제 폭으로 자르고, saturating_*은 내장 함수나 넘침 깃발로 끝 값에 붙인다. checked_*은 checked_method")]
         #[effects(alloc)]
-        fn int_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
+        fn int_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy, tb: &lowered::Tables) -> CVal {
             let signed: bool = body::signed(i);
             let sg: String = if signed {
                 String::from("s")
@@ -1171,8 +1385,12 @@ mod codegen {
             };
             let wrapping: bool = op == "wrapping_add" || op == "wrapping_sub" || op == "wrapping_mul";
             let saturating: bool = op == "saturating_add" || op == "saturating_sub" || op == "saturating_mul";
+            let checked: bool = op == "checked_add" || op == "checked_sub" || op == "checked_mul" || op == "checked_div" || op == "checked_rem";
+            if checked {
+                return self.checked_method(e, op, a, b, i, tb);
+            }
             if !wrapping && !saturating {
-                return self.todo_expr("an integer method that is not wrapping or saturating", e);
+                return self.todo_expr("an integer method that is not wrapping, saturating or checked", e);
             }
             let base: String = if op == "wrapping_add" || op == "saturating_add" {
                 String::from("add")
@@ -1463,6 +1681,73 @@ mod codegen {
             self.load_result(&slot, &ty)
         }
 
+        #[summary("match (stage0 match_expr): 꼬리표가 갈래를 고르고, 묶는 이름은 페이로드 자리의 사본이고 (&mut의 match에서는 그 자리 자체: 스칼라는 레지스터 자리로 읽고 갈래 끝에 되돌려 쓴다), 갈래들의 값은 한 자리에서 만난다")]
+        #[effects(alloc)]
+        fn match_expr(self: &mut Gen, e: &ast::Expr, mx: &ast::Match, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let rt: ast::TypeKind = self.ty(e, tb);
+            if body::is_array(&rt) || body::is_ref(&rt) {
+                return self.todo_expr("a `match` whose value is an array or a reference", e);
+            }
+            if mx.arms.len() == 0 {
+                return self.todo_expr("a `match` without arms", e);
+            }
+            let slot: Option<String> = self.result_slot(&rt);
+            let sv: CVal = self.expr(&*mx.scrut, ck, tb, f - 1);
+            if is_never(&sv) {
+                return CVal::Never;
+            }
+            if !is_ptr(&sv) {
+                return self.todo_expr("a `match` on a value that is not in memory", e);
+            }
+            let sp: String = ptr_of(&sv);
+            let st: ast::TypeKind = ptr_ty(&sv);
+            match lowered::enum_variants(&st, tb) {
+                None => self.todo_expr("a `match` on a value that is not an enum", e),
+                Some(vs) => { let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let mut labels: Vec<String> = Vec::new(); for a0 in 0..mx.arms.len() invariant 0 <= a0 && a0 <= mx.arms.len(), { labels.push(self.l("arm")); } let end: String = self.l("endmatch"); let mut cases: Vec<String> = Vec::new(); let mut ks: Vec<usize> = Vec::new(); for a1 in 0..mx.arms.len() invariant 0 <= a1 && a1 <= mx.arms.len(), { let k: usize = variant_at(vs.as_slice(), pat_name(&mx.arms[a1].pat).as_str()); if k >= vs.len() || a1 >= labels.len() { return self.todo_expr("a `match` arm of a variant the enum does not have", e); } let mut cs: String = String::from("i64 "); std::num::push_u64(&mut cs, k as u64); cs.push_str(", label %"); cs.push_str(labels[a1].as_str()); cases.push(cs); ks.push(k); } if labels.len() == 0 { return self.todo_expr("a `match` without arms", e); } self.emit(types::cat7("switch i64 ", tag.as_str(), ", label %", labels[labels.len() - 1].as_str(), " [ ", types::join(cases.as_slice(), " ").as_str(), " ]").as_str()); for a2 in 0..mx.arms.len() invariant 0 <= a2 && a2 <= mx.arms.len(), { if a2 < labels.len() && a2 < ks.len() && ks[a2] < vs.len() { self.block(labels[a2].as_str()); let vname: String = pat_name(&mx.arms[a2].pat); let mut backs: Vec<Back> = Vec::new(); for j in 0..mx.arms[a2].pat.binds.len() invariant 0 <= j && j <= mx.arms[a2].pat.binds.len(), { if j < vs[ks[a2]].tys.len() { match &mx.arms[a2].pat.binds[j] { None => {}, Some(id) => { let pt: ast::TypeKind = vs[ks[a2]].tys[j].clone(); let fp: String = self.t(); let mut jt: String = String::new(); std::num::push_u64(&mut jt, (j as u64).wrapping_add(1)); self.emit(types::cat7(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, vname.as_str()).as_str(), ", ptr ", sp.as_str(), ", i32 0, i32 ", jt.as_str()).as_str()); let by_mut: bool = match self.local_ty(id.name.as_str(), tb) { None => false, Some(blt) => types::is_ref_mut(&blt), }; if by_mut { let vt: ast::TypeKind = lowered::value_ty(&pt); if is_mem(&vt) { self.slots.insert(id.name.as_str(), Slot::Data(DataSlot { ptr: fp, ty: vt })); } else if body::is_array(&vt) { let bety: ast::TypeKind = elem_of(&vt); self.slots.insert(id.name.as_str(), Slot::Arr(ArrSlot { ptr: fp, len: array_len_text(&vt), elem: elem_kind(&bety), ety: bety })); } else { let blt2: String = llty(&vt); let btmp: String = self.alloca(blt2.as_str()); let bx: String = self.load_mem(fp.as_str(), &vt); self.emit(types::cat7("store ", blt2.as_str(), " ", bx.as_str(), ", ptr ", btmp.as_str(), "").as_str()); backs.push(Back { tmp: btmp.clone(), elem: String::new(), ptr: fp, lt: blt2.clone(), mem: true, ty: vt }); self.slots.insert(id.name.as_str(), Slot::Scalar(btmp, blt2)); } } else { self.bind(id.name.as_str(), fp.as_str(), &pt); } }, } } } let av: CVal = self.expr(&mx.arms[a2].body, ck, tb, f - 1); for b in 0..backs.len() invariant 0 <= b && b <= backs.len(), { let wx: String = self.t(); self.emit(types::cat5(wx.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str()); let wp: String = backs[b].ptr.clone(); let wt: ast::TypeKind = backs[b].ty.clone(); self.put(&CVal::Imm(wx), wp.as_str(), &wt); } self.store_result(&slot, &av, &rt); if self.arm_drops_at(mx.arms[a2].body.span, ck) || self.branch_drops_at(mx.arms[a2].body.span, ck) { self.todo_at("a `match` arm that drops owned values", mx.arms[a2].body.span); } self.emit(types::cat2("br label %", end.as_str()).as_str()); } } self.block(end.as_str()); self.load_result(&slot, &rt) },
+            }
+        }
+
+        #[summary("std::mem::replace(&mut p, v)와 std::mem::swap(&mut a, &mut b) (stage0 mem_call): 값이 자리 사이를 옮겨 다닌다. 옛 값이 덩어리면 제 메모리에 둔다")]
+        #[effects(alloc)]
+        fn mem_call(self: &mut Gen, e: &ast::Expr, c: &ast::Call, replace: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 || c.args.len() != 2 {
+                return self.todo_expr("a memory operation without two arguments", e);
+            }
+            let p0: AnyPlace = self.any_place(&c.args[0], ck, tb, f - 1);
+            if !p0.ok {
+                return CVal::Never;
+            }
+            let prev: CVal = if p0.reg.len() > 0 {
+                self.read_any(&p0)
+            } else if is_scalar_ty(&lowered::value_ty(&p0.ty)) {
+                self.read(p0.ptr.as_str(), &p0.ty)
+            } else {
+                let tmp: String = self.temp(&p0.ty);
+                self.copy(tmp.as_str(), p0.ptr.as_str(), &p0.ty);
+                self.read(tmp.as_str(), &p0.ty)
+            };
+            if replace {
+                let v: CVal = self.expr(&c.args[1], ck, tb, f - 1);
+                self.write_any(&p0, &v);
+                return prev;
+            }
+            let p1: AnyPlace = self.any_place(&c.args[1], ck, tb, f - 1);
+            if !p1.ok {
+                return CVal::Never;
+            }
+            let v1: CVal = self.read_any(&p1);
+            self.write_any(&p0, &v1);
+            self.write_any(&p1, &prev);
+            CVal::Unit
+        }
+
         #[summary("바이트 bytes개를 옮긴다 (겹치지 않는 자리 사이)")]
         #[effects(alloc)]
         fn memcpy(self: &mut Gen, dst: &str, src: &str, bytes: u64) -> () {
@@ -1483,7 +1768,7 @@ mod codegen {
             let name: String = mc.name.name.clone();
             match conv_parts(&*mc.recv) {
                 None => {},
-                Some(cv) => { if name != "unwrap" { return self.todo_expr("a conversion whose `Option` is kept", e); } let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); if body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)) { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); },
+                Some(cv) => { let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); let needs: bool = body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)); if name == "unwrap" { if needs { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); } let kept: String = if needs { self.in_range_of(v.as_str(), is_signed(&st), cv.target) } else { String::from("true") }; return self.option(e, kept.as_str(), v.as_str(), tb); },
             }
             let rt: ast::TypeKind = self.ty(&*mc.recv, tb);
             let vt: ast::TypeKind = lowered::value_ty(&rt);
@@ -1511,7 +1796,7 @@ mod codegen {
             }
             match body::int_of(&rt) {
                 None => self.todo_expr("a method of a value that is not a scalar", e),
-                Some(i) => { if name == "checked_shl" || name == "checked_shr" || name == "len" { return self.todo_expr("an integer method whose value is not a scalar", e); } let rv: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1)); if name == "to_be_bytes" || name == "to_le_bytes" { return self.to_bytes(rv.as_str(), i, name == "to_le_bytes"); } if name == "is_power_of_two" { let ones: String = imm(&self.bit_method("count_ones", i, rv.as_str(), "")); let pr: String = self.t(); self.emit(types::cat4(pr.as_str(), " = icmp eq i64 ", ones.as_str(), ", 1").as_str()); return CVal::Imm(pr); } if body::bit_method(name.as_str()) > 0 { let n: String = if mc.args.len() > 0 { imm(&self.expr(&mc.args[0], ck, tb, f - 1)) } else { String::new() }; return self.bit_method(name.as_str(), i, rv.as_str(), n.as_str()); } if mc.args.len() != 1 { return self.todo_expr("an integer method without one argument", e); } let b: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); self.int_method(e, name.as_str(), rv.as_str(), b.as_str(), i) },
+                Some(i) => { if name == "len" { return self.todo_expr("the length of an integer", e); } let rv: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1)); if (name == "checked_shl" || name == "checked_shr") && mc.args.len() == 1 { let sn: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); let sok: String = self.t(); let mut sw: String = String::new(); std::num::push_u64(&mut sw, body::bits(i) as u64); self.emit(types::cat5(sok.as_str(), " = icmp ult i64 ", sn.as_str(), ", ", sw.as_str()).as_str()); let wname: String = if name == "checked_shl" { String::from("wrapping_shl") } else { String::from("wrapping_shr") }; let sv: String = imm(&self.bit_method(wname.as_str(), i, rv.as_str(), sn.as_str())); return self.option(e, sok.as_str(), sv.as_str(), tb); } if name == "to_be_bytes" || name == "to_le_bytes" { return self.to_bytes(rv.as_str(), i, name == "to_le_bytes"); } if name == "is_power_of_two" { let ones: String = imm(&self.bit_method("count_ones", i, rv.as_str(), "")); let pr: String = self.t(); self.emit(types::cat4(pr.as_str(), " = icmp eq i64 ", ones.as_str(), ", 1").as_str()); return CVal::Imm(pr); } if body::bit_method(name.as_str()) > 0 { let n: String = if mc.args.len() > 0 { imm(&self.expr(&mc.args[0], ck, tb, f - 1)) } else { String::new() }; return self.bit_method(name.as_str(), i, rv.as_str(), n.as_str()); } if mc.args.len() != 1 { return self.todo_expr("an integer method without one argument", e); } let b: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); self.int_method(e, name.as_str(), rv.as_str(), b.as_str(), i, tb) },
             }
         }
 
@@ -1546,9 +1831,32 @@ mod codegen {
             t
         }
 
-        #[summary("경로로 쓴 상수 (stage0 expr의 Path 갈래들): 정수 타입의 MIN·MAX, f64의 상수. 변형은 아직 옮기지 않았다")]
+        #[summary("ok면 Some(v), 아니면 None인 e의 Option 값 (stage0 option)")]
         #[effects(alloc)]
-        fn path_const(self: &mut Gen, e: &ast::Expr, segs: &[ast::Ident]) -> CVal {
+        fn option(self: &mut Gen, e: &ast::Expr, ok: &str, v: &str, tb: &lowered::Tables) -> CVal {
+            let t: ast::TypeKind = self.ty(e, tb);
+            if !is_data(&t) {
+                return self.todo_expr("an `Option` whose type is not known", e);
+            }
+            let tmp: String = self.temp(&t);
+            let tag: String = self.field_ptr(tmp.as_str(), &t, 0);
+            let k: String = self.t();
+            self.emit(types::cat4(k.as_str(), " = zext i1 ", ok, " to i64").as_str());
+            self.emit(types::cat4("store i64 ", k.as_str(), ", ptr ", tag.as_str()).as_str());
+            let p: String = self.t();
+            self.emit(types::cat5(p.as_str(), " = getelementptr inbounds ", view_ty(&t, "Some").as_str(), ", ptr ", types::cat2(tmp.as_str(), ", i32 0, i32 1").as_str()).as_str());
+            self.emit(types::cat4("store i64 ", v, ", ptr ", p.as_str()).as_str());
+            CVal::Ptr(tmp, t)
+        }
+
+        #[summary("경로 식 (stage0 expr의 Path 갈래들): 정수 타입의 MIN·MAX, f64의 상수, 아니면 페이로드 없는 변형")]
+        #[effects(alloc)]
+        fn path_expr(self: &mut Gen, e: &ast::Expr, segs: &[ast::Ident], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 || segs.len() == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
             if segs.len() == 2 {
                 match ast::int_of(segs[0].name.as_str()) {
                     None => {},
@@ -1561,7 +1869,9 @@ mod codegen {
                     }
                 }
             }
-            self.todo_expr("a path that is not a scalar constant", e)
+            let no_args: Vec<ast::Expr> = Vec::new();
+            let t: ast::TypeKind = self.ty(e, tb);
+            self.variant(e, &t, segs[segs.len() - 1].name.as_str(), no_args.as_slice(), ck, tb, f - 1)
         }
 
         #[summary("자리의 주소와 타입 (stage0 place): 메모리 값의 변수, 필드, *p, &p, 메모리 값의 원소. Box와 Vec을 지나는 자리는 아직 옮기지 않았다")]
@@ -1638,6 +1948,17 @@ mod codegen {
                 return CVal::Unit;
             }
             CVal::Imm(self.load_mem(ptr, &vt))
+        }
+
+        #[summary("any_place의 자리의 값 (stage0 read_any)")]
+        #[effects(alloc)]
+        fn read_any(self: &mut Gen, p: &AnyPlace) -> CVal {
+            if p.reg.len() > 0 {
+                let r: String = self.t();
+                self.emit(types::cat5(r.as_str(), " = load ", p.reg.as_str(), ", ptr ", p.ptr.as_str()).as_str());
+                return CVal::Imm(r);
+            }
+            self.read(p.ptr.as_str(), &p.ty)
         }
 
         #[summary("대입 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.replaces와 partial_replaces)")]
@@ -2037,6 +2358,44 @@ mod codegen {
             CVal::Never
         }
 
+        #[summary("x? (stage0 try_expr): 꼬리표를 재고, None이나 Err면 그것을 (Err의 값은 옮겨) 돌려주고, 아니면 값은 페이로드다")]
+        #[effects(alloc)]
+        fn try_expr(self: &mut Gen, e: &ast::Expr, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let sv: CVal = self.expr(x, ck, tb, f - 1);
+            if is_never(&sv) {
+                return CVal::Never;
+            }
+            if !is_ptr(&sv) {
+                return self.todo_expr("a `?` on a value that is not in memory", e);
+            }
+            let sp: String = ptr_of(&sv);
+            let st: ast::TypeKind = ptr_ty(&sv);
+            let kind: u8 = body::try_variants(&st);
+            if kind == 0 {
+                return self.todo_expr("a `?` on a value that is not an `Option` or a `Result`", e);
+            }
+            let ok: String = if kind == 1 {
+                String::from("Some")
+            } else {
+                String::from("Ok")
+            };
+            let bad: String = if kind == 1 {
+                String::from("None")
+            } else {
+                String::from("Err")
+            };
+            let rt: ast::TypeKind = self.ret.clone();
+            match lowered::enum_variants(&st, tb) {
+                None => self.todo_expr("a `?` on a value that is not an enum", e),
+                Some(vs) => { match lowered::enum_variants(&rt, tb) { None => self.todo_expr("a `?` in a function whose result is not an enum", e), Some(rvs) => { let k_ok: usize = variant_at(vs.as_slice(), ok.as_str()); let k_bad_in: usize = variant_at(vs.as_slice(), bad.as_str()); let k_bad: usize = variant_at(rvs.as_slice(), bad.as_str()); if k_ok >= vs.len() || k_bad_in >= vs.len() || k_bad >= rvs.len() || vs[k_ok].tys.len() == 0 { return self.todo_expr("a `?` whose variants are not found", e); } let tagp: String = self.field_ptr(sp.as_str(), &st, 0); let tag: String = self.t(); self.emit(types::cat3(tag.as_str(), " = load i64, ptr ", tagp.as_str()).as_str()); let is_ok: String = self.t(); let mut kt: String = String::new(); std::num::push_u64(&mut kt, k_ok as u64); self.emit(types::cat5(is_ok.as_str(), " = icmp eq i64 ", tag.as_str(), ", ", kt.as_str()).as_str()); let ok_l: String = self.l("try_ok"); let bad_l: String = self.l("try_out"); self.emit(types::cat7("br i1 ", is_ok.as_str(), ", label %", ok_l.as_str(), ", label %", bad_l.as_str(), "").as_str()); self.block(bad_l.as_str()); let out: String = self.temp(&rt); let out_tag: String = self.field_ptr(out.as_str(), &rt, 0); let mut bt: String = String::new(); std::num::push_u64(&mut bt, k_bad as u64); self.emit(types::cat4("store i64 ", bt.as_str(), ", ptr ", out_tag.as_str()).as_str()); if vs[k_bad_in].tys.len() == 1 { let src: String = self.t(); let dst: String = self.t(); self.emit(types::cat5(src.as_str(), " = getelementptr inbounds ", view_ty(&st, bad.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); self.emit(types::cat5(dst.as_str(), " = getelementptr inbounds ", view_ty(&rt, bad.as_str()).as_str(), ", ptr ", types::cat2(out.as_str(), ", i32 0, i32 1").as_str()).as_str()); let bpt: ast::TypeKind = vs[k_bad_in].tys[0].clone(); self.copy(dst.as_str(), src.as_str(), &bpt); } if self.exits_at(e.span, ck) { self.todo_at("a `?` that drops owned values", e.span); } self.emit_return(&CVal::Ptr(out, rt.clone())); self.block(ok_l.as_str()); let pt: ast::TypeKind = lowered::value_ty(&vs[k_ok].tys[0]); let fp: String = self.t(); self.emit(types::cat5(fp.as_str(), " = getelementptr inbounds ", view_ty(&st, ok.as_str()).as_str(), ", ptr ", types::cat2(sp.as_str(), ", i32 0, i32 1").as_str()).as_str()); if is_mem(&pt) { let mtmp: String = self.temp(&pt); self.copy(mtmp.as_str(), fp.as_str(), &pt); return CVal::Ptr(mtmp, pt); } if body::is_array(&pt) { let atmp: String = self.temp(&pt); self.copy(atmp.as_str(), fp.as_str(), &pt); return CVal::Arr(atmp, array_len_text(&pt)); } CVal::Imm(self.load_mem(fp.as_str(), &pt)) }, } },
+            }
+        }
+
         #[summary("식 e의 타입 (낮춘 표에서)")]
         #[effects(alloc)]
         fn ty(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
@@ -2083,6 +2442,20 @@ mod codegen {
             CVal::Imm(r)
         }
 
+        #[summary("열거형 t의 변형 vname을 인자들로 짓는다 (stage0 variant): 페이로드는 셈하는 차례로 옮긴다")]
+        #[effects(alloc)]
+        fn variant(self: &mut Gen, e: &ast::Expr, t: &ast::TypeKind, vname: &str, args: &[ast::Expr], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            match lowered::enum_variants(t, tb) {
+                None => self.todo_expr("a call or a path that is not a function, a constant or a variant", e),
+                Some(vs) => { let k: usize = variant_at(vs.as_slice(), vname); if k >= vs.len() { return self.todo_expr("a variant the enum does not have", e); } let tmp: String = self.temp(t); let tag: String = self.field_ptr(tmp.as_str(), t, 0); let mut kt: String = String::new(); std::num::push_u64(&mut kt, k as u64); self.emit(types::cat4("store i64 ", kt.as_str(), ", ptr ", tag.as_str()).as_str()); for j in 0..args.len() invariant 0 <= j && j <= args.len(), { if j < vs[k].tys.len() { let val: CVal = self.expr(&args[j], ck, tb, f - 1); let p: String = self.t(); let mut jt: String = String::new(); std::num::push_u64(&mut jt, (j as u64).wrapping_add(1)); self.emit(types::cat7(p.as_str(), " = getelementptr inbounds ", view_ty(t, vname).as_str(), ", ptr ", tmp.as_str(), ", i32 0, i32 ", jt.as_str()).as_str()); let pty: ast::TypeKind = vs[k].tys[j].clone(); self.put(&val, p.as_str(), &pty); } } CVal::Ptr(tmp, lowered::value_ty(t)) },
+            }
+        }
+
         #[summary("while 문장 (stage0 stmt의 While)")]
         #[effects(alloc)]
         fn while_stmt(self: &mut Gen, x: &ast::While, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
@@ -2106,6 +2479,16 @@ mod codegen {
             self.loops.truncate(depth);
             self.emit(types::cat2("br label %", head.as_str()).as_str());
             self.block(end.as_str());
+        }
+
+        #[summary("any_place의 자리에 값을 쓴다 (stage0 write_any): 덩어리는 옮긴다")]
+        #[effects(alloc)]
+        fn write_any(self: &mut Gen, p: &AnyPlace, v: &CVal) -> () {
+            if p.reg.len() > 0 {
+                self.emit(types::cat7("store ", p.reg.as_str(), " ", imm(v).as_str(), ", ptr ", p.ptr.as_str(), "").as_str());
+            } else {
+                self.put(v, p.ptr.as_str(), &p.ty);
+            }
         }
     }
 
@@ -3333,6 +3716,15 @@ mod codegen {
         }
     }
 
+    #[summary("패턴이 가리키는 변형의 이름 (경로의 마지막 마디)")]
+    #[effects(alloc)]
+    fn pat_name(p: &ast::Pat) -> String {
+        if p.path.len() == 0 {
+            return String::new();
+        }
+        p.path[p.path.len() - 1].name.clone()
+    }
+
     #[summary("메모리에 사는 값의 주소. 아니면 undef")]
     #[effects(alloc)]
     fn ptr_of(v: &CVal) -> String {
@@ -3545,6 +3937,19 @@ mod codegen {
             ast::ExprKind::Range(vn_range0) => None,
             ast::ExprKind::Error => None,
         }
+    }
+
+    #[summary("변형들에서 이름 name의 차례. 없으면 길이")]
+    #[effects(pure)]
+    fn variant_at(vs: &[types::VariantSig], name: &str) -> usize {
+        for k in 0..vs.len()
+            invariant 0 <= k && k <= vs.len(),
+        {
+            if vs[k].name == name {
+                return k;
+            }
+        }
+        vs.len()
     }
 
     #[summary("열거형 t의 변형 v를 보는 타입 (stage0 view_ty): 꼬리표와 페이로드")]

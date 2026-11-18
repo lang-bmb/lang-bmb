@@ -1,0 +1,157 @@
+#[summary("열거형과 match와 ?: 변형 짓기 (페이로드 없는 것, 스칼라·구조체·배열 페이로드), match의 묶기와 값 (스칼라, 구조체, 단위 값), &mut의 match로 페이로드 고치기, Option과 Result의 ?, Option을 내는 메서드 (checked_*, 남기는 try_from, checked_shl), std::mem::replace와 swap")]
+mod enums {
+    struct Point { x: i64, y: i64 }
+    enum Shape { Dot, Circle(i64), Rect(Point, Point), Tags([u8; 2]) }
+    enum Small { A(u8, bool), B(i16) }
+
+    #[effects(pure)]
+    fn area(s: &Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(r) => (*r).wrapping_mul(*r).wrapping_mul(3),
+            Shape::Rect(a, b) => b.x.wrapping_sub(a.x).wrapping_mul(b.y.wrapping_sub(a.y)),
+            Shape::Tags(t) => -2,
+        }
+    }
+    #[effects(pure)]
+    fn tag_sum(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(r) => 0,
+            Shape::Rect(a, b) => 0,
+            Shape::Tags(t) => i64::try_from(t[0]).unwrap().wrapping_add(i64::try_from(t[1]).unwrap()),
+        }
+    }
+    #[effects(pure)]
+    fn corner(s: Shape) -> Point {
+        match s {
+            Shape::Dot => Point { x: 0, y: 0 },
+            Shape::Circle(r) => Point { x: r, y: r },
+            Shape::Rect(a, b) => b,
+            Shape::Tags(t) => Point { x: -1, y: -1 },
+        }
+    }
+    #[effects(pure)]
+    fn grow(s: &mut Shape, d: i64) -> () {
+        match s {
+            Shape::Dot => {},
+            Shape::Circle(r) => {
+                *r = (*r).wrapping_add(d);
+            },
+            Shape::Rect(a, b) => {
+                b.x = b.x.wrapping_add(d);
+            },
+            Shape::Tags(t) => {},
+        }
+    }
+    #[effects(pure)]
+    fn small(s: Small) -> i64 {
+        match s {
+            Small::A(n, on) => if on { i64::try_from(n).unwrap() } else { -1 },
+            Small::B(v) => i64::try_from(v).unwrap(),
+        }
+    }
+    #[effects(pure)]
+    fn half(n: i64) -> Option<i64> {
+        if n % 2 == 0 { Some(n / 2) } else { None }
+    }
+    #[effects(pure)]
+    fn quarter(n: i64) -> Option<i64> {
+        let h: i64 = half(n)?;
+        half(h)
+    }
+    #[effects(pure)]
+    fn parse(d: u8) -> Result<i64, u8> {
+        if d >= 48 && d <= 57 { Ok(i64::try_from(d).unwrap() - 48) } else { Err(d) }
+    }
+    #[effects(pure)]
+    fn two(a: u8, b: u8) -> Result<i64, u8> {
+        let x: i64 = parse(a)?;
+        let y: i64 = parse(b)?;
+        Ok(x.wrapping_mul(10).wrapping_add(y))
+    }
+    #[effects(pure)]
+    fn or_zero(o: Option<i64>) -> i64 {
+        match o {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+    #[effects(pure)]
+    fn err_or(r: Result<i64, u8>) -> i64 {
+        match r {
+            Ok(v) => v,
+            Err(c) => 0 - i64::try_from(c).unwrap(),
+        }
+    }
+    #[effects(pure)]
+    fn narrow(x: i64) -> i64 {
+        match u8::try_from(x).ok() {
+            None => -1,
+            Some(b) => i64::try_from(b).unwrap(),
+        }
+    }
+    #[effects(pure)]
+    fn add8(a: u8, b: u8) -> i64 {
+        match a.checked_add(b) {
+            None => -1,
+            Some(v) => i64::try_from(v).unwrap(),
+        }
+    }
+    #[effects(pure)]
+    fn div(a: i32, b: i32) -> i64 {
+        match a.checked_div(b) {
+            None => -7,
+            Some(v) => i64::try_from(v).unwrap(),
+        }
+    }
+    #[effects(pure)]
+    fn shl(a: u64, n: u32) -> u64 {
+        match a.checked_shl(n) {
+            None => 0,
+            Some(v) => v,
+        }
+    }
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(area(&Shape::Dot));
+        let mut c: Shape = Shape::Circle(5);
+        print_i64(area(&c));
+        grow(&mut c, 5);
+        print_i64(area(&c));
+        let mut r: Shape = Shape::Rect(Point { x: 1, y: 1 }, Point { x: 4, y: 3 });
+        print_i64(area(&r));
+        grow(&mut r, 10);
+        print_i64(area(&r));
+        print_i64(corner(r).x);
+        let mut t: Shape = Shape::Tags([3, 4]);
+        grow(&mut t, 0);
+        print_i64(area(&t).wrapping_add(tag_sum(t)));
+        print_i64(small(Small::A(200, true)));
+        print_i64(small(Small::B(-300)));
+        print_i64(or_zero(quarter(40)));
+        print_i64(or_zero(quarter(6)));
+        print_i64(or_zero(None));
+        print_i64(err_or(two(52, 50)));
+        print_i64(err_or(two(52, 120)));
+        print_i64(narrow(255));
+        print_i64(narrow(256));
+        print_i64(add8(200, 55));
+        print_i64(add8(200, 56));
+        print_i64(div(-2147483648, -1));
+        print_i64(div(7, 0));
+        print_i64(div(-9, 2));
+        print_u64(shl(1, 63));
+        print_u64(shl(1, 64));
+        let mut a: i64 = 1;
+        let mut b: i64 = 2;
+        std::mem::swap(&mut a, &mut b);
+        let prev: i64 = std::mem::replace(&mut a, 30);
+        print_i64(prev.wrapping_mul(100).wrapping_add(a).wrapping_add(b));
+        let mut p: Point = Point { x: 1, y: 2 };
+        let mut q: Point = Point { x: 3, y: 4 };
+        std::mem::swap(&mut p, &mut q);
+        let was: i64 = std::mem::replace(&mut p.y, 50);
+        print_i64(p.x.wrapping_add(p.y).wrapping_add(q.x).wrapping_add(was));
+    }
+}
