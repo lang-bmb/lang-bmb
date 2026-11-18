@@ -17,16 +17,16 @@ mod codegen {
         }
     }
 
-    #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처 순서로")]
+    #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처에 나오는 타입을 한 번씩, 타입의 글 순서로 (소스의 자리 순서가 아니다: fmt 전후의 IR이 같다, 백로그 4D-38)")]
     #[effects(alloc)]
     fn all_types(tb: &lowered::Tables) -> Vec<ast::TypeKind> {
-        let mut all: Vec<ast::TypeKind> = Vec::new();
+        let mut by_text: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
         for n in 0..tb.types.len()
             invariant 0 <= n,
         {
             match tb.types.nth(n) {
                 None => {},
-                Some(at) => all.push(tb.types.items[at].clone()),
+                Some(at) => by_text.insert(types::text(&tb.types.items[at]).as_str(), tb.types.items[at].clone()),
             }
         }
         for n in 0..tb.locals.len()
@@ -34,7 +34,7 @@ mod codegen {
         {
             match tb.locals.nth(n) {
                 None => {},
-                Some(at) => { for v in 0..tb.locals.items[at].len() invariant 0 <= v, { match tb.locals.items[at].nth(v) { None => {}, Some(i) => all.push(tb.locals.items[at].items[i].clone()), } } },
+                Some(at) => { for v in 0..tb.locals.items[at].len() invariant 0 <= v, { match tb.locals.items[at].nth(v) { None => {}, Some(i) => by_text.insert(types::text(&tb.locals.items[at].items[i]).as_str(), tb.locals.items[at].items[i].clone()), } } },
             }
         }
         for n in 0..tb.fns.len()
@@ -42,7 +42,16 @@ mod codegen {
         {
             match tb.fns.nth(n) {
                 None => {},
-                Some(at) => { if !tb.fns.items[at].builtin { for k in 0..tb.fns.items[at].params.len() invariant 0 <= k && k <= tb.fns.items[at].params.len(), { all.push(tb.fns.items[at].params[k].clone()); } all.push(tb.fns.items[at].ret.clone()); } },
+                Some(at) => { if !tb.fns.items[at].builtin { for k in 0..tb.fns.items[at].params.len() invariant 0 <= k && k <= tb.fns.items[at].params.len(), { by_text.insert(types::text(&tb.fns.items[at].params[k]).as_str(), tb.fns.items[at].params[k].clone()); } by_text.insert(types::text(&tb.fns.items[at].ret).as_str(), tb.fns.items[at].ret.clone()); } },
+            }
+        }
+        let mut all: Vec<ast::TypeKind> = Vec::new();
+        for n in 0..by_text.len()
+            invariant 0 <= n,
+        {
+            match by_text.nth(n) {
+                None => {},
+                Some(at) => all.push(by_text.items[at].clone()),
             }
         }
         all

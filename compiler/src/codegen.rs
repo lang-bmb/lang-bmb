@@ -394,10 +394,10 @@ pub fn dump_layout(p: &Program, t: &Tables) -> String {
     let q = crate::diag::json_str;
     let lowered = t.lowered();
     let t = &lowered;
-    let mut shapes: BTreeMap<String, &TypeKind> = BTreeMap::new();
-    for x in all_types(t, &[]) {
-        shapes.entry(ty_str(x)).or_insert(x);
-    }
+    let shapes: Vec<(String, &TypeKind)> = all_types(t, &[])
+        .into_iter()
+        .map(|x| (ty_str(x), x))
+        .collect();
     let mut out = String::new();
     for (text, x) in &shapes {
         let (size, al) = layout(x, t);
@@ -430,7 +430,7 @@ pub fn dump_layout(p: &Program, t: &Tables) -> String {
             align(kind)
         );
     }
-    let uses_vec = shapes.values().any(|x| holds_vec(x, t));
+    let uses_vec = shapes.iter().any(|(_, x)| holds_vec(x, t));
     // As `emit_with` asks: signatures do not count for the heap.
     let owns = |x: &TypeKind| crate::check::is_move(value_ty(x), &t.adts);
     let uses_heap =
@@ -456,7 +456,8 @@ pub fn dump_layout(p: &Program, t: &Tables) -> String {
 }
 
 /// The types of the program's values: its expressions, locals and
-/// signatures, and the instance types `extra`.
+/// signatures, and the instance types `extra`, each once in the order of
+/// their texts.
 fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
     let mut all: Vec<&TypeKind> = tb.types.values().collect();
     all.extend(tb.locals.values().flat_map(|m| m.values()));
@@ -468,7 +469,12 @@ fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
         all.push(&sig.ret);
     }
     all.extend(extra);
-    all
+    // In the order of their texts, each once: the order of the type
+    // definitions and the glue is then the program's, not its layout's
+    // (the spans of `types` follow the source order, which `fmt` changes;
+    // backlog 4D-38 found IR that differed after `fmt`).
+    let by_text: BTreeMap<String, &TypeKind> = all.into_iter().map(|x| (ty_str(x), x)).collect();
+    by_text.into_values().collect()
 }
 
 /// Whether a value of type `t` holds a `Vec` anywhere (through references,

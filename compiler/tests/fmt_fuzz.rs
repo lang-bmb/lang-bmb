@@ -1,8 +1,9 @@
 //! Normal form and definition hash fuzzing (backlog 1D-22, ADR-0019).
 //!
 //! Programs come from the soundness generator (`common::scalar`: random i64
-//! functions with contracts, spread over several units that call each other)
-//! and from the corpus. For each one, layout variants are made: definitions
+//! functions with contracts, spread over several units that call each other),
+//! with data types and functions over them in most units (`gen_data`,
+//! backlog 4D-38), and from the corpus. For each one, layout variants are made: definitions
 //! and units reordered, units moved across files, comments, blank lines,
 //! indentation and line breaks between tokens added. Claims:
 //!
@@ -122,12 +123,83 @@ fn gen_program(rng: &mut Rng) -> Vec<Unit> {
                 .into(),
             );
         }
+        if rng.chance(60) {
+            items.extend(gen_data(rng));
+        }
         units.push(Unit {
             name: format!("u{u}"),
             items,
         });
     }
     units
+}
+
+/// Data types and functions over them (backlog 4D-38): a struct of 1..=4
+/// scalar fields of several widths (sometimes with a `Vec`), an enum whose
+/// variants carry nothing, a scalar or the struct, and functions that
+/// build, match and read them. What the generated functions of
+/// `common::scalar` do not reach: type definitions, layouts, payloads.
+fn gen_data(rng: &mut Rng) -> Vec<String> {
+    const TYS: [(&str, &str); 6] = [
+        ("i64", "x"),
+        ("bool", "x < y"),
+        ("u8", "7"),
+        ("u16", "300"),
+        ("i32", "-5"),
+        ("f64", "1.5"),
+    ];
+    let n = 1 + rng.below(4);
+    let mut fields = vec![("a".to_string(), "i64", "x".to_string())];
+    for k in 1..n {
+        let (ty, init) = TYS[rng.below(TYS.len())];
+        fields.push((format!("g{k}"), ty, init.to_string()));
+    }
+    let heap = rng.chance(30);
+    if heap {
+        fields.push(("v".to_string(), "Vec<i64>", "Vec::new()".to_string()));
+    }
+    // Fields are given in declaration order (E0434), arms too (E0426).
+    shuffle(rng, &mut fields);
+    let decl: Vec<String> = fields.iter().map(|(f, t, _)| format!("{f}: {t}")).collect();
+    let init: Vec<String> = fields.iter().map(|(f, _, v)| format!("{f}: {v}")).collect();
+    let mut variants = vec!["A", "B(i64)", "C(S)"];
+    if rng.chance(50) {
+        variants.push("D(bool, u8)");
+    }
+    shuffle(rng, &mut variants);
+    let arms: Vec<String> = variants
+        .iter()
+        .map(|v| {
+            match *v {
+                "A" => "T::A => 0",
+                "B(i64)" => "T::B(b) => b",
+                "C(S)" => "T::C(s) => s.a",
+                _ => "T::D(on, w) => if on { 1 } else { 2 }",
+            }
+            .to_string()
+        })
+        .collect();
+    let effect = if heap { "alloc" } else { "pure" };
+    let third = if variants.len() == 4 && rng.chance(50) {
+        "T::D(x < y, 9)"
+    } else {
+        "T::A"
+    };
+    vec![
+        format!("    struct S {{ {} }}\n", decl.join(", ")),
+        format!("    enum T {{ {} }}\n", variants.join(", ")),
+        format!(
+            "    #[effects({effect})]\n    fn mk(x: i64, y: i64) -> S {{\n        S {{ {} }}\n    }}\n",
+            init.join(", ")
+        ),
+        format!(
+            "    #[effects({effect})]\n    fn pick(x: i64, y: i64) -> T {{\n        if x < y {{\n            T::B(x)\n        }} else if x == y {{\n            {third}\n        }} else {{\n            T::C(mk(x, y))\n        }}\n    }}\n"
+        ),
+        format!(
+            "    #[effects({effect})]\n    fn get(x: i64, y: i64) -> i64 {{\n        match pick(x, y) {{\n            {},\n        }}\n    }}\n",
+            arms.join(",\n            ")
+        ),
+    ]
 }
 
 fn unit_text(u: &Unit, summary: &str) -> String {
