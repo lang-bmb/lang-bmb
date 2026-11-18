@@ -1,0 +1,433 @@
+#[summary("정수 메서드를 폭과 부호마다: wrapping·saturating 산술, 비트 메서드(회전, 세기, 뒤집기, 감기는 시프트, 2의 거듭제곱), MIN과 MAX, f64로의 변환")]
+mod methods {
+    #[effects(pure)]
+    fn wrapping_add_i8(a: i8, b: i8) -> i8 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_i8(a: i8, b: i8) -> i8 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_i8(a: i8, b: i8) -> i8 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_i8(a: i8, b: i8) -> i8 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_i8(a: i8, b: i8) -> i8 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_i8(a: i8, b: i8) -> i8 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_i8(a: i8, n: u32) -> i8 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_i8(a: i8, n: u32) -> i8 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_i8(a: i8, n: u32) -> i8 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_i8(a: i8, n: u32) -> i8 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_i8(a: i8) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_i8(a: i8) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_i8(a: i8) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_i8(a: i8) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_i8(a: i8) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_i8(a: i8) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_i8(a: i8) -> i8 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_i8(a: i8) -> i8 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_i8() -> i8 { i8::MIN }
+    #[effects(pure)]
+    fn max_i8() -> i8 { i8::MAX }
+    #[effects(pure)]
+    fn to_f64_i8(a: i8) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn wrapping_add_i16(a: i16, b: i16) -> i16 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_i16(a: i16, b: i16) -> i16 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_i16(a: i16, b: i16) -> i16 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_i16(a: i16, b: i16) -> i16 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_i16(a: i16, b: i16) -> i16 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_i16(a: i16, b: i16) -> i16 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_i16(a: i16, n: u32) -> i16 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_i16(a: i16, n: u32) -> i16 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_i16(a: i16, n: u32) -> i16 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_i16(a: i16, n: u32) -> i16 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_i16(a: i16) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_i16(a: i16) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_i16(a: i16) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_i16(a: i16) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_i16(a: i16) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_i16(a: i16) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_i16(a: i16) -> i16 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_i16(a: i16) -> i16 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_i16() -> i16 { i16::MIN }
+    #[effects(pure)]
+    fn max_i16() -> i16 { i16::MAX }
+    #[effects(pure)]
+    fn to_f64_i16(a: i16) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn wrapping_add_i32(a: i32, b: i32) -> i32 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_i32(a: i32, b: i32) -> i32 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_i32(a: i32, b: i32) -> i32 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_i32(a: i32, b: i32) -> i32 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_i32(a: i32, b: i32) -> i32 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_i32(a: i32, b: i32) -> i32 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_i32(a: i32, n: u32) -> i32 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_i32(a: i32, n: u32) -> i32 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_i32(a: i32, n: u32) -> i32 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_i32(a: i32, n: u32) -> i32 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_i32(a: i32) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_i32(a: i32) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_i32(a: i32) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_i32(a: i32) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_i32(a: i32) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_i32(a: i32) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_i32(a: i32) -> i32 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_i32(a: i32) -> i32 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_i32() -> i32 { i32::MIN }
+    #[effects(pure)]
+    fn max_i32() -> i32 { i32::MAX }
+    #[effects(pure)]
+    fn to_f64_i32(a: i32) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn wrapping_add_i64(a: i64, b: i64) -> i64 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_i64(a: i64, b: i64) -> i64 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_i64(a: i64, b: i64) -> i64 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_i64(a: i64, b: i64) -> i64 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_i64(a: i64, b: i64) -> i64 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_i64(a: i64, b: i64) -> i64 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_i64(a: i64, n: u32) -> i64 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_i64(a: i64, n: u32) -> i64 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_i64(a: i64, n: u32) -> i64 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_i64(a: i64, n: u32) -> i64 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_i64(a: i64) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_i64(a: i64) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_i64(a: i64) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_i64(a: i64) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_i64(a: i64) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_i64(a: i64) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_i64(a: i64) -> i64 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_i64(a: i64) -> i64 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_i64() -> i64 { i64::MIN }
+    #[effects(pure)]
+    fn max_i64() -> i64 { i64::MAX }
+    #[effects(pure)]
+    fn to_f64_i64(a: i64) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn wrapping_add_isize(a: isize, b: isize) -> isize { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_isize(a: isize, b: isize) -> isize { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_isize(a: isize, b: isize) -> isize { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_isize(a: isize, b: isize) -> isize { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_isize(a: isize, b: isize) -> isize { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_isize(a: isize, b: isize) -> isize { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_isize(a: isize, n: u32) -> isize { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_isize(a: isize, n: u32) -> isize { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_isize(a: isize, n: u32) -> isize { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_isize(a: isize, n: u32) -> isize { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_isize(a: isize) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_isize(a: isize) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_isize(a: isize) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_isize(a: isize) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_isize(a: isize) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_isize(a: isize) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_isize(a: isize) -> isize { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_isize(a: isize) -> isize { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_isize() -> isize { isize::MIN }
+    #[effects(pure)]
+    fn max_isize() -> isize { isize::MAX }
+    #[effects(pure)]
+    fn to_f64_isize(a: isize) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn wrapping_add_u8(a: u8, b: u8) -> u8 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_u8(a: u8, b: u8) -> u8 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_u8(a: u8, b: u8) -> u8 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_u8(a: u8, b: u8) -> u8 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_u8(a: u8, b: u8) -> u8 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_u8(a: u8, b: u8) -> u8 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_u8(a: u8, n: u32) -> u8 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_u8(a: u8, n: u32) -> u8 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_u8(a: u8, n: u32) -> u8 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_u8(a: u8, n: u32) -> u8 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_u8(a: u8) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_u8(a: u8) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_u8(a: u8) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_u8(a: u8) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_u8(a: u8) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_u8(a: u8) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_u8(a: u8) -> u8 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_u8(a: u8) -> u8 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_u8() -> u8 { u8::MIN }
+    #[effects(pure)]
+    fn max_u8() -> u8 { u8::MAX }
+    #[effects(pure)]
+    fn to_f64_u8(a: u8) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn pow2_u8(a: u8) -> bool { a.is_power_of_two() }
+    #[effects(pure)]
+    fn wrapping_add_u16(a: u16, b: u16) -> u16 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_u16(a: u16, b: u16) -> u16 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_u16(a: u16, b: u16) -> u16 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_u16(a: u16, b: u16) -> u16 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_u16(a: u16, b: u16) -> u16 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_u16(a: u16, b: u16) -> u16 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_u16(a: u16, n: u32) -> u16 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_u16(a: u16, n: u32) -> u16 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_u16(a: u16, n: u32) -> u16 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_u16(a: u16, n: u32) -> u16 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_u16(a: u16) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_u16(a: u16) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_u16(a: u16) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_u16(a: u16) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_u16(a: u16) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_u16(a: u16) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_u16(a: u16) -> u16 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_u16(a: u16) -> u16 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_u16() -> u16 { u16::MIN }
+    #[effects(pure)]
+    fn max_u16() -> u16 { u16::MAX }
+    #[effects(pure)]
+    fn to_f64_u16(a: u16) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn pow2_u16(a: u16) -> bool { a.is_power_of_two() }
+    #[effects(pure)]
+    fn wrapping_add_u32(a: u32, b: u32) -> u32 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_u32(a: u32, b: u32) -> u32 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_u32(a: u32, b: u32) -> u32 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_u32(a: u32, b: u32) -> u32 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_u32(a: u32, b: u32) -> u32 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_u32(a: u32, b: u32) -> u32 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_u32(a: u32, n: u32) -> u32 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_u32(a: u32, n: u32) -> u32 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_u32(a: u32, n: u32) -> u32 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_u32(a: u32, n: u32) -> u32 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_u32(a: u32) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_u32(a: u32) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_u32(a: u32) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_u32(a: u32) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_u32(a: u32) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_u32(a: u32) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_u32(a: u32) -> u32 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_u32(a: u32) -> u32 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_u32() -> u32 { u32::MIN }
+    #[effects(pure)]
+    fn max_u32() -> u32 { u32::MAX }
+    #[effects(pure)]
+    fn to_f64_u32(a: u32) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn pow2_u32(a: u32) -> bool { a.is_power_of_two() }
+    #[effects(pure)]
+    fn wrapping_add_u64(a: u64, b: u64) -> u64 { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_u64(a: u64, b: u64) -> u64 { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_u64(a: u64, b: u64) -> u64 { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_u64(a: u64, b: u64) -> u64 { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_u64(a: u64, b: u64) -> u64 { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_u64(a: u64, b: u64) -> u64 { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_u64(a: u64, n: u32) -> u64 { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_u64(a: u64, n: u32) -> u64 { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_u64(a: u64, n: u32) -> u64 { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_u64(a: u64, n: u32) -> u64 { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_u64(a: u64) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_u64(a: u64) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_u64(a: u64) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_u64(a: u64) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_u64(a: u64) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_u64(a: u64) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_u64(a: u64) -> u64 { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_u64(a: u64) -> u64 { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_u64() -> u64 { u64::MIN }
+    #[effects(pure)]
+    fn max_u64() -> u64 { u64::MAX }
+    #[effects(pure)]
+    fn to_f64_u64(a: u64) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn pow2_u64(a: u64) -> bool { a.is_power_of_two() }
+    #[effects(pure)]
+    fn wrapping_add_usize(a: usize, b: usize) -> usize { a.wrapping_add(b) }
+    #[effects(pure)]
+    fn wrapping_sub_usize(a: usize, b: usize) -> usize { a.wrapping_sub(b) }
+    #[effects(pure)]
+    fn wrapping_mul_usize(a: usize, b: usize) -> usize { a.wrapping_mul(b) }
+    #[effects(pure)]
+    fn saturating_add_usize(a: usize, b: usize) -> usize { a.saturating_add(b) }
+    #[effects(pure)]
+    fn saturating_sub_usize(a: usize, b: usize) -> usize { a.saturating_sub(b) }
+    #[effects(pure)]
+    fn saturating_mul_usize(a: usize, b: usize) -> usize { a.saturating_mul(b) }
+    #[effects(pure)]
+    fn rotate_left_usize(a: usize, n: u32) -> usize { a.rotate_left(n) }
+    #[effects(pure)]
+    fn rotate_right_usize(a: usize, n: u32) -> usize { a.rotate_right(n) }
+    #[effects(pure)]
+    fn wrapping_shl_usize(a: usize, n: u32) -> usize { a.wrapping_shl(n) }
+    #[effects(pure)]
+    fn wrapping_shr_usize(a: usize, n: u32) -> usize { a.wrapping_shr(n) }
+    #[effects(pure)]
+    fn count_ones_usize(a: usize) -> u32 { a.count_ones() }
+    #[effects(pure)]
+    fn count_zeros_usize(a: usize) -> u32 { a.count_zeros() }
+    #[effects(pure)]
+    fn leading_zeros_usize(a: usize) -> u32 { a.leading_zeros() }
+    #[effects(pure)]
+    fn trailing_zeros_usize(a: usize) -> u32 { a.trailing_zeros() }
+    #[effects(pure)]
+    fn leading_ones_usize(a: usize) -> u32 { a.leading_ones() }
+    #[effects(pure)]
+    fn trailing_ones_usize(a: usize) -> u32 { a.trailing_ones() }
+    #[effects(pure)]
+    fn swap_bytes_usize(a: usize) -> usize { a.swap_bytes() }
+    #[effects(pure)]
+    fn reverse_bits_usize(a: usize) -> usize { a.reverse_bits() }
+    #[effects(pure)]
+    fn min_usize() -> usize { usize::MIN }
+    #[effects(pure)]
+    fn max_usize() -> usize { usize::MAX }
+    #[effects(pure)]
+    fn to_f64_usize(a: usize) -> f64 { f64::from(a) }
+    #[effects(pure)]
+    fn pow2_usize(a: usize) -> bool { a.is_power_of_two() }
+}

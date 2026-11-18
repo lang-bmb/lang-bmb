@@ -1,0 +1,35 @@
+#[summary("f64의 메서드와 상수, print_f64(자릿수 검사와 런타임 조각)")]
+mod floats {
+    #[effects(pure)]
+    fn root(x: f64) -> f64 { x.sqrt() }
+    #[effects(pure)]
+    fn mag(x: f64) -> f64 { x.abs() }
+    #[effects(pure)]
+    fn low(x: f64, y: f64) -> f64 { x.min(y) }
+    #[effects(pure)]
+    fn high(x: f64, y: f64) -> f64 { x.max(y) }
+    #[effects(pure)]
+    fn nan(x: f64) -> bool { x.is_nan() }
+    #[effects(pure)]
+    fn finite(x: f64) -> bool { x.is_finite() }
+    #[effects(pure)]
+    fn consts() -> f64 {
+        let a: f64 = f64::INFINITY;
+        let b: f64 = f64::NEG_INFINITY;
+        let c: f64 = f64::NAN;
+        let d: f64 = f64::MAX;
+        let e: f64 = f64::MIN;
+        let g: f64 = f64::MIN_POSITIVE;
+        f64::EPSILON
+    }
+    #[effects(io)]
+    fn main() -> () {
+        print_f64(root(2.0), 6);
+        print_f64(low(1.5, -0.25).abs(), 2);
+        let seven: u8 = 7;
+        print_f64(f64::from(seven) / 2.0, 0);
+        let n: u32 = 3;
+        print_f64(high(0.1, 0.2), n);
+        print_i64(i64::try_from(seven).unwrap());
+    }
+}

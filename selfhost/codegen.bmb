@@ -3,11 +3,14 @@ mod codegen {
     #[summary("식의 값 (stage0 CVal): 레지스터 값이나 상수의 글, 단위 값, 끝나지 않는 식의 값")]
     enum CVal { Imm(String), Unit, Never }
 
+    #[summary("정수 변환 T::try_from(x)의 대상 타입과 인자")]
+    struct Conv { target: ast::IntTy, arg: ast::Expr }
+
     #[summary("낮출 정의 하나: 경로, 단위, 구문")]
     struct Def { path: String, unit: String, d: ast::FnDef }
 
-    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다)")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, ret: ast::TypeKind, todo: Vec<String> }
+    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다)")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool }
 
     impl Gen {
         #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
@@ -134,6 +137,88 @@ mod codegen {
             }
         }
 
+        #[summary("비트 메서드 (stage0 bit_method): 제 폭으로 잘라 LLVM의 내장 함수를 부르고 다시 넓힌다. 세는 메서드의 결과는 0으로 넓힌다")]
+        #[effects(alloc)]
+        fn bit_method(self: &mut Gen, m: &str, i: ast::IntTy, a: &str, n: &str) -> CVal {
+            let w: u32 = body::bits(i);
+            let mut wt: String = String::new();
+            std::num::push_u64(&mut wt, w as u64);
+            if m == "wrapping_shl" || m == "wrapping_shr" {
+                let k: String = self.t();
+                let mut mask: String = String::new();
+                std::num::push_u64(&mut mask, w.wrapping_sub(1) as u64);
+                self.emit(types::cat5(k.as_str(), " = and i64 ", n, ", ", mask.as_str()).as_str());
+                let sop: ast::BinOp = if m == "wrapping_shl" {
+                    ast::BinOp::Shl
+                } else {
+                    ast::BinOp::Shr
+                };
+                return self.shift_inst(sop, i, a, k.as_str());
+            }
+            if m == "swap_bytes" && w == 8 {
+                return CVal::Imm(String::from(a));
+            }
+            let it: String = types::cat2("i", wt.as_str());
+            let x: String = self.narrowed(a, w, it.as_str());
+            let r: String = self.t();
+            let head: String = types::cat4(r.as_str(), " = call ", it.as_str(), " @llvm.");
+            if m == "rotate_left" || m == "rotate_right" {
+                let k2: String = self.narrowed(n, w, it.as_str());
+                let rot: String = if m == "rotate_left" {
+                    String::from("fshl")
+                } else {
+                    String::from("fshr")
+                };
+                let mut line: String = types::cat5(head.as_str(), rot.as_str(), ".", it.as_str(), "(");
+                line.push_str(types::cat7(it.as_str(), " ", x.as_str(), ", ", it.as_str(), " ", x.as_str()).as_str());
+                line.push_str(types::cat5(", ", it.as_str(), " ", k2.as_str(), ")").as_str());
+                self.emit(line.as_str());
+            } else if m == "count_ones" || m == "count_zeros" {
+                self.emit(types::cat7(head.as_str(), "ctpop.", it.as_str(), "(", it.as_str(), " ", types::cat2(x.as_str(), ")").as_str()).as_str());
+            } else if m == "leading_zeros" || m == "trailing_zeros" {
+                let zf: String = if m == "leading_zeros" {
+                    String::from("ctlz.")
+                } else {
+                    String::from("cttz.")
+                };
+                self.emit(types::cat7(head.as_str(), zf.as_str(), it.as_str(), "(", it.as_str(), " ", types::cat2(x.as_str(), ", i1 false)").as_str()).as_str());
+            } else if m == "leading_ones" || m == "trailing_ones" {
+                let of: String = if m == "leading_ones" {
+                    String::from("ctlz.")
+                } else {
+                    String::from("cttz.")
+                };
+                let inv: String = self.t();
+                self.emit(types::cat7(inv.as_str(), " = xor ", it.as_str(), " ", x.as_str(), ", -1", "").as_str());
+                self.emit(types::cat7(head.as_str(), of.as_str(), it.as_str(), "(", it.as_str(), " ", types::cat2(inv.as_str(), ", i1 false)").as_str()).as_str());
+            } else if m == "reverse_bits" {
+                self.emit(types::cat7(head.as_str(), "bitreverse.", it.as_str(), "(", it.as_str(), " ", types::cat2(x.as_str(), ")").as_str()).as_str());
+            } else if m == "swap_bytes" {
+                self.emit(types::cat7(head.as_str(), "bswap.", it.as_str(), "(", it.as_str(), " ", types::cat2(x.as_str(), ")").as_str()).as_str());
+            } else {
+                self.todo.push(types::cat4("the bit method `", m, "` in ", self.path.as_str()));
+                return CVal::Never;
+            }
+            let res: String = if m == "count_zeros" {
+                let z: String = self.t();
+                self.emit(types::cat7(z.as_str(), " = sub ", it.as_str(), " ", wt.as_str(), ", ", r.as_str()).as_str());
+                z
+            } else {
+                r
+            };
+            if w == 64 {
+                return CVal::Imm(res);
+            }
+            let ext: String = if body::bit_count(m) || !body::signed(i) {
+                String::from("zext")
+            } else {
+                String::from("sext")
+            };
+            let back: String = self.t();
+            self.emit(types::cat7(back.as_str(), " = ", ext.as_str(), " ", it.as_str(), " ", types::cat2(res.as_str(), " to i64").as_str()).as_str());
+            CVal::Imm(back)
+        }
+
         #[summary("레이블 한 줄")]
         #[effects(alloc)]
         fn block(self: &mut Gen, label: &str) -> () {
@@ -185,10 +270,13 @@ mod codegen {
             if c.path.len() == 2 && c.path[0].name == "u32" && c.path[1].name == "from" && c.args.len() == 1 {
                 return self.expr(&c.args[0], ck, tb, f - 1);
             }
+            if body::is_f64_from(c.path.as_slice()) && c.args.len() == 1 {
+                return self.f64_from(&c.args[0], ck, tb, f - 1);
+            }
             let target: String = self.resolve(c.path.as_slice(), tb);
             match tb.fns.find(target.as_str()) {
                 None => self.todo_expr("a call that is not of a function (a variant or a built-in)", e),
-                Some(at) => { let print: bool = target == "print_i64" || target == "print_u64"; if tb.fns.items[at].builtin && !print || tb.fns.items[at].generics.len() > 0 || has_trait(&tb.fns.items[at]) || tb.targs.has(body::span_key(e.span).as_str()) { return self.todo_expr("a call of a built-in, a generic function or a trait method", e); } let mut flat: Vec<String> = Vec::new(); for k in 0..c.args.len() invariant 0 <= k && k <= c.args.len(), { let aty: ast::TypeKind = self.ty(&c.args[k], tb); if k < tb.fns.items[at].params.len() && (body::is_ref(&tb.fns.items[at].params[k]) || is_mem(&tb.fns.items[at].params[k]) || body::is_array(&tb.fns.items[at].params[k])) { return self.todo_expr("an argument that is not a scalar", &c.args[k]); } let av: CVal = self.expr(&c.args[k], ck, tb, f - 1); match &av { CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())), CVal::Unit => {}, CVal::Never => { if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } }, } } let ret: ast::TypeKind = if print { ast::TypeKind::Unit } else { tb.fns.items[at].ret.clone() }; let callee: String = if print { types::cat2("@bmb_", target.as_str()) } else { fn_sym(target.as_str()) }; if ret_in_memory(&ret) { return self.todo_expr("a call with a result in memory", e); } let args: String = types::join(flat.as_slice(), ", "); if decls::is_unit(&ret) { self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str()); return CVal::Unit; } let r: String = self.t(); self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str()); CVal::Imm(r) },
+                Some(at) => { let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64"; if tb.fns.items[at].builtin && !print || tb.fns.items[at].generics.len() > 0 || has_trait(&tb.fns.items[at]) || tb.targs.has(body::span_key(e.span).as_str()) { return self.todo_expr("a call of a built-in, a generic function or a trait method", e); } let mut flat: Vec<String> = Vec::new(); for k in 0..c.args.len() invariant 0 <= k && k <= c.args.len(), { let aty: ast::TypeKind = self.ty(&c.args[k], tb); if k < tb.fns.items[at].params.len() && (body::is_ref(&tb.fns.items[at].params[k]) || is_mem(&tb.fns.items[at].params[k]) || body::is_array(&tb.fns.items[at].params[k])) { return self.todo_expr("an argument that is not a scalar", &c.args[k]); } let av: CVal = self.expr(&c.args[k], ck, tb, f - 1); match &av { CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())), CVal::Unit => {}, CVal::Never => { if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } }, } } if target == "print_f64" { if flat.len() != 2 { return self.todo_expr("a `print_f64` whose arguments are not two values", e); } let pc: String = self.t(); self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str()); self.check(pc.as_str(), "`print_f64` decimals above 65535"); self.print_f64 = true; } let ret: ast::TypeKind = if print { ast::TypeKind::Unit } else { tb.fns.items[at].ret.clone() }; let callee: String = if print { types::cat2("@bmb_", target.as_str()) } else { fn_sym(target.as_str()) }; if ret_in_memory(&ret) { return self.todo_expr("a call with a result in memory", e); } let args: String = types::join(flat.as_slice(), ", "); if decls::is_unit(&ret) { self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str()); return CVal::Unit; } let r: String = self.t(); self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str()); CVal::Imm(r) },
             }
         }
 
@@ -293,7 +381,7 @@ mod codegen {
                 ast::ExprKind::Unit => CVal::Unit,
                 ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } match self.scalar_slot(id.name.as_str()) { None => self.todo_expr("a name that is not a scalar local", e), Some(slot) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", slot.ty.as_str(), ", ptr ", slot.ptr.as_str()).as_str()); CVal::Imm(r) }, } },
                 ast::ExprKind::Call(c) => self.call(e, c, ck, tb, f - 1),
-                ast::ExprKind::Method(ex_m) => self.todo_expr("a method call", e),
+                ast::ExprKind::Method(mc) => self.method(e, mc, ck, tb, f - 1),
                 ast::ExprKind::Index(ex_index0, ex_index1) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Unary(uop, ux) => self.unary(e, *uop, &**ux, ck, tb, f - 1),
                 ast::ExprKind::Binary(bop, lhs, rhs) => self.binary(e, *bop, &**lhs, &**rhs, ck, tb, f - 1),
@@ -307,7 +395,7 @@ mod codegen {
                 ast::ExprKind::Trigger(ex_trigger0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Closure(ex_closure0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::StructLit(ex_structlit0) => self.todo_expr("an expression not lowered yet", e),
-                ast::ExprKind::Path(ex_path0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Path(segs) => self.path_const(e, segs.as_slice()),
                 ast::ExprKind::Deref(ex_deref0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Field(ex_field0, ex_field1) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Match(ex_match0) => self.todo_expr("an expression not lowered yet", e),
@@ -319,6 +407,53 @@ mod codegen {
                 ast::ExprKind::Range(ex_range0) => self.todo_expr("an expression not lowered yet", e),
                 ast::ExprKind::Error => self.todo_expr("an expression not lowered yet", e),
             }
+        }
+
+        #[summary("f64::from(x) (stage0 f64_from): 64비트 정수는 정확히 옮겨지는 범위(2^53까지)를 잰다")]
+        #[effects(alloc)]
+        fn f64_from(self: &mut Gen, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", x);
+            }
+            let st: ast::TypeKind = self.ty(x, tb);
+            let v: String = imm(&self.expr(x, ck, tb, f - 1));
+            match body::int_of(&st) {
+                None => CVal::Imm(v),
+                Some(i) => { if body::bits(i) == 64 { let c: String = self.t(); if body::signed(i) { let sh: String = self.t(); self.emit(types::cat4(sh.as_str(), " = add i64 ", v.as_str(), ", 9007199254740992").as_str()); self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", sh.as_str(), ", 18014398509481984").as_str()); } else { self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", v.as_str(), ", 9007199254740992").as_str()); } self.check(c.as_str(), "`f64::from` may not be exact"); } let r: String = self.t(); let inst: String = if body::signed(i) { String::from("sitofp") } else { String::from("uitofp") }; self.emit(types::cat7(r.as_str(), " = ", inst.as_str(), " i64 ", v.as_str(), " to double", "").as_str()); CVal::Imm(r) },
+            }
+        }
+
+        #[summary("f64의 메서드 (stage0 f64_method): sqrt, abs, min, max, is_nan, is_finite")]
+        #[effects(alloc)]
+        fn f64_method(self: &mut Gen, m: &str, a: &str, b: &str, has_b: bool) -> CVal {
+            let r: String = self.t();
+            if (m == "sqrt" || m == "abs") && !has_b {
+                let fname: String = if m == "sqrt" {
+                    String::from("sqrt")
+                } else {
+                    String::from("fabs")
+                };
+                self.emit(types::cat7(r.as_str(), " = call double @llvm.", fname.as_str(), ".f64(double ", a, ")", "").as_str());
+            } else if (m == "min" || m == "max") && has_b {
+                let mm: String = if m == "min" {
+                    String::from("minnum")
+                } else {
+                    String::from("maxnum")
+                };
+                self.emit(types::cat7(r.as_str(), " = call double @llvm.", mm.as_str(), ".f64(double ", a, ", double ", types::cat2(b, ")").as_str()).as_str());
+            } else if m == "is_nan" && !has_b {
+                self.emit(types::cat5(r.as_str(), " = fcmp uno double ", a, ", ", a).as_str());
+            } else if m == "is_finite" && !has_b {
+                let x: String = self.t();
+                self.emit(types::cat4(x.as_str(), " = call double @llvm.fabs.f64(double ", a, ")").as_str());
+                self.emit(types::cat4(r.as_str(), " = fcmp olt double ", x.as_str(), ", 0x7FF0000000000000").as_str());
+            } else {
+                self.todo.push(types::cat4("the `f64` method `", m, "` in ", self.path.as_str()));
+                return CVal::Never;
+            }
+            CVal::Imm(r)
         }
 
         #[summary("값 v가 정수 타입 i의 범위 안인가 (stage0 fits): 그 판정의 레지스터")]
@@ -390,6 +525,90 @@ mod codegen {
             c
         }
 
+        #[summary("정수 메서드 (stage0 int_method, narrow_method): wrapping_*은 64비트에서 셈하고 제 폭으로 자르고, saturating_*은 내장 함수나 넘침 깃발로 끝 값에 붙인다. checked_*은 Option이라 아직 옮기지 않았다")]
+        #[effects(alloc)]
+        fn int_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
+            let signed: bool = body::signed(i);
+            let sg: String = if signed {
+                String::from("s")
+            } else {
+                String::from("u")
+            };
+            let wrapping: bool = op == "wrapping_add" || op == "wrapping_sub" || op == "wrapping_mul";
+            let saturating: bool = op == "saturating_add" || op == "saturating_sub" || op == "saturating_mul";
+            if !wrapping && !saturating {
+                return self.todo_expr("an integer method that is not wrapping or saturating", e);
+            }
+            let base: String = if op == "wrapping_add" || op == "saturating_add" {
+                String::from("add")
+            } else if op == "wrapping_sub" || op == "saturating_sub" {
+                String::from("sub")
+            } else {
+                String::from("mul")
+            };
+            let r: String = self.t();
+            if wrapping {
+                self.emit(types::cat7(r.as_str(), " = ", base.as_str(), " i64 ", a, ", ", b).as_str());
+            } else if base != "mul" {
+                let mut line: String = types::cat5(r.as_str(), " = call i64 @llvm.", sg.as_str(), base.as_str(), ".sat.i64(i64 ");
+                line.push_str(a);
+                line.push_str(", i64 ");
+                line.push_str(b);
+                line.push_str(")");
+                self.emit(line.as_str());
+            } else {
+                let pair: String = self.t();
+                let v: String = self.t();
+                let ovf: String = self.t();
+                let mut pl: String = types::cat5(pair.as_str(), " = call {i64, i1} @llvm.", sg.as_str(), "mul", ".with.overflow.i64(i64 ");
+                pl.push_str(a);
+                pl.push_str(", i64 ");
+                pl.push_str(b);
+                pl.push_str(")");
+                self.emit(pl.as_str());
+                self.emit(types::cat4(v.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 0").as_str());
+                self.emit(types::cat4(ovf.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 1").as_str());
+                let bound: String = if signed {
+                    let x: String = self.t();
+                    let neg: String = self.t();
+                    let lim: String = self.t();
+                    self.emit(types::cat5(x.as_str(), " = xor i64 ", a, ", ", b).as_str());
+                    self.emit(types::cat4(neg.as_str(), " = icmp slt i64 ", x.as_str(), ", 0").as_str());
+                    self.emit(types::cat4(lim.as_str(), " = select i1 ", neg.as_str(), ", i64 -9223372036854775808, i64 9223372036854775807").as_str());
+                    lim
+                } else {
+                    String::from("-1")
+                };
+                self.emit(types::cat7(r.as_str(), " = select i1 ", ovf.as_str(), ", i64 ", bound.as_str(), ", i64 ", v.as_str()).as_str());
+            }
+            if body::bits(i) == 64 {
+                return CVal::Imm(r);
+            }
+            let mut wt: String = String::new();
+            std::num::push_u64(&mut wt, body::bits(i) as u64);
+            if wrapping {
+                let t1: String = self.t();
+                let w1: String = self.t();
+                let ext: String = if signed {
+                    String::from("sext")
+                } else {
+                    String::from("zext")
+                };
+                self.emit(types::cat5(t1.as_str(), " = trunc i64 ", r.as_str(), " to i", wt.as_str()).as_str());
+                self.emit(types::cat7(w1.as_str(), " = ", ext.as_str(), " i", wt.as_str(), " ", types::cat2(t1.as_str(), " to i64").as_str()).as_str());
+                return CVal::Imm(w1);
+            }
+            let w2: String = self.t();
+            if signed {
+                let lo: String = self.t();
+                self.emit(types::cat7(lo.as_str(), " = call i64 @llvm.smax.i64(i64 ", r.as_str(), ", i64 ", int_min(i).as_str(), ")", "").as_str());
+                self.emit(types::cat7(w2.as_str(), " = call i64 @llvm.smin.i64(i64 ", lo.as_str(), ", i64 ", int_max(i).as_str(), ")", "").as_str());
+            } else {
+                self.emit(types::cat7(w2.as_str(), " = call i64 @llvm.umin.i64(i64 ", r.as_str(), ", i64 ", int_max(i).as_str(), ")", "").as_str());
+            }
+            CVal::Imm(w2)
+        }
+
         #[summary("식 e의 값이 글인가 (stage0 is_text_expr): 낮추기 전의 타입으로")]
         #[effects(alloc)]
         fn is_text_expr(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
@@ -442,6 +661,39 @@ mod codegen {
             }
         }
 
+        #[summary("메서드 호출 (stage0 expr의 Method 갈래들). 지금은 정수 변환의 unwrap, f64의 메서드, 정수의 비트·wrapping·saturating 메서드")]
+        #[effects(alloc)]
+        fn method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let name: String = mc.name.name.clone();
+            match conv_parts(&*mc.recv) {
+                None => {},
+                Some(cv) => { if name != "unwrap" { return self.todo_expr("a conversion whose `Option` is kept", e); } let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); if body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)) { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); },
+            }
+            let rt: ast::TypeKind = self.ty(&*mc.recv, tb);
+            let vt: ast::TypeKind = lowered::value_ty(&rt);
+            if self.is_text_expr(&*mc.recv, tb) || body::is_ref(&rt) {
+                return self.todo_expr("a method of text or of a reference", e);
+            }
+            if body::is_f64(&vt) {
+                let fa: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1));
+                let fb: String = if mc.args.len() > 0 {
+                    imm(&self.expr(&mc.args[0], ck, tb, f - 1))
+                } else {
+                    String::new()
+                };
+                return self.f64_method(name.as_str(), fa.as_str(), fb.as_str(), mc.args.len() > 0);
+            }
+            match body::int_of(&rt) {
+                None => self.todo_expr("a method of a value that is not a scalar", e),
+                Some(i) => { if name == "to_be_bytes" || name == "to_le_bytes" || name == "checked_shl" || name == "checked_shr" || name == "len" { return self.todo_expr("an integer method whose value is not a scalar", e); } let rv: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1)); if name == "is_power_of_two" { let ones: String = imm(&self.bit_method("count_ones", i, rv.as_str(), "")); let pr: String = self.t(); self.emit(types::cat4(pr.as_str(), " = icmp eq i64 ", ones.as_str(), ", 1").as_str()); return CVal::Imm(pr); } if body::bit_method(name.as_str()) > 0 { let n: String = if mc.args.len() > 0 { imm(&self.expr(&mc.args[0], ck, tb, f - 1)) } else { String::new() }; return self.bit_method(name.as_str(), i, rv.as_str(), n.as_str()); } if mc.args.len() != 1 { return self.todo_expr("an integer method without one argument", e); } let b: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1)); self.int_method(e, name.as_str(), rv.as_str(), b.as_str(), i) },
+            }
+        }
+
         #[summary("64비트보다 좁은 정수의 산술 (stage0 narrow_arith): 64비트에서 셈하고 타입의 범위를 잰다")]
         #[effects(alloc)]
         fn narrow_arith(self: &mut Gen, inst: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
@@ -460,6 +712,35 @@ mod codegen {
             let c: String = self.fits(r.as_str(), i);
             self.check(c.as_str(), types::cat5("`", inst, "` may overflow `", body::int_text(i).as_str(), "`").as_str());
             CVal::Imm(r)
+        }
+
+        #[summary("v를 제 폭 it로 자른 값 (stage0 bit_method의 narrow): 64비트면 그대로")]
+        #[effects(alloc)]
+        fn narrowed(self: &mut Gen, v: &str, w: u32, it: &str) -> String {
+            if w == 64 {
+                return String::from(v);
+            }
+            let t: String = self.t();
+            self.emit(types::cat5(t.as_str(), " = trunc i64 ", v, " to ", it).as_str());
+            t
+        }
+
+        #[summary("경로로 쓴 상수 (stage0 expr의 Path 갈래들): 정수 타입의 MIN·MAX, f64의 상수. 변형은 아직 옮기지 않았다")]
+        #[effects(alloc)]
+        fn path_const(self: &mut Gen, e: &ast::Expr, segs: &[ast::Ident]) -> CVal {
+            if segs.len() == 2 {
+                match ast::int_of(segs[0].name.as_str()) {
+                    None => {},
+                    Some(i) => { if segs[1].name == "MIN" { return CVal::Imm(int_min(i)); } if segs[1].name == "MAX" { return CVal::Imm(int_max(i)); } },
+                }
+                if segs[0].name == "f64" {
+                    let bits: u64 = f64_named(segs[1].name.as_str());
+                    if bits != 0 {
+                        return CVal::Imm(f64_const(bits));
+                    }
+                }
+            }
+            self.todo_expr("a path that is not a scalar constant", e)
         }
 
         #[summary("호출의 경로가 가리키는 함수 (stage0 resolve): 제 단위의 것이 먼저")]
@@ -503,6 +784,15 @@ mod codegen {
                 self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", b, ", ", wt.as_str()).as_str());
                 self.check(c.as_str(), types::cat2("shift amount out of 0..", wt.as_str()).as_str());
             }
+            self.shift_inst(op, i, a, b)
+        }
+
+        #[summary("시프트의 명령 (stage0 shift_inst): 좁은 타입의 왼쪽 시프트는 제 폭으로 자르고 다시 넓힌다")]
+        #[effects(alloc)]
+        fn shift_inst(self: &mut Gen, op: ast::BinOp, i: ast::IntTy, a: &str, b: &str) -> CVal {
+            let w: u32 = body::bits(i);
+            let mut wt: String = String::new();
+            std::num::push_u64(&mut wt, w as u64);
             let res: String = self.t();
             if is_shr(op) {
                 let inst: String = if body::signed(i) {
@@ -746,6 +1036,48 @@ mod codegen {
         }
     }
 
+    #[summary("e가 T::try_from(x)면 (T는 정수 타입) T와 x (stage0 check::conv_call)")]
+    #[effects(alloc)]
+    fn conv_parts(e: &ast::Expr) -> Option<Conv> {
+        match &e.kind {
+            ast::ExprKind::Int(cp_int0, cp_int1) => None,
+            ast::ExprKind::Float(cp_float0) => None,
+            ast::ExprKind::ByteLit(cp_bytelit0) => None,
+            ast::ExprKind::ByteStr(cp_bytestr0) => None,
+            ast::ExprKind::StrLit(cp_strlit0) => None,
+            ast::ExprKind::CharLit(cp_charlit0) => None,
+            ast::ExprKind::Bool(cp_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(cp_var0) => None,
+            ast::ExprKind::Call(c) => { if c.path.len() == 2 && c.path[1].name == "try_from" && c.args.len() == 1 { match ast::int_of(c.path[0].name.as_str()) { None => None, Some(i) => Some(Conv { target: i, arg: c.args[0].clone() }), } } else { None } },
+            ast::ExprKind::Method(cp_method0) => None,
+            ast::ExprKind::Index(cp_index0, cp_index1) => None,
+            ast::ExprKind::Unary(cp_unary0, cp_unary1) => None,
+            ast::ExprKind::Binary(cp_binary0, cp_binary1, cp_binary2) => None,
+            ast::ExprKind::Ref(cp_ref0, cp_ref1) => None,
+            ast::ExprKind::If(cp_if0) => None,
+            ast::ExprKind::Block(cp_block0) => None,
+            ast::ExprKind::Array(cp_array0) => None,
+            ast::ExprKind::Repeat(cp_repeat0) => None,
+            ast::ExprKind::Old(cp_old0) => None,
+            ast::ExprKind::Quant(cp_quant0) => None,
+            ast::ExprKind::Trigger(cp_trigger0) => None,
+            ast::ExprKind::Closure(cp_closure0) => None,
+            ast::ExprKind::StructLit(cp_structlit0) => None,
+            ast::ExprKind::Path(cp_path0) => None,
+            ast::ExprKind::Deref(cp_deref0) => None,
+            ast::ExprKind::Field(cp_field0, cp_field1) => None,
+            ast::ExprKind::Match(cp_match0) => None,
+            ast::ExprKind::Return(cp_return0) => None,
+            ast::ExprKind::Try(cp_try0) => None,
+            ast::ExprKind::Loop(cp_loop0) => None,
+            ast::ExprKind::Break(cp_break0) => None,
+            ast::ExprKind::Continue(cp_continue0) => None,
+            ast::ExprKind::Range(cp_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
     #[summary("구조체나 열거형의 LLVM 타입 (stage0 data_ty): %\"geo::Point\"")]
     #[effects(alloc)]
     fn data_ty(t: &ast::TypeKind) -> String {
@@ -822,13 +1154,17 @@ mod codegen {
         ir.push_str(codegen_text::head_rest().as_str());
         let defs: Vec<Def> = sorted_defs(&ck.program, tb);
         let mut main: Option<String> = None;
+        let mut print_f64: bool = false;
         for i in 0..defs.len()
             invariant 0 <= i && i <= defs.len(),
         {
             match tb.fns.find(defs[i].path.as_str()) {
                 None => {},
-                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
+                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
             }
+        }
+        if print_f64 {
+            ir.push_str(codegen_text::print_f64().as_str());
         }
         match &main {
             None => {},
@@ -873,6 +1209,33 @@ mod codegen {
             }
         }
         s
+    }
+
+    #[summary("f64의 이름 붙은 상수의 비트 (stage0 check::F64_CONSTS). 모르는 이름이면 0")]
+    #[effects(pure)]
+    fn f64_named(name: &str) -> u64 {
+        if name == "INFINITY" {
+            return 9218868437227405312;
+        }
+        if name == "NEG_INFINITY" {
+            return 18442240474082181120;
+        }
+        if name == "NAN" {
+            return 9221120237041090560;
+        }
+        if name == "MAX" {
+            return 9218868437227405311;
+        }
+        if name == "MIN" {
+            return 18442240474082181119;
+        }
+        if name == "MIN_POSITIVE" {
+            return 4503599627370496;
+        }
+        if name == "EPSILON" {
+            return 4372995238176751616;
+        }
+        0
     }
 
     #[summary("e가 실수 리터럴이면 그 비트")]
@@ -1418,7 +1781,7 @@ mod codegen {
     #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
     #[effects(alloc)]
     fn lower_fn(def: &Def, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), ret: sig.ret.clone(), todo: Vec::new() };
+        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), ret: sig.ret.clone(), todo: Vec::new(), print_f64: false };
         let mut params: Vec<String> = Vec::new();
         for i in 0..def.d.params.len()
             invariant 0 <= i && i <= def.d.params.len(),

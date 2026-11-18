@@ -34,14 +34,14 @@
 | C5 | 맵·질의 | P5 | 2,654 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C6 | 증명 인코딩 | P6 | 13,734 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C7 | 해법기·도구 연결 | P7 | 1,102 | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| C8 | 코드 생성 | P4 | 6,664 | 1,919 | 55 | 0.4 | 0.4 | 99 | 99/99 | 656 | 24,772,608 | 0 | — | 5 | 0 | — |
+| C8 | 코드 생성 | P4 | 6,664 | 2,282 | 57 | 0.5 | 0.5 | 109 | 109/109 | 706 | 30,772,621 | 0 | — | 7 | 0 | — |
 | C9 | 캐시·증분 | P8 | 1,675 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C10 | 도구 | P9 | 9,641 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C11 | 작업 공간·트랜잭션 | P10 | 1,230 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C12 | MCP 서버 | P11 | 1,494 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | C13 | CLI | P11 | 1,196 | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
-stage0 합계 66,768줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 34,042줄(50%), 포트 합계 35,849줄.
+stage0 합계 66,768줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 34,042줄(50%), 포트 합계 36,212줄.
 
 마찰:
 - C0: `const`가 `&str`을 담지 못해 진단 코드 표(185 + 6)는 `Vec<Code>`를 만드는 함수다(부를 때마다 만든다). 그대로 둠
@@ -121,10 +121,11 @@ stage0 합계 66,768줄, 조기 고정점(E1: C0, C1, C2, C3, C4, C8) 범위 34,
 - C4: `4D-03e8b`(구동·표·대조): `check_program`, `check_resolved`, `ConstTrees`(stage0 `consts::literal_tree`), `Methodize`, `may_untrusted`, `lib`의 `push_tables`·`check`. 정의 24개. `bmb check`의 첫 진단 6개(E0303, E0401 넷: `for i in 0..10`의 `i`가 `i64`라 `usize`와 섞임, E0414). `bmb verify` 첫 회에 3개 실패(`key_part`와 `last_of`의 넘침·사후조건, `may_untrusted`의 루프 불변식: `&mut`로 넘긴 `Vec`의 길이가 줄지 않음을 호출 뒤에 알 수 없어 더할 것을 따로 모았다). stage0과의 첫 출력 대조(추적되는 `.bmb` 936개의 `dump types`)는 715개가 같았고 195개에서 stage1이 멈췄다: stage0의 결함 `4D-34`(갈래가 묶은 값의 부분 이동 뒤 이중 해제). 고친 뒤 남은 차이는 앞 조각의 누락 둘이었다: `#[uses(<T as Tr>::m)]`의 풀이(`decls::uses_target`), 상수 검사가 평가기의 진단을 빼는 자리(stage0은 검사기가 앞 단계의 진단 목록 위에서 돈다). 증명은 이 둘을 볼 수 없었다(명세가 없는 동작). 표면이 바꾼 꼴: 클로저 셋(`fresh`, `id`, `segs`)과 `&mut` 둘을 받는 `literal_tree`는 상태를 든 구조체 `ConstTrees`의 메서드다(`&self.adts`와 `&mut self.types`를 한 호출에 넘기면 E0410). `loop { .. return .. }`은 연료가 든 `while`이다. `rsplit_once`는 자리를 찾는 `last_of`와 `lexer::cut`이다
 - C4: `4D-03e9`(`moves`, `selfhost/moves.bmb`): stage0 `moves.rs` 1,164줄이 1,491줄, 정의 66개. `bmb check`의 첫 진단 9개(E0103 둘: 필드 이름으로 쓴 예약어 `spec`, E0414 여섯: 조건 안에서만 표에 넣는 값, E0303 하나). `bmb verify` 첫 회에 2개 실패: `moves::jump`(루프의 색인 범위, 상태의 사본을 돌게 해서 풀림), 그리고 고치지 않은 `body::Body::expr_inner`가 솔버 한도를 넘었다(`Body`에 필드 하나가 늘자 서른다섯 갈래의 `match` 끝에서 타입 불변식의 의무가 한도 500만의 73%에서 102%로). 놓는 자리를 `Body`의 새 필드 대신 `Needs` 안에 담아도 넘어서, `expr_inner`를 식의 종류로 가른 두 메서드(`expr_early`·`expr_late`)로 나눴다(각각 한도의 42%, 50%). 표면이 바꾼 꼴: 참조를 든 구조체 `Mv<'a>`는 값을 든 `Mv`와 읽기만 하는 `Env`로 나뉘고, 식의 타입 표와 데이터 타입 표는 `std::mem::replace`로 빌려줬다가 돌려받는다(복사하지 않는다). `BTreeMap<String, St>`는 이름의 순서로 둔 두 `Vec`(`State`)이다: 열쇠를 지울 수 있어야 해서 `table::Table`을 쓰지 못했다. `enum St`와 `Option<St>`는 `u8` 0·1·2다. 가드 붙은 갈래(`Field { .. } if 지역 필드`)는 `local_field`가 돌려주는 `Option`의 `match`다. stage0과의 첫 대조에서 차이 0
 - C4: `4D-03f3`(`check::methodize`, `selfhost/methodize.bmb`): stage0 약 190줄이 정의 16개. 클로저 `&mut |e| {..}`가 잡던 것(단위의 경로, 정의의 자리, 남길 호출, 고쳐 쓴 호출의 표)은 손님 구조체 `Rewrite`의 필드다: 검사기의 표도 참조로 들 수 없어 되풀이마다 사본을 든다. `loop`는 걸음의 한도(`fuel`)를 둔 `while`이다(남기는 집합이 커지는 동안만 돌지만 그것을 측도로 쓰지 못했다). `std::mem::take(args)`로 옮기던 인자는 사본이다. 가드 붙은 갈래 둘(`Ref { expr, .. } if by_ref`, `k if own(k)`)은 서른다섯·열일곱 갈래의 `match`와 `Option`이다. `bmb check`의 첫 진단 5개(E0303, E0410: `self.conv.insert(.., self.fk.clone())`, E0414 둘, E0413: `*x.clone()`으로 상자에서 꺼내기), `bmb verify`는 첫 회에 전부 통과(1,501개). stage0과의 첫 대조에서 차이 0
-- C8: 닫히지 않은 행이다: 낮춘 표, 타입 배치, 모듈의 뼈대, 스칼라 식과 문장(`4D-05a`~`4D-05c2`)뿐이고 `dump lowered`·`dump layout`과 허용 목록의 `emit-llvm --all-checks`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a`·`4D-05b`·`4D-38`·`4D-05c1`·`4D-05c2` 1번씩, 모두 첫 회에 전부 증명)
+- C8: 닫히지 않은 행이다: 낮춘 표, 타입 배치, 모듈의 뼈대, 스칼라 식·문장·메서드(`4D-05a`~`4D-05c3`)뿐이고 `dump lowered`·`dump layout`과 허용 목록의 `emit-llvm --all-checks`를 견준다. 옮긴 것은 stage0의 `check/text.rs`의 `lower`와 `verify.rs`의 `Tables::lowered`·`struct_fields`·`enum_variants`·`value_ty`라서(C4·C6의 파일) 배율은 C8과 견줘지지 않는다. `gate_runs`는 포트 전체의 `bmb verify` 실행 수다(`4D-05a`·`4D-05b`·`4D-38`·`4D-05c1`·`4D-05c2` 1번씩 첫 회에 전부, `4D-05c3` 2번: 첫 회에 `bit_method`의 `w - 1`이 E0803으로 떨어졌다)
 - C8: 상수 IR 글을 들 수단이 없다(`include_str!`·`const`의 긴 글): `scripts/codegen_text.py`가 stage0의 `bmb dump runtime`에서 `selfhost/codegen_text.bmb`를 만들고 게이트가 신선도를 본다: 우회, `std_units`와 같은 까닭
 - C8: `Gen`이 표를 든 참조를 필드로 가질 수 없어(참조는 2급) 표(`&lowered::Tables`, `&body::Checked`)를 메서드마다 매개변수로 넘긴다: 그대로 둠
 - C8: 한 함수 안에서 이름 하나는 타입 하나라(E0303) 갈래가 35개인 `expr`의 묶는 이름을 갈래마다 달리 지었다(`uop`·`ux`, `bop`·`lhs`·`rhs`, `ifx`): 같은 마찰이 세 번째다(`4D-05a`, `4D-05c1`). 그대로 둠, 언어의 선택이지만 큰 `match`에서 비용이 는다
+- C8: 글을 잇는 수단이 `push_str`와 인자 수가 정해진 `cat2`~`cat7`뿐이다(`format!`이 없다): IR 한 줄을 지을 때마다 조각 수에 맞는 함수를 고르고 남는 자리에 빈 글을 넣는다. stage0의 `format!` 370곳이 이렇게 옮겨진다: 그대로 둠, 결정 기준(에이전트가 쓰고 싶은 언어)으로는 고칠 후보(글 조각의 목록을 받는 표준 함수, 또는 보간)
 - C8: `old`는 예약어라 묶는 이름으로 쓸 수 없다(E0103 `expected binding or `_``): 진단이 예약어라고 말하지 않는다. 이름을 바꿨다(`prev`): 우회, 진단의 글은 고칠 후보
 - C8: `u64`의 배치 산술(`size.div_ceil(a) * a + s`)은 넘침 의무가 생긴다: stage0의 릴리스 빌드처럼 감기는 연산(`wrapping_add`·`wrapping_mul`·`wrapping_sub`)으로 쓰고 0으로 나눔은 갈래로 막았다(`round_up`): 그대로 둠
 - C8: 와일드카드 갈래가 없어 `TypeKind`의 17갈래를 세 곳에 더 쓴다(`lower_in`·`struct_fields`·`enum_variants`): 그대로 둠, 언어의 선택(ADR-0026)

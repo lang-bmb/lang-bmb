@@ -1,0 +1,203 @@
+#[summary("정수 변환 T::try_from(x).unwrap()을 원천과 대상의 쌍마다(100가지): 넓어지는 변환은 검사가 없고 나머지는 범위를 잰다")]
+mod convs {
+    #[effects(pure)]
+    fn i8_to_i8(x: i8) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_i16(x: i8) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_i32(x: i8) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_i64(x: i8) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_isize(x: i8) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_u8(x: i8) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_u16(x: i8) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_u32(x: i8) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_u64(x: i8) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i8_to_usize(x: i8) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_i8(x: i16) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_i16(x: i16) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_i32(x: i16) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_i64(x: i16) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_isize(x: i16) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_u8(x: i16) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_u16(x: i16) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_u32(x: i16) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_u64(x: i16) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i16_to_usize(x: i16) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_i8(x: i32) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_i16(x: i32) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_i32(x: i32) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_i64(x: i32) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_isize(x: i32) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_u8(x: i32) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_u16(x: i32) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_u32(x: i32) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_u64(x: i32) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i32_to_usize(x: i32) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_i8(x: i64) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_i16(x: i64) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_i32(x: i64) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_i64(x: i64) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_isize(x: i64) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_u8(x: i64) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_u16(x: i64) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_u32(x: i64) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_u64(x: i64) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn i64_to_usize(x: i64) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_i8(x: isize) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_i16(x: isize) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_i32(x: isize) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_i64(x: isize) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_isize(x: isize) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_u8(x: isize) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_u16(x: isize) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_u32(x: isize) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_u64(x: isize) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn isize_to_usize(x: isize) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_i8(x: u8) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_i16(x: u8) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_i32(x: u8) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_i64(x: u8) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_isize(x: u8) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_u8(x: u8) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_u16(x: u8) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_u32(x: u8) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_u64(x: u8) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u8_to_usize(x: u8) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_i8(x: u16) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_i16(x: u16) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_i32(x: u16) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_i64(x: u16) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_isize(x: u16) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_u8(x: u16) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_u16(x: u16) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_u32(x: u16) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_u64(x: u16) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u16_to_usize(x: u16) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_i8(x: u32) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_i16(x: u32) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_i32(x: u32) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_i64(x: u32) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_isize(x: u32) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_u8(x: u32) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_u16(x: u32) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_u32(x: u32) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_u64(x: u32) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u32_to_usize(x: u32) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_i8(x: u64) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_i16(x: u64) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_i32(x: u64) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_i64(x: u64) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_isize(x: u64) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_u8(x: u64) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_u16(x: u64) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_u32(x: u64) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_u64(x: u64) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn u64_to_usize(x: u64) -> usize { usize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_i8(x: usize) -> i8 { i8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_i16(x: usize) -> i16 { i16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_i32(x: usize) -> i32 { i32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_i64(x: usize) -> i64 { i64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_isize(x: usize) -> isize { isize::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_u8(x: usize) -> u8 { u8::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_u16(x: usize) -> u16 { u16::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_u32(x: usize) -> u32 { u32::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_u64(x: usize) -> u64 { u64::try_from(x).unwrap() }
+    #[effects(pure)]
+    fn usize_to_usize(x: usize) -> usize { usize::try_from(x).unwrap() }
+}
