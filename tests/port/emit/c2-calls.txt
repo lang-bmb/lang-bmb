@@ -1,0 +1,43 @@
+#[summary("제네릭 아닌 함수의 호출: 스칼라 인자와 결과, 단위 값의 인자와 결과, 다른 단위와 안 단위의 함수, impl의 함수, print_i64와 print_u64, u32::from")]
+mod calls {
+    struct P { x: i64 }
+    impl P {
+        #[effects(pure)]
+        fn twice(n: i64) -> i64 { n + n }
+    }
+    #[effects(pure)]
+    fn inc(x: i64) -> i64 { x + 1 }
+    #[effects(pure)]
+    fn pick(a: bool, x: f64, y: u8) -> f64 { if a { x } else { 0.0 } }
+    #[effects(pure)]
+    fn nothing(u: (), x: i64) -> () { }
+    #[effects(pure)]
+    fn code(c: char) -> u32 { u32::from(c) }
+    #[effects(pure)]
+    fn use_all(x: i64) -> i64 {
+        nothing((), x);
+        let a: i64 = inc(inc(x));
+        let b: f64 = pick(a > 0, 1.5, 7);
+        let c: i64 = other::triple(a) + other::deep::four();
+        let d: i64 = P::twice(c);
+        if b > 1.0 { d } else { a }
+    }
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(use_all(3));
+        print_u64(18446744073709551615);
+        print_i64(-1);
+        print_i64(inc(P::twice(20)));
+    }
+}
+
+#[summary("부르는 쪽보다 뒤의 단위")]
+mod other {
+    #[effects(pure)]
+    fn triple(x: i64) -> i64 { x * 3 }
+    #[summary("안 단위")]
+    mod deep {
+        #[effects(pure)]
+        fn four() -> i64 { 4 }
+    }
+}

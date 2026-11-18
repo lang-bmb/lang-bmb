@@ -1,0 +1,413 @@
+#[summary("정수 연산을 폭과 부호마다: 산술(넘침 검사), 나눗셈과 나머지(0과 MIN / -1), 비트 연산, 시프트(리터럴 양과 변수 양), 비교, 부호 바꿈, 비트 뒤집기")]
+mod ints {
+    #[effects(pure)]
+    fn add_i8(a: i8, b: i8) -> i8 { a + b }
+    #[effects(pure)]
+    fn sub_i8(a: i8, b: i8) -> i8 { a - b }
+    #[effects(pure)]
+    fn mul_i8(a: i8, b: i8) -> i8 { a * b }
+    #[effects(pure)]
+    fn div_i8(a: i8, b: i8) -> i8 { a / b }
+    #[effects(pure)]
+    fn rem_i8(a: i8, b: i8) -> i8 { a % b }
+    #[effects(pure)]
+    fn and_i8(a: i8, b: i8) -> i8 { a & b }
+    #[effects(pure)]
+    fn or_i8(a: i8, b: i8) -> i8 { a | b }
+    #[effects(pure)]
+    fn xor_i8(a: i8, b: i8) -> i8 { a ^ b }
+    #[effects(pure)]
+    fn shl_i8(a: i8, b: i8) -> i8 { a << b }
+    #[effects(pure)]
+    fn shr_i8(a: i8, b: i8) -> i8 { a >> b }
+    #[effects(pure)]
+    fn eq_i8(a: i8, b: i8) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_i8(a: i8, b: i8) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_i8(a: i8, b: i8) -> bool { a < b }
+    #[effects(pure)]
+    fn le_i8(a: i8, b: i8) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_i8(a: i8, b: i8) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_i8(a: i8, b: i8) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_i8(a: i8) -> i8 { a << 3 }
+    #[effects(pure)]
+    fn shr7_i8(a: i8) -> i8 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_i8(a: i8) -> i8 { a << 64 }
+    #[effects(pure)]
+    fn not_i8(a: i8) -> i8 { !a }
+    #[effects(pure)]
+    fn neg_i8(a: i8) -> i8 { -a }
+    #[effects(pure)]
+    fn add_i16(a: i16, b: i16) -> i16 { a + b }
+    #[effects(pure)]
+    fn sub_i16(a: i16, b: i16) -> i16 { a - b }
+    #[effects(pure)]
+    fn mul_i16(a: i16, b: i16) -> i16 { a * b }
+    #[effects(pure)]
+    fn div_i16(a: i16, b: i16) -> i16 { a / b }
+    #[effects(pure)]
+    fn rem_i16(a: i16, b: i16) -> i16 { a % b }
+    #[effects(pure)]
+    fn and_i16(a: i16, b: i16) -> i16 { a & b }
+    #[effects(pure)]
+    fn or_i16(a: i16, b: i16) -> i16 { a | b }
+    #[effects(pure)]
+    fn xor_i16(a: i16, b: i16) -> i16 { a ^ b }
+    #[effects(pure)]
+    fn shl_i16(a: i16, b: i16) -> i16 { a << b }
+    #[effects(pure)]
+    fn shr_i16(a: i16, b: i16) -> i16 { a >> b }
+    #[effects(pure)]
+    fn eq_i16(a: i16, b: i16) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_i16(a: i16, b: i16) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_i16(a: i16, b: i16) -> bool { a < b }
+    #[effects(pure)]
+    fn le_i16(a: i16, b: i16) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_i16(a: i16, b: i16) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_i16(a: i16, b: i16) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_i16(a: i16) -> i16 { a << 3 }
+    #[effects(pure)]
+    fn shr7_i16(a: i16) -> i16 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_i16(a: i16) -> i16 { a << 64 }
+    #[effects(pure)]
+    fn not_i16(a: i16) -> i16 { !a }
+    #[effects(pure)]
+    fn neg_i16(a: i16) -> i16 { -a }
+    #[effects(pure)]
+    fn add_i32(a: i32, b: i32) -> i32 { a + b }
+    #[effects(pure)]
+    fn sub_i32(a: i32, b: i32) -> i32 { a - b }
+    #[effects(pure)]
+    fn mul_i32(a: i32, b: i32) -> i32 { a * b }
+    #[effects(pure)]
+    fn div_i32(a: i32, b: i32) -> i32 { a / b }
+    #[effects(pure)]
+    fn rem_i32(a: i32, b: i32) -> i32 { a % b }
+    #[effects(pure)]
+    fn and_i32(a: i32, b: i32) -> i32 { a & b }
+    #[effects(pure)]
+    fn or_i32(a: i32, b: i32) -> i32 { a | b }
+    #[effects(pure)]
+    fn xor_i32(a: i32, b: i32) -> i32 { a ^ b }
+    #[effects(pure)]
+    fn shl_i32(a: i32, b: i32) -> i32 { a << b }
+    #[effects(pure)]
+    fn shr_i32(a: i32, b: i32) -> i32 { a >> b }
+    #[effects(pure)]
+    fn eq_i32(a: i32, b: i32) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_i32(a: i32, b: i32) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_i32(a: i32, b: i32) -> bool { a < b }
+    #[effects(pure)]
+    fn le_i32(a: i32, b: i32) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_i32(a: i32, b: i32) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_i32(a: i32, b: i32) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_i32(a: i32) -> i32 { a << 3 }
+    #[effects(pure)]
+    fn shr7_i32(a: i32) -> i32 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_i32(a: i32) -> i32 { a << 64 }
+    #[effects(pure)]
+    fn not_i32(a: i32) -> i32 { !a }
+    #[effects(pure)]
+    fn neg_i32(a: i32) -> i32 { -a }
+    #[effects(pure)]
+    fn add_i64(a: i64, b: i64) -> i64 { a + b }
+    #[effects(pure)]
+    fn sub_i64(a: i64, b: i64) -> i64 { a - b }
+    #[effects(pure)]
+    fn mul_i64(a: i64, b: i64) -> i64 { a * b }
+    #[effects(pure)]
+    fn div_i64(a: i64, b: i64) -> i64 { a / b }
+    #[effects(pure)]
+    fn rem_i64(a: i64, b: i64) -> i64 { a % b }
+    #[effects(pure)]
+    fn and_i64(a: i64, b: i64) -> i64 { a & b }
+    #[effects(pure)]
+    fn or_i64(a: i64, b: i64) -> i64 { a | b }
+    #[effects(pure)]
+    fn xor_i64(a: i64, b: i64) -> i64 { a ^ b }
+    #[effects(pure)]
+    fn shl_i64(a: i64, b: i64) -> i64 { a << b }
+    #[effects(pure)]
+    fn shr_i64(a: i64, b: i64) -> i64 { a >> b }
+    #[effects(pure)]
+    fn eq_i64(a: i64, b: i64) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_i64(a: i64, b: i64) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_i64(a: i64, b: i64) -> bool { a < b }
+    #[effects(pure)]
+    fn le_i64(a: i64, b: i64) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_i64(a: i64, b: i64) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_i64(a: i64, b: i64) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_i64(a: i64) -> i64 { a << 3 }
+    #[effects(pure)]
+    fn shr7_i64(a: i64) -> i64 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_i64(a: i64) -> i64 { a << 64 }
+    #[effects(pure)]
+    fn not_i64(a: i64) -> i64 { !a }
+    #[effects(pure)]
+    fn neg_i64(a: i64) -> i64 { -a }
+    #[effects(pure)]
+    fn add_isize(a: isize, b: isize) -> isize { a + b }
+    #[effects(pure)]
+    fn sub_isize(a: isize, b: isize) -> isize { a - b }
+    #[effects(pure)]
+    fn mul_isize(a: isize, b: isize) -> isize { a * b }
+    #[effects(pure)]
+    fn div_isize(a: isize, b: isize) -> isize { a / b }
+    #[effects(pure)]
+    fn rem_isize(a: isize, b: isize) -> isize { a % b }
+    #[effects(pure)]
+    fn and_isize(a: isize, b: isize) -> isize { a & b }
+    #[effects(pure)]
+    fn or_isize(a: isize, b: isize) -> isize { a | b }
+    #[effects(pure)]
+    fn xor_isize(a: isize, b: isize) -> isize { a ^ b }
+    #[effects(pure)]
+    fn shl_isize(a: isize, b: isize) -> isize { a << b }
+    #[effects(pure)]
+    fn shr_isize(a: isize, b: isize) -> isize { a >> b }
+    #[effects(pure)]
+    fn eq_isize(a: isize, b: isize) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_isize(a: isize, b: isize) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_isize(a: isize, b: isize) -> bool { a < b }
+    #[effects(pure)]
+    fn le_isize(a: isize, b: isize) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_isize(a: isize, b: isize) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_isize(a: isize, b: isize) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_isize(a: isize) -> isize { a << 3 }
+    #[effects(pure)]
+    fn shr7_isize(a: isize) -> isize { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_isize(a: isize) -> isize { a << 64 }
+    #[effects(pure)]
+    fn not_isize(a: isize) -> isize { !a }
+    #[effects(pure)]
+    fn neg_isize(a: isize) -> isize { -a }
+    #[effects(pure)]
+    fn add_u8(a: u8, b: u8) -> u8 { a + b }
+    #[effects(pure)]
+    fn sub_u8(a: u8, b: u8) -> u8 { a - b }
+    #[effects(pure)]
+    fn mul_u8(a: u8, b: u8) -> u8 { a * b }
+    #[effects(pure)]
+    fn div_u8(a: u8, b: u8) -> u8 { a / b }
+    #[effects(pure)]
+    fn rem_u8(a: u8, b: u8) -> u8 { a % b }
+    #[effects(pure)]
+    fn and_u8(a: u8, b: u8) -> u8 { a & b }
+    #[effects(pure)]
+    fn or_u8(a: u8, b: u8) -> u8 { a | b }
+    #[effects(pure)]
+    fn xor_u8(a: u8, b: u8) -> u8 { a ^ b }
+    #[effects(pure)]
+    fn shl_u8(a: u8, b: u8) -> u8 { a << b }
+    #[effects(pure)]
+    fn shr_u8(a: u8, b: u8) -> u8 { a >> b }
+    #[effects(pure)]
+    fn eq_u8(a: u8, b: u8) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_u8(a: u8, b: u8) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_u8(a: u8, b: u8) -> bool { a < b }
+    #[effects(pure)]
+    fn le_u8(a: u8, b: u8) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_u8(a: u8, b: u8) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_u8(a: u8, b: u8) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_u8(a: u8) -> u8 { a << 3 }
+    #[effects(pure)]
+    fn shr7_u8(a: u8) -> u8 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_u8(a: u8) -> u8 { a << 64 }
+    #[effects(pure)]
+    fn not_u8(a: u8) -> u8 { !a }
+    #[effects(pure)]
+    fn add_u16(a: u16, b: u16) -> u16 { a + b }
+    #[effects(pure)]
+    fn sub_u16(a: u16, b: u16) -> u16 { a - b }
+    #[effects(pure)]
+    fn mul_u16(a: u16, b: u16) -> u16 { a * b }
+    #[effects(pure)]
+    fn div_u16(a: u16, b: u16) -> u16 { a / b }
+    #[effects(pure)]
+    fn rem_u16(a: u16, b: u16) -> u16 { a % b }
+    #[effects(pure)]
+    fn and_u16(a: u16, b: u16) -> u16 { a & b }
+    #[effects(pure)]
+    fn or_u16(a: u16, b: u16) -> u16 { a | b }
+    #[effects(pure)]
+    fn xor_u16(a: u16, b: u16) -> u16 { a ^ b }
+    #[effects(pure)]
+    fn shl_u16(a: u16, b: u16) -> u16 { a << b }
+    #[effects(pure)]
+    fn shr_u16(a: u16, b: u16) -> u16 { a >> b }
+    #[effects(pure)]
+    fn eq_u16(a: u16, b: u16) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_u16(a: u16, b: u16) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_u16(a: u16, b: u16) -> bool { a < b }
+    #[effects(pure)]
+    fn le_u16(a: u16, b: u16) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_u16(a: u16, b: u16) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_u16(a: u16, b: u16) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_u16(a: u16) -> u16 { a << 3 }
+    #[effects(pure)]
+    fn shr7_u16(a: u16) -> u16 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_u16(a: u16) -> u16 { a << 64 }
+    #[effects(pure)]
+    fn not_u16(a: u16) -> u16 { !a }
+    #[effects(pure)]
+    fn add_u32(a: u32, b: u32) -> u32 { a + b }
+    #[effects(pure)]
+    fn sub_u32(a: u32, b: u32) -> u32 { a - b }
+    #[effects(pure)]
+    fn mul_u32(a: u32, b: u32) -> u32 { a * b }
+    #[effects(pure)]
+    fn div_u32(a: u32, b: u32) -> u32 { a / b }
+    #[effects(pure)]
+    fn rem_u32(a: u32, b: u32) -> u32 { a % b }
+    #[effects(pure)]
+    fn and_u32(a: u32, b: u32) -> u32 { a & b }
+    #[effects(pure)]
+    fn or_u32(a: u32, b: u32) -> u32 { a | b }
+    #[effects(pure)]
+    fn xor_u32(a: u32, b: u32) -> u32 { a ^ b }
+    #[effects(pure)]
+    fn shl_u32(a: u32, b: u32) -> u32 { a << b }
+    #[effects(pure)]
+    fn shr_u32(a: u32, b: u32) -> u32 { a >> b }
+    #[effects(pure)]
+    fn eq_u32(a: u32, b: u32) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_u32(a: u32, b: u32) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_u32(a: u32, b: u32) -> bool { a < b }
+    #[effects(pure)]
+    fn le_u32(a: u32, b: u32) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_u32(a: u32, b: u32) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_u32(a: u32, b: u32) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_u32(a: u32) -> u32 { a << 3 }
+    #[effects(pure)]
+    fn shr7_u32(a: u32) -> u32 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_u32(a: u32) -> u32 { a << 64 }
+    #[effects(pure)]
+    fn not_u32(a: u32) -> u32 { !a }
+    #[effects(pure)]
+    fn add_u64(a: u64, b: u64) -> u64 { a + b }
+    #[effects(pure)]
+    fn sub_u64(a: u64, b: u64) -> u64 { a - b }
+    #[effects(pure)]
+    fn mul_u64(a: u64, b: u64) -> u64 { a * b }
+    #[effects(pure)]
+    fn div_u64(a: u64, b: u64) -> u64 { a / b }
+    #[effects(pure)]
+    fn rem_u64(a: u64, b: u64) -> u64 { a % b }
+    #[effects(pure)]
+    fn and_u64(a: u64, b: u64) -> u64 { a & b }
+    #[effects(pure)]
+    fn or_u64(a: u64, b: u64) -> u64 { a | b }
+    #[effects(pure)]
+    fn xor_u64(a: u64, b: u64) -> u64 { a ^ b }
+    #[effects(pure)]
+    fn shl_u64(a: u64, b: u64) -> u64 { a << b }
+    #[effects(pure)]
+    fn shr_u64(a: u64, b: u64) -> u64 { a >> b }
+    #[effects(pure)]
+    fn eq_u64(a: u64, b: u64) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_u64(a: u64, b: u64) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_u64(a: u64, b: u64) -> bool { a < b }
+    #[effects(pure)]
+    fn le_u64(a: u64, b: u64) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_u64(a: u64, b: u64) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_u64(a: u64, b: u64) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_u64(a: u64) -> u64 { a << 3 }
+    #[effects(pure)]
+    fn shr7_u64(a: u64) -> u64 { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_u64(a: u64) -> u64 { a << 64 }
+    #[effects(pure)]
+    fn not_u64(a: u64) -> u64 { !a }
+    #[effects(pure)]
+    fn add_usize(a: usize, b: usize) -> usize { a + b }
+    #[effects(pure)]
+    fn sub_usize(a: usize, b: usize) -> usize { a - b }
+    #[effects(pure)]
+    fn mul_usize(a: usize, b: usize) -> usize { a * b }
+    #[effects(pure)]
+    fn div_usize(a: usize, b: usize) -> usize { a / b }
+    #[effects(pure)]
+    fn rem_usize(a: usize, b: usize) -> usize { a % b }
+    #[effects(pure)]
+    fn and_usize(a: usize, b: usize) -> usize { a & b }
+    #[effects(pure)]
+    fn or_usize(a: usize, b: usize) -> usize { a | b }
+    #[effects(pure)]
+    fn xor_usize(a: usize, b: usize) -> usize { a ^ b }
+    #[effects(pure)]
+    fn shl_usize(a: usize, b: usize) -> usize { a << b }
+    #[effects(pure)]
+    fn shr_usize(a: usize, b: usize) -> usize { a >> b }
+    #[effects(pure)]
+    fn eq_usize(a: usize, b: usize) -> bool { a == b }
+    #[effects(pure)]
+    fn ne_usize(a: usize, b: usize) -> bool { a != b }
+    #[effects(pure)]
+    fn lt_usize(a: usize, b: usize) -> bool { a < b }
+    #[effects(pure)]
+    fn le_usize(a: usize, b: usize) -> bool { a <= b }
+    #[effects(pure)]
+    fn gt_usize(a: usize, b: usize) -> bool { a > b }
+    #[effects(pure)]
+    fn ge_usize(a: usize, b: usize) -> bool { a >= b }
+    #[effects(pure)]
+    fn shl3_usize(a: usize) -> usize { a << 3 }
+    #[effects(pure)]
+    fn shr7_usize(a: usize) -> usize { a >> 7 }
+    #[effects(pure)]
+    fn shl_wide_usize(a: usize) -> usize { a << 64 }
+    #[effects(pure)]
+    fn not_usize(a: usize) -> usize { !a }
+}

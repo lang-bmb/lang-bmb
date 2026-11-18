@@ -1,0 +1,84 @@
+#[summary("bool과 f64의 연산, 짧은 회로, 지역 변수와 대입, 단위 값의 지역 변수, 블록과 if의 값")]
+mod scalars {
+    #[effects(pure)]
+    fn both(a: bool, b: bool) -> bool { a && b }
+    #[effects(pure)]
+    fn either(a: bool, b: bool) -> bool { a || b }
+    #[effects(pure)]
+    fn chain(a: bool, b: bool, c: bool) -> bool { a && (b || !c) && a != b }
+    #[effects(pure)]
+    fn same(a: bool, b: bool) -> bool { a == b }
+    #[effects(pure)]
+    fn flip(a: bool) -> bool { !a }
+    #[effects(pure)]
+    fn mix(a: bool, b: bool) -> bool { (a & b) | (a ^ b) }
+    #[effects(pure)]
+    fn fadd(a: f64, b: f64) -> f64 { a + b }
+    #[effects(pure)]
+    fn fsub(a: f64, b: f64) -> f64 { a - b }
+    #[effects(pure)]
+    fn fmul(a: f64, b: f64) -> f64 { a * b }
+    #[effects(pure)]
+    fn fdiv(a: f64, b: f64) -> f64 { a / b }
+    #[effects(pure)]
+    fn feq(a: f64, b: f64) -> bool { a == b }
+    #[effects(pure)]
+    fn fne(a: f64, b: f64) -> bool { a != b }
+    #[effects(pure)]
+    fn flt(a: f64, b: f64) -> bool { a < b }
+    #[effects(pure)]
+    fn fle(a: f64, b: f64) -> bool { a <= b }
+    #[effects(pure)]
+    fn fgt(a: f64, b: f64) -> bool { a > b }
+    #[effects(pure)]
+    fn fge(a: f64, b: f64) -> bool { a >= b }
+    #[effects(pure)]
+    fn fneg(a: f64) -> f64 { -a }
+    #[effects(pure)]
+    fn fneg_lit() -> f64 { -2.5 }
+    #[effects(pure)]
+    fn char_lt(a: char, b: char) -> bool { a < b }
+    #[effects(pure)]
+    fn locals(x: i64, y: i64) -> i64 {
+        let a: i64 = x + 1;
+        let mut b: i64 = a * y;
+        b = b - a;
+        let u: () = ();
+        let mut w: () = u;
+        w = ();
+        let ok: bool = b > 0 && a < 100;
+        let z: f64 = 0.5;
+        if ok { b } else { a }
+    }
+    #[effects(pure)]
+    fn nested(x: i32) -> i32 {
+        let y: i32 = { let t: i32 = x + x; t * 2 };
+        if y > 10 {
+            if x < 0 { -y } else { y }
+        } else if y == 0 {
+            1
+        } else {
+            y - 1
+        }
+    }
+    #[effects(pure)]
+    fn unit_if(x: u8) -> () {
+        let mut n: u8 = x;
+        if n > 3 {
+            n = n - 1;
+        }
+        if n == 0 { } else { n = 0; }
+    }
+    #[effects(pure)]
+    fn if_bool(x: i64) -> bool { if x > 0 { true } else { x == -5 } }
+    #[effects(pure)]
+    fn if_f64(x: bool) -> f64 { if x { 1.0 } else { -1.0 } }
+    #[effects(pure)]
+    fn ghost(x: i64) -> i64 {
+        assert(x == x);
+        proof {
+            assert(x <= x);
+        }
+        x
+    }
+}

@@ -22,21 +22,223 @@ mod codegen {
             p
         }
 
-        #[summary("블록의 값 (stage0 block_expr): 문장들, 이어서 꼬리 식. 지금은 문장 없는 블록만")]
+        #[summary("산술 (stage0 arith): 넘침을 재고 넘치면 멈춘다 (전체 검사 모드: 증명된 의무가 없다)")]
         #[effects(alloc)]
-        fn block_expr(self: &mut Gen, b: &ast::Block, ck: &body::Checked, tb: &lowered::Tables) -> CVal {
-            if b.stmts.len() > 0 {
-                self.todo_at("statements", b.span);
+        fn arith(self: &mut Gen, inst: &str, a: &str, b: &str, signed: bool) -> CVal {
+            let r: String = self.t();
+            let s: String = if signed {
+                String::from("s")
+            } else {
+                String::from("u")
+            };
+            let pair: String = self.t();
+            let ovf: String = self.t();
+            let ok: String = self.t();
+            let mut call: String = types::cat5(pair.as_str(), " = call {i64, i1} @llvm.", s.as_str(), inst, ".with.overflow.i64(i64 ");
+            call.push_str(a);
+            call.push_str(", i64 ");
+            call.push_str(b);
+            call.push_str(")");
+            self.emit(call.as_str());
+            self.emit(types::cat4(ovf.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 1").as_str());
+            self.emit(types::cat4(ok.as_str(), " = xor i1 ", ovf.as_str(), ", true").as_str());
+            self.check(ok.as_str(), types::cat3("`", inst, "` may overflow").as_str());
+            self.emit(types::cat4(r.as_str(), " = extractvalue {i64, i1} ", pair.as_str(), ", 0").as_str());
+            CVal::Imm(r)
+        }
+
+        #[summary("대입 (stage0 stmt의 Assign). 지금은 스칼라 지역 변수와 단위 값의 지역 변수")]
+        #[effects(alloc)]
+        fn assign(self: &mut Gen, a: &ast::Assign, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", a.span);
+                return;
+            }
+            match var_name(&a.target) {
+                None => self.todo_at("an assignment to a place that is not a local", a.span),
+                Some(name) => { if decls::is_unit(&self.ty(&a.target, tb)) { let unit_v: CVal = self.expr(&a.value, ck, tb, f - 1); return; } match self.scalar_slot(name.as_str()) { None => self.todo_at("an assignment to a local that is not a scalar", a.span), Some(slot) => { let v: String = imm(&self.expr(&a.value, ck, tb, f - 1)); self.emit(types::cat7("store ", slot.ty.as_str(), " ", v.as_str(), ", ptr ", slot.ptr.as_str(), "").as_str()); }, } },
+            }
+        }
+
+        #[summary("이항 연산 (stage0 expr의 Binary 갈래들): 짧은 회로, f64, 정수의 비교·비트·시프트·산술·나눗셈")]
+        #[effects(alloc)]
+        fn binary(self: &mut Gen, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            if is_and(op) || is_or(op) {
+                let slot: String = self.alloca("i1");
+                let lv: String = imm(&self.expr(l, ck, tb, f - 1));
+                self.emit(types::cat4("store i1 ", lv.as_str(), ", ptr ", slot.as_str()).as_str());
+                let rhs: String = self.l("rhs");
+                let end: String = self.l("sc");
+                if is_and(op) {
+                    self.emit(types::cat7("br i1 ", lv.as_str(), ", label %", rhs.as_str(), ", label %", end.as_str(), "").as_str());
+                } else {
+                    self.emit(types::cat7("br i1 ", lv.as_str(), ", label %", end.as_str(), ", label %", rhs.as_str(), "").as_str());
+                }
+                self.block(rhs.as_str());
+                let rv: String = imm(&self.expr(r, ck, tb, f - 1));
+                self.emit(types::cat4("store i1 ", rv.as_str(), ", ptr ", slot.as_str()).as_str());
+                self.emit(types::cat2("br label %", end.as_str()).as_str());
+                self.block(end.as_str());
+                let out: String = self.t();
+                self.emit(types::cat3(out.as_str(), " = load i1, ptr ", slot.as_str()).as_str());
+                return CVal::Imm(out);
+            }
+            if body::is_cmp(op) && (self.is_text_expr(l, tb) || self.is_text_expr(r, tb)) {
+                return self.todo_expr("a comparison of text", e);
+            }
+            let lt: ast::TypeKind = self.ty(l, tb);
+            let a: String = imm(&self.expr(l, ck, tb, f - 1));
+            let b: String = imm(&self.expr(r, ck, tb, f - 1));
+            if body::is_f64(&lt) {
+                let fop: String = float_op(op);
+                if fop.len() == 0 {
+                    return self.todo_expr("an `f64` operator", e);
+                }
+                let res: String = self.t();
+                self.emit(types::cat7(res.as_str(), " = ", fop.as_str(), " double ", a.as_str(), ", ", b.as_str()).as_str());
+                return CVal::Imm(res);
+            }
+            let signed: bool = is_signed(&lt);
+            let ty: String = llty(&lt);
+            let c: String = int_cmp(op, signed);
+            if c.len() > 0 {
+                let cres: String = self.t();
+                let mut cl: String = types::cat5(cres.as_str(), " = icmp ", c.as_str(), " ", ty.as_str());
+                cl.push_str(" ");
+                cl.push_str(a.as_str());
+                cl.push_str(", ");
+                cl.push_str(b.as_str());
+                self.emit(cl.as_str());
+                return CVal::Imm(cres);
+            }
+            if body::is_bit(op) {
+                let bres: String = self.t();
+                let mut bl: String = types::cat5(bres.as_str(), " = ", bit_inst(op).as_str(), " ", ty.as_str());
+                bl.push_str(" ");
+                bl.push_str(a.as_str());
+                bl.push_str(", ");
+                bl.push_str(b.as_str());
+                self.emit(bl.as_str());
+                return CVal::Imm(bres);
+            }
+            match body::int_of(&lt) {
+                None => self.todo_expr("an operator on a type that is not an integer", e),
+                Some(i) => { if body::is_shift(op) { return self.shift(op, i, a.as_str(), r, b.as_str()); } match op { ast::BinOp::Add => { if body::bits(i) < 64 { self.narrow_arith("add", a.as_str(), b.as_str(), i) } else { self.arith("add", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Sub => { if body::bits(i) < 64 { self.narrow_arith("sub", a.as_str(), b.as_str(), i) } else { self.arith("sub", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Mul => { if body::bits(i) < 64 { self.narrow_arith("mul", a.as_str(), b.as_str(), i) } else { self.arith("mul", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Div => self.div_rem(true, i, a.as_str(), b.as_str()), ast::BinOp::Rem => self.div_rem(false, i, a.as_str(), b.as_str()), ast::BinOp::Eq => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ne => self.todo_expr("an operator outside executable code", e), ast::BinOp::Lt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Le => self.todo_expr("an operator outside executable code", e), ast::BinOp::Gt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ge => self.todo_expr("an operator outside executable code", e), ast::BinOp::And => self.todo_expr("an operator outside executable code", e), ast::BinOp::Or => self.todo_expr("an operator outside executable code", e), ast::BinOp::Implies => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitAnd => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitOr => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitXor => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shl => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shr => self.todo_expr("an operator outside executable code", e), } },
+            }
+        }
+
+        #[summary("레이블 한 줄")]
+        #[effects(alloc)]
+        fn block(self: &mut Gen, label: &str) -> () {
+            self.out.push_str(label);
+            self.out.push_str(":\n");
+        }
+
+        #[summary("블록의 값 (stage0 block_expr): 문장들, 이어서 꼬리 식")]
+        #[effects(alloc)]
+        fn block_expr(self: &mut Gen, b: &ast::Block, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", b.span);
                 return CVal::Never;
             }
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                self.stmt(&b.stmts[i], ck, tb, f - 1);
+            }
+            let v: CVal = match &b.tail {
+                None => CVal::Unit,
+                Some(e) => self.expr(&**e, ck, tb, f - 1),
+            };
             if self.drops_at(b.span, ck) {
                 self.todo_at("a block that drops owned values", b.span);
-                return CVal::Never;
             }
-            match &b.tail {
-                None => CVal::Unit,
-                Some(e) => self.expr(&**e, tb),
+            v
+        }
+
+        #[summary("갈래 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.branch_drops)")]
+        #[effects(alloc)]
+        fn branch_drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
+            match ck.b.needs.find(self.base.as_str()) {
+                None => false,
+                Some(at) => ck.b.needs.items[at].moves.branch_drops.has(body::span_key(s).as_str()),
             }
+        }
+
+        #[summary("제네릭 아닌 함수의 호출 (stage0 call). 스칼라 인자와 결과, print_i64와 print_u64")]
+        #[effects(alloc)]
+        fn call(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            if c.path.len() == 2 && c.path[0].name == "u32" && c.path[1].name == "from" && c.args.len() == 1 {
+                return self.expr(&c.args[0], ck, tb, f - 1);
+            }
+            let target: String = self.resolve(c.path.as_slice(), tb);
+            match tb.fns.find(target.as_str()) {
+                None => self.todo_expr("a call that is not of a function (a variant or a built-in)", e),
+                Some(at) => { let print: bool = target == "print_i64" || target == "print_u64"; if tb.fns.items[at].builtin && !print || tb.fns.items[at].generics.len() > 0 || has_trait(&tb.fns.items[at]) || tb.targs.has(body::span_key(e.span).as_str()) { return self.todo_expr("a call of a built-in, a generic function or a trait method", e); } let mut flat: Vec<String> = Vec::new(); for k in 0..c.args.len() invariant 0 <= k && k <= c.args.len(), { let aty: ast::TypeKind = self.ty(&c.args[k], tb); if k < tb.fns.items[at].params.len() && (body::is_ref(&tb.fns.items[at].params[k]) || is_mem(&tb.fns.items[at].params[k]) || body::is_array(&tb.fns.items[at].params[k])) { return self.todo_expr("an argument that is not a scalar", &c.args[k]); } let av: CVal = self.expr(&c.args[k], ck, tb, f - 1); match &av { CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())), CVal::Unit => {}, CVal::Never => { if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } }, } } let ret: ast::TypeKind = if print { ast::TypeKind::Unit } else { tb.fns.items[at].ret.clone() }; let callee: String = if print { types::cat2("@bmb_", target.as_str()) } else { fn_sym(target.as_str()) }; if ret_in_memory(&ret) { return self.todo_expr("a call with a result in memory", e); } let args: String = types::join(flat.as_slice(), ", "); if decls::is_unit(&ret) { self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str()); return CVal::Unit; } let r: String = self.t(); self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str()); CVal::Imm(r) },
+            }
+        }
+
+        #[summary("실행 중 검사 (stage0 check): cond가 거짓이면 멈춘다")]
+        #[effects(alloc)]
+        fn check(self: &mut Gen, cond: &str, what: &str) -> () {
+            self.checks = self.checks.wrapping_add(1);
+            let ok: String = self.l("ok");
+            let bad: String = self.l("trap");
+            let mut line: String = types::cat7("br i1 ", cond, ", label %", ok.as_str(), ", label %", bad.as_str(), " ; unproved: ");
+            line.push_str(what);
+            self.emit(line.as_str());
+            self.block(bad.as_str());
+            self.emit("call void @bmb_trap()");
+            self.emit("unreachable");
+            self.block(ok.as_str());
+        }
+
+        #[summary("나눗셈과 나머지 (stage0 expr의 Div·Rem): 0으로 나눔과 부호 있는 타입의 MIN / -1을 잰다")]
+        #[effects(alloc)]
+        fn div_rem(self: &mut Gen, div: bool, i: ast::IntTy, a: &str, b: &str) -> CVal {
+            let c: String = self.t();
+            self.emit(types::cat4(c.as_str(), " = icmp ne i64 ", b, ", 0").as_str());
+            self.check(c.as_str(), "divisor may be zero");
+            let signed: bool = body::signed(i);
+            if signed {
+                let m: String = self.t();
+                let n: String = self.t();
+                let both: String = self.t();
+                let ok: String = self.t();
+                self.emit(types::cat5(m.as_str(), " = icmp eq i64 ", a, ", ", int_min(i).as_str()).as_str());
+                self.emit(types::cat4(n.as_str(), " = icmp eq i64 ", b, ", -1").as_str());
+                self.emit(types::cat5(both.as_str(), " = and i1 ", m.as_str(), ", ", n.as_str()).as_str());
+                self.emit(types::cat4(ok.as_str(), " = xor i1 ", both.as_str(), ", true").as_str());
+                self.check(ok.as_str(), types::cat2(body::int_text(i).as_str(), "::MIN / -1").as_str());
+            }
+            let inst: String = if div {
+                if signed {
+                    String::from("sdiv")
+                } else {
+                    String::from("udiv")
+                }
+            } else if signed {
+                String::from("srem")
+            } else {
+                String::from("urem")
+            };
+            let res: String = self.t();
+            self.emit(types::cat7(res.as_str(), " = ", inst.as_str(), " i64 ", a, ", ", b).as_str());
+            CVal::Imm(res)
         }
 
         #[summary("블록 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.drops)")]
@@ -71,46 +273,293 @@ mod codegen {
             }
         }
 
-        #[summary("식의 값 (stage0 expr). 지금은 리터럴, 부호 바꾼 리터럴, 스칼라 지역 변수")]
+        #[summary("식의 값 (stage0 expr). 지금은 리터럴, 스칼라 지역 변수, 단항·이항 연산, 블록, 스칼라의 if, 제네릭 아닌 함수의 호출")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
-        fn expr(self: &mut Gen, e: &ast::Expr, tb: &lowered::Tables) -> CVal {
+        fn expr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
             match &e.kind {
                 ast::ExprKind::Int(v, ex_r) => { let mut s: String = String::new(); wide::push_radix(&mut s, *v, 10); CVal::Imm(s) },
                 ast::ExprKind::Float(bits) => CVal::Imm(f64_const(*bits)),
-                ast::ExprKind::ByteLit(b) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *b as u64); CVal::Imm(s) },
+                ast::ExprKind::ByteLit(bl) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *bl as u64); CVal::Imm(s) },
                 ast::ExprKind::ByteStr(ex_bs) => self.todo_expr("a byte string", e),
                 ast::ExprKind::StrLit(ex_sl) => self.todo_expr("a string literal", e),
-                ast::ExprKind::CharLit(c) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *c as u64); CVal::Imm(s) },
+                ast::ExprKind::CharLit(ch) => { let mut s: String = String::new(); std::num::push_u64(&mut s, *ch as u64); CVal::Imm(s) },
                 ast::ExprKind::Bool(on) => { if *on { CVal::Imm(String::from("true")) } else { CVal::Imm(String::from("false")) } },
                 ast::ExprKind::Unit => CVal::Unit,
-                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } match self.slots.find(id.name.as_str()) { None => self.todo_expr("a name without a slot", e), Some(at) => { match &self.slots.items[at] { Slot::Scalar(ptr, ty) => { let line: String = types::cat4(" = load ", ty.as_str(), ", ptr ", ptr.as_str()); let r: String = self.t(); self.emit(types::cat2(r.as_str(), line.as_str()).as_str()); CVal::Imm(r) }, } }, } },
-                ast::ExprKind::Call(ex_call) => self.todo_expr("a call", e),
+                ast::ExprKind::Var(id) => { if decls::is_unit(&self.ty(e, tb)) { return CVal::Unit; } match self.scalar_slot(id.name.as_str()) { None => self.todo_expr("a name that is not a scalar local", e), Some(slot) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", slot.ty.as_str(), ", ptr ", slot.ptr.as_str()).as_str()); CVal::Imm(r) }, } },
+                ast::ExprKind::Call(c) => self.call(e, c, ck, tb, f - 1),
                 ast::ExprKind::Method(ex_m) => self.todo_expr("a method call", e),
-                ast::ExprKind::Index(ex_ib, ex_ii) => self.todo_expr("an index", e),
-                ast::ExprKind::Unary(op, x) => { if !is_neg(*op) { return self.todo_expr("a unary operator", e); } match &x.kind { ast::ExprKind::Int(nv, ng_r) => { if body::is_f64(&self.ty(&**x, tb)) { return self.todo_expr("a negation", e); } let mut s: String = String::from("-"); wide::push_radix(&mut s, *nv, 10); CVal::Imm(s) }, ast::ExprKind::Float(nb) => { if body::is_f64(&self.ty(&**x, tb)) { CVal::Imm(f64_const(*nb ^ 9223372036854775808)) } else { self.todo_expr("a negation", e) } }, ast::ExprKind::ByteLit(ng_bytelit0) => self.todo_expr("a negation", e), ast::ExprKind::ByteStr(ng_bytestr0) => self.todo_expr("a negation", e), ast::ExprKind::StrLit(ng_strlit0) => self.todo_expr("a negation", e), ast::ExprKind::CharLit(ng_charlit0) => self.todo_expr("a negation", e), ast::ExprKind::Bool(ng_bool0) => self.todo_expr("a negation", e), ast::ExprKind::Unit => self.todo_expr("a negation", e), ast::ExprKind::Var(ng_var0) => self.todo_expr("a negation", e), ast::ExprKind::Call(ng_call0) => self.todo_expr("a negation", e), ast::ExprKind::Method(ng_method0) => self.todo_expr("a negation", e), ast::ExprKind::Index(ng_index0, ng_index1) => self.todo_expr("a negation", e), ast::ExprKind::Unary(ng_unary0, ng_unary1) => self.todo_expr("a negation", e), ast::ExprKind::Binary(ng_binary0, ng_binary1, ng_binary2) => self.todo_expr("a negation", e), ast::ExprKind::Ref(ng_ref0, ng_ref1) => self.todo_expr("a negation", e), ast::ExprKind::If(ng_if0) => self.todo_expr("a negation", e), ast::ExprKind::Block(ng_block0) => self.todo_expr("a negation", e), ast::ExprKind::Array(ng_array0) => self.todo_expr("a negation", e), ast::ExprKind::Repeat(ng_repeat0) => self.todo_expr("a negation", e), ast::ExprKind::Old(ng_old0) => self.todo_expr("a negation", e), ast::ExprKind::Quant(ng_quant0) => self.todo_expr("a negation", e), ast::ExprKind::Trigger(ng_trigger0) => self.todo_expr("a negation", e), ast::ExprKind::Closure(ng_closure0) => self.todo_expr("a negation", e), ast::ExprKind::StructLit(ng_structlit0) => self.todo_expr("a negation", e), ast::ExprKind::Path(ng_path0) => self.todo_expr("a negation", e), ast::ExprKind::Deref(ng_deref0) => self.todo_expr("a negation", e), ast::ExprKind::Field(ng_field0, ng_field1) => self.todo_expr("a negation", e), ast::ExprKind::Match(ng_match0) => self.todo_expr("a negation", e), ast::ExprKind::Return(ng_return0) => self.todo_expr("a negation", e), ast::ExprKind::Try(ng_try0) => self.todo_expr("a negation", e), ast::ExprKind::Loop(ng_loop0) => self.todo_expr("a negation", e), ast::ExprKind::Break(ng_break0) => self.todo_expr("a negation", e), ast::ExprKind::Continue(ng_continue0) => self.todo_expr("a negation", e), ast::ExprKind::Range(ng_range0) => self.todo_expr("a negation", e), ast::ExprKind::Error => self.todo_expr("a negation", e), } },
-                ast::ExprKind::Binary(ex_op, ex_l, ex_rr) => self.todo_expr("a binary operator", e),
-                ast::ExprKind::Ref(ex_rm, ex_rx) => self.todo_expr("a reference", e),
-                ast::ExprKind::If(ex_if) => self.todo_expr("an `if`", e),
-                ast::ExprKind::Block(ex_b) => self.todo_expr("a block", e),
-                ast::ExprKind::Array(ex_a) => self.todo_expr("an array", e),
-                ast::ExprKind::Repeat(ex_rp) => self.todo_expr("an array repeat", e),
-                ast::ExprKind::Old(ex_o) => self.todo_expr("`old`", e),
-                ast::ExprKind::Quant(ex_q) => self.todo_expr("a quantifier", e),
-                ast::ExprKind::Trigger(ex_t) => self.todo_expr("a trigger", e),
-                ast::ExprKind::Closure(ex_c) => self.todo_expr("a closure", e),
-                ast::ExprKind::StructLit(ex_s) => self.todo_expr("a struct literal", e),
-                ast::ExprKind::Path(ex_p) => self.todo_expr("a path", e),
-                ast::ExprKind::Deref(ex_d) => self.todo_expr("a dereference", e),
-                ast::ExprKind::Field(ex_fb, ex_fn) => self.todo_expr("a field", e),
-                ast::ExprKind::Match(ex_mt) => self.todo_expr("a `match`", e),
-                ast::ExprKind::Return(ex_rt) => self.todo_expr("a `return`", e),
-                ast::ExprKind::Try(ex_tr) => self.todo_expr("a `?`", e),
-                ast::ExprKind::Loop(ex_lp) => self.todo_expr("a `loop`", e),
-                ast::ExprKind::Break(ex_bk) => self.todo_expr("a `break`", e),
-                ast::ExprKind::Continue(ex_ct) => self.todo_expr("a `continue`", e),
-                ast::ExprKind::Range(ex_rg) => self.todo_expr("a range", e),
-                ast::ExprKind::Error => self.todo_expr("an error expression", e),
+                ast::ExprKind::Index(ex_index0, ex_index1) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Unary(uop, ux) => self.unary(e, *uop, &**ux, ck, tb, f - 1),
+                ast::ExprKind::Binary(bop, lhs, rhs) => self.binary(e, *bop, &**lhs, &**rhs, ck, tb, f - 1),
+                ast::ExprKind::Ref(ex_ref0, ex_ref1) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::If(ifx) => self.if_expr(e, ifx, ck, tb, f - 1),
+                ast::ExprKind::Block(b) => self.block_expr(b, ck, tb, f - 1),
+                ast::ExprKind::Array(ex_array0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Repeat(ex_repeat0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Old(ex_old0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Quant(ex_quant0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Trigger(ex_trigger0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Closure(ex_closure0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::StructLit(ex_structlit0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Path(ex_path0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Deref(ex_deref0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Field(ex_field0, ex_field1) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Match(ex_match0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Return(ex_return0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Try(ex_try0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Loop(ex_loop0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Break(ex_break0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Continue(ex_continue0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Range(ex_range0) => self.todo_expr("an expression not lowered yet", e),
+                ast::ExprKind::Error => self.todo_expr("an expression not lowered yet", e),
+            }
+        }
+
+        #[summary("값 v가 정수 타입 i의 범위 안인가 (stage0 fits): 그 판정의 레지스터")]
+        #[effects(alloc)]
+        fn fits(self: &mut Gen, v: &str, i: ast::IntTy) -> String {
+            self.in_range_of(v, body::signed(i), i)
+        }
+
+        #[summary("스칼라나 단위 값의 if (stage0 expr의 If): 결과의 자리에 두 갈래가 쓰고 끝에서 읽는다")]
+        #[effects(alloc)]
+        fn if_expr(self: &mut Gen, e: &ast::Expr, x: &ast::If, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let ty: ast::TypeKind = self.ty(e, tb);
+            if body::is_array(&ty) || is_mem(&ty) {
+                return self.todo_expr("an `if` whose value is not a scalar", e);
+            }
+            let lt: String = llty(&ty);
+            let slot: Option<String> = if decls::is_unit(&ty) || types::is_error(&ty) {
+                None
+            } else {
+                Some(self.alloca(lt.as_str()))
+            };
+            let c: String = imm(&self.expr(&*x.cond, ck, tb, f - 1));
+            let lthen: String = self.l("then");
+            let lelse: String = self.l("else");
+            let end: String = self.l("endif");
+            self.emit(types::cat7("br i1 ", c.as_str(), ", label %", lthen.as_str(), ", label %", lelse.as_str(), "").as_str());
+            self.block(lthen.as_str());
+            let tv: CVal = self.block_expr(&x.then, ck, tb, f - 1);
+            self.store_result(&slot, &tv, lt.as_str());
+            if self.branch_drops_at(x.then.span, ck) {
+                self.todo_at("a branch that drops owned values", x.then.span);
+            }
+            self.emit(types::cat2("br label %", end.as_str()).as_str());
+            self.block(lelse.as_str());
+            match &x.els {
+                None => {},
+                Some(other) => { let ev: CVal = self.expr(&**other, ck, tb, f - 1); self.store_result(&slot, &ev, lt.as_str()); if self.branch_drops_at(other.span, ck) { self.todo_at("a branch that drops owned values", other.span); } },
+            }
+            self.emit(types::cat2("br label %", end.as_str()).as_str());
+            self.block(end.as_str());
+            match &slot {
+                None => CVal::Unit,
+                Some(sl) => { let r: String = self.t(); self.emit(types::cat5(r.as_str(), " = load ", lt.as_str(), ", ptr ", sl.as_str()).as_str()); CVal::Imm(r) },
+            }
+        }
+
+        #[summary("값 v가 정수 타입 i의 범위 안인가 (stage0 in_range_of). from_signed는 v가 부호 있는 값인가")]
+        #[effects(alloc)]
+        fn in_range_of(self: &mut Gen, v: &str, from_signed: bool, i: ast::IntTy) -> String {
+            let c: String = self.t();
+            let to_signed: bool = body::signed(i);
+            let wide: bool = body::bits(i) == 64;
+            if !from_signed || !to_signed {
+                if from_signed && !to_signed && wide || !from_signed && to_signed && wide {
+                    self.emit(types::cat4(c.as_str(), " = icmp sge i64 ", v, ", 0").as_str());
+                } else {
+                    self.emit(types::cat5(c.as_str(), " = icmp ule i64 ", v, ", ", int_max(i).as_str()).as_str());
+                }
+            } else {
+                let d: String = self.t();
+                self.emit(types::cat5(d.as_str(), " = sub i64 ", v, ", ", int_min(i).as_str()).as_str());
+                self.emit(types::cat5(c.as_str(), " = icmp ule i64 ", d.as_str(), ", ", all_ones(body::bits(i)).as_str()).as_str());
+            }
+            c
+        }
+
+        #[summary("식 e의 값이 글인가 (stage0 is_text_expr): 낮추기 전의 타입으로")]
+        #[effects(alloc)]
+        fn is_text_expr(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
+            types::has(tb.text.as_slice(), body::span_key(e.span).as_str())
+        }
+
+        #[summary("다음 레이블: base와 번호")]
+        #[effects(alloc)]
+        fn l(self: &mut Gen, base: &str) -> String {
+            self.label = self.label.wrapping_add(1);
+            let mut s: String = String::from(base);
+            std::num::push_u64(&mut s, self.label as u64);
+            s
+        }
+
+        #[summary("let 문장 (stage0 stmt의 Let). 지금은 스칼라와 단위 값의 지역 변수")]
+        #[effects(alloc)]
+        fn let_stmt(self: &mut Gen, x: &ast::Let, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                self.todo_at("nesting too deep", x.span);
+                return;
+            }
+            let t: ast::TypeKind = match self.local_ty(x.name.name.as_str(), tb) {
+                None => lowered::lower(&x.ty.kind),
+                Some(known) => known,
+            };
+            if is_mem(&t) || body::is_array(&t) {
+                self.todo_at("a local that is not a scalar", x.span);
+                return;
+            }
+            if decls::is_unit(&t) {
+                let unit_v: CVal = self.expr(&x.init, ck, tb, f - 1);
+                return;
+            }
+            let lt: String = llty(&t);
+            let ptr: String = self.alloca(lt.as_str());
+            let v: String = imm(&self.expr(&x.init, ck, tb, f - 1));
+            self.emit(types::cat7("store ", lt.as_str(), " ", v.as_str(), ", ptr ", ptr.as_str(), "").as_str());
+            self.slots.insert(x.name.name.as_str(), Slot::Scalar(ptr, lt));
+        }
+
+        #[summary("지역 변수 name의 타입 (낮춘 표에서)")]
+        #[effects(alloc)]
+        fn local_ty(self: &Gen, name: &str, tb: &lowered::Tables) -> Option<ast::TypeKind> {
+            match tb.locals.find(self.base.as_str()) {
+                None => None,
+                Some(at) => { match tb.locals.items[at].find(name) { None => None, Some(i) => Some(tb.locals.items[at].items[i].clone()), } },
+            }
+        }
+
+        #[summary("64비트보다 좁은 정수의 산술 (stage0 narrow_arith): 64비트에서 셈하고 타입의 범위를 잰다")]
+        #[effects(alloc)]
+        fn narrow_arith(self: &mut Gen, inst: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
+            let r: String = self.t();
+            let flag: String = if inst == "mul" && !body::signed(i) {
+                String::from("nuw")
+            } else {
+                String::from("nsw")
+            };
+            let mut line: String = types::cat5(r.as_str(), " = ", inst, " ", flag.as_str());
+            line.push_str(" i64 ");
+            line.push_str(a);
+            line.push_str(", ");
+            line.push_str(b);
+            self.emit(line.as_str());
+            let c: String = self.fits(r.as_str(), i);
+            self.check(c.as_str(), types::cat5("`", inst, "` may overflow `", body::int_text(i).as_str(), "`").as_str());
+            CVal::Imm(r)
+        }
+
+        #[summary("호출의 경로가 가리키는 함수 (stage0 resolve): 제 단위의 것이 먼저")]
+        #[effects(alloc)]
+        fn resolve(self: &Gen, path: &[ast::Ident], tb: &lowered::Tables) -> String {
+            let mut names: Vec<String> = Vec::new();
+            for i in 0..path.len()
+                invariant 0 <= i && i <= path.len(),
+            {
+                names.push(path[i].name.clone());
+            }
+            let name: String = types::join(names.as_slice(), "::");
+            let local: String = types::cat3(self.unit.as_str(), "::", name.as_str());
+            match tb.fns.find(local.as_str()) {
+                None => name,
+                Some(at) => { if path.len() == 1 || path.len() == 2 && (tb.fns.items[at].in_impl || has_trait(&tb.fns.items[at])) { local } else { name } },
+            }
+        }
+
+        #[summary("스칼라 지역 변수 name의 자리와 레지스터 타입")]
+        #[effects(alloc)]
+        fn scalar_slot(self: &Gen, name: &str) -> Option<ScalarSlot> {
+            match self.slots.find(name) {
+                None => None,
+                Some(at) => { match &self.slots.items[at] { Slot::Scalar(ptr, ty) => Some(ScalarSlot { ptr: ptr.clone(), ty: ty.clone() }), } },
+            }
+        }
+
+        #[summary("시프트 (stage0 shift, shift_inst): 양이 폭보다 작은 리터럴이 아니면 잰다. 좁은 타입의 왼쪽 시프트는 제 폭으로 자르고 다시 넓힌다")]
+        #[effects(alloc)]
+        fn shift(self: &mut Gen, op: ast::BinOp, i: ast::IntTy, a: &str, r: &ast::Expr, b: &str) -> CVal {
+            let w: u32 = body::bits(i);
+            let mut wt: String = String::new();
+            std::num::push_u64(&mut wt, w as u64);
+            let literal: bool = match int_lit(r) {
+                None => false,
+                Some(k) => k.hi == 0 && k.lo < w as u64,
+            };
+            if !literal {
+                let c: String = self.t();
+                self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", b, ", ", wt.as_str()).as_str());
+                self.check(c.as_str(), types::cat2("shift amount out of 0..", wt.as_str()).as_str());
+            }
+            let res: String = self.t();
+            if is_shr(op) {
+                let inst: String = if body::signed(i) {
+                    String::from("ashr")
+                } else {
+                    String::from("lshr")
+                };
+                self.emit(types::cat7(res.as_str(), " = ", inst.as_str(), " i64 ", a, ", ", b).as_str());
+            } else if w == 64 {
+                self.emit(types::cat5(res.as_str(), " = shl i64 ", a, ", ", b).as_str());
+            } else {
+                let wide: String = self.t();
+                let narrow: String = self.t();
+                self.emit(types::cat5(wide.as_str(), " = shl i64 ", a, ", ", b).as_str());
+                self.emit(types::cat5(narrow.as_str(), " = trunc i64 ", wide.as_str(), " to i", wt.as_str()).as_str());
+                let ext: String = if body::signed(i) {
+                    String::from("sext")
+                } else {
+                    String::from("zext")
+                };
+                let mut line: String = types::cat5(res.as_str(), " = ", ext.as_str(), " i", wt.as_str());
+                line.push_str(" ");
+                line.push_str(narrow.as_str());
+                line.push_str(" to i64");
+                self.emit(line.as_str());
+            }
+            CVal::Imm(res)
+        }
+
+        #[summary("문장 (stage0 stmt). 지금은 let, 대입, 식 문장, 코드가 없는 증명 문장")]
+        #[effects(alloc)]
+        fn stmt(self: &mut Gen, st: &ast::Stmt, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                self.todo.push(types::cat2("nesting too deep in ", self.path.as_str()));
+                return;
+            }
+            match st {
+                ast::Stmt::Let(x) => self.let_stmt(x, ck, tb, f - 1),
+                ast::Stmt::Assign(a) => self.assign(a, ck, tb, f - 1),
+                ast::Stmt::While(w) => self.todo_at("a `while`", w.span),
+                ast::Stmt::For(fo) => self.todo_at("a `for`", fo.span),
+                ast::Stmt::Assert(st_a) => {},
+                ast::Stmt::Assume(st_u) => {},
+                ast::Stmt::Proof(st_p) => {},
+                ast::Stmt::LetFields(lf) => self.todo_at("a `let` of fields", lf.span),
+                ast::Stmt::Expr(ex) => { let v: CVal = self.expr(ex, ck, tb, f - 1); },
+            }
+        }
+
+        #[summary("if의 한 갈래의 값을 결과의 자리에 (stage0 store_result): 끝나지 않는 값과 자리 없는 결과는 쓰지 않는다")]
+        #[effects(alloc)]
+        fn store_result(self: &mut Gen, slot: &Option<String>, v: &CVal, lt: &str) -> () {
+            match slot {
+                None => {},
+                Some(sl) => { match v { CVal::Imm(x) => self.emit(types::cat7("store ", lt, " ", x.as_str(), ", ptr ", sl.as_str(), "").as_str()), CVal::Unit => self.emit(types::cat5("store ", lt, " 0, ptr ", sl.as_str(), "").as_str()), CVal::Never => {}, } },
             }
         }
 
@@ -151,6 +600,43 @@ mod codegen {
                 Some(at) => tb.types.items[at].clone(),
             }
         }
+
+        #[summary("단항 연산 (stage0 expr의 Unary 갈래들): 부호 바꿈은 리터럴이면 그 글, f64면 fneg, 정수면 0에서 뺀다. !는 bool이면 뒤집고 정수면 제 폭의 비트를 뒤집는다")]
+        #[effects(alloc)]
+        #[uses(wide::divisor)]
+        fn unary(self: &mut Gen, e: &ast::Expr, op: ast::UnOp, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let xt: ast::TypeKind = self.ty(x, tb);
+            if is_neg(op) {
+                if body::is_f64(&xt) {
+                    match float_lit(x) {
+                        None => {},
+                        Some(bits) => { return CVal::Imm(f64_const(bits ^ 9223372036854775808)); },
+                    }
+                    let fv: String = imm(&self.expr(x, ck, tb, f - 1));
+                    let fr: String = self.t();
+                    self.emit(types::cat3(fr.as_str(), " = fneg double ", fv.as_str()).as_str());
+                    return CVal::Imm(fr);
+                }
+                match int_lit(x) {
+                    None => {},
+                    Some(k) => { let mut s: String = String::from("-"); wide::push_radix(&mut s, k, 10); return CVal::Imm(s); },
+                }
+                let v: String = imm(&self.expr(x, ck, tb, f - 1));
+                return match body::int_of(&self.ty(e, tb)) { None => self.arith("sub", "0", v.as_str(), true), Some(i) => { if body::bits(i) < 64 { self.narrow_arith("sub", "0", v.as_str(), i) } else { self.arith("sub", "0", v.as_str(), true) } }, };
+            }
+            let nv: String = imm(&self.expr(x, ck, tb, f - 1));
+            let r: String = self.t();
+            match body::int_of(&xt) {
+                None => self.emit(types::cat4(r.as_str(), " = xor i1 ", nv.as_str(), ", true").as_str()),
+                Some(i) => { if body::signed(i) { self.emit(types::cat4(r.as_str(), " = xor i64 ", nv.as_str(), ", -1").as_str()); } else { self.emit(types::cat5(r.as_str(), " = xor i64 ", nv.as_str(), ", ", int_max(i).as_str()).as_str()); } },
+            }
+            CVal::Imm(r)
+        }
     }
 
     #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
@@ -158,6 +644,9 @@ mod codegen {
 
     #[summary("모듈 (stage0 Module): IR의 글, 진입점, 옮기지 않은 구문을 만난 까닭들")]
     struct Module { ir: String, main: Option<String>, todo: Vec<String> }
+
+    #[summary("스칼라 지역 변수의 자리: 자리의 이름과 레지스터 타입")]
+    struct ScalarSlot { ptr: String, ty: String }
 
     #[summary("지역 이름의 자리 (stage0 Slot). 지금은 스칼라: 자리의 이름과 레지스터 타입")]
     enum Slot { Scalar(String, String) }
@@ -174,6 +663,21 @@ mod codegen {
         } else {
             b / 8
         }
+    }
+
+    #[summary("bits 비트가 모두 1인 수의 글 (2^bits - 1)")]
+    #[effects(alloc)]
+    fn all_ones(bits: u32) -> String {
+        if bits == 8 {
+            return String::from("255");
+        }
+        if bits == 16 {
+            return String::from("65535");
+        }
+        if bits == 32 {
+            return String::from("4294967295");
+        }
+        String::from("18446744073709551615")
     }
 
     #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처에 나오는 타입을 한 번씩, 타입의 글 순서로 (소스의 자리 순서가 아니다: fmt 전후의 IR이 같다, 백로그 4D-38)")]
@@ -214,6 +718,32 @@ mod codegen {
             }
         }
         all
+    }
+
+    #[summary("비트 연산의 명령: and, or, xor")]
+    #[effects(alloc)]
+    fn bit_inst(op: ast::BinOp) -> String {
+        match op {
+            ast::BinOp::Add => String::from("xor"),
+            ast::BinOp::Sub => String::from("xor"),
+            ast::BinOp::Mul => String::from("xor"),
+            ast::BinOp::Div => String::from("xor"),
+            ast::BinOp::Rem => String::from("xor"),
+            ast::BinOp::Eq => String::from("xor"),
+            ast::BinOp::Ne => String::from("xor"),
+            ast::BinOp::Lt => String::from("xor"),
+            ast::BinOp::Le => String::from("xor"),
+            ast::BinOp::Gt => String::from("xor"),
+            ast::BinOp::Ge => String::from("xor"),
+            ast::BinOp::And => String::from("xor"),
+            ast::BinOp::Or => String::from("xor"),
+            ast::BinOp::Implies => String::from("xor"),
+            ast::BinOp::BitAnd => String::from("and"),
+            ast::BinOp::BitOr => String::from("or"),
+            ast::BinOp::BitXor => String::from("xor"),
+            ast::BinOp::Shl => String::from("xor"),
+            ast::BinOp::Shr => String::from("xor"),
+        }
     }
 
     #[summary("구조체나 열거형의 LLVM 타입 (stage0 data_ty): %\"geo::Point\"")]
@@ -345,6 +875,74 @@ mod codegen {
         s
     }
 
+    #[summary("e가 실수 리터럴이면 그 비트")]
+    #[effects(pure)]
+    fn float_lit(e: &ast::Expr) -> Option<u64> {
+        match &e.kind {
+            ast::ExprKind::Int(fl_int0, fl_int1) => None,
+            ast::ExprKind::Float(bits) => Some(*bits),
+            ast::ExprKind::ByteLit(fl_bytelit0) => None,
+            ast::ExprKind::ByteStr(fl_bytestr0) => None,
+            ast::ExprKind::StrLit(fl_strlit0) => None,
+            ast::ExprKind::CharLit(fl_charlit0) => None,
+            ast::ExprKind::Bool(fl_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(fl_var0) => None,
+            ast::ExprKind::Call(fl_call0) => None,
+            ast::ExprKind::Method(fl_method0) => None,
+            ast::ExprKind::Index(fl_index0, fl_index1) => None,
+            ast::ExprKind::Unary(fl_unary0, fl_unary1) => None,
+            ast::ExprKind::Binary(fl_binary0, fl_binary1, fl_binary2) => None,
+            ast::ExprKind::Ref(fl_ref0, fl_ref1) => None,
+            ast::ExprKind::If(fl_if0) => None,
+            ast::ExprKind::Block(fl_block0) => None,
+            ast::ExprKind::Array(fl_array0) => None,
+            ast::ExprKind::Repeat(fl_repeat0) => None,
+            ast::ExprKind::Old(fl_old0) => None,
+            ast::ExprKind::Quant(fl_quant0) => None,
+            ast::ExprKind::Trigger(fl_trigger0) => None,
+            ast::ExprKind::Closure(fl_closure0) => None,
+            ast::ExprKind::StructLit(fl_structlit0) => None,
+            ast::ExprKind::Path(fl_path0) => None,
+            ast::ExprKind::Deref(fl_deref0) => None,
+            ast::ExprKind::Field(fl_field0, fl_field1) => None,
+            ast::ExprKind::Match(fl_match0) => None,
+            ast::ExprKind::Return(fl_return0) => None,
+            ast::ExprKind::Try(fl_try0) => None,
+            ast::ExprKind::Loop(fl_loop0) => None,
+            ast::ExprKind::Break(fl_break0) => None,
+            ast::ExprKind::Continue(fl_continue0) => None,
+            ast::ExprKind::Range(fl_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("f64의 연산 (stage0 expr의 f64 갈래): 산술은 명령, 비교는 fcmp와 술어. 다른 연산이면 빈 글")]
+    #[effects(alloc)]
+    fn float_op(op: ast::BinOp) -> String {
+        match op {
+            ast::BinOp::Add => String::from("fadd"),
+            ast::BinOp::Sub => String::from("fsub"),
+            ast::BinOp::Mul => String::from("fmul"),
+            ast::BinOp::Div => String::from("fdiv"),
+            ast::BinOp::Rem => String::new(),
+            ast::BinOp::Eq => String::from("fcmp oeq"),
+            ast::BinOp::Ne => String::from("fcmp une"),
+            ast::BinOp::Lt => String::from("fcmp olt"),
+            ast::BinOp::Le => String::from("fcmp ole"),
+            ast::BinOp::Gt => String::from("fcmp ogt"),
+            ast::BinOp::Ge => String::from("fcmp oge"),
+            ast::BinOp::And => String::new(),
+            ast::BinOp::Or => String::new(),
+            ast::BinOp::Implies => String::new(),
+            ast::BinOp::BitAnd => String::new(),
+            ast::BinOp::BitOr => String::new(),
+            ast::BinOp::BitXor => String::new(),
+            ast::BinOp::Shl => String::new(),
+            ast::BinOp::Shr => String::new(),
+        }
+    }
+
     #[summary("m의 몸 있는 함수를 이름의 자리로 모은다 (body::defs_walk와 같은 것을 걷는다)")]
     #[effects(alloc)]
     fn fn_defs(m: &ast::Mod, out: &mut table::Table<ast::FnDef>, f: usize) -> ()
@@ -414,6 +1012,15 @@ mod codegen {
         false
     }
 
+    #[summary("trait의 메서드인가")]
+    #[effects(pure)]
+    fn has_trait(sig: &types::FnSig) -> bool {
+        match &sig.trait_of {
+            None => false,
+            Some(ht_t) => true,
+        }
+    }
+
     #[summary("값이 Vec을 어디엔가 드는가 (stage0 holds_vec): 참조, 필드, 페이로드, Box, 배열, 타입 인자를 지나")]
     #[effects(alloc)]
     fn holds_vec(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
@@ -456,6 +1063,133 @@ mod codegen {
             CVal::Imm(s) => s.clone(),
             CVal::Unit => String::from("0"),
             CVal::Never => String::from("undef"),
+        }
+    }
+
+    #[summary("정수 비교의 술어 (stage0 expr의 cmp): 부호에 따라. 비교가 아니면 빈 글")]
+    #[effects(alloc)]
+    fn int_cmp(op: ast::BinOp, signed: bool) -> String {
+        match op {
+            ast::BinOp::Add => String::new(),
+            ast::BinOp::Sub => String::new(),
+            ast::BinOp::Mul => String::new(),
+            ast::BinOp::Div => String::new(),
+            ast::BinOp::Rem => String::new(),
+            ast::BinOp::Eq => String::from("eq"),
+            ast::BinOp::Ne => String::from("ne"),
+            ast::BinOp::Lt => { if signed { String::from("slt") } else { String::from("ult") } },
+            ast::BinOp::Le => { if signed { String::from("sle") } else { String::from("ule") } },
+            ast::BinOp::Gt => { if signed { String::from("sgt") } else { String::from("ugt") } },
+            ast::BinOp::Ge => { if signed { String::from("sge") } else { String::from("uge") } },
+            ast::BinOp::And => String::new(),
+            ast::BinOp::Or => String::new(),
+            ast::BinOp::Implies => String::new(),
+            ast::BinOp::BitAnd => String::new(),
+            ast::BinOp::BitOr => String::new(),
+            ast::BinOp::BitXor => String::new(),
+            ast::BinOp::Shl => String::new(),
+            ast::BinOp::Shr => String::new(),
+        }
+    }
+
+    #[summary("e가 정수 리터럴이면 그 값")]
+    #[effects(pure)]
+    fn int_lit(e: &ast::Expr) -> Option<wide::U128> {
+        match &e.kind {
+            ast::ExprKind::Int(v, il_r) => Some(*v),
+            ast::ExprKind::Float(il_float0) => None,
+            ast::ExprKind::ByteLit(il_bytelit0) => None,
+            ast::ExprKind::ByteStr(il_bytestr0) => None,
+            ast::ExprKind::StrLit(il_strlit0) => None,
+            ast::ExprKind::CharLit(il_charlit0) => None,
+            ast::ExprKind::Bool(il_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(il_var0) => None,
+            ast::ExprKind::Call(il_call0) => None,
+            ast::ExprKind::Method(il_method0) => None,
+            ast::ExprKind::Index(il_index0, il_index1) => None,
+            ast::ExprKind::Unary(il_unary0, il_unary1) => None,
+            ast::ExprKind::Binary(il_binary0, il_binary1, il_binary2) => None,
+            ast::ExprKind::Ref(il_ref0, il_ref1) => None,
+            ast::ExprKind::If(il_if0) => None,
+            ast::ExprKind::Block(il_block0) => None,
+            ast::ExprKind::Array(il_array0) => None,
+            ast::ExprKind::Repeat(il_repeat0) => None,
+            ast::ExprKind::Old(il_old0) => None,
+            ast::ExprKind::Quant(il_quant0) => None,
+            ast::ExprKind::Trigger(il_trigger0) => None,
+            ast::ExprKind::Closure(il_closure0) => None,
+            ast::ExprKind::StructLit(il_structlit0) => None,
+            ast::ExprKind::Path(il_path0) => None,
+            ast::ExprKind::Deref(il_deref0) => None,
+            ast::ExprKind::Field(il_field0, il_field1) => None,
+            ast::ExprKind::Match(il_match0) => None,
+            ast::ExprKind::Return(il_return0) => None,
+            ast::ExprKind::Try(il_try0) => None,
+            ast::ExprKind::Loop(il_loop0) => None,
+            ast::ExprKind::Break(il_break0) => None,
+            ast::ExprKind::Continue(il_continue0) => None,
+            ast::ExprKind::Range(il_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("정수 타입의 가장 큰 값의 글")]
+    #[effects(alloc)]
+    fn int_max(i: ast::IntTy) -> String {
+        match i {
+            ast::IntTy::I8 => String::from("127"),
+            ast::IntTy::I16 => String::from("32767"),
+            ast::IntTy::I32 => String::from("2147483647"),
+            ast::IntTy::I64 => String::from("9223372036854775807"),
+            ast::IntTy::Isize => String::from("9223372036854775807"),
+            ast::IntTy::U8 => String::from("255"),
+            ast::IntTy::U16 => String::from("65535"),
+            ast::IntTy::U32 => String::from("4294967295"),
+            ast::IntTy::U64 => String::from("18446744073709551615"),
+            ast::IntTy::Usize => String::from("18446744073709551615"),
+        }
+    }
+
+    #[summary("정수 타입의 가장 작은 값의 글")]
+    #[effects(alloc)]
+    fn int_min(i: ast::IntTy) -> String {
+        match i {
+            ast::IntTy::I8 => String::from("-128"),
+            ast::IntTy::I16 => String::from("-32768"),
+            ast::IntTy::I32 => String::from("-2147483648"),
+            ast::IntTy::I64 => String::from("-9223372036854775808"),
+            ast::IntTy::Isize => String::from("-9223372036854775808"),
+            ast::IntTy::U8 => String::from("0"),
+            ast::IntTy::U16 => String::from("0"),
+            ast::IntTy::U32 => String::from("0"),
+            ast::IntTy::U64 => String::from("0"),
+            ast::IntTy::Usize => String::from("0"),
+        }
+    }
+
+    #[effects(pure)]
+    fn is_and(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => true,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
         }
     }
 
@@ -509,6 +1243,31 @@ mod codegen {
         }
     }
 
+    #[effects(pure)]
+    fn is_or(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => true,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
     #[summary("정수, bool, f64인가")]
     #[effects(pure)]
     fn is_scalar_ty(t: &ast::TypeKind) -> bool {
@@ -530,6 +1289,40 @@ mod codegen {
             ast::TypeKind::Param(sc_param0) => false,
             ast::TypeKind::Never => false,
             ast::TypeKind::Error => false,
+        }
+    }
+
+    #[effects(pure)]
+    fn is_shr(op: ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => true,
+        }
+    }
+
+    #[summary("부호 있는 정수 타입인가")]
+    #[effects(pure)]
+    fn is_signed(t: &ast::TypeKind) -> bool {
+        match body::int_of(t) {
+            None => false,
+            Some(i) => body::signed(i),
         }
     }
 
@@ -644,7 +1437,7 @@ mod codegen {
                 }
             }
         }
-        let rv: CVal = g.block_expr(&def.d.body, ck, tb);
+        let rv: CVal = g.block_expr(&def.d.body, ck, tb, 100000);
         g.emit_return(&rv);
         let mut frag: String = String::from("\n");
         frag.push_str(g.globals.as_str());
@@ -820,6 +1613,48 @@ mod codegen {
             }
         }
         false
+    }
+
+    #[summary("e가 지역 이름이면 그 이름")]
+    #[effects(alloc)]
+    fn var_name(e: &ast::Expr) -> Option<String> {
+        match &e.kind {
+            ast::ExprKind::Int(vn_int0, vn_int1) => None,
+            ast::ExprKind::Float(vn_float0) => None,
+            ast::ExprKind::ByteLit(vn_bytelit0) => None,
+            ast::ExprKind::ByteStr(vn_bytestr0) => None,
+            ast::ExprKind::StrLit(vn_strlit0) => None,
+            ast::ExprKind::CharLit(vn_charlit0) => None,
+            ast::ExprKind::Bool(vn_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => Some(id.name.clone()),
+            ast::ExprKind::Call(vn_call0) => None,
+            ast::ExprKind::Method(vn_method0) => None,
+            ast::ExprKind::Index(vn_index0, vn_index1) => None,
+            ast::ExprKind::Unary(vn_unary0, vn_unary1) => None,
+            ast::ExprKind::Binary(vn_binary0, vn_binary1, vn_binary2) => None,
+            ast::ExprKind::Ref(vn_ref0, vn_ref1) => None,
+            ast::ExprKind::If(vn_if0) => None,
+            ast::ExprKind::Block(vn_block0) => None,
+            ast::ExprKind::Array(vn_array0) => None,
+            ast::ExprKind::Repeat(vn_repeat0) => None,
+            ast::ExprKind::Old(vn_old0) => None,
+            ast::ExprKind::Quant(vn_quant0) => None,
+            ast::ExprKind::Trigger(vn_trigger0) => None,
+            ast::ExprKind::Closure(vn_closure0) => None,
+            ast::ExprKind::StructLit(vn_structlit0) => None,
+            ast::ExprKind::Path(vn_path0) => None,
+            ast::ExprKind::Deref(vn_deref0) => None,
+            ast::ExprKind::Field(vn_field0, vn_field1) => None,
+            ast::ExprKind::Match(vn_match0) => None,
+            ast::ExprKind::Return(vn_return0) => None,
+            ast::ExprKind::Try(vn_try0) => None,
+            ast::ExprKind::Loop(vn_loop0) => None,
+            ast::ExprKind::Break(vn_break0) => None,
+            ast::ExprKind::Continue(vn_continue0) => None,
+            ast::ExprKind::Range(vn_range0) => None,
+            ast::ExprKind::Error => None,
+        }
     }
 
     #[summary("열거형 t의 변형 v를 보는 타입 (stage0 view_ty): 꼬리표와 페이로드")]
