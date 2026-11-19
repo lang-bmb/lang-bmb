@@ -466,7 +466,10 @@ fn runtime_dump_lists_the_constant_texts() {
             "head_rest",
             "heap_runtime",
             "vec_runtime",
-            "print_f64"
+            "print_f64",
+            "text_cmp",
+            "text_grow",
+            "text_utf8"
         ]
     );
     assert!(
