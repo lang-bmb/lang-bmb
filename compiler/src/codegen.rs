@@ -4035,6 +4035,9 @@ pub fn runtime_texts() -> Vec<(&'static str, String)> {
         ("heap_runtime", HEAP_RUNTIME.to_string()),
         ("vec_runtime", VEC_RUNTIME.to_string()),
         ("print_f64", PRINT_F64.to_string()),
+        ("text_cmp", text::TEXT_CMP.to_string()),
+        ("text_grow", text::TEXT_GROW.to_string()),
+        ("text_utf8", text::TEXT_UTF8.to_string()),
     ]
 }
 

@@ -109,5 +109,6 @@
 | `e1-vecs.txt` | `Vec`: `new`·`with_capacity`, `push`(자람), `len`, 색인, `as_slice`·`as_mut_slice`, 범위 조각, `pop`, `truncate`, `clone`, `copy_within`, 구조체의 `Vec`, `Vec`의 `Vec`, 값으로 넘기기와 돌려주기, 임시 `Vec`, 블록 끝의 해제 |
 | `e2-owned.txt` | 힙을 가진 값의 해제: `Box`와 재귀 자료(큰 스택), 힙을 가진 구조체와 열거형, 갈래마다 다른 해제, 가운데의 `return`·`break`·`?`, `match`가 옮기는 페이로드, 대입이 갈아치우는 값, 버리는 식의 값, 임시값, 힙을 가진 값의 `clone` |
 | `g1-generics.txt` | 제네릭 함수와 타입의 인스턴스: 스칼라·구조체·`Vec` 타입 인자, 인스턴스가 부르는 인스턴스, 인스턴스 안에서만 나오는 타입, 제네릭 구조체와 열거형, `impl<T>`의 함수, 힙을 가진 타입 인자의 해제 |
+| `f1-text.txt` | 글: `String::from`, `push_str`, `push`(1~4바이트 글자), `as_str`·`as_bytes`, 비교 여섯 가지(접두사와 빈 글), `&s[a..b]`의 경계 검사, `is_char_boundary`, `len_utf8`, `char::from_u32`, `String::from_utf8`(맞는 것과 틀린 것), 글 타입 인자를 받은 인스턴스의 비교, 글을 가진 구조체와 `Vec<String>` |
 | `g2-traits.txt` | trait 메서드의 분배: 타입마다의 impl, 기본 본문과 재정의, 제네릭 함수 안의 trait 호출, 제네릭 impl, 스칼라 타입의 impl, `Self`를 돌려주는 함수, 경로로 부르기 |
-| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`, `e1-*`, `e2-*`, `g1-*`, `g2-*`): 사례 `emit-run`이 견준다 |
+| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`, `e1-*`, `e2-*`, `f1-*`, `g1-*`, `g2-*`): 사례 `emit-run`이 견준다 |

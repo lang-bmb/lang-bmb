@@ -1,0 +1,146 @@
+#[summary("글: String::from, push_str(제 자신의 바이트도), push(1~4바이트 글자), as_str, as_bytes, len, clone, 비교(==, !=, <, <=, >, >=: 접두사와 빈 글), &s[a..b]의 경계 검사, is_char_boundary, len_utf8, char::from_u32, String::from_utf8(맞는 것과 틀린 것), 제네릭 인스턴스가 받은 글의 비교, 글을 가진 구조체와 Vec<String>")]
+mod text {
+    struct Named { name: String, n: i64 }
+
+    #[effects(pure)]
+    fn before<T: Ord>(a: &T, b: &T) -> bool {
+        *a < *b
+    }
+
+    #[effects(pure)]
+    fn same<T: Eq>(a: &T, b: &T) -> bool {
+        *a == *b
+    }
+
+    #[effects(pure)]
+    fn rank(a: &str, b: &str) -> i64 {
+        if a < b {
+            -1
+        } else if a == b {
+            0
+        } else {
+            1
+        }
+    }
+
+    #[effects(alloc)]
+    fn greet(who: &str) -> String {
+        let mut s: String = String::from("hi, ");
+        s.push_str(who);
+        s.push('!');
+        s
+    }
+
+    #[effects(alloc)]
+    fn head(s: &str, n: usize) -> String {
+        String::from(&s[0..n])
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let g: String = greet("bmb");
+        print_str(g.as_str());
+        print_u64(g.len() as u64);
+        let mut t: String = g.clone();
+        t.push_str(g.as_str());
+        print_str(t.as_str());
+        let mut u: String = String::new();
+        u.push('a');
+        u.push('é');
+        u.push('한');
+        u.push('😀');
+        print_u64(u.len() as u64);
+        print_str(u.as_str());
+        print_u64(u.as_bytes()[1] as u64);
+        print_u64('a'.len_utf8() as u64);
+        print_u64('é'.len_utf8() as u64);
+        print_u64('한'.len_utf8() as u64);
+        print_u64('😀'.len_utf8() as u64);
+        if u.is_char_boundary(1) {
+            print_i64(1);
+        }
+        if u.is_char_boundary(2) {
+            print_i64(2);
+        }
+        if u.is_char_boundary(3) {
+            print_i64(3);
+        }
+        if u.is_char_boundary(10) {
+            print_i64(10);
+        }
+        if u.is_char_boundary(11) {
+            print_i64(11);
+        }
+        print_str(head(u.as_str(), 3).as_str());
+        print_str(&u[3..6]);
+        print_i64(rank("abc", "abd"));
+        print_i64(rank("abc", "abc"));
+        print_i64(rank("abc", "ab"));
+        print_i64(rank("", "a"));
+        print_i64(rank("", ""));
+        if g == t {
+            print_i64(100);
+        }
+        if g != t {
+            print_i64(101);
+        }
+        if g.as_str() <= "hi, bmb!" && g.as_str() >= "hi, bmb!" {
+            print_i64(102);
+        }
+        if "b" > "abc" {
+            print_i64(103);
+        }
+        if before::<String>(&g, &t) {
+            print_i64(107);
+        }
+        if before::<String>(&t, &g) {
+            print_i64(108);
+        }
+        if same::<String>(&g, &t) {
+            print_i64(104);
+        }
+        let g2: String = greet("bmb");
+        if same::<String>(&g, &g2) {
+            print_i64(105);
+        }
+        match char::from_u32(0x1F600) {
+            None => print_i64(-1),
+            Some(c) => print_u64(u32::from(c) as u64),
+        }
+        match char::from_u32(0xD800) {
+            None => print_i64(-2),
+            Some(c) => print_u64(u32::from(c) as u64),
+        }
+        match char::from_u32(0x110000) {
+            None => print_i64(-3),
+            Some(c) => print_u64(u32::from(c) as u64),
+        }
+        let mut ok: Vec<u8> = Vec::new();
+        ok.push(0xED);
+        ok.push(0x95);
+        ok.push(0x9C);
+        match String::from_utf8(ok) {
+            Ok(s) => print_str(s.as_str()),
+            Err(b) => print_u64(b.len() as u64),
+        }
+        let mut bad: Vec<u8> = Vec::new();
+        bad.push(0xC0);
+        bad.push(0x80);
+        match String::from_utf8(bad) {
+            Ok(s) => print_str(s.as_str()),
+            Err(b) => print_u64(b.len() as u64),
+        }
+        let nm: Named = Named { name: greet("x"), n: 3 };
+        print_str(nm.name.as_str());
+        print_i64(nm.n);
+        let mut names: Vec<String> = Vec::new();
+        names.push(String::from("one"));
+        names.push(greet("two"));
+        names.push(nm.name.clone());
+        print_u64(names.len() as u64);
+        print_str(names[1].as_str());
+        if names[2] == nm.name {
+            print_i64(106);
+        }
+    }
+}

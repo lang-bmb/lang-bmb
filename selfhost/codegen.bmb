@@ -34,7 +34,7 @@ mod codegen {
     struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
     #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤), globals는 이 함수의 상수들이고 consts는 그 줄 수, pending은 힙 메모리를 가진 임시값들 (구역이 끝날 때 놓는다), clones는 복제 코드를 부른 타입의 글들")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind> }
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind> }
 
     impl Gen {
         #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
@@ -323,7 +323,7 @@ mod codegen {
                 return CVal::Imm(out);
             }
             if body::is_cmp(op) && (self.is_text_expr(l, tb) || self.is_text_expr(r, tb)) {
-                return self.todo_expr("a comparison of text", e);
+                return self.text_cmp(e, op, l, r, ck, tb, f - 1);
             }
             let lt: ast::TypeKind = self.ty(l, tb);
             let a: String = imm(&self.expr(l, ck, tb, f - 1));
@@ -510,6 +510,38 @@ mod codegen {
             kept
         }
 
+        #[summary("글의 n바이트 p에서 i가 글자의 경계인가 (stage0 boundary, Rust의 is_char_boundary): i1. 바이트는 n 아래에서만 읽는다")]
+        #[effects(alloc)]
+        fn boundary(self: &mut Gen, p: &str, n: &str, i: &str) -> String {
+            let inside: String = self.l("bnd");
+            let read: String = self.l("bndr");
+            let done: String = self.l("bndd");
+            let from: String = self.l("bnde");
+            let lt: String = self.t();
+            self.emit(types::cat2("br label %", from.as_str()).as_str());
+            self.block(from.as_str());
+            self.emit(types::cat5(lt.as_str(), " = icmp ult i64 ", i, ", ", n).as_str());
+            self.emit(types::cat7("br i1 ", lt.as_str(), ", label %", read.as_str(), ", label %", inside.as_str(), "").as_str());
+            self.block(read.as_str());
+            let q: String = self.t();
+            self.emit(types::cat5(q.as_str(), " = getelementptr inbounds i8, ptr ", p, ", i64 ", i).as_str());
+            let b: String = self.t();
+            self.emit(types::cat3(b.as_str(), " = load i8, ptr ", q.as_str()).as_str());
+            let start: String = self.t();
+            self.emit(types::cat4(start.as_str(), " = icmp sge i8 ", b.as_str(), ", -64").as_str());
+            self.emit(types::cat2("br label %", done.as_str()).as_str());
+            self.block(inside.as_str());
+            let end: String = self.t();
+            self.emit(types::cat5(end.as_str(), " = icmp eq i64 ", i, ", ", n).as_str());
+            self.emit(types::cat2("br label %", done.as_str()).as_str());
+            self.block(done.as_str());
+            let r: String = self.t();
+            let mut ph: String = types::cat5(r.as_str(), " = phi i1 [", start.as_str(), ", %", read.as_str());
+            ph.push_str(types::cat5("], [", end.as_str(), ", %", inside.as_str(), "]").as_str());
+            self.emit(ph.as_str());
+            r
+        }
+
         #[summary("Box::new(v) (stage0 box_new): v를 셈하고, malloc의 메모리에 옮기고, 그 주소를 담은 칸이 값이다")]
         #[effects(alloc)]
         fn box_new(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -593,7 +625,16 @@ mod codegen {
                 return self.vec_new(e, c, ck, tb, f - 1);
             }
             if body::text_builtin(c.path.as_slice()) {
-                return self.todo_expr("a call of a built-in of text (backlog 4D-05f)", e);
+                if c.args.len() != 1 || c.path.len() != 2 {
+                    return self.todo_expr("a built-in of text without one argument", e);
+                }
+                if c.path[1].name == "from" {
+                    return self.string_from(e, &c.args[0], ck, tb, f - 1);
+                }
+                if c.path[1].name == "from_utf8" {
+                    return self.string_from_utf8(e, &c.args[0], ck, tb, f - 1);
+                }
+                return self.char_from_u32(e, &c.args[0], ck, tb, f - 1);
             }
             if body::is_box_new(c.path.as_slice()) {
                 return self.box_new(e, c, ck, tb, f - 1);
@@ -674,7 +715,6 @@ mod codegen {
                 let pc: String = self.t();
                 self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str());
                 self.check(pc.as_str(), "`print_f64` decimals above 65535");
-                self.print_f64 = true;
             }
             let ret: ast::TypeKind = if print {
                 ast::TypeKind::Unit
@@ -726,6 +766,28 @@ mod codegen {
                 }
             }
             res
+        }
+
+        #[summary("char::from_u32(x) (stage0 char_from_u32): 스칼라 값이면 Some(x)")]
+        #[effects(alloc)]
+        fn char_from_u32(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let x: String = imm(&self.expr(arg, ck, tb, f - 1));
+            let a: String = self.t();
+            let b: String = self.t();
+            let c: String = self.t();
+            let d: String = self.t();
+            self.emit(types::cat4(a.as_str(), " = icmp ult i64 ", x.as_str(), ", 55296").as_str());
+            self.emit(types::cat4(b.as_str(), " = icmp uge i64 ", x.as_str(), ", 57344").as_str());
+            self.emit(types::cat4(c.as_str(), " = icmp ult i64 ", x.as_str(), ", 1114112").as_str());
+            self.emit(types::cat5(d.as_str(), " = and i1 ", b.as_str(), ", ", c.as_str()).as_str());
+            let ok: String = self.t();
+            self.emit(types::cat5(ok.as_str(), " = or i1 ", a.as_str(), ", ", d.as_str()).as_str());
+            self.option(e, ok.as_str(), x.as_str(), tb)
         }
 
         #[summary("실행 중 검사 (stage0 check): cond가 거짓이면 멈춘다")]
@@ -1436,7 +1498,7 @@ mod codegen {
             }
             match range_of(index) {
                 None => {},
-                Some(r) => { if self.is_text_expr(base, tb) { return self.todo_expr("a range of text", e); } return self.elem_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); },
+                Some(r) => { if types::has(tb.text.as_slice(), body::span_key(base.span).as_str()) { return self.str_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); } return self.elem_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); },
             }
             let ety: ast::TypeKind = self.ty(e, tb);
             if is_mem_elem(&ety) {
@@ -1753,7 +1815,7 @@ mod codegen {
         #[summary("식 e의 값이 글인가 (stage0 is_text_expr): 낮추기 전의 타입으로")]
         #[effects(alloc)]
         fn is_text_expr(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
-            types::has(tb.text.as_slice(), body::span_key(e.span).as_str())
+            types::has(tb.text.as_slice(), body::span_key(e.span).as_str()) || self.text_targ(e, tb)
         }
 
         #[summary("break와 continue (stage0 jump): 레이블의 루프(없으면 가장 안쪽)로. break e는 값을 루프의 자리에 둔다")]
@@ -2076,8 +2138,12 @@ mod codegen {
             if name == "copy_within" {
                 return self.copy_within(e, mc, ck, tb, f - 1);
             }
-            if self.is_text_expr(&*mc.recv, tb) && (name == "push_str" || name == "push" || name == "as_str" || name == "as_bytes" || name == "is_char_boundary") || name == "len_utf8" {
-                return self.todo_expr("a method of text (backlog 4D-05f)", e);
+            if self.is_text_expr(&*mc.recv, tb) && (name == "push_str" || name == "push" || name == "as_str" || name == "as_bytes" || name == "is_char_boundary") {
+                return self.text_method(e, mc, ck, tb, f - 1);
+            }
+            if name == "len_utf8" {
+                let lc: String = imm(&self.expr(&*mc.recv, ck, tb, f - 1));
+                return CVal::Imm(self.utf8_len(lc.as_str()));
             }
             let rt: ast::TypeKind = self.ty(&*mc.recv, tb);
             let vt: ast::TypeKind = lowered::value_ty(&rt);
@@ -2658,6 +2724,85 @@ mod codegen {
             }
         }
 
+        #[summary("&s[lo..hi] (stage0 str_slice): 그 사이의 바이트. 범위가 글자의 경계에 놓이는지 잰다 (E0820)")]
+        #[effects(alloc)]
+        fn str_slice(self: &mut Gen, idx: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", idx);
+            }
+            let sv: CVal = self.text_view(base, ck, tb, f - 1);
+            let p: String = arr_ptr(&sv);
+            let n: String = arr_len(&sv);
+            let a: String = imm(&self.expr(lo, ck, tb, f - 1));
+            let b: String = imm(&self.expr(hi, ck, tb, f - 1));
+            let ord: String = self.t();
+            self.emit(types::cat5(ord.as_str(), " = icmp ule i64 ", a.as_str(), ", ", b.as_str()).as_str());
+            let ba: String = self.boundary(p.as_str(), n.as_str(), a.as_str());
+            let bb: String = self.boundary(p.as_str(), n.as_str(), b.as_str());
+            let ab: String = self.t();
+            let c: String = self.t();
+            self.emit(types::cat5(ab.as_str(), " = and i1 ", ba.as_str(), ", ", bb.as_str()).as_str());
+            self.emit(types::cat5(c.as_str(), " = and i1 ", ab.as_str(), ", ", ord.as_str()).as_str());
+            self.check(c.as_str(), "the range may not lie on character boundaries");
+            let ptr: String = self.t();
+            let len: String = self.t();
+            self.emit(types::cat5(ptr.as_str(), " = getelementptr i8, ptr ", p.as_str(), ", i64 ", a.as_str()).as_str());
+            self.emit(types::cat5(len.as_str(), " = sub nuw i64 ", b.as_str(), ", ", a.as_str()).as_str());
+            CVal::Arr(ptr, len)
+        }
+
+        #[summary("String::from(t) (stage0 string_from): t의 길이의 새 버퍼에 그 바이트를 담는다")]
+        #[effects(alloc)]
+        fn string_from(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let sv: CVal = self.text_view(arg, ck, tb, f - 1);
+            let t: ast::TypeKind = self.ty(e, tb);
+            let hdr: String = self.temp(&t);
+            self.emit(types::cat5("call void @bmb_vec_alloc(ptr ", hdr.as_str(), ", i64 ", arr_len(&sv).as_str(), ", i64 1)").as_str());
+            self.emit(types::cat7("call void @bmb_str_append(ptr ", hdr.as_str(), ", ptr ", arr_ptr(&sv).as_str(), ", i64 ", arr_len(&sv).as_str(), ")").as_str());
+            CVal::Ptr(hdr, t)
+        }
+
+        #[summary("String::from_utf8(v) (stage0 string_from_utf8): 바이트가 UTF-8이면 그것의 Ok, 아니면 Err. 버퍼는 어느 쪽이든 결과로 옮겨진다")]
+        #[effects(alloc)]
+        fn string_from_utf8(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let av: CVal = self.expr(arg, ck, tb, f - 1);
+            if !is_ptr(&av) {
+                if !is_never(&av) {
+                    self.todo_at("a `String::from_utf8` of a value that is not a `Vec`", e.span);
+                }
+                return CVal::Never;
+            }
+            let v: String = ptr_of(&av);
+            let vw: CVal = self.vec_view(v.as_str());
+            let ok: String = self.t();
+            self.emit(types::cat7(ok.as_str(), " = call i1 @bmb_utf8_valid(ptr ", arr_ptr(&vw).as_str(), ", i64 ", arr_len(&vw).as_str(), ")", "").as_str());
+            let t: ast::TypeKind = self.ty(e, tb);
+            let out: String = self.temp(&t);
+            let tag: String = self.field_ptr(out.as_str(), &t, 0);
+            let k: String = self.t();
+            let bad: String = self.t();
+            self.emit(types::cat4(bad.as_str(), " = xor i1 ", ok.as_str(), ", true").as_str());
+            self.emit(types::cat4(k.as_str(), " = zext i1 ", bad.as_str(), " to i64").as_str());
+            self.emit(types::cat4("store i64 ", k.as_str(), ", ptr ", tag.as_str()).as_str());
+            let dst: String = self.t();
+            self.emit(types::cat7(dst.as_str(), " = getelementptr inbounds ", view_ty(&t, "Ok").as_str(), ", ptr ", out.as_str(), ", i32 0, i32 1", "").as_str());
+            let vt: ast::TypeKind = lowered::value_ty(&self.ty(arg, tb));
+            self.copy(dst.as_str(), v.as_str(), &vt);
+            CVal::Ptr(out, t)
+        }
+
         #[summary("구조체 리터럴 (stage0 expr의 StructLit): 필드를 쓴 차례로 셈하고 옮긴다")]
         #[effects(alloc)]
         fn struct_lit(self: &mut Gen, e: &ast::Expr, lit: &ast::StructLit, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -2700,6 +2845,89 @@ mod codegen {
         #[effects(alloc)]
         fn temp(self: &mut Gen, t: &ast::TypeKind) -> String {
             self.alloca(mem_ty(t).as_str())
+        }
+
+        #[summary("글의 비교 l op r (stage0 text_cmp): Rust의 바이트 사전 순서")]
+        #[effects(alloc)]
+        fn text_cmp(self: &mut Gen, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let a: CVal = self.text_view(l, ck, tb, f - 1);
+            let b: CVal = self.text_view(r, ck, tb, f - 1);
+            let c: String = self.t();
+            let mut call: String = types::cat5(c.as_str(), " = call i32 @bmb_str_cmp(ptr ", arr_ptr(&a).as_str(), ", i64 ", arr_len(&a).as_str());
+            call.push_str(types::cat5(", ptr ", arr_ptr(&b).as_str(), ", i64 ", arr_len(&b).as_str(), ")").as_str());
+            self.emit(call.as_str());
+            let out: String = self.t();
+            self.emit(types::cat7(out.as_str(), " = icmp ", int_cmp(op, true).as_str(), " i32 ", c.as_str(), ", 0", "").as_str());
+            CVal::Imm(out)
+        }
+
+        #[summary("글의 메서드 (stage0 text_method): push_str, push, as_str, as_bytes, is_char_boundary. len과 clone은 Vec의 것이다")]
+        #[effects(alloc)]
+        fn text_method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let name: String = mc.name.name.clone();
+            if name == "as_str" || name == "as_bytes" {
+                return self.text_view(&*mc.recv, ck, tb, f - 1);
+            }
+            if mc.args.len() != 1 {
+                return self.todo_expr("a method of text without one argument", e);
+            }
+            if name == "push_str" {
+                let sv: CVal = self.text_view(&mc.args[0], ck, tb, f - 1);
+                let hdr: String = self.vec_hdr(&*mc.recv, ck, tb, f - 1);
+                self.emit(types::cat7("call void @bmb_str_append(ptr ", hdr.as_str(), ", ptr ", arr_ptr(&sv).as_str(), ", i64 ", arr_len(&sv).as_str(), ")").as_str());
+                return CVal::Unit;
+            }
+            if name == "push" {
+                let pc: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1));
+                let ph: String = self.vec_hdr(&*mc.recv, ck, tb, f - 1);
+                self.emit(types::cat5("call void @bmb_str_push_char(ptr ", ph.as_str(), ", i64 ", pc.as_str(), ")").as_str());
+                return CVal::Unit;
+            }
+            let rv: CVal = self.text_view(&*mc.recv, ck, tb, f - 1);
+            let bi: String = imm(&self.expr(&mc.args[0], ck, tb, f - 1));
+            CVal::Imm(self.boundary(arr_ptr(&rv).as_str(), arr_len(&rv).as_str(), bi.as_str()))
+        }
+
+        #[summary("e의 타입이 타입 매개변수이고 이 인스턴스가 그것에 글 타입을 주는가 (stage0 text_targ): 그 비교는 글의 것이다")]
+        #[effects(alloc)]
+        fn text_targ(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
+            if self.tsub.names.len() == 0 {
+                return false;
+            }
+            match tb.types.find(body::span_key(e.span).as_str()) {
+                None => false,
+                Some(at) => { match types::param_name(&tb.types.items[at]) { None => false, Some(n) => { let mut found: bool = false; for i in 0..self.tsub.names.len() invariant 0 <= i && i <= self.tsub.names.len(), { if self.tsub.names[i] == n && i < self.tsub.tys.len() { found = body::is_text(&self.tsub.tys[i]) || types::text(&self.tsub.tys[i]) == "Vec<u8>"; } } found }, } },
+            }
+        }
+
+        #[summary("글인 식 e의 바이트 (stage0 text_view): 주소와 길이")]
+        #[effects(alloc)]
+        fn text_view(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let t: ast::TypeKind = self.ty(e, tb);
+            if is_vec(&t) || self.vec_var(e) {
+                let hdr: String = self.vec_hdr(e, ck, tb, f - 1);
+                return self.vec_view(hdr.as_str());
+            }
+            let v: CVal = self.expr(e, ck, tb, f - 1);
+            if !is_arr(&v) && !is_never(&v) {
+                return self.todo_expr("text that is not bytes", e);
+            }
+            v
         }
 
         #[summary("정수의 바이트들 (stage0 expr의 to_be_bytes·to_le_bytes, 백로그 2N-09c): 바이트마다 레지스터를 오른쪽으로 밀어 잘라 쓴다")]
@@ -2848,6 +3076,24 @@ mod codegen {
             let h: String = self.t();
             self.emit(types::cat3(h.as_str(), " = load ptr, ptr ", cell).as_str());
             h
+        }
+
+        #[summary("레지스터 c의 스칼라 값의 UTF-8 길이 (stage0 utf8_len)")]
+        #[effects(alloc)]
+        fn utf8_len(self: &mut Gen, c: &str) -> String {
+            let a: String = self.t();
+            let b: String = self.t();
+            let d: String = self.t();
+            self.emit(types::cat4(a.as_str(), " = icmp ult i64 ", c, ", 128").as_str());
+            self.emit(types::cat4(b.as_str(), " = icmp ult i64 ", c, ", 2048").as_str());
+            self.emit(types::cat4(d.as_str(), " = icmp ult i64 ", c, ", 65536").as_str());
+            let x: String = self.t();
+            let y: String = self.t();
+            let z: String = self.t();
+            self.emit(types::cat4(x.as_str(), " = select i1 ", d.as_str(), ", i64 3, i64 4").as_str());
+            self.emit(types::cat7(y.as_str(), " = select i1 ", b.as_str(), ", i64 2, i64 ", x.as_str(), "", "").as_str());
+            self.emit(types::cat7(z.as_str(), " = select i1 ", a.as_str(), ", i64 1, i64 ", y.as_str(), "", "").as_str());
+            z
         }
 
         #[summary("열거형 t의 변형 vname을 인자들로 짓는다 (stage0 variant): 페이로드는 셈하는 차례로 옮긴다")]
@@ -3700,7 +3946,6 @@ mod codegen {
         ir.push_str(codegen_text::head_rest().as_str());
         let defs: Vec<Def> = sorted_defs(&ck.program, tb);
         let mut main: Option<String> = None;
-        let mut print_f64: bool = false;
         let mut clones: Vec<String> = Vec::new();
         let mut by_path: table::Table<usize> = table::new::<usize>();
         let mut queue: Vec<Low> = Vec::new();
@@ -3728,7 +3973,7 @@ mod codegen {
             if di < defs.len() {
                 match tb.fns.find(defs[di].path.as_str()) {
                     None => {},
-                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()), } } for w in 0..g.wants.len() invariant 0 <= w && w <= g.wants.len(), { if types::add(&mut lowered, g.wants[w].key.as_str()) { match by_path.find(g.wants[w].callee.as_str()) { None => todo.push(types::cat2("an instance of a function without a body: ", g.wants[w].key.as_str())), Some(bi) => queue.push(Low { path: g.wants[w].key.clone(), def: by_path.items[bi], sub: g.wants[w].sub.clone() }), } } } },
+                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()), } } for w in 0..g.wants.len() invariant 0 <= w && w <= g.wants.len(), { if types::add(&mut lowered, g.wants[w].key.as_str()) { match by_path.find(g.wants[w].callee.as_str()) { None => todo.push(types::cat2("an instance of a function without a body: ", g.wants[w].key.as_str())), Some(bi) => queue.push(Low { path: g.wants[w].key.clone(), def: by_path.items[bi], sub: g.wants[w].sub.clone() }), } } } },
                 }
             }
         }
@@ -3741,8 +3986,17 @@ mod codegen {
                 Some(ua) => extra.push(used.items[ua].clone()),
             }
         }
-        if print_f64 {
+        if in_ir(ir.as_str(), "@bmb_print_f64(") {
             ir.push_str(codegen_text::print_f64().as_str());
+        }
+        if in_ir(ir.as_str(), "@bmb_str_cmp(") {
+            ir.push_str(codegen_text::text_cmp().as_str());
+        }
+        if in_ir(ir.as_str(), "@bmb_str_append(") || in_ir(ir.as_str(), "@bmb_str_push_char(") {
+            ir.push_str(codegen_text::text_grow().as_str());
+        }
+        if in_ir(ir.as_str(), "@bmb_utf8_valid(") {
+            ir.push_str(codegen_text::text_utf8().as_str());
         }
         match &main {
             None => {},
@@ -4075,6 +4329,15 @@ mod codegen {
             CVal::Ptr(im_q, im_t) => String::from("undef"),
             CVal::Unit => String::from("0"),
             CVal::Never => String::from("undef"),
+        }
+    }
+
+    #[summary("IR의 글 ir에 pat이 나오는가 (stage0 emit_with의 ir.contains): 런타임 조각을 넣을지를 IR의 글에서 정한다. 프로그램의 바이트 문자열 상수에 그 이름이 있어도 넣는다 (stage0과 같다)")]
+    #[effects(pure)]
+    fn in_ir(ir: &str, pat: &str) -> bool {
+        match std::str::find(ir, pat) {
+            None => false,
+            Some(at) => true,
         }
     }
 
@@ -4475,7 +4738,7 @@ mod codegen {
     #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
     #[effects(alloc)]
     fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>() };
+        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>() };
         let mut ps: Vec<ast::TypeKind> = Vec::new();
         for pi in 0..sig.params.len()
             invariant 0 <= pi && pi <= sig.params.len(),
