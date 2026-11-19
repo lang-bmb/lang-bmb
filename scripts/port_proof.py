@@ -12,7 +12,11 @@ the lines. A `bmb verify --cache DIR` of the whole program afterwards finds
 the proofs, proves what is left (a `spec fn` with obligations of its own)
 and gives the rows a single run gives.
 
-    port_proof.py [--jobs N] DIR FILE..
+    port_proof.py [--jobs N] [--bmb BMB] DIR FILE..
+
+BMB is the compiler that proves (default `target/debug/bmb`). The gate
+passes the optimized build of the same sources: building the queries is
+about ten times faster there (backlog INF-43).
 
 Nothing is trusted that the single run would not prove: every proof in DIR
 was found in this run, from empty caches, by the same compiler, and the
@@ -69,11 +73,13 @@ def main(argv):
     jobs = os.cpu_count() or 1
     if argv[:1] == ["--jobs"]:
         jobs, argv = int(argv[1]), argv[2:]
+    bmb = str(ROOT / "target" / "debug" / "bmb")
+    if argv[:1] == ["--bmb"]:
+        bmb, argv = str(Path(argv[1]).resolve()), argv[2:]
     if len(argv) < 2:
         print(__doc__)
         return 2
     out, files = Path(argv[0]), argv[1:]
-    bmb = str(ROOT / "target" / "debug" / "bmb")
     names = definitions(bmb, files)
     jobs = max(1, min(jobs, len(names)))
     if out.exists():
