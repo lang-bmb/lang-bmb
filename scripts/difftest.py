@@ -7,7 +7,7 @@ the same environment and the same standard input, and compares standard
 output, standard error, the exit code and the files they leave, byte for
 byte. Nothing is normalised.
 
-    difftest.py run CASES.json [--case NAME]... [--keep DIR]
+    difftest.py run CASES.json [--case NAME]... [--keep DIR] [--prebuilt NAME=PATH]...
 
 prints one JSON line per case and exits 1 when a case differs or cannot
 run. The cases file:
@@ -201,7 +201,7 @@ def run_case(case, built, bmb, timeout=600):
     return result
 
 
-def run(path, only, bmb, keep):
+def run(path, only, bmb, keep, prebuilt=None):
     with open(path, encoding="utf-8") as f:
         spec = json.load(f)
     cases = [c for c in spec["cases"] if not only or c["name"] in only]
@@ -220,6 +220,11 @@ def run(path, only, bmb, keep):
             if name not in spec.get("builds", {}):
                 print(f"difftest: no build named {name}", file=sys.stderr)
                 return 2
+            if name in (prebuilt or {}):
+                # A program built elsewhere stands in (the bootstrap chain's
+                # stage2 for stage1, backlog 4E-02).
+                built[name] = os.path.abspath(prebuilt[name])
+                continue
             built[name] = os.path.join(os.path.abspath(out_dir), name)
             err = build(spec["builds"][name], built[name], bmb)
             if err:
@@ -245,8 +250,10 @@ def main():
     r.add_argument("--case", action="append", default=[])
     r.add_argument("--bmb", default=os.path.join(ROOT, "target", "debug", "bmb"))
     r.add_argument("--keep", help="keep the built programs in DIR")
+    r.add_argument("--prebuilt", action="append", default=[], metavar="NAME=PATH", help="use the program at PATH as build NAME")
     args = ap.parse_args()
-    return run(args.cases, args.case, os.path.abspath(args.bmb), args.keep)
+    prebuilt = dict(p.split("=", 1) for p in args.prebuilt)
+    return run(args.cases, args.case, os.path.abspath(args.bmb), args.keep, prebuilt)
 
 
 if __name__ == "__main__":
