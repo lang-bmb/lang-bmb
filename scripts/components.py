@@ -184,7 +184,10 @@ def port_rows(root):
         files = sorted(str(p) for p in (Path(root) / "selfhost").glob("*.bmb"))
         # The gate proves the port once (check.sh "port proof", INF-40); the
         # jobs that read the proof find it in this cache and get the same rows.
-        cmd = [bmb_bin(root), "verify", "--cache", str(Path(root) / PORT_PROOF), *files]
+        # The compiler that proves: the optimized build when the caller built
+        # one (`BMB_PROOF_BMB`, check.sh and regen.sh, backlog INF-43).
+        prover = os.environ.get("BMB_PROOF_BMB") or bmb_bin(root)
+        cmd = [prover, "verify", "--cache", str(Path(root) / PORT_PROOF), *files]
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=root)
         rows = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
         _PORT_ROWS[key] = [x for x in rows if "status" in x and "def" in x]

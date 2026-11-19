@@ -16,6 +16,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 cargo build --quiet
+# The port's proof (the ledger reads it) runs in the optimized build (backlog
+# INF-43): after a change of the compiler every definition is encoded again.
+cargo build --release --quiet
+export BMB_PROOF_BMB="$PWD/target/release/bmb"
 bmb=target/debug/bmb
 "$bmb" codes --md > docs/diagnostics.md
 python3 scripts/backlog.py archive

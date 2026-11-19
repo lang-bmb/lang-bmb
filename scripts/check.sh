@@ -45,11 +45,16 @@ step "backlog"; python3 scripts/test_backlog.py > /dev/null
 # whole port again (backlog INF-40). Its definitions are proved in as many
 # processes as the machine has cores, each from an empty cache of its own,
 # and the single run below gives the verdict from the merged cache (backlog
-# INF-41).
+# INF-41). The optimized build of the same sources proves it: no solver time
+# is saved, but building the queries is about ten times faster than in the
+# debug build, which took most of this step (backlog INF-43; the tests above
+# and the jobs below still run the debug build).
 step "port proof"
+cargo build --release --quiet
+export BMB_PROOF_BMB="$PWD/target/release/bmb"
 rm -rf target/port-proof
-python3 scripts/port_proof.py target/port-proof selfhost/*.bmb > /dev/null
-if ! target/debug/bmb verify --cache target/port-proof selfhost/*.bmb > "$built.port"; then
+python3 scripts/port_proof.py --bmb "$BMB_PROOF_BMB" target/port-proof selfhost/*.bmb > /dev/null
+if ! "$BMB_PROOF_BMB" verify --cache target/port-proof selfhost/*.bmb > "$built.port"; then
   grep -v '"status":"verified"' "$built.port" | head -20
   rm -f "$built.port"
   exit 1
