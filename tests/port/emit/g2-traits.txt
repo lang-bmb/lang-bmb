@@ -1,0 +1,151 @@
+#[summary("trait 메서드의 분배: 타입마다의 impl, 기본 본문과 그 재정의, 제네릭 함수 안의 trait 호출(인스턴스마다 다른 함수), 제네릭 impl(impl<T> Tr for W<T>), 스칼라 타입의 impl, 경로로 부르기(Tr::f), 힙을 가진 Self, 인스턴스가 부르는 기본 본문의 인스턴스")]
+mod traits {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn sides(self: &Self) -> i64 {
+            4
+        }
+
+        #[effects(pure)]
+        fn score(self: &Self) -> i64 {
+            self.area().wrapping_mul(self.sides())
+        }
+    }
+
+    trait Zero {
+        #[effects(pure)]
+        fn zero() -> Self;
+
+        #[effects(pure)]
+        fn plus(self: Self, o: Self) -> Self;
+    }
+
+    struct Sq { s: i64 }
+    struct Tri { b: i64, h: i64 }
+    struct Bag { items: Vec<i64> }
+    struct Wrap<T> { v: T, k: i64 }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> i64 {
+            self.s.wrapping_mul(self.s)
+        }
+    }
+
+    impl Shape for Tri {
+        #[effects(pure)]
+        fn area(self: &Tri) -> i64 {
+            self.b.wrapping_mul(self.h) / 2
+        }
+
+        #[effects(pure)]
+        fn sides(self: &Tri) -> i64 {
+            3
+        }
+    }
+
+    impl Shape for Bag {
+        #[effects(pure)]
+        fn area(self: &Bag) -> i64 {
+            let mut s: i64 = 0;
+            for i in 0..self.items.len() {
+                s = s.wrapping_add(self.items[i]);
+            }
+            s
+        }
+
+        #[effects(pure)]
+        fn score(self: &Bag) -> i64 {
+            self.area().wrapping_sub(1)
+        }
+    }
+
+    impl<T: Shape> Shape for Wrap<T> {
+        #[effects(pure)]
+        fn area(self: &Wrap<T>) -> i64 {
+            self.v.area().wrapping_mul(self.k)
+        }
+    }
+
+    impl Zero for i64 {
+        #[effects(pure)]
+        fn zero() -> i64 {
+            0
+        }
+
+        #[effects(pure)]
+        fn plus(self: i64, o: i64) -> i64 {
+            self.wrapping_add(o)
+        }
+    }
+
+    impl Zero for u8 {
+        #[effects(pure)]
+        fn zero() -> u8 {
+            0
+        }
+
+        #[effects(pure)]
+        fn plus(self: u8, o: u8) -> u8 {
+            self.wrapping_add(o)
+        }
+    }
+
+    #[effects(pure)]
+    fn total<T: Shape>(a: &T, b: &T) -> i64 {
+        a.score().wrapping_add(b.area())
+    }
+
+    #[effects(pure)]
+    fn sum<T: Zero + Copy>(xs: &[T]) -> T {
+        let mut s: T = Zero::zero();
+        for i in 0..xs.len() {
+            s = s.plus(xs[i]);
+        }
+        s
+    }
+
+    #[effects(pure)]
+    fn deep<T: Shape>(x: T, k: i64) -> i64 {
+        let w: Wrap<T> = Wrap { v: x, k: k };
+        total::<Wrap<T>>(&w, &w)
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let a: Sq = Sq { s: 3 };
+        let b: Tri = Tri { b: 4, h: 5 };
+        print_i64(a.area());
+        print_i64(a.sides());
+        print_i64(a.score());
+        print_i64(b.area());
+        print_i64(b.sides());
+        print_i64(b.score());
+        print_i64(Shape::area(&a));
+        print_i64(total::<Sq>(&a, &a));
+        print_i64(total::<Tri>(&b, &b));
+        let mut v: Vec<i64> = Vec::new();
+        v.push(5);
+        v.push(6);
+        let g: Bag = Bag { items: v };
+        print_i64(g.area());
+        print_i64(g.score());
+        print_i64(total::<Bag>(&g, &g));
+        let w: Wrap<Sq> = Wrap { v: Sq { s: 2 }, k: 10 };
+        print_i64(w.area());
+        print_i64(w.score());
+        let ww: Wrap<Wrap<Tri>> = Wrap { v: Wrap { v: Tri { b: 2, h: 3 }, k: 2 }, k: 3 };
+        print_i64(ww.area());
+        print_i64(deep::<Sq>(Sq { s: 1 }, 7));
+        print_i64(deep::<Bag>(g, 2));
+        let xs: [i64; 4] = [1, 2, 3, 4];
+        print_i64(sum::<i64>(&xs));
+        let ys: [u8; 3] = [200, 100, 5];
+        print_u64(sum::<u8>(&ys) as u64);
+        let z: i64 = Zero::zero();
+        print_i64(z.plus(8));
+    }
+}

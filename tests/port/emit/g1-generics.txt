@@ -1,0 +1,130 @@
+#[summary("제네릭 함수와 타입의 인스턴스: 스칼라와 구조체 타입 인자, 인스턴스가 부르는 인스턴스, 인스턴스 안에서만 나오는 타입, 제네릭 구조체와 열거형, impl<T>의 함수, 힙을 가진 타입 인자(해제와 복제), 같은 인스턴스를 여러 곳에서 부르기")]
+mod generics {
+    struct Pt { x: i64, y: i64 }
+    struct Pair<A: Copy, B: Copy> { a: A, b: B }
+    struct Cell<T> { v: T, n: u32 }
+    enum Pick<T> { Nothing, One(T), Two(T, T) }
+
+    impl<T> Cell<T> {
+        #[effects(pure)]
+        fn wrap(v: T) -> Cell<T> {
+            Cell { v: v, n: 1 }
+        }
+
+        #[effects(pure)]
+        fn count(self: &Cell<T>) -> u32 {
+            self.n
+        }
+
+        #[effects(pure)]
+        fn take(self: Cell<T>) -> T {
+            self.v
+        }
+    }
+
+    #[effects(pure)]
+    fn first<A: Copy, B: Copy>(p: &Pair<A, B>) -> A {
+        p.a
+    }
+
+    #[effects(pure)]
+    fn swap<A: Copy, B: Copy>(p: Pair<A, B>) -> Pair<B, A> {
+        Pair { a: p.b, b: p.a }
+    }
+
+    #[effects(pure)]
+    fn twice<A: Copy>(x: A) -> Pair<A, A> {
+        let p: Pair<A, A> = Pair { a: x, b: x };
+        swap::<A, A>(p)
+    }
+
+    #[effects(pure)]
+    fn pick<T: Copy>(xs: &[T], i: usize, d: T) -> T {
+        if i < xs.len() {
+            xs[i]
+        } else {
+            d
+        }
+    }
+
+    #[effects(pure)]
+    fn choose<T: Copy>(p: &Pick<T>, d: T) -> T {
+        match p {
+            Pick::Nothing => d,
+            Pick::One(a) => *a,
+            Pick::Two(a, b) => *b,
+        }
+    }
+
+    #[effects(alloc)]
+    fn fill<T: Copy>(x: T, n: usize) -> Vec<T>
+        requires n <= 100,
+    {
+        let mut v: Vec<T> = Vec::new();
+        for i in 0..n {
+            v.push(x);
+        }
+        v
+    }
+
+    #[effects(alloc)]
+    fn last_or<T: Copy>(v: Vec<T>, d: T) -> T {
+        let mut w: Vec<T> = v;
+        match w.pop() {
+            None => d,
+            Some(x) => x,
+        }
+    }
+
+    #[effects(alloc)]
+    fn both<T>(x: T, y: T) -> Cell<Vec<T>> {
+        let mut v: Vec<T> = Vec::new();
+        v.push(x);
+        v.push(y);
+        Cell::<Vec<T>>::wrap(v)
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let p: Pair<i64, u8> = Pair { a: 7, b: 9 };
+        print_i64(first::<i64, u8>(&p));
+        let q: Pair<u8, i64> = swap::<i64, u8>(p);
+        print_u64(q.a as u64);
+        print_i64(q.b);
+        let t: Pair<i64, i64> = twice::<i64>(-3);
+        print_i64(t.a.wrapping_add(t.b));
+        let pts: Pair<Pt, Pt> = twice::<Pt>(Pt { x: 4, y: 5 });
+        print_i64(pts.a.x.wrapping_mul(10).wrapping_add(pts.b.y));
+        let f: Pair<f64, bool> = Pair { a: 1.5, b: true };
+        print_f64(first::<f64, bool>(&f), 2);
+        let xs: [u16; 3] = [10, 20, 30];
+        print_u64(pick::<u16>(&xs, 1, 0) as u64);
+        print_u64(pick::<u16>(&xs, 5, 99) as u64);
+        let ps: [Pt; 2] = [Pt { x: 1, y: 2 }, Pt { x: 3, y: 4 }];
+        let got: Pt = pick::<Pt>(&ps, 1, Pt { x: 0, y: 0 });
+        print_i64(got.x.wrapping_add(got.y));
+        let one: Pick<i64> = Pick::One(11);
+        let two: Pick<i64> = Pick::Two(12, 13);
+        let none: Pick<i64> = Pick::Nothing;
+        print_i64(choose::<i64>(&one, 0));
+        print_i64(choose::<i64>(&two, 0));
+        print_i64(choose::<i64>(&none, -1));
+        let v: Vec<u32> = fill::<u32>(6, 4);
+        print_u64(v.len() as u64);
+        print_u64(last_or::<u32>(v, 0) as u64);
+        let e: Vec<bool> = Vec::new();
+        if last_or::<bool>(e, true) {
+            print_i64(1);
+        }
+        let c: Cell<i64> = Cell::<i64>::wrap(21);
+        print_u64(c.count() as u64);
+        print_i64(c.take());
+        let inner: Vec<i64> = fill::<i64>(8, 3);
+        let b: Cell<Vec<Vec<i64>>> = both::<Vec<i64>>(inner.clone(), fill::<i64>(8, 3));
+        print_u64(b.count() as u64);
+        let vv: Vec<Vec<i64>> = b.take();
+        print_u64(vv.len() as u64);
+        print_i64(vv[1][2]);
+        print_u64(inner.len() as u64);
+    }
+}

@@ -34,7 +34,7 @@ mod codegen {
     struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
     #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤), globals는 이 함수의 상수들이고 consts는 그 줄 수, pending은 힙 메모리를 가진 임시값들 (구역이 끝날 때 놓는다), clones는 복제 코드를 부른 타입의 글들")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String> }
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, print_f64: bool, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind> }
 
     impl Gen {
         #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
@@ -568,7 +568,7 @@ mod codegen {
             CVal::Arr(name, n)
         }
 
-        #[summary("제네릭 아닌 함수의 호출 (stage0 call). 인자: 스칼라, 스칼라 원소의 슬라이스(주소와 길이)와 값으로 넘기는 배열(주소), 스칼라 참조(자리의 주소). 결과: 스칼라, 스칼라 원소의 배열(부른 쪽의 메모리). 내장은 print_i64·print_u64·print_f64·print_str·print_bytes")]
+        #[summary("호출 (stage0 call): 변환과 내장의 꼴을 가르고, 함수는 call_fn이 부른다. 인자: 스칼라, 스칼라 원소의 슬라이스(주소와 길이)와 값으로 넘기는 배열(주소), 스칼라 참조(자리의 주소). 결과: 스칼라, 스칼라 원소의 배열(부른 쪽의 메모리). 내장은 print_i64·print_u64·print_f64·print_str·print_bytes")]
         #[effects(alloc)]
         fn call(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -601,8 +601,131 @@ mod codegen {
             let target: String = self.resolve(c.path.as_slice(), tb);
             match tb.fns.find(target.as_str()) {
                 None => { if c.path.len() == 0 { return self.todo_expr("a call without a path", e); } let vt: ast::TypeKind = self.ty(e, tb); self.variant(e, &vt, c.path[c.path.len() - 1].name.as_str(), c.args.as_slice(), ck, tb, f - 1) },
-                Some(at) => { let bytes_out: bool = target == "print_str" || target == "print_bytes"; let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64" || bytes_out; if tb.fns.items[at].builtin && !print || tb.fns.items[at].generics.len() > 0 || has_trait(&tb.fns.items[at]) || tb.targs.has(body::span_key(e.span).as_str()) { return self.todo_expr("a call of a built-in, a generic function or a trait method", e); } let mut flat: Vec<String> = Vec::new(); let mut backs: Vec<Back> = Vec::new(); for k in 0..c.args.len() invariant 0 <= k && k <= c.args.len(), { let aty: ast::TypeKind = self.ty(&c.args[k], tb); let pk: u32 = if k < tb.fns.items[at].params.len() { param_kind(&tb.fns.items[at].params[k]) } else { 0 }; if pk == 9 { return self.todo_expr("an argument for a parameter that is not ported (a reference to an array or to a reference)", &c.args[k]); } if pk == 2 && k < tb.fns.items[at].params.len() { match body::ref_inner(&tb.fns.items[at].params[k]) { None => {}, Some(inner) => { let rp: String = self.scalar_ref(&c.args[k], &inner, types::is_ref_mut(&tb.fns.items[at].params[k]), &mut backs, ck, tb, f - 1); flat.push(types::cat2("ptr ", rp.as_str())); }, } } else { let av: CVal = self.expr(&c.args[k], ck, tb, f - 1); match &av { CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())), CVal::Arr(ap, an) => { flat.push(types::cat2("ptr ", ap.as_str())); if pk != 3 { flat.push(types::cat2("i64 ", an.as_str())); } }, CVal::Ptr(pp, pt) => { if pk == 5 { let ptmp: String = self.temp(pt); self.copy(ptmp.as_str(), pp.as_str(), pt); flat.push(types::cat2("ptr ", ptmp.as_str())); } else { flat.push(types::cat2("ptr ", pp.as_str())); } }, CVal::Unit => {}, CVal::Never => { if pk == 1 { flat.push(String::from("ptr undef")); flat.push(String::from("i64 undef")); } else if pk == 3 || pk == 4 || pk == 5 { flat.push(String::from("ptr undef")); } else if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } }, } } } if target == "print_f64" { if flat.len() != 2 { return self.todo_expr("a `print_f64` whose arguments are not two values", e); } let pc: String = self.t(); self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str()); self.check(pc.as_str(), "`print_f64` decimals above 65535"); self.print_f64 = true; } let ret: ast::TypeKind = if print { ast::TypeKind::Unit } else { tb.fns.items[at].ret.clone() }; let callee: String = if bytes_out { String::from("@bmb_print_bytes") } else if print { types::cat2("@bmb_", target.as_str()) } else { fn_sym(target.as_str()) }; let args: String = types::join(flat.as_slice(), ", "); let res: CVal = if ret_in_memory(&ret) { let out: String = self.temp(&ret); let sep: String = if flat.len() > 0 { String::from(", ") } else { String::new() }; self.emit(types::cat7("call void ", callee.as_str(), "(ptr ", out.as_str(), sep.as_str(), args.as_str(), ")").as_str()); self.read(out.as_str(), &ret) } else if decls::is_unit(&ret) { self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str()); CVal::Unit } else { let r: String = self.t(); self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str()); CVal::Imm(r) }; for b in 0..backs.len() invariant 0 <= b && b <= backs.len(), { let x: String = self.t(); self.emit(types::cat5(x.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str()); let be: String = backs[b].elem.clone(); let bp: String = backs[b].ptr.clone(); if backs[b].mem { let bt: ast::TypeKind = backs[b].ty.clone(); self.put(&CVal::Imm(x), bp.as_str(), &bt); } else { self.store_elem(be.as_str(), x.as_str(), bp.as_str()); } } res },
+                Some(at) => self.call_fn(e, c, target.as_str(), at, ck, tb, f - 1),
             }
+        }
+
+        #[summary("함수의 호출 (stage0 call의 뒤쪽). 제네릭 함수는 호출의 타입 인자의 인스턴스를 부르고 그것을 wants에 적는다. trait 메서드는 Self의 impl의 함수를 부른다 (ADR-0046 §5)")]
+        #[effects(alloc)]
+        fn call_fn(self: &mut Gen, e: &ast::Expr, c: &ast::Call, target0: &str, at0: usize, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+            decreases f,
+        {
+            if f == 0 || at0 >= tb.fns.items.len() {
+                return self.todo_expr("nesting too deep", e);
+            }
+            let mut target: String = String::from(target0);
+            let mut at: usize = at0;
+            let mut csub: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() };
+            match tb.targs.find(body::span_key(e.span).as_str()) {
+                None => {},
+                Some(ti) => { for gi in 0..tb.fns.items[at].generics.len() invariant 0 <= gi && gi <= tb.fns.items[at].generics.len(), { if gi < tb.targs.items[ti].len() { csub.names.push(tb.fns.items[at].generics[gi].name.clone()); csub.tys.push(types::subst(&tb.targs.items[ti][gi], &self.tsub)); } } },
+            }
+            if has_trait(&tb.fns.items[at]) {
+                match body::dispatch(&tb.fns, tb.trait_impls.as_slice(), target.as_str(), csub.tys.as_slice()) {
+                    None => { return self.todo_expr("a trait call without an impl", e); },
+                    Some(d) => { match tb.fns.find(d.path.as_str()) { None => { return self.todo_expr("a trait call whose impl function is unknown", e); }, Some(at2) => { let mut dsub: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() }; for gi in 0..tb.fns.items[at2].generics.len() invariant 0 <= gi && gi <= tb.fns.items[at2].generics.len(), { if gi < d.args.len() { dsub.names.push(tb.fns.items[at2].generics[gi].name.clone()); dsub.tys.push(d.args[gi].clone()); } } csub = dsub; target = d.path.clone(); at = at2; }, } },
+                }
+            }
+            let bytes_out: bool = target == "print_str" || target == "print_bytes";
+            let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64" || bytes_out;
+            if tb.fns.items[at].builtin && !print {
+                return self.todo_expr("a call of a built-in", e);
+            }
+            let mut pts: Vec<ast::TypeKind> = Vec::new();
+            for pi in 0..tb.fns.items[at].params.len()
+                invariant 0 <= pi && pi <= tb.fns.items[at].params.len(),
+            {
+                pts.push(types::subst(&tb.fns.items[at].params[pi], &csub));
+            }
+            let mut flat: Vec<String> = Vec::new();
+            let mut backs: Vec<Back> = Vec::new();
+            for k in 0..c.args.len()
+                invariant 0 <= k && k <= c.args.len(),
+            {
+                let aty: ast::TypeKind = self.ty(&c.args[k], tb);
+                let pk: u32 = if k < pts.len() {
+                    param_kind(&pts[k])
+                } else {
+                    0
+                };
+                if pk == 9 {
+                    return self.todo_expr("an argument for a parameter that is not ported (a reference to an array or to a reference)", &c.args[k]);
+                }
+                if pk == 2 && k < pts.len() {
+                    match body::ref_inner(&pts[k]) {
+                        None => {},
+                        Some(inner) => { let rp: String = self.scalar_ref(&c.args[k], &inner, types::is_ref_mut(&pts[k]), &mut backs, ck, tb, f - 1); flat.push(types::cat2("ptr ", rp.as_str())); },
+                    }
+                } else {
+                    let av: CVal = self.expr(&c.args[k], ck, tb, f - 1);
+                    match &av {
+                        CVal::Imm(v) => flat.push(types::cat3(llty(&aty).as_str(), " ", v.as_str())),
+                        CVal::Arr(ap, an) => { flat.push(types::cat2("ptr ", ap.as_str())); if pk != 3 { flat.push(types::cat2("i64 ", an.as_str())); } },
+                        CVal::Ptr(pp, pt) => { if pk == 5 { let ptmp: String = self.temp(pt); self.copy(ptmp.as_str(), pp.as_str(), pt); flat.push(types::cat2("ptr ", ptmp.as_str())); } else { flat.push(types::cat2("ptr ", pp.as_str())); } },
+                        CVal::Unit => {},
+                        CVal::Never => { if pk == 1 { flat.push(String::from("ptr undef")); flat.push(String::from("i64 undef")); } else if pk == 3 || pk == 4 || pk == 5 { flat.push(String::from("ptr undef")); } else if llty(&aty) != "void" { flat.push(types::cat2(llty(&aty).as_str(), " undef")); } },
+                    }
+                }
+            }
+            if target == "print_f64" {
+                if flat.len() != 2 {
+                    return self.todo_expr("a `print_f64` whose arguments are not two values", e);
+                }
+                let pc: String = self.t();
+                self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str());
+                self.check(pc.as_str(), "`print_f64` decimals above 65535");
+                self.print_f64 = true;
+            }
+            let ret: ast::TypeKind = if print {
+                ast::TypeKind::Unit
+            } else {
+                types::subst(&tb.fns.items[at].ret, &csub)
+            };
+            let callee: String = if bytes_out {
+                String::from("@bmb_print_bytes")
+            } else if print {
+                types::cat2("@bmb_", target.as_str())
+            } else if csub.names.len() > 0 {
+                let key: String = body::inst_key(target.as_str(), csub.tys.as_slice());
+                self.used.insert(types::text(&ret).as_str(), ret.clone());
+                self.wants.push(Want { key: key.clone(), callee: target.clone(), sub: csub.clone() });
+                fn_sym(key.as_str())
+            } else {
+                fn_sym(target.as_str())
+            };
+            let args: String = types::join(flat.as_slice(), ", ");
+            let res: CVal = if ret_in_memory(&ret) {
+                let out: String = self.temp(&ret);
+                let sep: String = if flat.len() > 0 {
+                    String::from(", ")
+                } else {
+                    String::new()
+                };
+                self.emit(types::cat7("call void ", callee.as_str(), "(ptr ", out.as_str(), sep.as_str(), args.as_str(), ")").as_str());
+                self.read(out.as_str(), &ret)
+            } else if decls::is_unit(&ret) {
+                self.emit(types::cat5("call void ", callee.as_str(), "(", args.as_str(), ")").as_str());
+                CVal::Unit
+            } else {
+                let r: String = self.t();
+                self.emit(types::cat7(r.as_str(), " = call ", llty(&ret).as_str(), " ", callee.as_str(), "(", types::cat2(args.as_str(), ")").as_str()).as_str());
+                CVal::Imm(r)
+            };
+            for b in 0..backs.len()
+                invariant 0 <= b && b <= backs.len(),
+            {
+                let x: String = self.t();
+                self.emit(types::cat5(x.as_str(), " = load ", backs[b].lt.as_str(), ", ptr ", backs[b].tmp.as_str()).as_str());
+                let be: String = backs[b].elem.clone();
+                let bp: String = backs[b].ptr.clone();
+                if backs[b].mem {
+                    let bt: ast::TypeKind = backs[b].ty.clone();
+                    self.put(&CVal::Imm(x), bp.as_str(), &bt);
+                } else {
+                    self.store_elem(be.as_str(), x.as_str(), bp.as_str());
+                }
+            }
+            res
         }
 
         #[summary("실행 중 검사 (stage0 check): cond가 거짓이면 멈춘다")]
@@ -1528,6 +1651,17 @@ mod codegen {
             self.block(end.as_str());
         }
 
+        #[summary("인스턴스를 낮출 때의 타입 t (stage0 inst): 타입 인자를 넣고, 그 타입을 used에 적는다")]
+        #[effects(alloc)]
+        fn inst(self: &mut Gen, t: &ast::TypeKind) -> ast::TypeKind {
+            if self.tsub.names.len() == 0 {
+                return t.clone();
+            }
+            let it: ast::TypeKind = types::subst(t, &self.tsub);
+            self.used.insert(types::text(&it).as_str(), it.clone());
+            it
+        }
+
         #[summary("정수 메서드 (stage0 int_method, narrow_method): wrapping_*은 64비트에서 셈하고 제 폭으로 자르고, saturating_*은 내장 함수나 넘침 깃발로 끝 값에 붙인다. checked_*은 checked_method")]
         #[effects(alloc)]
         fn int_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy, tb: &lowered::Tables) -> CVal {
@@ -1805,10 +1939,10 @@ mod codegen {
 
         #[summary("지역 변수 name의 타입 (낮춘 표에서)")]
         #[effects(alloc)]
-        fn local_ty(self: &Gen, name: &str, tb: &lowered::Tables) -> Option<ast::TypeKind> {
+        fn local_ty(self: &mut Gen, name: &str, tb: &lowered::Tables) -> Option<ast::TypeKind> {
             match tb.locals.find(self.base.as_str()) {
                 None => None,
-                Some(at) => { match tb.locals.items[at].find(name) { None => None, Some(i) => Some(tb.locals.items[at].items[i].clone()), } },
+                Some(at) => { match tb.locals.items[at].find(name) { None => None, Some(i) => Some(self.inst(&tb.locals.items[at].items[i])), } },
             }
         }
 
@@ -2664,10 +2798,10 @@ mod codegen {
 
         #[summary("식 e의 타입 (낮춘 표에서)")]
         #[effects(alloc)]
-        fn ty(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
+        fn ty(self: &mut Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
             match tb.types.find(body::span_key(e.span).as_str()) {
                 None => ast::TypeKind::Error,
-                Some(at) => tb.types.items[at].clone(),
+                Some(at) => self.inst(&tb.types.items[at]),
             }
         }
 
@@ -2976,6 +3110,9 @@ mod codegen {
     #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
     struct Lay { size: u64, align: u64 }
 
+    #[summary("낮출 함수 하나 (stage0 Lowering): 정의나 인스턴스의 경로, 정의의 차례, 인스턴스의 타입 인자")]
+    struct Low { path: String, def: usize, sub: types::Subst }
+
     #[summary("모듈 (stage0 Module): IR의 글, 진입점, 옮기지 않은 구문을 만난 까닭들")]
     struct Module { ir: String, main: Option<String>, todo: Vec<String> }
 
@@ -2990,6 +3127,9 @@ mod codegen {
 
     #[summary("지역 이름의 자리 (stage0 Slot). 스칼라: 자리의 이름과 레지스터 타입. 배열과 슬라이스: ArrSlot. 구조체와 열거형: DataSlot")]
     enum Slot { Scalar(String, String), Arr(ArrSlot), Data(DataSlot) }
+
+    #[summary("낮추는 함수가 부르는 제네릭 함수의 인스턴스 (stage0 Gen::wants의 항목): 열쇠, 정의, 타입 인자")]
+    struct Want { key: String, callee: String, sub: types::Subst }
 
     #[summary("원소 종류 elem의 메모리 정렬 (stage0 align): i1은 1, 좁은 정수는 제 폭, 나머지는 8")]
     #[effects(pure)]
@@ -3022,7 +3162,7 @@ mod codegen {
 
     #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처에 나오는 타입을 한 번씩, 타입의 글 순서로 (소스의 자리 순서가 아니다: fmt 전후의 IR이 같다, 백로그 4D-38)")]
     #[effects(alloc)]
-    fn all_types(tb: &lowered::Tables) -> Vec<ast::TypeKind> {
+    fn all_types(tb: &lowered::Tables, extra: &[ast::TypeKind]) -> Vec<ast::TypeKind> {
         let mut by_text: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
         for n in 0..tb.types.len()
             invariant 0 <= n,
@@ -3047,6 +3187,11 @@ mod codegen {
                 None => {},
                 Some(at) => { if !tb.fns.items[at].builtin { for k in 0..tb.fns.items[at].params.len() invariant 0 <= k && k <= tb.fns.items[at].params.len(), { by_text.insert(types::text(&tb.fns.items[at].params[k]).as_str(), tb.fns.items[at].params[k].clone()); } by_text.insert(types::text(&tb.fns.items[at].ret).as_str(), tb.fns.items[at].ret.clone()); } },
             }
+        }
+        for x in 0..extra.len()
+            invariant 0 <= x && x <= extra.len(),
+        {
+            by_text.insert(types::text(&extra[x]).as_str(), extra[x].clone());
         }
         let mut all: Vec<ast::TypeKind> = Vec::new();
         for n in 0..by_text.len()
@@ -3164,13 +3309,13 @@ mod codegen {
 
     #[summary("프로그램이 복제하는 타입과 그것이 든 타입의 복제 코드 (stage0 clone_glue, ADR-0141 §4): @\"bmb_clone.<타입>\"(ptr %dst, ptr %src)가 %src의 값과 같고 제 메모리를 가진 값을 %dst에 짓는다. called는 함수들이 복제 코드를 부른 타입의 글들")]
     #[effects(alloc)]
-    fn clone_glue(tb: &lowered::Tables, called: &[String]) -> String {
+    fn clone_glue(tb: &lowered::Tables, extra: &[ast::TypeKind], called: &[String]) -> String {
         let mut seen: Vec<String> = Vec::new();
         let mut out: String = String::new();
         if called.len() == 0 {
             return out;
         }
-        let all: Vec<ast::TypeKind> = all_types(tb);
+        let all: Vec<ast::TypeKind> = all_types(tb, extra);
         for i in 0..all.len()
             invariant 0 <= i && i <= all.len(),
         {
@@ -3394,10 +3539,10 @@ mod codegen {
 
     #[summary("힙 메모리를 가진 모든 타입의 놓는 코드 (stage0 drop_glue, ADR-0047 §4): @\"bmb_drop.<타입>\"(ptr %p)가 %p의 값을 놓는다. Vec은 원소들과 버퍼, Box는 값과 메모리, 구조체는 필드를 선언 순서로, 열거형은 제 변형의 페이로드를 차례로")]
     #[effects(alloc)]
-    fn drop_glue(tb: &lowered::Tables, todo: &mut Vec<String>) -> String {
+    fn drop_glue(tb: &lowered::Tables, extra: &[ast::TypeKind], todo: &mut Vec<String>) -> String {
         let mut seen: Vec<String> = Vec::new();
         let mut out: String = String::new();
-        let all: Vec<ast::TypeKind> = all_types(tb);
+        let all: Vec<ast::TypeKind> = all_types(tb, extra);
         for i in 0..all.len()
             invariant 0 <= i && i <= all.len(),
         {
@@ -3522,12 +3667,13 @@ mod codegen {
         }
     }
 
-    #[summary("프로그램의 모듈 (stage0 emit_with, 전체 검사 모드): 머리, 타입 정의, 제네릭 아닌 실행 함수를 경로 순서로, @main. 옮기지 않은 구문을 만나면 todo에 까닭이 남는다")]
+    #[summary("프로그램의 모듈 (stage0 emit_with, 전체 검사 모드): 머리, 타입 정의, 제네릭 아닌 실행 함수를 경로 순서로, 그 뒤에 제네릭 함수의 인스턴스를 닿는 순서로 한 번씩, @main. 옮기지 않은 구문을 만나면 todo에 까닭이 남는다")]
     #[effects(alloc)]
     fn emit(ck: &body::Checked, tb: &lowered::Tables) -> Module {
         let mut todo: Vec<String> = Vec::new();
         let mut ir: String = String::new();
-        let all: Vec<ast::TypeKind> = all_types(tb);
+        let none_ty: Vec<ast::TypeKind> = Vec::new();
+        let all: Vec<ast::TypeKind> = all_types(tb, none_ty.as_slice());
         let none: Vec<String> = Vec::new();
         let mut heap: bool = false;
         for i in 0..all.len()
@@ -3556,12 +3702,43 @@ mod codegen {
         let mut main: Option<String> = None;
         let mut print_f64: bool = false;
         let mut clones: Vec<String> = Vec::new();
+        let mut by_path: table::Table<usize> = table::new::<usize>();
+        let mut queue: Vec<Low> = Vec::new();
+        let mut lowered: Vec<String> = Vec::new();
         for i in 0..defs.len()
             invariant 0 <= i && i <= defs.len(),
         {
+            by_path.insert(defs[i].path.as_str(), i);
             match tb.fns.find(defs[i].path.as_str()) {
                 None => {},
-                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { if defs[i].d.name.name == "main" && defs[i].path == types::cat2(defs[i].unit.as_str(), "::main") { main = Some(defs[i].path.clone()); } let mut g: Gen = lower_fn(&defs[i], &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } } },
+                Some(at) => { if is_exec(defs[i].d.kind) && tb.fns.items[at].generics.len() == 0 { queue.push(Low { path: defs[i].path.clone(), def: i, sub: types::Subst { names: Vec::new(), tys: Vec::new() } }); lowered.push(defs[i].path.clone()); } },
+            }
+        }
+        let mut used: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        let mut qi: usize = 0;
+        let mut fuel: usize = 100000000;
+        while fuel > 0 && qi < queue.len()
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let di: usize = queue[qi].def;
+            let qpath: String = queue[qi].path.clone();
+            let qsub: types::Subst = queue[qi].sub.clone();
+            qi = qi + 1;
+            if di < defs.len() {
+                match tb.fns.find(defs[di].path.as_str()) {
+                    None => {},
+                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); if g.print_f64 { print_f64 = true; } for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()), } } for w in 0..g.wants.len() invariant 0 <= w && w <= g.wants.len(), { if types::add(&mut lowered, g.wants[w].key.as_str()) { match by_path.find(g.wants[w].callee.as_str()) { None => todo.push(types::cat2("an instance of a function without a body: ", g.wants[w].key.as_str())), Some(bi) => queue.push(Low { path: g.wants[w].key.clone(), def: by_path.items[bi], sub: g.wants[w].sub.clone() }), } } } },
+                }
+            }
+        }
+        let mut extra: Vec<ast::TypeKind> = Vec::new();
+        for u in 0..used.len()
+            invariant 0 <= u,
+        {
+            match used.nth(u) {
+                None => {},
+                Some(ua) => extra.push(used.items[ua].clone()),
             }
         }
         if print_f64 {
@@ -3575,9 +3752,9 @@ mod codegen {
         if uses_vec {
             whole.push_str("%bmb.vec = type { ptr, i64, i64 }\n");
         }
-        whole.push_str(type_defs(tb).as_str());
-        whole.push_str(drop_glue(tb, &mut todo).as_str());
-        whole.push_str(clone_glue(tb, clones.as_slice()).as_str());
+        whole.push_str(type_defs(tb, extra.as_slice()).as_str());
+        whole.push_str(drop_glue(tb, extra.as_slice(), &mut todo).as_str());
+        whole.push_str(clone_glue(tb, extra.as_slice(), clones.as_slice()).as_str());
         whole.push_str(ir.as_str());
         Module { ir: whole, main: main, todo: todo }
     }
@@ -4297,16 +4474,24 @@ mod codegen {
 
     #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
     #[effects(alloc)]
-    fn lower_fn(def: &Def, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: def.path.clone(), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new(), pending: Vec::new(), clones: Vec::new() };
+    fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
+        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), print_f64: false, loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>() };
+        let mut ps: Vec<ast::TypeKind> = Vec::new();
+        for pi in 0..sig.params.len()
+            invariant 0 <= pi && pi <= sig.params.len(),
+        {
+            ps.push(g.inst(&sig.params[pi]));
+        }
+        let rt: ast::TypeKind = g.inst(&sig.ret);
+        g.ret = rt.clone();
         let mut params: Vec<String> = Vec::new();
         for i in 0..def.d.params.len()
             invariant 0 <= i && i <= def.d.params.len(),
         {
-            if i < sig.params.len() {
+            if i < ps.len() {
                 let n: String = def.d.params[i].name.name.clone();
-                let pk: u32 = param_kind(&sig.params[i]);
-                let attr: String = if types::is_ref_mut(&sig.params[i]) {
+                let pk: u32 = param_kind(&ps[i]);
+                let attr: String = if types::is_ref_mut(&ps[i]) {
                     String::from("noalias ")
                 } else {
                     String::from("readonly ")
@@ -4318,29 +4503,29 @@ mod codegen {
                     let sn: String = types::cat3("%\"", n.as_str(), ".len\"");
                     params.push(types::cat3("ptr ", attr.as_str(), sp.as_str()));
                     params.push(types::cat2("i64 ", sn.as_str()));
-                    let sety: ast::TypeKind = elem_of(&sig.params[i]);
+                    let sety: ast::TypeKind = elem_of(&ps[i]);
                     g.slots.insert(n.as_str(), Slot::Arr(ArrSlot { ptr: sp, len: sn, elem: elem_kind(&sety), ety: sety }));
                 } else if pk == 2 {
                     let rp: String = types::cat3("%\"", n.as_str(), ".ptr\"");
                     params.push(types::cat3("ptr ", attr.as_str(), rp.as_str()));
-                    g.slots.insert(n.as_str(), Slot::Scalar(rp, llty(&elem_of(&sig.params[i]))));
+                    g.slots.insert(n.as_str(), Slot::Scalar(rp, llty(&elem_of(&ps[i]))));
                 } else if pk == 4 {
                     let dp: String = types::cat3("%\"", n.as_str(), ".ptr\"");
                     params.push(types::cat3("ptr ", attr.as_str(), dp.as_str()));
-                    g.slots.insert(n.as_str(), Slot::Data(DataSlot { ptr: dp, ty: lowered::value_ty(&sig.params[i]) }));
+                    g.slots.insert(n.as_str(), Slot::Data(DataSlot { ptr: dp, ty: lowered::value_ty(&ps[i]) }));
                 } else if pk == 5 {
                     let din: String = types::cat3("%\"", n.as_str(), ".in\"");
                     params.push(types::cat2("ptr readonly ", din.as_str()));
-                    g.slots.insert(n.as_str(), Slot::Data(DataSlot { ptr: din, ty: sig.params[i].clone() }));
+                    g.slots.insert(n.as_str(), Slot::Data(DataSlot { ptr: din, ty: ps[i].clone() }));
                 } else if pk == 3 {
                     let ain: String = types::cat3("%\"", n.as_str(), ".in\"");
                     params.push(types::cat2("ptr ", ain.as_str()));
-                    let ap: String = g.temp(&sig.params[i]);
-                    g.copy(ap.as_str(), ain.as_str(), &sig.params[i]);
-                    let aety: ast::TypeKind = elem_of(&sig.params[i]);
-                    g.slots.insert(n.as_str(), Slot::Arr(ArrSlot { ptr: ap, len: array_len_text(&sig.params[i]), elem: elem_kind(&aety), ety: aety }));
-                } else if !decls::is_unit(&sig.params[i]) {
-                    let lt: String = llty(&sig.params[i]);
+                    let ap: String = g.temp(&ps[i]);
+                    g.copy(ap.as_str(), ain.as_str(), &ps[i]);
+                    let aety: ast::TypeKind = elem_of(&ps[i]);
+                    g.slots.insert(n.as_str(), Slot::Arr(ArrSlot { ptr: ap, len: array_len_text(&ps[i]), elem: elem_kind(&aety), ety: aety }));
+                } else if !decls::is_unit(&ps[i]) {
+                    let lt: String = llty(&ps[i]);
                     let reg: String = types::cat3("%\"", n.as_str(), "\"");
                     params.push(types::cat3(lt.as_str(), " ", reg.as_str()));
                     let ptr: String = g.alloca(lt.as_str());
@@ -4354,15 +4539,15 @@ mod codegen {
         let mut frag: String = String::from("\n");
         frag.push_str(g.globals.as_str());
         frag.push_str("define internal ");
-        if ret_in_memory(&sig.ret) {
+        if ret_in_memory(&rt) {
             frag.push_str("void");
         } else {
-            frag.push_str(llty(&sig.ret).as_str());
+            frag.push_str(llty(&rt).as_str());
         }
         frag.push_str(" ");
-        frag.push_str(fn_sym(def.path.as_str()).as_str());
+        frag.push_str(fn_sym(path).as_str());
         frag.push_str("(");
-        if ret_in_memory(&sig.ret) {
+        if ret_in_memory(&rt) {
             frag.push_str("ptr noalias %\"ret.out\"");
             if params.len() > 0 {
                 frag.push_str(", ");
@@ -4614,10 +4799,10 @@ mod codegen {
 
     #[summary("프로그램이 쓰는 구조체와 열거형(인스턴스)의 LLVM 타입 정의 (stage0 type_defs): 구조체는 필드를 선언 순서로, 열거형은 꼬리표와 페이로드 자리, 페이로드 있는 변형마다 보는 타입 하나")]
     #[effects(alloc)]
-    fn type_defs(tb: &lowered::Tables) -> String {
+    fn type_defs(tb: &lowered::Tables, extra: &[ast::TypeKind]) -> String {
         let mut seen: Vec<String> = Vec::new();
         let mut out: String = String::new();
-        let all: Vec<ast::TypeKind> = all_types(tb);
+        let all: Vec<ast::TypeKind> = all_types(tb, extra);
         for i in 0..all.len()
             invariant 0 <= i && i <= all.len(),
         {

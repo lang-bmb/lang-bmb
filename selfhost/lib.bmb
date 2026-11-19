@@ -329,7 +329,8 @@ mod lib {
     #[effects(alloc)]
     fn push_layout(out: &mut String, ck: &body::Checked, t: &lowered::Tables) -> () {
         let mut shapes: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
-        let all: Vec<ast::TypeKind> = codegen::all_types(t);
+        let no_extra: Vec<ast::TypeKind> = Vec::new();
+        let all: Vec<ast::TypeKind> = codegen::all_types(t, no_extra.as_slice());
         for i in 0..all.len()
             invariant 0 <= i && i <= all.len(),
         {
@@ -355,7 +356,7 @@ mod lib {
             Some(m) => std::json::push_string(out, m.as_str()),
         }
         out.push_str("}\n---\n");
-        out.push_str(codegen::type_defs(t).as_str());
+        out.push_str(codegen::type_defs(t, no_extra.as_slice()).as_str());
     }
 
     #[summary("dump lowered의 글 (stage0 lib::dump_lowered, 백로그 4D-05a): 낮춘 표의 시그니처, 데이터 타입, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자, 글인 자리, 이어서 표에 나오는 타입마다 참조를 벗긴 타입과 그 인스턴스의 필드·변형")]
