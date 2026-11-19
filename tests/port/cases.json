@@ -883,6 +883,32 @@
       }
     },
     {
+      "name": "emit-together",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "emit-llvm",
+        "--all-checks",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "b": [
+        "{build:stage1}",
+        "emit-llvm",
+        "--all-checks",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 100
+      }
+    },
+    {
       "name": "emit-run",
       "component": "C8",
       "a": [

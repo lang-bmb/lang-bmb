@@ -668,8 +668,11 @@ mod codegen {
                 }
             }
             let bytes_out: bool = target == "print_str" || target == "print_bytes";
-            let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64" || bytes_out;
-            if tb.fns.items[at].builtin && !print {
+            let eprint: bool = target == "eprint_str";
+            let print: bool = target == "print_i64" || target == "print_u64" || target == "print_f64" || bytes_out || eprint;
+            let exits: bool = target == "std::process::exit";
+            let sysc: String = sys_callee(target.as_str());
+            if tb.fns.items[at].builtin && !print && !exits && sysc.len() == 0 {
                 return self.todo_expr("a call of a built-in", e);
             }
             let mut pts: Vec<ast::TypeKind> = Vec::new();
@@ -716,6 +719,13 @@ mod codegen {
                 self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str());
                 self.check(pc.as_str(), "`print_f64` decimals above 65535");
             }
+            if exits {
+                self.emit(types::cat3("call void @bmb_exit(", types::join(flat.as_slice(), ", ").as_str(), ")").as_str());
+                self.emit("unreachable");
+                let after: String = self.l("after_exit");
+                self.block(after.as_str());
+                return CVal::Never;
+            }
             let ret: ast::TypeKind = if print {
                 ast::TypeKind::Unit
             } else {
@@ -723,6 +733,10 @@ mod codegen {
             };
             let callee: String = if bytes_out {
                 String::from("@bmb_print_bytes")
+            } else if eprint {
+                String::from("@bmb_eprint_bytes")
+            } else if sysc.len() > 0 {
+                sysc.clone()
             } else if print {
                 types::cat2("@bmb_", target.as_str())
             } else if csub.names.len() > 0 {
@@ -3353,6 +3367,9 @@ mod codegen {
         }
     }
 
+    #[summary("입출력 내장 하나 (stage0 IO_BUILTINS의 행): 경로, 런타임 함수, 펼친 매개변수(p는 ptr, i는 i64), 성공의 값(0 세는 수, 1 런타임이 쓰는 값, 2 (), 3 i32인 수)")]
+    struct IoRow { path: String, runtime: String, params: String, payload: u8 }
+
     #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
     struct Lay { size: u64, align: u64 }
 
@@ -3850,7 +3867,7 @@ mod codegen {
             }
             text.push_str("  call void @free(ptr %h)\n");
         } else if body::is_child(t) {
-            todo.push(String::from("a child process value (the system interface)"));
+            text.push_str("  call void @bmb_rt_child_drop(ptr %p)\n");
         } else {
             match lowered::struct_fields(t, tb) {
                 None => { let vs: Vec<types::VariantSig> = match lowered::enum_variants(t, tb) { None => Vec::new(), Some(found) => found, }; text.push_str("  %tag = load i64, ptr %p\n"); let mut cases: String = String::new(); let mut arms: String = String::new(); for k in 0..vs.len() invariant 0 <= k && k <= vs.len(), { let mut any: bool = false; for j in 0..vs[k].tys.len() invariant 0 <= j && j <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j], &tb.adts, none.as_slice()) { any = true; } } if any { let mut kt2: String = String::new(); std::num::push_u64(&mut kt2, k as u64); cases.push_str(types::cat4(" i64 ", kt2.as_str(), ", label %v", kt2.as_str()).as_str()); arms.push_str(types::cat3("v", kt2.as_str(), ":\n").as_str()); for j2 in 0..vs[k].tys.len() invariant 0 <= j2 && j2 <= vs[k].tys.len(), { if types::is_move_in(&vs[k].tys[j2], &tb.adts, none.as_slice()) { let mut jt: String = String::new(); std::num::push_u64(&mut jt, j2 as u64); let mut j1: String = String::new(); std::num::push_u64(&mut j1, (j2 as u64).wrapping_add(1)); let reg: String = types::cat4("%v", kt2.as_str(), ".", jt.as_str()); arms.push_str(types::cat7("  ", reg.as_str(), " = getelementptr inbounds ", view_ty(t, vs[k].name.as_str()).as_str(), ", ptr %p, i32 0, i32 ", j1.as_str(), "\n").as_str()); arms.push_str(types::cat5("  call void ", glue(&vs[k].tys[j2]).as_str(), "(ptr ", reg.as_str(), ")\n").as_str()); inner.push(vs[k].tys[j2].clone()); } } arms.push_str("  br label %done\n"); } } text.push_str(types::cat5("  switch i64 %tag, label %done [", cases.as_str(), " ]\n", arms.as_str(), "done:\n").as_str()); },
@@ -3989,6 +4006,12 @@ mod codegen {
         if in_ir(ir.as_str(), "@bmb_print_f64(") {
             ir.push_str(codegen_text::print_f64().as_str());
         }
+        let mut sys_text: String = sys_runtime(ir.as_str());
+        sys_text.push_str(io_runtime(ir.as_str(), tb).as_str());
+        sys_text.push_str(env_runtime(ir.as_str(), tb).as_str());
+        let helpers: String = sys_helpers(sys_text.as_str());
+        sys_text.push_str(helpers.as_str());
+        ir.push_str(sys_text.as_str());
         if in_ir(ir.as_str(), "@bmb_str_cmp(") {
             ir.push_str(codegen_text::text_cmp().as_str());
         }
@@ -4000,7 +4023,7 @@ mod codegen {
         }
         match &main {
             None => {},
-            Some(m) => { let run: String = if has_recursive_exec(ck, tb) { ir.push_str(big_stack(fn_sym(m.as_str()).as_str()).as_str()); String::from("@bmb_big_stack") } else { fn_sym(m.as_str()) }; ir.push_str("\ndefine i32 @main() {\n  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void "); ir.push_str(run.as_str()); ir.push_str("()\n  call void @bmb_flush_out()\n  ret i32 0\n}\n"); },
+            Some(m) => { let run: String = if has_recursive_exec(ck, tb) { ir.push_str(big_stack(fn_sym(m.as_str()).as_str()).as_str()); String::from("@bmb_big_stack") } else { fn_sym(m.as_str()) }; if in_ir(sys_text.as_str(), "@bmb.argv") { ir.push_str("\ndefine i32 @main(i32 %argc, ptr %argv) {\n  store i32 %argc, ptr @bmb.argc\n  store ptr %argv, ptr @bmb.argv\n"); } else { ir.push_str("\ndefine i32 @main() {\n"); } ir.push_str("  call ptr @signal(i32 13, ptr inttoptr (i64 1 to ptr))\n  call void "); ir.push_str(run.as_str()); ir.push_str("()\n  call void @bmb_flush_out()\n  ret i32 0\n}\n"); },
         }
         let mut whole: String = codegen_text::head();
         if uses_vec {
@@ -4029,6 +4052,40 @@ mod codegen {
             }
         }
         found
+    }
+
+    #[summary("std::env::var의 런타임과 시계 (stage0 sys::env_runtime): 프로그램의 Option<String>의 LLVM 이름으로")]
+    #[effects(alloc)]
+    fn env_runtime(ir: &str, tb: &lowered::Tables) -> String {
+        let mut out: String = String::new();
+        if in_ir(ir, "@bmb_monotonic_ms(") {
+            out.push_str(codegen_text::sys_clock().as_str());
+        }
+        if !in_ir(ir, "@bmb_env_var(") {
+            return out;
+        }
+        let at: usize = match tb.fns.find("std::env::var") {
+            None => { return out; },
+            Some(i) => i,
+        };
+        let vs: Vec<types::VariantSig> = match lowered::enum_variants(&tb.fns.items[at].ret, tb) {
+            None => Vec::new(),
+            Some(found) => found,
+        };
+        let mut some: String = String::new();
+        std::num::push_u64(&mut some, variant_at(vs.as_slice(), "Some") as u64);
+        let mut none: String = String::new();
+        std::num::push_u64(&mut none, variant_at(vs.as_slice(), "None") as u64);
+        out.push_str("declare ptr @getenv(ptr)\ndefine internal void @bmb_env_var(ptr %out, ptr %p, i64 %n) {\nentry:\n  %tag = getelementptr inbounds ");
+        out.push_str(data_ty(&tb.fns.items[at].ret).as_str());
+        out.push_str(", ptr %out, i32 0, i32 0\n  %c = call ptr @bmb_cpath(ptr %p, i64 %n)\n  %nul = icmp eq ptr %c, null\n  br i1 %nul, label %none, label %look\nlook:\n  %v = call ptr @getenv(ptr %c)\n  call void @free(ptr %c)\n  %unset = icmp eq ptr %v, null\n  br i1 %unset, label %none, label %check\ncheck:\n  %vn = call i64 @strlen(ptr %v)\n  %valid = call i1 @bmb_utf8_valid(ptr %v, i64 %vn)\n  br i1 %valid, label %some, label %none\nsome:\n  store i64 ");
+        out.push_str(some.as_str());
+        out.push_str(", ptr %tag\n  %s = getelementptr inbounds ");
+        out.push_str(view_ty(&tb.fns.items[at].ret, "Some").as_str());
+        out.push_str(", ptr %out, i32 0, i32 1\n  call void @bmb_vec_alloc(ptr %s, i64 %vn, i64 1)\n  %b = load ptr, ptr %s\n  call void @llvm.memcpy.p0.p0.i64(ptr %b, ptr %v, i64 %vn, i1 false)\n  %lp = getelementptr inbounds %bmb.vec, ptr %s, i32 0, i32 1\n  store i64 %vn, ptr %lp\n  ret void\nnone:\n  store i64 ");
+        out.push_str(none.as_str());
+        out.push_str(", ptr %tag\n  ret void\n}\n");
+        out
     }
 
     #[summary("f64 상수의 LLVM 16진 꼴 (stage0 f64_const): 0x와 대문자 16진 열여섯 자리")]
@@ -4441,6 +4498,177 @@ mod codegen {
             ast::IntTy::U64 => String::from("0"),
             ast::IntTy::Usize => String::from("0"),
         }
+    }
+
+    #[effects(alloc)]
+    fn io_row(path: &str, runtime: &str, params: &str, payload: u8) -> IoRow {
+        IoRow { path: String::from(path), runtime: String::from(runtime), params: String::from(params), payload: payload }
+    }
+
+    #[summary("결과가 Result<T, std::io::Error>인 내장들 (stage0 IO_BUILTINS, 그 순서로)")]
+    #[effects(alloc)]
+    fn io_rows() -> Vec<IoRow> {
+        let mut out: Vec<IoRow> = Vec::new();
+        out.push(io_row("std::io::read_line", "bmb_stdin_line", "p", 0));
+        out.push(io_row("std::io::read_to_end", "bmb_stdin_all", "p", 0));
+        out.push(io_row("std::fs::read", "bmb_rt_fs_read", "pi", 1));
+        out.push(io_row("std::fs::read_to_string", "bmb_rt_fs_read_to_string", "pi", 1));
+        out.push(io_row("std::fs::write", "bmb_rt_fs_write", "pipi", 2));
+        out.push(io_row("std::fs::rename", "bmb_rt_fs_rename", "pipi", 2));
+        out.push(io_row("std::fs::remove_file", "bmb_rt_fs_remove_file", "pi", 2));
+        out.push(io_row("std::fs::create_dir_all", "bmb_rt_fs_create_dir_all", "pi", 2));
+        out.push(io_row("std::fs::read_dir", "bmb_rt_fs_read_dir", "pi", 1));
+        out.push(io_row("std::fs::write_new", "bmb_rt_fs_write_new", "pipi", 2));
+        out.push(io_row("std::fs::metadata", "bmb_rt_fs_metadata", "pi", 1));
+        out.push(io_row("std::fs::symlink_metadata", "bmb_rt_fs_symlink_metadata", "pi", 1));
+        out.push(io_row("std::process::run", "bmb_rt_process_run", "pipipi", 1));
+        out.push(io_row("std::process::spawn", "bmb_rt_process_spawn", "pipip", 1));
+        out.push(io_row("std::process::Child::write_all", "bmb_rt_child_write_all", "ppi", 2));
+        out.push(io_row("std::process::Child::read_line", "bmb_rt_child_read_line", "pp", 0));
+        out.push(io_row("std::process::Child::wait", "bmb_rt_child_wait", "p", 3));
+        out
+    }
+
+    #[summary("ir이 부르는 입출력 런타임 (stage0 sys::io_runtime): 래퍼마다 런타임이 돌려준 것(n, 또는 -1 - code)에서 프로그램의 타입 이름으로 Result를 짓는다. 그 뒤에 쓰인 조각들")]
+    #[effects(alloc)]
+    fn io_runtime(ir: &str, tb: &lowered::Tables) -> String {
+        let rows: Vec<IoRow> = io_rows();
+        let mut used: Vec<String> = Vec::new();
+        let mut out: String = String::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            let w: String = io_wrapper(rows[i].path.as_str());
+            if in_ir(ir, types::cat2(w.as_str(), "(").as_str()) {
+                if used.len() == 0 {
+                    out.push_str("define internal void @bmb_io_error(ptr %e, i64 %code) {\n  %os = icmp ult i64 %code, 1000\n  %kept = select i1 %os, i64 %code, i64 0\n  %c32 = trunc i64 %kept to i32\n  %cp = getelementptr inbounds %\"std::io::Error\", ptr %e, i32 0, i32 0\n  store i32 %c32, ptr %cp\n  %mp = getelementptr inbounds %\"std::io::Error\", ptr %e, i32 0, i32 1\n  call void @bmb_io_message(ptr %mp, i64 %code)\n  ret void\n}\n");
+                }
+                used.push(rows[i].path.clone());
+                io_wrapper_text(&mut out, &rows[i], w.as_str(), tb);
+            }
+        }
+        if used.len() == 0 {
+            return out;
+        }
+        let mut any_io: bool = false;
+        let mut any_fs: bool = false;
+        for i in 0..used.len()
+            invariant 0 <= i && i <= used.len(),
+        {
+            if std::str::starts_with(used[i].as_str(), "std::io::") {
+                any_io = true;
+            }
+            if std::str::starts_with(used[i].as_str(), "std::fs::") {
+                any_fs = true;
+            }
+        }
+        let children: bool = types::has(used.as_slice(), "std::process::spawn");
+        let run: bool = types::has(used.as_slice(), "std::process::run");
+        let runs: bool = children || run;
+        if children || any_io {
+            out.push_str(codegen_text::sys_stdin().as_str());
+        }
+        if runs || any_fs {
+            out.push_str(codegen_text::sys_fs().as_str());
+        }
+        if runs {
+            out.push_str(codegen_text::sys_proc().as_str());
+        }
+        if run {
+            out.push_str(codegen_text::sys_run().as_str());
+        }
+        if children {
+            out.push_str(codegen_text::sys_child().as_str());
+        }
+        if types::has(used.as_slice(), "std::fs::metadata") || types::has(used.as_slice(), "std::fs::symlink_metadata") {
+            out.push_str(codegen_text::sys_meta().as_str());
+        }
+        if types::has(used.as_slice(), "std::fs::rename") || types::has(used.as_slice(), "std::fs::remove_file") || types::has(used.as_slice(), "std::fs::create_dir_all") || types::has(used.as_slice(), "std::fs::read_dir") {
+            out.push_str(codegen_text::sys_dirs().as_str());
+        }
+        out.push_str(codegen_text::sys_io_common().as_str());
+        out
+    }
+
+    #[summary("입출력 내장 path의 호출이 부르는 함수 (stage0 sys::wrapper): @bmb_io_read_line, @bmb_fs_read 따위. 입출력 내장이 아니어도 이름은 같은 꼴이다")]
+    #[effects(alloc)]
+    fn io_wrapper(path: &str) -> String {
+        let segs: Vec<String> = refs::split_path(path);
+        let mut out: String = String::from("@bmb");
+        let mut lead: bool = true;
+        for i in 0..segs.len()
+            invariant 0 <= i && i <= segs.len(),
+        {
+            if lead && segs[i] == "std" {} else {
+                lead = false;
+                out.push_str("_");
+                out.push_str(segs[i].as_str());
+            }
+        }
+        out
+    }
+
+    #[summary("io_runtime의 래퍼 하나의 글")]
+    #[effects(alloc)]
+    fn io_wrapper_text(out: &mut String, row: &IoRow, w: &str, tb: &lowered::Tables) -> () {
+        let at: usize = match tb.fns.find(row.path.as_str()) {
+            None => { return; },
+            Some(i) => i,
+        };
+        let vs: Vec<types::VariantSig> = match lowered::enum_variants(&tb.fns.items[at].ret, tb) {
+            None => Vec::new(),
+            Some(found) => found,
+        };
+        let ok: usize = variant_at(vs.as_slice(), "Ok");
+        let err: usize = variant_at(vs.as_slice(), "Err");
+        let mut decl: Vec<String> = Vec::new();
+        for i in 0..row.params.len()
+            invariant 0 <= i && i <= row.params.len(),
+        {
+            let mut d: String = if row.params.as_bytes()[i] == b'p' {
+                String::from("ptr %a")
+            } else {
+                String::from("i64 %a")
+            };
+            std::num::push_u64(&mut d, i as u64);
+            decl.push(d);
+        }
+        let decls: String = types::join(decl.as_slice(), ", ");
+        let okv: String = view_ty(&tb.fns.items[at].ret, "Ok");
+        let mut pay: String = String::new();
+        let mut store: String = String::new();
+        let mut args: String = decls.clone();
+        if row.payload == 1 {
+            let m: String = if ok < vs.len() && vs[ok].tys.len() > 0 {
+                mem_ty(&vs[ok].tys[0])
+            } else {
+                String::from("undef")
+            };
+            args = types::cat2("ptr %pay, ", decls.as_str());
+            pay = types::cat3("  %pay = alloca ", m.as_str(), "\n");
+            store = types::cat7("  %v = getelementptr inbounds ", okv.as_str(), ", ptr %out, i32 0, i32 1\n  %x = load ", m.as_str(), ", ptr %pay\n  store ", m.as_str(), " %x, ptr %v\n");
+        } else if row.payload == 0 {
+            store = types::cat3("  %v = getelementptr inbounds ", okv.as_str(), ", ptr %out, i32 0, i32 1\n  store i64 %r, ptr %v\n");
+        } else if row.payload == 3 {
+            store = types::cat3("  %v = getelementptr inbounds ", okv.as_str(), ", ptr %out, i32 0, i32 1\n  %r32 = trunc i64 %r to i32\n  store i32 %r32, ptr %v\n");
+        }
+        let mut okn: String = String::new();
+        std::num::push_u64(&mut okn, ok as u64);
+        let mut errn: String = String::new();
+        std::num::push_u64(&mut errn, err as u64);
+        out.push_str(types::cat5("define internal void ", w, "(ptr %out, ", decls.as_str(), ") {\nentry:\n").as_str());
+        out.push_str(pay.as_str());
+        out.push_str(types::cat5("  %r = call i64 @", row.runtime.as_str(), "(", args.as_str(), ")\n  %tag = getelementptr inbounds ").as_str());
+        out.push_str(data_ty(&tb.fns.items[at].ret).as_str());
+        out.push_str(", ptr %out, i32 0, i32 0\n  %neg = icmp slt i64 %r, 0\n  br i1 %neg, label %err, label %ok\nok:\n  store i64 ");
+        out.push_str(okn.as_str());
+        out.push_str(", ptr %tag\n");
+        out.push_str(store.as_str());
+        out.push_str("  ret void\nerr:\n  store i64 ");
+        out.push_str(errn.as_str());
+        out.push_str(", ptr %tag\n  %e = getelementptr inbounds ");
+        out.push_str(view_ty(&tb.fns.items[at].ret, "Err").as_str());
+        out.push_str(", ptr %out, i32 0, i32 1\n  %code = sub i64 -1, %r\n  call void @bmb_io_error(ptr %e, i64 %code)\n  ret void\n}\n");
     }
 
     #[effects(pure)]
@@ -5055,6 +5283,71 @@ mod codegen {
             match by_path.nth(n) {
                 None => {},
                 Some(at) => out.push(by_path.items[at].clone()),
+            }
+        }
+        out
+    }
+
+    #[summary("시스템 내장 target의 호출이 부르는 함수. 그런 내장이 아니면 빈 글 (stage0 call의 갈래들)")]
+    #[effects(alloc)]
+    fn sys_callee(target: &str) -> String {
+        if target == "std::env::args" {
+            return String::from("@bmb_args");
+        }
+        if target == "std::env::var" {
+            return String::from("@bmb_env_var");
+        }
+        if target == "std::time::monotonic_ms" {
+            return String::from("@bmb_monotonic_ms");
+        }
+        if target == "std::process::Child::id" {
+            return String::from("@bmb_child_id");
+        }
+        let rows: Vec<IoRow> = io_rows();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if rows[i].path == target {
+                return io_wrapper(target);
+            }
+        }
+        String::new()
+    }
+
+    #[summary("런타임 조각들의 글 text가 부르는 도우미 (stage0 sys::helpers): 경로의 복사와 strlen의 선언")]
+    #[effects(alloc)]
+    fn sys_helpers(text: &str) -> String {
+        let mut out: String = String::new();
+        if in_ir(text, "@bmb_cpath(") {
+            out.push_str(codegen_text::sys_cpath().as_str());
+        }
+        if in_ir(text, "@strlen(") {
+            out.push_str("declare i64 @strlen(ptr)\n");
+        }
+        out
+    }
+
+    #[summary("ir이 부르는 런타임 조각과 그것들이 부르는 조각 (stage0 sys::runtime): 인자, 표준 오류, 종료. 더 늘지 않을 때까지")]
+    #[effects(alloc)]
+    fn sys_runtime(ir: &str) -> String {
+        let mut out: String = String::new();
+        let mut args: bool = false;
+        let mut eprint: bool = false;
+        let mut exit: bool = false;
+        for round in 0..4
+            invariant 0 <= round && round <= 4,
+        {
+            if !args && (in_ir(ir, "@bmb_args(") || in_ir(out.as_str(), "@bmb_args(")) {
+                args = true;
+                out.push_str(codegen_text::sys_args().as_str());
+            }
+            if !eprint && (in_ir(ir, "@bmb_eprint_bytes(") || in_ir(out.as_str(), "@bmb_eprint_bytes(")) {
+                eprint = true;
+                out.push_str(codegen_text::sys_eprint().as_str());
+            }
+            if !exit && (in_ir(ir, "@bmb_exit(") || in_ir(out.as_str(), "@bmb_exit(")) {
+                exit = true;
+                out.push_str(codegen_text::sys_exit().as_str());
             }
         }
         out

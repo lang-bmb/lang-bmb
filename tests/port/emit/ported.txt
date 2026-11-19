@@ -72,7 +72,14 @@ bench/m1b/seed/src/ledger.bmb
 bench/m1b/seed/src/num.bmb
 bench/twin/fixtures/stk/bmb/lex.bmb
 bench/twin/fixtures/stk/bmb/vm.bmb
+compiler/tests/data/json_canon.bmb
 compiler/tests/data/retry.bmb
+compiler/tests/data/std_collections_diff.bmb
+compiler/tests/data/std_intern_diff.bmb
+compiler/tests/data/std_num_diff.bmb
+compiler/tests/data/std_slice_diff.bmb
+compiler/tests/data/std_str_diff.bmb
+compiler/tests/data/std_text_keys_diff.bmb
 dev-docs/experiments/T0-19/variants/vb-mbpp-454-contains-z/A_notforall.bmb
 dev-docs/experiments/T0-19/variants/vb-mbpp-454-contains-z/B_recursive.bmb
 dev-docs/experiments/T0-19/variants/vb-mbpp-454-contains-z/C_helper_elem_trigger.bmb
@@ -126,6 +133,8 @@ dev-docs/experiments/T0-19/variants/vc-vv0039-max-of-list/B2_recursive_max.bmb
 dev-docs/experiments/T0-19/variants/vc-vv0039-max-of-list/B_recursive_contains.bmb
 dev-docs/experiments/T0-19/variants/vc-vv0039-max-of-list/D_helper_app_trigger.bmb
 dev-docs/experiments/T0-19/variants/vc-vv0039-max-of-list/P_pilot_r2.bmb
+dev-docs/experiments/port-shape/arena.bmb
+dev-docs/experiments/port-shape/tree.bmb
 lib/std/base64.bmb
 lib/std/bytes.bmb
 lib/std/collections.bmb
@@ -370,6 +379,7 @@ tests/port/emit/e2-owned.txt
 tests/port/emit/f1-text.txt
 tests/port/emit/g1-generics.txt
 tests/port/emit/g2-traits.txt
+tests/port/emit/h1-sys.txt
 tests/port/gen/g00.txt
 tests/port/gen/g01.txt
 tests/port/gen/g02.txt
@@ -410,6 +420,8 @@ tests/port/gen/g36.txt
 tests/port/gen/g37.txt
 tests/port/gen/g38.txt
 tests/port/gen/g39.txt
+tests/port/json_roundtrip.bmb
+tests/port/sha256_files.bmb
 tests/port/types/by-path.txt
 tests/port/types/identity.txt
 tests/port/types/moves-ok.txt
@@ -497,6 +509,8 @@ tests/run/vec_tree.bmb
 tests/run/vecs.bmb
 tests/run/vm.bmb
 tests/run/widths.bmb
+tests/tools/fgrep.bmb
+tests/tools/wc.bmb
 tests/verify/fail/arith.bmb
 tests/verify/fail/arith_methods.bmb
 tests/verify/fail/bit_vector.bmb

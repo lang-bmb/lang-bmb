@@ -469,7 +469,20 @@ fn runtime_dump_lists_the_constant_texts() {
             "print_f64",
             "text_cmp",
             "text_grow",
-            "text_utf8"
+            "text_utf8",
+            "sys_args",
+            "sys_child",
+            "sys_clock",
+            "sys_cpath",
+            "sys_dirs",
+            "sys_eprint",
+            "sys_exit",
+            "sys_fs",
+            "sys_io_common",
+            "sys_meta",
+            "sys_proc",
+            "sys_run",
+            "sys_stdin"
         ]
     );
     assert!(

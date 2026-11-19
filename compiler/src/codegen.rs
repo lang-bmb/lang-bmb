@@ -4029,7 +4029,7 @@ fn head_rest() -> String {
 /// runtime`, backlog 4D-05c1): what a port holds as generated text
 /// (`scripts/codegen_text.py`).
 pub fn runtime_texts() -> Vec<(&'static str, String)> {
-    vec![
+    let mut texts = vec![
         ("head", HEAD.to_string()),
         ("head_rest", head_rest()),
         ("heap_runtime", HEAP_RUNTIME.to_string()),
@@ -4038,7 +4038,9 @@ pub fn runtime_texts() -> Vec<(&'static str, String)> {
         ("text_cmp", text::TEXT_CMP.to_string()),
         ("text_grow", text::TEXT_GROW.to_string()),
         ("text_utf8", text::TEXT_UTF8.to_string()),
-    ]
+    ];
+    texts.extend(sys::texts());
+    texts
 }
 
 pub struct Module {

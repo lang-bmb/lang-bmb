@@ -78,11 +78,35 @@ done:
 }
 ";
 
+/// `ARGS` with its message filled in.
+fn args_text() -> String {
+    ARGS.replace("__N__", &ARGS_BAD.len().to_string())
+        .replace("__MSG__", &ARGS_BAD.replace('\n', "\\0A"))
+}
+
+/// The constant texts of this runtime by name, for `bmb dump runtime`
+/// (the port holds the same bytes, backlog 4D-05h).
+pub(super) fn texts() -> Vec<(&'static str, String)> {
+    vec![
+        ("sys_args", args_text()),
+        ("sys_child", CHILD.to_string()),
+        ("sys_clock", CLOCK.to_string()),
+        ("sys_cpath", CPATH.to_string()),
+        ("sys_dirs", DIRS.to_string()),
+        ("sys_eprint", EPRINT.to_string()),
+        ("sys_exit", EXIT.to_string()),
+        ("sys_fs", FS.to_string()),
+        ("sys_io_common", IO_COMMON.to_string()),
+        ("sys_meta", META.to_string()),
+        ("sys_proc", PROC.to_string()),
+        ("sys_run", RUN.to_string()),
+        ("sys_stdin", STDIN.to_string()),
+    ]
+}
+
 /// The parts of the runtime that `ir` calls, and the parts they call.
 pub fn runtime(ir: &str) -> String {
-    let args = ARGS
-        .replace("__N__", &ARGS_BAD.len().to_string())
-        .replace("__MSG__", &ARGS_BAD.replace('\n', "\\0A"));
+    let args = args_text();
     let parts = [
         ("@bmb_args(", args.as_str()),
         ("@bmb_eprint_bytes(", EPRINT),
