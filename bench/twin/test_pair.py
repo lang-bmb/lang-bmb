@@ -2,6 +2,7 @@
 """Gate of the port-twin harness (backlog 3P-01): the item splitter, the Rust
 tools' sandbox, and `pair.py check` on the fixture (twins agree on the
 corpus, every oracle succeeds, every weak control fails its check)."""
+import json
 import os
 import subprocess
 import sys
@@ -189,6 +190,36 @@ class Port(unittest.TestCase):
                 self.assertTrue(pair.run_task(t, arm, "oracle")["success"], (t["id"], arm))
                 self.assertFalse(pair.run_task(t, arm, "weak0", t["weak"][0][arm])["success"], (t["id"], arm))
 
+
+
+class Report(unittest.TestCase):
+    def rows(self, d, name, bmb_ok, changed):
+        rows = []
+        for arm, ok in (("bmb", bmb_ok), ("rust", True)):
+            rows.append({"id": "r01-rename-f", "kind": "change", "arm": arm, "agent": "a", "docs": "none",
+                         "success": ok, "tokens": 400 if arm == "bmb" else 100, "tool_calls": 1,
+                         "changed": changed if arm == "bmb" else ["m::f", "m::g"], "stop": "stop",
+                         "model_usage": {"input_tokens": 10, "output_tokens": 10}})
+        path = os.path.join(d, name)
+        with open(path, "w") as f:
+            f.write("".join(json.dumps(r) + "\n" for r in rows))
+        return path
+
+    def test_diff_and_worked(self):
+        import report
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "r01-rename-f.json"), "w") as f:
+                json.dump({"id": "r01-rename-f", "scope": {"bmb": ["m::f", "m::g"], "rust": ["m::f", "m::g"]}}, f)
+            a = self.rows(d, "one.jsonl", True, [])
+            b = self.rows(d, "two.jsonl", True, ["m::f", "m::g"])
+            text = report.diff([a, b])
+            self.assertIn("| refactor | 1/1, 1/1 | 1/1, 1/1 | +0.0 |", text)
+            self.assertIn("4.00", text)  # read tokens, BMB / Rust
+            w = report.worked(d, [a, b])
+            # Judged successful, but the first run's BMB session changed nothing.
+            self.assertIn("| one | bmb | 1/1 | 0 | 1 | 0 | 0 |", w)
+            self.assertIn("| two | bmb | 1/1 | 1 | 0 | 0 | 0 |", w)
+            self.assertIn("| one | rust | 1/1 | 1 | 0 | 0 | 0 |", w)
 
 if __name__ == "__main__":
     unittest.main()

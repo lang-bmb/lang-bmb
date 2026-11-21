@@ -3,6 +3,8 @@
 
     report.py FILE.jsonl..          a Markdown table per axis
     report.py diff FILE.jsonl..     the two arms compared per axis (ADR-0112)
+    report.py worked DIR FILE.jsonl..   change tasks: what the sessions judged
+                                    successful changed (DIR holds the tasks)
 
 A file holds the rows of one run (`pair.py run --out FILE`: one agent, one
 documentation condition). Rows are grouped by agent, condition and
@@ -24,6 +26,13 @@ then per task the ratio BMB / Rust of the mean session tokens (the read
 tokens, and the tokens the API counted), its median over the tasks with the
 exact order-statistic interval, and the geometric mean. The rules and the
 functions are those of `bench/repeat.py`.
+
+`worked` is a check after the fact on the change tasks whose scope is a list
+(refactoring): the judge asks for the build, the corpus and nothing changed
+out of scope, so a session that changed nothing passes. Per run and arm it
+counts the sessions judged successful, those of them that changed exactly
+the definitions of the task's scope (what the reference solution changes),
+those that changed nothing, and the rest.
 
 A history's row counts once in `n`/`ok` (its last step's judgement) and
 has `steps` (steps that passed of all steps).
@@ -136,7 +145,37 @@ def diff(files):
     return "\n".join(out)
 
 
+def worked(tasks_dir, files):
+    out = ["| run | arm | judged ok | changed the scope | changed nothing | other | sessions cut by an API error |",
+           "| --- | --- | --- | --- | --- | --- | --- |"]
+    for f in files:
+        with open(f, encoding="utf-8") as h:
+            rows = [json.loads(ln) for ln in h if ln.strip()]
+        for arm in ("bmb", "rust"):
+            n = ok = full = none = cut = 0
+            for r in rows:
+                if r["arm"] != arm or r["kind"] != "change":
+                    continue
+                with open(os.path.join(tasks_dir, r["id"] + ".json"), encoding="utf-8") as h:
+                    scope = json.load(h).get("scope")
+                if not isinstance(scope, dict):
+                    continue
+                n += 1
+                cut += r.get("stop") == "api_error"
+                if r["success"]:
+                    ok += 1
+                    got = set(r.get("changed") or [])
+                    full += got == set(scope.get(arm, []))
+                    none += not got
+            if n:
+                out.append(f"| {os.path.basename(f)[:-6]} | {arm} | {ok}/{n} | {full} | {none} | {ok - full - none} | {cut} |")
+    return "\n".join(out)
+
+
 def main():
+    if sys.argv[1:2] == ["worked"]:
+        print(worked(sys.argv[2], sys.argv[3:]))
+        return
     if sys.argv[1:2] == ["diff"]:
         print(diff(sys.argv[2:]))
         return
