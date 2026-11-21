@@ -1,7 +1,7 @@
 #[summary("코드 생성이 읽는 표 (stage0 verify::Tables::lowered와 check::lower의 포트, 백로그 4D-05a): 글은 바이트이고 char는 u32다 (ADR-0050 §3·§4). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
 mod lowered {
     #[summary("낮춘 표. text는 값이 글인 식의 자리(body::span_key, 열쇠 순서): 바이트 뜻이 다른 연산을 이것으로 가른다")]
-    struct Tables { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, trait_impls: Vec<types::TraitImplInfo>, locals: table::Table<table::Table<ast::TypeKind>>, types: table::Table<ast::TypeKind>, targs: table::Table<Vec<ast::TypeKind>>, text: Vec<String> }
+    struct Tables { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, trait_impls: Vec<types::TraitImplInfo>, locals: table::Table<table::Table<ast::TypeKind>>, types: table::Table<ast::TypeKind>, targs: table::Table<Vec<ast::TypeKind>>, text: table::Table<bool> }
 
     #[summary("열거형 t(참조를 지나)의 변형과 페이로드 타입을 선언 순서로 (stage0 verify::enum_variants). Option은 None·Some, Result는 Ok·Err. 제네릭이면 인스턴스 t의 타입")]
     #[effects(alloc)]
@@ -167,7 +167,13 @@ mod lowered {
                 Some(at) => targs.insert(ck.b.targs.key(n).as_str(), lower_all(ck.b.targs.items[at].as_slice())),
             }
         }
-        Tables { fns: fns, adts: adts, trait_impls: trait_impls, locals: locals, types: tys, targs: targs, text: ck.text.clone() }
+        let mut text: table::Table<bool> = table::new::<bool>();
+        for i in 0..ck.text.len()
+            invariant 0 <= i && i <= ck.text.len(),
+        {
+            text.insert(ck.text[i].as_str(), true);
+        }
+        Tables { fns: fns, adts: adts, trait_impls: trait_impls, locals: locals, types: tys, targs: targs, text: text }
     }
 
     #[summary("참조를 벗긴 타입 (stage0 verify::value_ty): 슬라이스의 참조는 그대로")]

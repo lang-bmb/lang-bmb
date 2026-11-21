@@ -1512,7 +1512,7 @@ mod codegen {
             }
             match range_of(index) {
                 None => {},
-                Some(r) => { if types::has(tb.text.as_slice(), body::span_key(base.span).as_str()) { return self.str_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); } return self.elem_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); },
+                Some(r) => { if tb.text.has(body::span_key(base.span).as_str()) { return self.str_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); } return self.elem_slice(e, base, &*r.lo, &*r.hi, ck, tb, f - 1); },
             }
             let ety: ast::TypeKind = self.ty(e, tb);
             if is_mem_elem(&ety) {
@@ -1829,7 +1829,7 @@ mod codegen {
         #[summary("식 e의 값이 글인가 (stage0 is_text_expr): 낮추기 전의 타입으로")]
         #[effects(alloc)]
         fn is_text_expr(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
-            types::has(tb.text.as_slice(), body::span_key(e.span).as_str()) || self.text_targ(e, tb)
+            tb.text.has(body::span_key(e.span).as_str()) || self.text_targ(e, tb)
         }
 
         #[summary("break와 continue (stage0 jump): 레이블의 루프(없으면 가장 안쪽)로. break e는 값을 루프의 자리에 둔다")]
@@ -4003,22 +4003,24 @@ mod codegen {
                 Some(ua) => extra.push(used.items[ua].clone()),
             }
         }
-        if in_ir(ir.as_str(), "@bmb_print_f64(") {
-            ir.push_str(codegen_text::print_f64().as_str());
+        let mut called: table::Table<bool> = table::new::<bool>();
+        note_calls(&mut called, ir.as_str());
+        if called.has("bmb_print_f64") {
+            add_text(&mut ir, &mut called, codegen_text::print_f64().as_str());
         }
-        let mut sys_text: String = sys_runtime(ir.as_str());
-        sys_text.push_str(io_runtime(ir.as_str(), tb).as_str());
-        sys_text.push_str(env_runtime(ir.as_str(), tb).as_str());
+        let mut sys_text: String = sys_runtime(&called);
+        sys_text.push_str(io_runtime(&called, tb).as_str());
+        sys_text.push_str(env_runtime(&called, tb).as_str());
         let helpers: String = sys_helpers(sys_text.as_str());
         sys_text.push_str(helpers.as_str());
-        ir.push_str(sys_text.as_str());
-        if in_ir(ir.as_str(), "@bmb_str_cmp(") {
-            ir.push_str(codegen_text::text_cmp().as_str());
+        add_text(&mut ir, &mut called, sys_text.as_str());
+        if called.has("bmb_str_cmp") {
+            add_text(&mut ir, &mut called, codegen_text::text_cmp().as_str());
         }
-        if in_ir(ir.as_str(), "@bmb_str_append(") || in_ir(ir.as_str(), "@bmb_str_push_char(") {
-            ir.push_str(codegen_text::text_grow().as_str());
+        if called.has("bmb_str_append") || called.has("bmb_str_push_char") {
+            add_text(&mut ir, &mut called, codegen_text::text_grow().as_str());
         }
-        if in_ir(ir.as_str(), "@bmb_utf8_valid(") {
+        if called.has("bmb_utf8_valid") {
             ir.push_str(codegen_text::text_utf8().as_str());
         }
         match &main {
@@ -4056,12 +4058,12 @@ mod codegen {
 
     #[summary("std::env::var의 런타임과 시계 (stage0 sys::env_runtime): 프로그램의 Option<String>의 LLVM 이름으로")]
     #[effects(alloc)]
-    fn env_runtime(ir: &str, tb: &lowered::Tables) -> String {
+    fn env_runtime(called: &table::Table<bool>, tb: &lowered::Tables) -> String {
         let mut out: String = String::new();
-        if in_ir(ir, "@bmb_monotonic_ms(") {
+        if called.has("bmb_monotonic_ms") {
             out.push_str(codegen_text::sys_clock().as_str());
         }
-        if !in_ir(ir, "@bmb_env_var(") {
+        if !called.has("bmb_env_var") {
             return out;
         }
         let at: usize = match tb.fns.find("std::env::var") {
@@ -4398,6 +4400,56 @@ mod codegen {
         }
     }
 
+    #[summary("글 text에 `@이름(`의 꼴로 나오는 이름을 called에 적는다. 이름은 영문자·숫자·밑줄이다: 그런 이름 n에 대해 called에 n이 있는 것과 글에 `@n(`이 있는 것이 같다 (stage0은 IR에서 그 글을 찾는다. 찾을 때마다 IR 전체를 훑는 대신 한 번 훑는다, 백로그 4E-04)")]
+    #[effects(alloc)]
+    fn note_calls(called: &mut table::Table<bool>, text: &str) -> () {
+        let mut i: usize = 0;
+        while i < text.len()
+            decreases text.len() - i,
+        {
+            if text.as_bytes()[i] != 64 {
+                i = i + 1;
+            } else {
+                let from: usize = i + 1;
+                let mut j: usize = from;
+                while j < text.len() && word_byte(text.as_bytes()[j])
+                    invariant from <= j,
+                    decreases text.len() - j,
+                {
+                    j = j + 1;
+                }
+                if from < j && j < text.len() && text.as_bytes()[j] == 40 {
+                    if !called.has(&text[from..j]) {
+                        called.insert(&text[from..j], true);
+                    }
+                }
+                i = j;
+            }
+        }
+    }
+
+    #[summary("이름에 쓰는 바이트인가: 영문자, 숫자, 밑줄")]
+    #[effects(pure)]
+    fn word_byte(c: u8) -> bool {
+        c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || c == 95
+    }
+
+    #[summary("IR에 text를 붙이고 그 글이 부르는 이름을 called에 더한다")]
+    #[effects(alloc)]
+    fn add_text(ir: &mut String, called: &mut table::Table<bool>, text: &str) -> () {
+        note_calls(called, text);
+        ir.push_str(text);
+    }
+
+    #[summary("전역 이름 w(`@이름`)에서 `@`를 뗀 것")]
+    #[effects(alloc)]
+    fn bare(w: &str) -> String {
+        if w.len() > 0 && w.as_bytes()[0] == 64 {
+            return String::from(&w[1..w.len()]);
+        }
+        String::from(w)
+    }
+
     #[summary("정수 비교의 술어 (stage0 expr의 cmp): 부호에 따라. 비교가 아니면 빈 글")]
     #[effects(alloc)]
     fn int_cmp(op: ast::BinOp, signed: bool) -> String {
@@ -4531,7 +4583,7 @@ mod codegen {
 
     #[summary("ir이 부르는 입출력 런타임 (stage0 sys::io_runtime): 래퍼마다 런타임이 돌려준 것(n, 또는 -1 - code)에서 프로그램의 타입 이름으로 Result를 짓는다. 그 뒤에 쓰인 조각들")]
     #[effects(alloc)]
-    fn io_runtime(ir: &str, tb: &lowered::Tables) -> String {
+    fn io_runtime(called: &table::Table<bool>, tb: &lowered::Tables) -> String {
         let rows: Vec<IoRow> = io_rows();
         let mut used: Vec<String> = Vec::new();
         let mut out: String = String::new();
@@ -4539,7 +4591,7 @@ mod codegen {
             invariant 0 <= i && i <= rows.len(),
         {
             let w: String = io_wrapper(rows[i].path.as_str());
-            if in_ir(ir, types::cat2(w.as_str(), "(").as_str()) {
+            if called.has(bare(w.as_str()).as_str()) {
                 if used.len() == 0 {
                     out.push_str("define internal void @bmb_io_error(ptr %e, i64 %code) {\n  %os = icmp ult i64 %code, 1000\n  %kept = select i1 %os, i64 %code, i64 0\n  %c32 = trunc i64 %kept to i32\n  %cp = getelementptr inbounds %\"std::io::Error\", ptr %e, i32 0, i32 0\n  store i32 %c32, ptr %cp\n  %mp = getelementptr inbounds %\"std::io::Error\", ptr %e, i32 0, i32 1\n  call void @bmb_io_message(ptr %mp, i64 %code)\n  ret void\n}\n");
                 }
@@ -5329,7 +5381,7 @@ mod codegen {
 
     #[summary("ir이 부르는 런타임 조각과 그것들이 부르는 조각 (stage0 sys::runtime): 인자, 표준 오류, 종료. 더 늘지 않을 때까지")]
     #[effects(alloc)]
-    fn sys_runtime(ir: &str) -> String {
+    fn sys_runtime(called: &table::Table<bool>) -> String {
         let mut out: String = String::new();
         let mut args: bool = false;
         let mut eprint: bool = false;
@@ -5337,15 +5389,15 @@ mod codegen {
         for round in 0..4
             invariant 0 <= round && round <= 4,
         {
-            if !args && (in_ir(ir, "@bmb_args(") || in_ir(out.as_str(), "@bmb_args(")) {
+            if !args && (called.has("bmb_args") || in_ir(out.as_str(), "@bmb_args(")) {
                 args = true;
                 out.push_str(codegen_text::sys_args().as_str());
             }
-            if !eprint && (in_ir(ir, "@bmb_eprint_bytes(") || in_ir(out.as_str(), "@bmb_eprint_bytes(")) {
+            if !eprint && (called.has("bmb_eprint_bytes") || in_ir(out.as_str(), "@bmb_eprint_bytes(")) {
                 eprint = true;
                 out.push_str(codegen_text::sys_eprint().as_str());
             }
-            if !exit && (in_ir(ir, "@bmb_exit(") || in_ir(out.as_str(), "@bmb_exit(")) {
+            if !exit && (called.has("bmb_exit") || in_ir(out.as_str(), "@bmb_exit(")) {
                 exit = true;
                 out.push_str(codegen_text::sys_exit().as_str());
             }

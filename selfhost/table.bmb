@@ -1,49 +1,71 @@
-#[summary("글을 열쇠로 하는 표: 열쇠의 순서로 돌 수 있고 값은 자리로 읽는다 (백로그 4D-03c). stage0의 BTreeMap<String, V>의 자리다: std의 BTreeMap은 값을 복사해 내주므로(ADR-0097) 옮겨 다니는 값은 Vec에 두고 그 자리를 표에 둔다")]
+#[summary("글을 열쇠로 하는 표: 열쇠의 순서로 돌 수 있고 값은 자리로 읽는다 (백로그 4D-03c, 4E-04). stage0의 BTreeMap<String, V>의 자리다: std의 BTreeMap은 값을 복사해 내주고(ADR-0097) 삽입이 O(n)이다. 색인은 높이로 균형을 잡는 트리(AVL)이고 마디는 Vec 하나에 있다: 찾기·넣기·순서로 n번째가 모두 O(log n)")]
 mod table {
-    #[summary("ix는 열쇠에서 items의 자리로. 같은 열쇠를 다시 넣으면 그 자리의 값을 바꾼다")]
-    struct Table<V> { ix: std::collections::BTreeMap<String, usize>, items: Vec<V> }
+    #[summary("트리의 마디: 열쇠 key의 값은 items[at]. l·r은 왼쪽·오른쪽 자식의 마디 번호(nodes의 색인 + 1, 없으면 0), h는 높이, n은 이 마디 아래의 열쇠 수")]
+    struct Node { key: String, at: usize, l: usize, r: usize, h: usize, n: usize }
+
+    #[summary("nodes는 색인의 마디(넣은 순서), root는 뿌리의 마디 번호(빈 표면 0). 같은 열쇠를 다시 넣으면 그 자리의 값을 바꾼다")]
+    struct Table<V> { nodes: Vec<Node>, root: usize, items: Vec<V> }
 
     impl<V> Table<V> {
         #[summary("열쇠 k의 값의 자리 (items의 색인)")]
-        #[effects(alloc)]
+        #[effects(pure)]
         #[uses(within)]
         fn find(self: &Table<V>, k: &str) -> (r: Option<usize>)
             ensures within(r, self.items.len()),
         {
-            match self.ix.get(&String::from(k)) {
-                None => None,
-                Some(i) => { if i < self.items.len() { Some(i) } else { None } },
+            let t: usize = seek(self.nodes.as_slice(), self.root, k);
+            if t == 0 || t > self.nodes.len() {
+                return None;
+            }
+            let i: usize = self.nodes[t - 1].at;
+            if i < self.items.len() {
+                Some(i)
+            } else {
+                None
             }
         }
 
         #[summary("열쇠 k가 있는가")]
-        #[effects(alloc)]
+        #[effects(pure)]
         fn has(self: &Table<V>, k: &str) -> bool {
-            self.ix.contains_key(&String::from(k))
+            seek(self.nodes.as_slice(), self.root, k) != 0
         }
 
         #[summary("k를 v로. 있던 열쇠면 값을 바꾼다")]
         #[effects(alloc)]
         fn insert(self: &mut Table<V>, k: &str, v: V) -> () {
-            match self.ix.get(&String::from(k)) {
-                None => { let at: usize = self.items.len(); self.items.push(v); self.ix.insert(String::from(k), at); },
-                Some(i) => { if i < self.items.len() { self.items[i] = v; } else { self.items.push(v); } },
+            let t: usize = seek(self.nodes.as_slice(), self.root, k);
+            if t != 0 && t <= self.nodes.len() {
+                let i: usize = self.nodes[t - 1].at;
+                if i < self.items.len() {
+                    self.items[i] = v;
+                } else {
+                    let again: usize = self.items.len();
+                    self.items.push(v);
+                    self.nodes[t - 1].at = again;
+                }
+                return;
             }
+            let at: usize = self.items.len();
+            self.items.push(v);
+            let root: usize = self.root;
+            self.root = put(&mut self.nodes, root, k, at, 1000000000);
         }
 
         #[summary("열쇠의 순서로 n번째 열쇠. 범위 밖이면 빈 글")]
         #[effects(alloc)]
         fn key(self: &Table<V>, n: usize) -> String {
-            if n < self.ix.keys.len() {
-                return self.ix.keys[n].clone();
+            let t: usize = pick(self.nodes.as_slice(), self.root, n);
+            if t == 0 || t > self.nodes.len() {
+                return String::new();
             }
-            String::new()
+            self.nodes[t - 1].key.clone()
         }
 
         #[summary("열쇠의 수")]
         #[effects(pure)]
         fn len(self: &Table<V>) -> usize {
-            self.ix.len()
+            self.nodes.len()
         }
 
         #[summary("열쇠의 순서로 n번째 값의 자리 (items의 색인)")]
@@ -52,21 +74,211 @@ mod table {
         fn nth(self: &Table<V>, n: usize) -> (r: Option<usize>)
             ensures within(r, self.items.len()),
         {
-            if n < self.ix.keys.len() && n < self.ix.vals.len() {
-                let i: usize = self.ix.vals[n];
-                if i < self.items.len() {
-                    return Some(i);
+            let t: usize = pick(self.nodes.as_slice(), self.root, n);
+            if t == 0 || t > self.nodes.len() {
+                return None;
+            }
+            let i: usize = self.nodes[t - 1].at;
+            if i < self.items.len() {
+                Some(i)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[summary("마디 t 아래의 열쇠 수. 없는 마디는 0")]
+    #[effects(pure)]
+    fn count(ns: &[Node], t: usize) -> usize {
+        if t == 0 || t > ns.len() {
+            0
+        } else {
+            ns[t - 1].n
+        }
+    }
+
+    #[summary("마디 t의 높이. 없는 마디는 0")]
+    #[effects(pure)]
+    fn height(ns: &[Node], t: usize) -> usize {
+        if t == 0 || t > ns.len() {
+            0
+        } else {
+            ns[t - 1].h
+        }
+    }
+
+    #[summary("마디 t의 두 자식의 높이가 둘 이상 다르면 돌려서 맞춘다. 새 뿌리의 번호")]
+    #[effects(pure)]
+    fn level(ns: &mut Vec<Node>, t: usize) -> usize
+        ensures ns.len() == old(ns).len(),
+    {
+        if t == 0 || t > ns.len() {
+            return t;
+        }
+        renew(ns, t);
+        let l: usize = ns[t - 1].l;
+        let r: usize = ns[t - 1].r;
+        let hl: usize = height(ns.as_slice(), l);
+        let hr: usize = height(ns.as_slice(), r);
+        if hl > hr && hl - hr > 1 && l != 0 && l <= ns.len() {
+            if height(ns.as_slice(), ns[l - 1].l) < height(ns.as_slice(), ns[l - 1].r) {
+                let nl: usize = turn_left(ns, l);
+                if t <= ns.len() {
+                    ns[t - 1].l = nl;
                 }
             }
-            None
+            return turn_right(ns, t);
         }
+        if hr > hl && hr - hl > 1 && r != 0 && r <= ns.len() {
+            if height(ns.as_slice(), ns[r - 1].r) < height(ns.as_slice(), ns[r - 1].l) {
+                let nr: usize = turn_right(ns, r);
+                if t <= ns.len() {
+                    ns[t - 1].r = nr;
+                }
+            }
+            return turn_left(ns, t);
+        }
+        t
     }
 
     #[summary("빈 표")]
     #[effects(alloc)]
     fn new<V>() -> Table<V> {
         let items: Vec<V> = Vec::new();
-        Table { ix: std::collections::BTreeMap::<String, usize>::new(), items: items }
+        let nodes: Vec<Node> = Vec::new();
+        Table { nodes: nodes, root: 0, items: items }
+    }
+
+    #[summary("뿌리 root 아래에서 열쇠의 순서로 n번째 마디의 번호. 범위 밖이면 0")]
+    #[effects(pure)]
+    fn pick(ns: &[Node], root: usize, n: usize) -> usize {
+        let mut t: usize = root;
+        let mut rest: usize = n;
+        let mut f: usize = 1000000000;
+        while t != 0 && t <= ns.len() && f > 0
+            decreases f,
+        {
+            let before: usize = count(ns, ns[t - 1].l);
+            if rest < before {
+                t = ns[t - 1].l;
+            } else if rest == before {
+                return t;
+            } else {
+                rest = rest - before - 1;
+                t = ns[t - 1].r;
+            }
+            f = f - 1;
+        }
+        0
+    }
+
+    #[summary("뿌리 t 아래에 새 열쇠 k(값의 자리 at)를 넣는다. 새 뿌리의 번호. 있는 열쇠면 그 자리만 바꾼다. 연료 f는 트리의 깊이보다 크다(높이는 열쇠 수의 로그다)")]
+    #[effects(alloc)]
+    fn put(ns: &mut Vec<Node>, t: usize, k: &str, at: usize, f: usize) -> usize
+        decreases f,
+    {
+        if t == 0 || t > ns.len() || f == 0 {
+            ns.push(Node { key: String::from(k), at: at, l: 0, r: 0, h: 1, n: 1 });
+            return ns.len();
+        }
+        if k < ns[t - 1].key.as_str() {
+            let l: usize = ns[t - 1].l;
+            let nl: usize = put(ns, l, k, at, f - 1);
+            if t <= ns.len() {
+                ns[t - 1].l = nl;
+            }
+        } else if ns[t - 1].key.as_str() < k {
+            let r: usize = ns[t - 1].r;
+            let nr: usize = put(ns, r, k, at, f - 1);
+            if t <= ns.len() {
+                ns[t - 1].r = nr;
+            }
+        } else {
+            ns[t - 1].at = at;
+            return t;
+        }
+        level(ns, t)
+    }
+
+    #[summary("마디 t의 높이와 열쇠 수를 자식에서 다시 센다")]
+    #[effects(pure)]
+    fn renew(ns: &mut Vec<Node>, t: usize) -> ()
+        ensures ns.len() == old(ns).len(),
+    {
+        if t == 0 || t > ns.len() {
+            return;
+        }
+        let l: usize = ns[t - 1].l;
+        let r: usize = ns[t - 1].r;
+        let hl: usize = height(ns.as_slice(), l);
+        let hr: usize = height(ns.as_slice(), r);
+        let top: usize = if hl < hr {
+            hr
+        } else {
+            hl
+        };
+        ns[t - 1].h = top.saturating_add(1);
+        ns[t - 1].n = count(ns.as_slice(), l).saturating_add(count(ns.as_slice(), r)).saturating_add(1);
+    }
+
+    #[summary("열쇠 k의 마디 번호. 없으면 0")]
+    #[effects(pure)]
+    fn seek(ns: &[Node], root: usize, k: &str) -> usize {
+        let mut t: usize = root;
+        let mut f: usize = 1000000000;
+        while t != 0 && t <= ns.len() && f > 0
+            decreases f,
+        {
+            if k < ns[t - 1].key.as_str() {
+                t = ns[t - 1].l;
+            } else if ns[t - 1].key.as_str() < k {
+                t = ns[t - 1].r;
+            } else {
+                return t;
+            }
+            f = f - 1;
+        }
+        0
+    }
+
+    #[summary("왼쪽 돌리기: t의 오른쪽 자식이 t의 자리에 오고 t는 그 왼쪽 자식이 된다. 새 뿌리의 번호")]
+    #[effects(pure)]
+    fn turn_left(ns: &mut Vec<Node>, t: usize) -> usize
+        ensures ns.len() == old(ns).len(),
+    {
+        if t == 0 || t > ns.len() {
+            return t;
+        }
+        let r: usize = ns[t - 1].r;
+        if r == 0 || r > ns.len() {
+            return t;
+        }
+        let mid: usize = ns[r - 1].l;
+        ns[t - 1].r = mid;
+        ns[r - 1].l = t;
+        renew(ns, t);
+        renew(ns, r);
+        r
+    }
+
+    #[summary("오른쪽 돌리기: t의 왼쪽 자식이 t의 자리에 오고 t는 그 오른쪽 자식이 된다. 새 뿌리의 번호")]
+    #[effects(pure)]
+    fn turn_right(ns: &mut Vec<Node>, t: usize) -> usize
+        ensures ns.len() == old(ns).len(),
+    {
+        if t == 0 || t > ns.len() {
+            return t;
+        }
+        let l: usize = ns[t - 1].l;
+        if l == 0 || l > ns.len() {
+            return t;
+        }
+        let mid: usize = ns[l - 1].r;
+        ns[t - 1].l = mid;
+        ns[l - 1].r = t;
+        renew(ns, t);
+        renew(ns, l);
+        l
     }
 
     #[summary("r이 있으면 n보다 작다")]

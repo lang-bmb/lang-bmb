@@ -413,10 +413,10 @@ mod lib {
             }
         }
         for i in 0..t.text.len()
-            invariant 0 <= i && i <= t.text.len(),
+            invariant 0 <= i,
         {
             out.push_str("{");
-            push_key(out, t.text[i].as_str(), sm);
+            push_key(out, t.text.key(i).as_str(), sm);
             out.push_str(",\"text\":true}\n");
         }
         for n in 0..t.locals.len()
