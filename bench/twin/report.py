@@ -2,6 +2,7 @@
 """Tables of the port twin's result rows (backlog 3P-05).
 
     report.py FILE.jsonl..          a Markdown table per axis
+    report.py diff FILE.jsonl..     the two arms compared per axis (ADR-0112)
 
 A file holds the rows of one run (`pair.py run --out FILE`: one agent, one
 documentation condition). Rows are grouped by agent, condition and
@@ -15,12 +16,26 @@ of its families. Per group and arm:
     calls      tool calls
     limit      sessions that reached the call limit
 
+`diff` takes the runs of one agent and condition (a file per run) and
+compares the arms, BMB minus Rust, per axis and family: the difference of
+the run-level success rates with its 95% interval (Welch, never narrower
+than Newcombe's interval of the pooled sessions) and the exact permutation p,
+then per task the ratio BMB / Rust of the mean session tokens (the read
+tokens, and the tokens the API counted), its median over the tasks with the
+exact order-statistic interval, and the geometric mean. The rules and the
+functions are those of `bench/repeat.py`.
+
 A history's row counts once in `n`/`ok` (its last step's judgement) and
 has `steps` (steps that passed of all steps).
 """
 import json
+import math
+import os
 import sys
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import repeat  # noqa: E402
 
 AXES = {"callers": "comprehend", "impact": "comprehend", "diag": "comprehend", "state": "comprehend",
         "rename": "refactor", "swap": "refactor", "inline": "refactor", "extract": "refactor", "move": "refactor",
@@ -59,7 +74,72 @@ def table(rows):
     return "\n".join(out)
 
 
+def ratio_cell(runs, group, value):
+    """Median, interval and geometric mean of BMB / Rust per task."""
+    means = {}
+    for arm in ("bmb", "rust"):
+        acc = defaultdict(list)
+        for rows in runs:
+            for r in rows:
+                if r["arm"] == arm and group(r):
+                    acc[r["id"]].append(value(r))
+        means[arm] = {t: sum(v) / len(v) for t, v in acc.items()}
+    ratios = [means["bmb"][t] / means["rust"][t] for t in sorted(means["bmb"])
+              if means["rust"].get(t) and means["bmb"][t]]
+    if not ratios:
+        return "—"
+    med, iv = repeat.median_interval(ratios)
+    gm = math.exp(sum(math.log(x) for x in ratios) / len(ratios))
+    return f"{med:.2f} ({f'{iv[0]:.2f}~{iv[1]:.2f}' if iv else '—'}), 기하 {gm:.2f}"
+
+
+def diff(files):
+    runs = []
+    for f in files:
+        with open(f, encoding="utf-8") as h:
+            runs.append([json.loads(ln) for ln in h if ln.strip()])
+    heads = {(r["agent"], r.get("docs")) for rows in runs for r in rows}
+    if len(heads) != 1:
+        sys.exit(f"diff: the runs of one agent and condition, got {sorted(heads)}")
+    agent, docs = next(iter(heads))
+    names = []
+    for rows in runs:
+        for r in rows:
+            fam = family(r["id"])
+            for name in (AXES[fam], f"{AXES[fam]}/{fam}"):
+                if name not in names:
+                    names.append(name)
+    out = [f"{agent}, docs `{docs}`, {len(runs)}회: BMB − Rust (ADR-0112)", "",
+           "| group | BMB 성공(실행별) | Rust 성공(실행별) | 차이 %p | 95% 구간 %p | p | 판정 | 읽은 토큰 BMB/Rust: 중앙값 (구간) | API 토큰 BMB/Rust |",
+           "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    for name in sorted(names):
+        def group(r, name=name):
+            fam = family(r["id"])
+            return name in (AXES[fam], f"{AXES[fam]}/{fam}")
+        per = {}
+        for arm in ("bmb", "rust"):
+            per[arm] = [(sum(bool(r["success"]) for r in rows if r["arm"] == arm and group(r)),
+                         sum(1 for r in rows if r["arm"] == arm and group(r))) for rows in runs]
+        if any(n == 0 for arm in per for _, n in per[arm]):
+            sys.exit(f"diff: {name}: a run without sessions of an arm")
+        ra, rb = [k / n for k, n in per["rust"]], [k / n for k, n in per["bmb"]]
+        d, lo, hi = repeat.welch(ra, rb)
+        nl, nh = repeat.newcombe(sum(k for k, _ in per["rust"]), sum(n for _, n in per["rust"]),
+                                 sum(k for k, _ in per["bmb"]), sum(n for _, n in per["bmb"]))
+        lo, hi = min(lo, nl), max(hi, nh)
+        p = repeat.permutation_p(ra, rb) if len(runs) > 1 else None
+        verdict = repeat.diff_verdict(lo, hi, len(ra), len(rb)).replace("B가", "BMB가").replace("A가", "Rust가")
+        out.append(f"| {name} | {', '.join(f'{k}/{n}' for k, n in per['bmb'])} | "
+                   f"{', '.join(f'{k}/{n}' for k, n in per['rust'])} | {d * 100:+.1f} | {lo * 100:+.1f}~{hi * 100:+.1f} | "
+                   f"{'—' if p is None else f'{p:.3f}'} | {verdict} | {ratio_cell(runs, group, lambda r: r['tokens'])} | "
+                   f"{ratio_cell(runs, group, lambda r: usage(r, 'in') + usage(r, 'out'))} |")
+    return "\n".join(out)
+
+
 def main():
+    if sys.argv[1:2] == ["diff"]:
+        print(diff(sys.argv[2:]))
+        return
     rows = []
     for f in sys.argv[1:]:
         with open(f, encoding="utf-8") as h:
