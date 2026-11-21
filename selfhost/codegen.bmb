@@ -3394,6 +3394,13 @@ mod codegen {
     #[summary("낮추는 함수가 부르는 제네릭 함수의 인스턴스 (stage0 Gen::wants의 항목): 열쇠, 정의, 타입 인자")]
     struct Want { key: String, callee: String, sub: types::Subst }
 
+    #[summary("IR에 text를 붙이고 그 글이 부르는 이름을 called에 더한다")]
+    #[effects(alloc)]
+    fn add_text(ir: &mut String, called: &mut table::Table<bool>, text: &str) -> () {
+        note_calls(called, text);
+        ir.push_str(text);
+    }
+
     #[summary("원소 종류 elem의 메모리 정렬 (stage0 align): i1은 1, 좁은 정수는 제 폭, 나머지는 8")]
     #[effects(pure)]
     fn align(elem: &str) -> u32 {
@@ -3516,6 +3523,15 @@ mod codegen {
             ast::TypeKind::Error => s.push_str("0"),
         }
         s
+    }
+
+    #[summary("전역 이름 w(`@이름`)에서 `@`를 뗀 것")]
+    #[effects(alloc)]
+    fn bare(w: &str) -> String {
+        if w.len() > 0 && w.as_bytes()[0] == 64 {
+            return String::from(&w[1..w.len()]);
+        }
+        String::from(w)
     }
 
     #[summary("재귀가 있는 프로그램의 스택 (stage0 sys::big_stack, ADR-0091 §5): main을 256 MiB 스택의 스레드에서 돌리고 기다린다. 스레드가 뜨지 않으면 프로세스의 스택에서 돌린다")]
@@ -4400,56 +4416,6 @@ mod codegen {
         }
     }
 
-    #[summary("글 text에 `@이름(`의 꼴로 나오는 이름을 called에 적는다. 이름은 영문자·숫자·밑줄이다: 그런 이름 n에 대해 called에 n이 있는 것과 글에 `@n(`이 있는 것이 같다 (stage0은 IR에서 그 글을 찾는다. 찾을 때마다 IR 전체를 훑는 대신 한 번 훑는다, 백로그 4E-04)")]
-    #[effects(alloc)]
-    fn note_calls(called: &mut table::Table<bool>, text: &str) -> () {
-        let mut i: usize = 0;
-        while i < text.len()
-            decreases text.len() - i,
-        {
-            if text.as_bytes()[i] != 64 {
-                i = i + 1;
-            } else {
-                let from: usize = i + 1;
-                let mut j: usize = from;
-                while j < text.len() && word_byte(text.as_bytes()[j])
-                    invariant from <= j,
-                    decreases text.len() - j,
-                {
-                    j = j + 1;
-                }
-                if from < j && j < text.len() && text.as_bytes()[j] == 40 {
-                    if !called.has(&text[from..j]) {
-                        called.insert(&text[from..j], true);
-                    }
-                }
-                i = j;
-            }
-        }
-    }
-
-    #[summary("이름에 쓰는 바이트인가: 영문자, 숫자, 밑줄")]
-    #[effects(pure)]
-    fn word_byte(c: u8) -> bool {
-        c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || c == 95
-    }
-
-    #[summary("IR에 text를 붙이고 그 글이 부르는 이름을 called에 더한다")]
-    #[effects(alloc)]
-    fn add_text(ir: &mut String, called: &mut table::Table<bool>, text: &str) -> () {
-        note_calls(called, text);
-        ir.push_str(text);
-    }
-
-    #[summary("전역 이름 w(`@이름`)에서 `@`를 뗀 것")]
-    #[effects(alloc)]
-    fn bare(w: &str) -> String {
-        if w.len() > 0 && w.as_bytes()[0] == 64 {
-            return String::from(&w[1..w.len()]);
-        }
-        String::from(w)
-    }
-
     #[summary("정수 비교의 술어 (stage0 expr의 cmp): 부호에 따라. 비교가 아니면 빈 글")]
     #[effects(alloc)]
     fn int_cmp(op: ast::BinOp, signed: bool) -> String {
@@ -5180,6 +5146,34 @@ mod codegen {
         elem == "i8" || elem == "i16" || elem == "i32"
     }
 
+    #[summary("글 text에 `@이름(`의 꼴로 나오는 이름을 called에 적는다. 이름은 영문자·숫자·밑줄이다: 그런 이름 n에 대해 called에 n이 있는 것과 글에 `@n(`이 있는 것이 같다 (stage0은 IR에서 그 글을 찾는다. 찾을 때마다 IR 전체를 훑는 대신 한 번 훑는다, 백로그 4E-04)")]
+    #[effects(alloc)]
+    fn note_calls(called: &mut table::Table<bool>, text: &str) -> () {
+        let mut i: usize = 0;
+        while i < text.len()
+            decreases text.len() - i,
+        {
+            if text.as_bytes()[i] != 64 {
+                i = i + 1;
+            } else {
+                let from: usize = i + 1;
+                let mut j: usize = from;
+                while j < text.len() && word_byte(text.as_bytes()[j])
+                    invariant from <= j,
+                    decreases text.len() - j,
+                {
+                    j = j + 1;
+                }
+                if from < j && j < text.len() && text.as_bytes()[j] == 40 {
+                    if !called.has(&text[from..j]) {
+                        called.insert(&text[from..j], true);
+                    }
+                }
+                i = j;
+            }
+        }
+    }
+
     #[summary("매개변수가 넘겨지는 꼴 (stage0 emit_with의 매개변수 갈래들). 0: 값으로 넘기는 스칼라나 단위 값, 1: 슬라이스 (주소와 길이), 2: 스칼라의 참조 (자리의 주소), 3: 값으로 넘기는 배열 (주소, 받는 쪽이 옮긴다), 4: 메모리 값의 참조 (자리의 주소), 5: 값으로 넘기는 메모리 값 (부른 쪽이 만든 사본의 주소), 9: 아직 옮기지 않은 것 (배열의 참조, 참조의 참조)")]
     #[effects(alloc)]
     fn param_kind(t: &ast::TypeKind) -> u32 {
@@ -5560,5 +5554,11 @@ mod codegen {
             None => {},
             Some(vs) => { let words: u64 = layout(t, tb).size.wrapping_sub(8) / 8; out.push_str(data_ty(t).as_str()); out.push_str(" = type { i64, ["); std::num::push_u64(out, words); out.push_str(" x i64] }\n"); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if vs[i].tys.len() > 0 { out.push_str(view_ty(t, vs[i].name.as_str()).as_str()); out.push_str(" = type { i64"); for k in 0..vs[i].tys.len() invariant 0 <= k && k <= vs[i].tys.len(), { out.push_str(", "); out.push_str(mem_ty(&vs[i].tys[k]).as_str()); } out.push_str(" }\n"); } for p in 0..vs[i].tys.len() invariant 0 <= p && p <= vs[i].tys.len(), { visit(&vs[i].tys[p], tb, seen, out, f - 1); } } },
         }
+    }
+
+    #[summary("이름에 쓰는 바이트인가: 영문자, 숫자, 밑줄")]
+    #[effects(pure)]
+    fn word_byte(c: u8) -> bool {
+        c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || c == 95
     }
 }
