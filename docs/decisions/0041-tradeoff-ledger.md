@@ -66,7 +66,7 @@ DESIGN.md §4.1 records what each individual syntax convenience is traded for. B
 | --- | --- |
 | Reading and writing go through tools. Editing code files directly is not recommended | Principle 6. The tools keep the normal form, hashes, map and proof cache consistent |
 | One expression per job, one normal form | Principle 8 |
-| Escape hatches require a rationale declaration and are counted as unproven area | §4.1 |
+| Escape hatches require a rationale declaration and are counted as unproved area | §4.1 |
 
 ### 3. Tensions in the ledger
 

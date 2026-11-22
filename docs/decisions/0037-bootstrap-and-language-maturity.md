@@ -19,7 +19,7 @@ ADR-0012 deferred self-hosting to "decided after the semantics are stable". The 
    - During the porting period no language feature is added to stage0. The feature freeze is declared at the start of porting, and after that stage0 changes are only bug fixes and the minimal changes the bootstrap needs.
    - Porting goes per component (lexer → parser → checker → prover → code generation → map and tools), and each component moves on only after a differential test against stage0 confirms identical output.
    - After the fixed point is reached, stage0 is frozen and preserved as the "bootstrap seed" (tag and binary), and development is on the single BMB compiler.
-4. **Self-proof:** the compiler written in BMB must pass its own proof gate. Parts that use escape hatches (ADR-0029 proposal) are counted and reported as unproven area, and an upper bound on that area is put in the phase pass criteria.
+4. **Self-proof:** the compiler written in BMB must pass its own proof gate. Parts that use escape hatches (ADR-0029 proposal) are counted and reported as unproved area, and an upper bound on that area is put in the phase pass criteria.
 5. **Language maturity phases:** besides self-hosting, the stages a language must have (specification and conformance tests, standard library, system interface, stability and version policy, reproducible build and distribution, multiple targets, debug information, documentation) are sub-phases of ROADMAP phases 4·5.
 6. **Relation to phase 2:** the features needed to write the compiler in BMB (strings and bytes, heap collections, data types, error handling, files and processes) become scope and priority input for the phase 2 language sub-phases (gap analysis 4A-01). The 2R syntax decisions are finished before porting.
 

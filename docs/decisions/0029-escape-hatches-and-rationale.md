@@ -2,16 +2,16 @@
 
 - Status: Accepted (approved by the maintainer 2026-11-01 "recommendation adopted, approval items approved"). Implementation order is after effects (ADR-0030, 2F) (2E-02~2E-04)
 - Date: 2026-10-24
-- Related: DESIGN.md §4.1 (escape hatches, comments)·principles 3·4·9·§7.2 (unproven area), ADR-0003, ADR-0006, ADR-0016, ADR-0019 §2, ADR-0020, ADR-0030 (proposed), ROADMAP 2E, backlog 2E-01
+- Related: DESIGN.md §4.1 (escape hatches, comments)·principles 3·4·9·§7.2 (unproved area), ADR-0003, ADR-0006, ADR-0016, ADR-0019 §2, ADR-0020, ADR-0030 (proposed), ROADMAP 2E, backlog 2E-01
 
 ## Context
-M1 has no escape hatch. Without a proof there is no build, and the unproven area is only the `io` boundary (`print_i64`) (ADR-0016). This strictness blocks the following.
+M1 has no escape hatch. Without a proof there is no build, and the unproved area is only the `io` boundary (`print_i64`) (ADR-0016). This strictness blocks the following.
 
 - **Non-linear arithmetic.** One obligation of `pow` (base ≤ 10, exponent ≤ 15) used 4.1 million of the 5 million `rlimit` and was removed from the corpus (`dev-docs/measurements/m1.md` §6). When the solver cannot prove a mathematically true fact, there is no way around.
 - **Solver limits.** A predicate that keeps a quantifier can end in `unknown` (E0811) (ADR-0023 consequences). The verdict is correctly a failure, but the agent cannot proceed.
 - **Boundaries.** The bodies of future external boundaries (input, time, FFI) cannot be proved.
 
-DESIGN.md §4.1 set escape hatches as "rationale declaration required, counted in the map as unproven area", and ADR-0006 set that the rationale is bound to a node hash and marked "unconfirmed" when it changes. The syntax, format and code generation rules were not decided. Principle 9 is "an unverified contract is not used for optimization".
+DESIGN.md §4.1 set escape hatches as "rationale declaration required, counted in the map as unproved area", and ADR-0006 set that the rationale is bound to a node hash and marked "unconfirmed" when it changes. The syntax, format and code generation rules were not decided. Principle 9 is "an unverified contract is not used for optimization".
 
 ## Decision (proposed)
 
@@ -50,11 +50,11 @@ The trusted fact set `T` = the `assume` facts in the definition ∪ the `ensures
 ### 5. Map and `status` (ADR-0020 backward compatible: key additions only)
 - Keys added to L1 rows and `status` rows: `trust` (`"proved"|"assumed"|"external"|"failed"`), `escapes` (number of `assume`s in the definition + whether it is `external_body`), `assumed_obligations` (number of obligations proved only in pass 2), `checked` (whether in full check mode), `rationale` (`"none"|"confirmed"|"unconfirmed"`), `rationale_kinds`.
 - `proved`, `assumed`, `external`, `escapes`, `unconfirmed` are added to the `status` summary row. The values and meanings of the existing `status` keys are unchanged (`verified` = passed the build gate). The measurement harness judges success by `trust` (§6).
-- The unproven area view (DESIGN.md §7.2) emits the definitions with `trust != "proved"` and their rationales, and the cause edges of definitions whose level dropped through `T` (because of which callee's `ensures`).
+- The unproved area view (DESIGN.md §7.2) emits the definitions with `trust != "proved"` and their rationales, and the cause edges of definitions whose level dropped through `T` (because of which callee's `ensures`).
 
 ### 6. Relation to measurement
 - With escape hatches, an agent can "pass" a task with `assume`. The `m1b`/`m2` harness adds to the success condition of authoring tasks that **every newly written definition has `trust = "proved"`**. Tasks that allow escape hatches are marked separately. The frozen 1E tasks and prompts are not changed.
-- The unproven area (number of definitions, sum of `assumed_obligations`, distribution by `kind`) is a measurement axis of DESIGN.md §9 R4.
+- The unproved area (number of definitions, sum of `assumed_obligations`, distribution by `kind`) is a measurement axis of DESIGN.md §9 R4.
 
 ### 7. Rust·Verus habits to reject, and diagnostics (numbers are proposals)
 
@@ -96,7 +96,7 @@ E10xx·W10xx are a new category "escape hatches and rationale". They are not mix
 
 ## Consequences
 - The proof gate solves an obligation at most twice (only those that fail pass 1). The cost is proportional to the number of escape hatches.
-- Because of trust level propagation, one escape hatch can lower the level and the performance (full check mode) of many callers. This is intended, honest accounting, and the influence is visible in `impact`/the unproven area view.
+- Because of trust level propagation, one escape hatch can lower the level and the performance (full check mode) of many callers. This is intended, honest accounting, and the influence is visible in `impact`/the unproved area view.
 - Excluding `#[rationale]` from hash input complements ADR-0019 §2. On acceptance, "trusted facts are not used for optimization" is added to the escape hatch row of DESIGN.md §4.1.
 
 ## Open questions (decided by measurement 1E-07 or by the maintainer)
@@ -115,5 +115,5 @@ E10xx·W10xx are a new category "escape hatches and rationale". They are not mix
 - Incremental cache: a definition that can reach an escape hatch is neither looked up nor stored. So the trust level of callees need not be put in the key ("the level in the proof cache key" of §2 is already separated by the query text: a pass A query has no trusted facts).
 - Code generation (§4): `Outcome::checked` = the definitions that are not `proved` or failed, and every definition they call (the checker's call graph `Tables::calls`). The obligations of those definitions are not put in `proven`. Those checks are not missing proofs, so `build` is not blocked (`codegen::Module::checks_by` counts per definition and excludes those definitions).
 - Status line: if not `proved`, `"trust":"assumed"`·`"external"` is appended (a key addition, the line of a proved definition is unchanged).
-- §5 (backlog 2E-03): `trust`·`escapes`·`assumed_obligations`·`checked`·`rationale`·`rationale_kinds` of L1·`status` rows, and `proved`·`assumed`·`external`·`escapes`·`unconfirmed` of the `status` summary. `assumed_obligations`, "obligations proved only in pass 2", was measured as "the number of obligations that fail without trusted facts", to fit the per-definition pass B. `panic` (`eff*`) and `trust` (`assumed`·`external`) were added to the test reasons (ADR-0030 §4). The cause edges of the unproven area view (because of which callee) do not exist yet.
+- §5 (backlog 2E-03): `trust`·`escapes`·`assumed_obligations`·`checked`·`rationale`·`rationale_kinds` of L1·`status` rows, and `proved`·`assumed`·`external`·`escapes`·`unconfirmed` of the `status` summary. `assumed_obligations`, "obligations proved only in pass 2", was measured as "the number of obligations that fail without trusted facts", to fit the per-definition pass B. `panic` (`eff*`) and `trust` (`assumed`·`external`) were added to the test reasons (ADR-0030 §4). The cause edges of the unproved area view (because of which callee) do not exist yet.
 - §3 (backlog 2E-04): the rationale hash `escape::Hashes` (the qualified normal form of the definition ‖ the qualified text of the `spec fn`s it calls, the first 16 digits of SHA-256). The rationales of both `assume` and `#[external_body]` are bound to the enclosing definition (the recommendation of open question 3). Unconfirmed is a warning (W1001). Confirmation is the CLI `bmb fix --confirm`, and a missing hash is written by `bmb fix` (§1 "the tool fills it in"). The transaction operation `tx.confirm_rationale` does not exist yet (an MCP agent does not call `fix`, so it is added when demand appears). W1002 is per `assume` in a `proved` definition of the first verification.

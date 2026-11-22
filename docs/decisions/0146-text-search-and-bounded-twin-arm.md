@@ -2,7 +2,7 @@
 
 - Status: Accepted (approved by the maintainer 2026-11-22 "recommendation accepted": the recommendation of backlog `3P-14`. Two things were fixed on acceptance: a long line shows only the surroundings of the occurrence (decision 1), and the description mentions this query only under `--bounded` (decision 3))
 - Date: 2026-11-22
-- Related: ADR-0020 (map and queries), ADR-0127 (response window), ADR-0142 (the model is how the agent works), ADR-0144 (conditions of the first twin measurement: "Whether the BMB arm needs text search of bodies is decided by the per-branch results of `3P-05a`"), DESIGN.md principles 6·7, `dev-docs/measurements/3p-05a.md`
+- Related: ADR-0020 (map and queries), ADR-0127 (response window), ADR-0142 (the model is how the agent works), ADR-0144 (conditions of the first twin measurement: "Whether the BMB arm needs text search of bodies is decided by the per-family results of `3P-05a`"), DESIGN.md principles 6·7, `dev-docs/measurements/3p-05a.md`
 
 ## Context
 
@@ -16,7 +16,7 @@
 1. **`query text PATTERN [PATH..]`.** One row for each line of the normal form source of the workspace that contains `PATTERN` (literal, case-sensitive): `{"path","line","text"}` (`path` is the definition or type that holds the line, `line` is the line number within the normal form of that definition, `text` is the line with leading and trailing whitespace removed, and for a line over 200 bytes, 200 bytes starting 60 bytes before the first occurrence: the normal form of the port has lines of thousands of bytes, so emitting lines whole makes the row size not proportional to the number of matches). At the end a summary row `{"summary":true,"pattern","matches","defs"}`. The scope arguments (`PATH..`) and the response window are the same as for other queries. The order is path, then line.
 2. **Regular expressions are not accepted.** There is one form of searching (principle 8). Questions that need a regular expression (the places that write this field) are for a structural query to answer (decision 4).
 3. **The BMB arm of the porting twins is `--write-tool --compact --bounded`.** The description of the MCP `query` mentions `text` only under `--bounded`: the description without the flag is that of the frozen set unchanged (ADR-0021, decision 3 of ADR-0127). The same tasks (`port/c*`) are measured again under the new condition (`3P-15`). The results of the first measurement stay as the values of that condition.
-4. **What is not in this decision.** (a) Read and write edges of fields (as a kind of `edges`: answering "the definitions that change this field" by structure, not text) are decided after seeing the state branch results of `3P-15`. (b) The cost of refactoring (H-REFACTOR: 3.5 times the tokens) is a matter of the write surface: the rename operation (`rename` of `apply`) was hidden on the measured surface (`--write-tool`). It is handled in 3C (preserving refactoring operations) and `T1-41` (H-EDIT).
+4. **What is not in this decision.** (a) Read and write edges of fields (as a kind of `edges`: answering "the definitions that change this field" by structure, not text) are decided after seeing the state family results of `3P-15`. (b) The cost of refactoring (H-REFACTOR: 3.5 times the tokens) is a matter of the write surface: the rename operation (`rename` of `apply`) was hidden on the measured surface (`--write-tool`). It is handled in 3C (preserving refactoring operations) and `T1-41` (H-EDIT).
 
 ## Rationale
 
@@ -29,7 +29,7 @@
 
 - The normal form has no comments, so text search never matches dead text. Summaries (`#[summary]`) do match: that is useful when what is searched for is a meaning.
 - Freezing condition: the tool list and descriptions of the server without flags are unchanged (the query `text` answers only when called). The BMB arm of the twins has one more flag, so it is not the same condition as the first measurement. That is why it is measured again.
-- `edges` already has a `writes` kind. Decision 4 (a) first looks at whether it answers the questions of the state branch.
+- `edges` already has a `writes` kind. Decision 4 (a) first looks at whether it answers the questions of the state family.
 
 ## Consequences
 

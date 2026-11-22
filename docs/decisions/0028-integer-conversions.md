@@ -35,7 +35,7 @@ To decide: whether a conversion failure is a proof obligation or an `Option`/`Re
 
 ### 5. Proof gate
 - The encoding is `Int`, as in ADR-0017. A conversion is the identity, and the obligation is the single target range predicate `range_T(x)`. The result carries the target range fact.
-- Saturation: `sat_T(v) = ite(v > MAX, MAX, ite(v < MIN, MIN, v))`, `v = a op b` (the mathematical value). `add`·`sub` are linear, `mul` is non-linear and can yield `unknown` (fail-closed, unproven area).
+- Saturation: `sat_T(v) = ite(v > MAX, MAX, ite(v < MIN, MIN, v))`, `v = a op b` (the mathematical value). `add`·`sub` are linear, `mul` is non-linear and can yield `unknown` (fail-closed, unproved area).
 - `checked_*`·`try_from(..).ok()`: `ite(range_T(v), Some(v), None)`. `Option<T>` is the datatype of ADR-0027 §3.
 - If a new auxiliary fact is added, a machine proof goes with it in `compiler/tests/lemmas.rs`, per the rule of ADR-0018 §2. The definitions above need no auxiliary fact.
 
