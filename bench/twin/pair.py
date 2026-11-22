@@ -425,7 +425,9 @@ def ws_files(ws):
 def mcp_flags(fixture):
     if "PAIR_MCP" in os.environ:
         return os.environ["PAIR_MCP"].split()
-    return ["--write-tool", "--compact"] if repo_fixture(fixture) else ["--write-tool"]
+    # The port twin: the compact view (ADR-0144) and the window of a bounded
+    # response, whose tool description names `query text` (ADR-0146).
+    return ["--write-tool", "--compact", "--bounded"] if repo_fixture(fixture) else ["--write-tool"]
 
 
 class BmbTools:

@@ -649,6 +649,37 @@ fn under(path: &str, prefix: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
 }
 
+/// What `query text` shows of a line that holds the pattern at byte `at`
+/// (`len` bytes): the line without the blanks around it when that is at
+/// most `TEXT_SHOWN` bytes, else `TEXT_BEFORE` bytes before the occurrence
+/// to `TEXT_SHOWN` bytes in all (cut at character boundaries), with `..`
+/// where the line goes on. A row's size does not grow with the line.
+fn around(line: &str, at: usize, len: usize) -> String {
+    const TEXT_SHOWN: usize = 200;
+    const TEXT_BEFORE: usize = 60;
+    let trimmed = line.trim();
+    if trimmed.len() <= TEXT_SHOWN {
+        return trimmed.to_string();
+    }
+    let mut lo = at.saturating_sub(TEXT_BEFORE);
+    while !line.is_char_boundary(lo) {
+        lo -= 1;
+    }
+    let mut hi = (lo + TEXT_SHOWN).max(at + len).min(line.len());
+    while !line.is_char_boundary(hi) {
+        hi += 1;
+    }
+    let mut out = String::new();
+    if !line[..lo].trim().is_empty() {
+        out.push_str("..");
+    }
+    out.push_str(line[lo..hi].trim());
+    if !line[hi..].trim().is_empty() {
+        out.push_str("..");
+    }
+    out
+}
+
 /// Whether `path` in `unit` is in `scope`; no scope is the whole program.
 fn within(scope: Option<&Scope>, path: &str, unit: &str) -> bool {
     scope.is_none_or(|s| s.has(path, unit))
@@ -1886,9 +1917,67 @@ impl<'p> Model<'p> {
                     .ok_or_else(|| format!("unknown effect `{name}`: `alloc` or `io`"))?;
                 Self::lines(self.effect_defs(name, e, self.scope(&args[1..])?.as_ref()))
             }
+            "text" => {
+                let pat = args
+                    .first()
+                    .filter(|p| !p.is_empty())
+                    .ok_or("`text` takes the text to find")?;
+                Self::lines(self.text_rows(pat, self.scope(&args[1..])?.as_ref()))
+            }
             other => return Err(format!("unknown query `{other}`")),
         };
         Ok(body)
+    }
+
+    /// `text PATTERN [PATH..]` (ADR-0146): a row `{"path","line","text"}`
+    /// per line of the normal form that holds PATTERN as written (case
+    /// matters, no pattern language), by path and line. `path` is the
+    /// definition or type the line is in, `line` counts from 1 within its
+    /// normal form (`fmt::def_text`; a type's declaration is one line) and
+    /// `text` is the line without the blanks around it, or of a long line
+    /// the part around the first occurrence (`around`). Then the summary
+    /// row `{"summary":true,"pattern","matches","defs"}`: the lines found
+    /// and how many definitions and types hold them.
+    fn text_rows(&self, pat: &str, scope: Option<&Scope>) -> Vec<J> {
+        let mut found: Vec<(String, u64, String)> = Vec::new();
+        for d in self.defs_in(scope) {
+            for (i, line) in crate::fmt::def_text(d.f).lines().enumerate() {
+                if let Some(at) = line.find(pat) {
+                    found.push((d.path.clone(), i as u64 + 1, around(line, at, pat.len())));
+                }
+            }
+        }
+        for t in self
+            .types
+            .values()
+            .filter(|t| within(scope, &t.path, &t.unit))
+        {
+            if let Some(at) = t.text.find(pat) {
+                found.push((t.path.clone(), 1, around(&t.text, at, pat.len())));
+            }
+        }
+        found.sort();
+        let mut holders: Vec<&str> = found.iter().map(|f| f.0.as_str()).collect();
+        holders.dedup();
+        let (matches, defs) = (found.len() as u64, holders.len() as u64);
+        let mut rows: Vec<J> = found
+            .into_iter()
+            .map(|(path, line, text)| {
+                J::O(vec![
+                    ("path", J::S(path)),
+                    ("line", J::N(line)),
+                    ("text", J::S(text)),
+                ])
+            })
+            .collect();
+        let mut summary = summary_head(scope);
+        summary.extend([
+            ("pattern", J::S(pat.into())),
+            ("matches", J::N(matches)),
+            ("defs", J::N(defs)),
+        ]);
+        rows.push(J::O(summary));
+        rows
     }
 
     /// The definitions `target` holds for that are reachable from `start`

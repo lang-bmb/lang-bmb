@@ -1152,3 +1152,64 @@ fn overview_lists_units_with_counts() {
     );
     assert!(request(&f, &["query", "overview", "nosuch"]).is_err());
 }
+
+#[test]
+fn text_finds_the_lines_that_hold_the_pattern() {
+    const T: &str = r#"
+#[summary("a unit")]
+mod t {
+    struct Counter { hits: u64 }
+
+    #[effects(pure)]
+    fn code() -> u64 {
+        let a: u64 = 7;
+        a
+    }
+
+    #[effects(pure)]
+    fn other(c: &Counter) -> u64 {
+        c.hits
+    }
+}
+"#;
+    let f = files(&[("t.bmb", T)]);
+    let out = run(&f, &["query", "text", "hits"]);
+    let rows: Vec<&str> = out.lines().skip(1).collect();
+    // By path and line: the function's line, then the type's declaration.
+    assert_eq!(
+        rows,
+        [
+            r#"{"path":"t::Counter","line":1,"text":"struct Counter { hits: u64 }"}"#,
+            r#"{"path":"t::other","line":3,"text":"c.hits"}"#,
+            r#"{"summary":true,"pattern":"hits","matches":2,"defs":2}"#,
+        ]
+    );
+    // Case matters and the pattern is no pattern language.
+    let none = run(&f, &["query", "text", "Hits"]);
+    assert!(none.ends_with("{\"summary\":true,\"pattern\":\"Hits\",\"matches\":0,\"defs\":0}\n"));
+    assert!(run(&f, &["query", "text", "u.4"]).contains("\"matches\":0"));
+    // A scope: only what is under the paths.
+    let scoped = run(&f, &["query", "text", "hits", "t::other"]);
+    assert!(scoped.contains(r#""path":"t::other""#) && !scoped.contains("t::Counter\","));
+    assert!(scoped.contains(r#""scope":["t::other"]"#) && scoped.contains("\"matches\":1"));
+    // The same answer twice, and usage errors.
+    assert_eq!(run(&f, &["query", "text", "hits"]), out);
+    assert!(request(&f, &["query", "text"]).is_err());
+    assert!(request(&f, &["query", "text", "hits", "nowhere"]).is_err());
+}
+
+#[test]
+fn text_shows_a_long_line_around_the_occurrence() {
+    let sum: String = (0..80).map(|i| format!("{i} + ")).collect();
+    let src = format!(
+        "#[summary(\"a unit\")]\nmod t {{\n    #[effects(pure)]\n    fn f() -> u64 {{\n        {sum}424242\n    }}\n}}\n"
+    );
+    let f = files(&[("t.bmb", &src)]);
+    let out = run(&f, &["query", "text", "424242"]);
+    let row = out.lines().nth(1).unwrap();
+    assert!(
+        row.contains("424242") && row.contains("\"text\":\".."),
+        "{row}"
+    );
+    assert!(row.len() < 300, "{row}");
+}

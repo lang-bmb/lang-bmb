@@ -325,7 +325,7 @@ fn tools(
         map_args.extend(window);
         (
             format!(
-                "{query} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row (rows shown, rows and bytes of the whole result, `next`): go on with `offset`, or ask for less. `overview [PATH..]` lists units without their definitions; `units`, `status`, `duplicates`, `effects` and `tests` take paths (units, definitions, types) and answer for what is under them; `edges` takes a fourth argument, the edge kinds to follow (`calls,uses`)."
+                "{query} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row (rows shown, rows and bytes of the whole result, `next`): go on with `offset`, or ask for less. `overview [PATH..]` lists units without their definitions; `units`, `status`, `duplicates`, `effects` and `tests` take paths (units, definitions, types) and answer for what is under them; `edges` takes a fourth argument, the edge kinds to follow (`calls,uses`); `text PATTERN [PATH..]` finds the lines of the code that hold PATTERN as written (no pattern language): the definition, the line in it and the text around the occurrence."
             ),
             format!(
                 "{map} A result over {budget} bytes is cut after a whole row and ends with a `truncated` row: go on with `offset`, or use `query` with paths."

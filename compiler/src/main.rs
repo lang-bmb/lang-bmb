@@ -127,7 +127,7 @@ const USAGE: &str = "usage:
   bmb map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] <file.bmb>...
                             standard maps as JSONL (ADR-0020); the window flags as for query
   bmb query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS]
-            <units|overview|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests> [args] -- <file.bmb>...
+            <units|overview|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests|text> [args] -- <file.bmb>...
                             read queries as JSONL (ADR-0020); --cache as for verify (only
                             the L1 rows, `surface` and `status` prove);
                             units, status, duplicates, effects, effect E and tests take paths
@@ -136,6 +136,8 @@ const USAGE: &str = "usage:
                             named definition is in; effects with one definition: what it
                             reaches); edges DEF [out|in|both] [DEPTH] [KIND,..] follows only
                             the edges of the listed kinds (calls, contract, uses, writes ..);
+                            text PATTERN [PATH..] lists the lines of the normal form that
+                            hold PATTERN as written (path, line, the text around it; ADR-0146);
                             overview [PATH..] lists units with counts in place of their
                             definitions; --budget, --offset and --limit print a window of
                             the response (ADR-0127): the rows from the offset, whole rows
