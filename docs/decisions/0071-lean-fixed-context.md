@@ -1,6 +1,6 @@
 # ADR-0071: Fixed context: tool documentation in one place, the tool descriptions; prompt language rules only for what cannot be learned from diagnostics
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4: an optional flag of the MCP server and a new measurement edition. The default output and the frozen sets are unchanged). Switching the default is an item for the maintainer's approval after the measurement of §4
+- Status: Accepted (autonomous, AUTONOMY.md §4: an optional flag of the MCP server and a new measurement edition. The default output and the frozen sets are unchanged). Switching the default is an item for the maintainer's approval after the measurement of §4
 - Date: 2026-10-31
 - Related: DESIGN.md principle 6, ADR-0021 (freeze), ADR-0068 (compact projection, the same procedure), ADR-0070 (same condition), backlog 2D-25·2D-28·T0-17
 

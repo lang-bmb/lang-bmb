@@ -1,6 +1,6 @@
 # ADR-0068: Compact agent projection (`bmb mcp --compact`)
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4: an optional flag of the MCP server. The default output, the map schema and the frozen sets are unchanged). Switching the default is an item for the maintainer's approval after the measurement of §5
+- Status: Accepted (autonomous, AUTONOMY.md §4: an optional flag of the MCP server. The default output, the map schema and the frozen sets are unchanged). Switching the default is an item for the maintainer's approval after the measurement of §5
 - Date: 2026-10-30
 - Related: DESIGN.md principles 6·7, §7.2, ADR-0019 §2 (12-character hashes in the map), ADR-0020 (map schema), ADR-0021 (freeze), ADR-0066 (qwen 64K), backlog 2D-23·2D-25·T1-05·T0-15
 

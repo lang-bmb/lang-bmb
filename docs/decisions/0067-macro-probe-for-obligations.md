@@ -1,6 +1,6 @@
 # ADR-0067: A proof obligation first solves a probe that writes every leaf definition as a macro, with 1% of the limit
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Decides the work ADR-0064 left as backlog T2-05. The decision of ADR-0064 (the form of the full query) stays, and one attempt is added in front of it. The meaning is unchanged and only the order of asking the solver changes · decision 4 (vacuity check and precondition satisfiability check) is supplemented by ADR-0069: the two checks also solve the probe first · the order of decisions 2·3 is supplemented by ADR-0089: if the probe does not decide, the ground instance retry comes first, on the probe share
+- Status: Accepted (autonomous, AUTONOMY.md §4). Decides the work ADR-0064 left as backlog T2-05. The decision of ADR-0064 (the form of the full query) stays, and one attempt is added in front of it. The meaning is unchanged and only the order of asking the solver changes · decision 4 (vacuity check and precondition satisfiability check) is supplemented by ADR-0069: the two checks also solve the probe first · the order of decisions 2·3 is supplemented by ADR-0089: if the probe does not decide, the ground instance retry comes first, on the probe share
 - Date: 2026-10-30
 - Related: ADR-0017 §4 (definition axiom), ADR-0023 (ground instance retry), ADR-0048 §4 (bit operation abstraction attempt), ADR-0064 (macros for leaves that bind an array), backlog T2-05
 

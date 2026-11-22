@@ -1,6 +1,6 @@
 # ADR-0064: The definition of a leaf `spec fn` that binds an array is written as a macro instead of a quantified axiom
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Supplements the definition axiom row of ADR-0017 §4 for leaf `spec fn`s that bind an array. The meaning is unchanged and only the form written to SMT changes · proof obligations put a probe that writes every leaf as a macro in front of this form (supplemented by ADR-0067)
+- Status: Accepted (autonomous, AUTONOMY.md §4). Supplements the definition axiom row of ADR-0017 §4 for leaf `spec fn`s that bind an array. The meaning is unchanged and only the form written to SMT changes · proof obligations put a probe that writes every leaf as a macro in front of this form (supplemented by ADR-0067)
 - Date: 2026-10-29
 - Related: ADR-0017 §4 (opaque `spec fn`, definition axiom), ADR-0023 (ground instance retry), ADR-0061 (`f64`), backlog T2-04
 

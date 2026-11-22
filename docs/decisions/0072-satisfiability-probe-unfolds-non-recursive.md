@@ -1,6 +1,6 @@
 # ADR-0072: The probe of the satisfiability checks writes every definition outside recursion as a macro
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Widens the form of the probe of ADR-0069 (vacuity check, precondition satisfiability check). The meaning is unchanged and only the form written to the solver changes. The probe of proof obligations (ADR-0067) and the full query (ADR-0064) are unchanged
+- Status: Accepted (autonomous, AUTONOMY.md §4). Widens the form of the probe of ADR-0069 (vacuity check, precondition satisfiability check). The meaning is unchanged and only the form written to the solver changes. The probe of proof obligations (ADR-0067) and the full query (ADR-0064) are unchanged
 - Date: 2026-10-31
 - Related: ADR-0064 (macro form and pattern rule), ADR-0067 (probe of obligations), ADR-0069 (probe of the checks), backlog T2-10
 

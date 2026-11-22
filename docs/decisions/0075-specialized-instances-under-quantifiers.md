@@ -1,6 +1,6 @@
 # ADR-0075: The ground instance retry adds specialized instances for applications under quantifiers, and completeness is judged per application
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Supplements ADR-0023 (ground instance retry). The retry still runs only when the first query is `unknown`
+- Status: Accepted (autonomous, AUTONOMY.md §4). Supplements ADR-0023 (ground instance retry). The retry still runs only when the first query is `unknown`
 - Date: 2026-11-01
 - Related: ADR-0023, ADR-0064 (definitions that bind an array and MBQI), backlog T0-19, T0-24
 

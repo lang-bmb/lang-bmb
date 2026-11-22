@@ -1,6 +1,6 @@
 # ADR-0069: The vacuity check and the precondition satisfiability check also solve the probe first
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Decides the work decision 4 of ADR-0067 left as backlog T2-06. The probe of proof obligations (ADR-0067 decisions 1·2) is put on the two checks in the same form with the same share. The meaning is unchanged and only the order of asking the solver changes
+- Status: Accepted (autonomous, AUTONOMY.md §4). Decides the work decision 4 of ADR-0067 left as backlog T2-06. The probe of proof obligations (ADR-0067 decisions 1·2) is put on the two checks in the same form with the same share. The meaning is unchanged and only the order of asking the solver changes
 - Date: 2026-10-30
 - Related: ADR-0023 (ground instance retry), ADR-0064 (macros for leaves that bind an array), ADR-0067 (probe of proof obligations), backlog 1B-44 (vacuity check), 2D-08 (W0901), T2-06
 

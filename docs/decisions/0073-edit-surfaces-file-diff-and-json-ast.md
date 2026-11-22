@@ -1,6 +1,6 @@
 # ADR-0073: The comparison surfaces of H-EDIT: the file diff is `git apply --recount`, the JSON AST is the syntax tree + JSON Patch
 
-- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4: optional flags of the MCP server, one CLI command and new measurement editions. The default output and the frozen sets are unchanged)
+- Status: Accepted (autonomous, AUTONOMY.md §4: optional flags of the MCP server, one CLI command and new measurement editions. The default output and the frozen sets are unchanged)
 - Date: 2026-10-31
 - Related: DESIGN.md §9 R2, principles 1·6, ADR-0009 (transactions), ADR-0011 (layout is the tool's), ADR-0019 (normal form), ADR-0021 (freeze), ADR-0070 (same condition), backlog T1-06·2D-24, ROADMAP hypotheses H-EDIT·H-GRAIN
 
