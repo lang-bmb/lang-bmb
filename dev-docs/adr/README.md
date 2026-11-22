@@ -193,3 +193,4 @@ BMB v2의 설계 결정을 한 건에 파일 하나로 남긴다. 현재 확정�
 | [0144](0144-first-twin-measurement-conditions.md) | 포팅 쌍둥이 첫 측정의 조건: BMB 팔은 `--write-tool --compact`, 주 문서 조건은 `none`, 갈래별 보고, 측정을 이해·리팩터링과 재연으로 나눔(사람 승인) | 채택 |
 | [0145](0145-practices-are-payback-targets.md) | 개발 관행(브랜치·PR, CI, 버전, 배포)도 대가 회수의 대상: DESIGN §8에 관행 레벨, 가설 H-TRUNK·H-LIVE·H-RACE, 기구보다 판정과 상한을 먼저 잰다(사람 승인) | 채택 |
 | [0146](0146-text-search-and-bounded-twin-arm.md) | 본문의 글 찾기 `query text`(글자 그대로, 맞은 줄마다 한 행), 포팅 쌍둥이의 BMB 팔은 응답 창(`--bounded`)을 켜고 이해 과제를 다시 잰다(사람 승인) | 채택 |
+| [0147](0147-two-repositories.md) | 저장소를 둘로: 정제된 `lang-bmb`(제품, ADR은 `docs/decisions`로 공개)와 작업 전용 `bmb-works`(서브모듈, 과정 문서·결과·과정 게이트). 이력은 다시 쓰지 않고, 옮기는 일은 돌고 있는 측정 뒤에 한 번에(사람 지시) | 채택 |
