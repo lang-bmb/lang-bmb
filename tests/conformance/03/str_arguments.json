@@ -1,6 +1,6 @@
 {
   "sections": [
-    "텍스트"
+    "Text"
   ],
   "note": "A `&str` argument is a literal, `s.as_str()`, `&s[a..b]` or a `&str` parameter: a `String` value or `&s` there is E0218; `&mut str` is not a type (E0402).",
   "check": [

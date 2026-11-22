@@ -1,6 +1,6 @@
 {
   "sections": [
-    "제네릭과 trait"
+    "Generics and traits"
   ],
   "note": "Integer types, `bool`, `char` and `String` have `Eq` and `Ord`; `f64`, structs, `Vec` and arrays do not, and a type argument that misses a bound is E0428.",
   "check": [

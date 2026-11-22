@@ -1,6 +1,6 @@
 {
   "sections": [
-    "중첩 한도"
+    "Nesting limit"
   ],
   "note": "Units alone nest 256 deep.",
   "check": []

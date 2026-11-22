@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Unary `-`, a division of the form `MIN / -1` and a shift amount at or past the width are overflow obligations (E0803).",
   "check": [],

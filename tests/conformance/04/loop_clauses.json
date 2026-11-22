@@ -1,6 +1,6 @@
 {
   "sections": [
-    "루프"
+    "Loops"
   ],
   "note": "`while` and `loop` need `decreases` (E0506); `for` takes none (E0253); `while let` is E0226; a `for` over an iterator is E0252; the trailing comma of a clause may be left out.",
   "check": [

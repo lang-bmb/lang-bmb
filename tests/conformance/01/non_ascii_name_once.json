@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식별자와 예약어"
+    "Identifiers and reserved words"
   ],
   "note": "A non-ASCII letter is E0101 once for the name it is written in, alone or after ASCII letters; the name is still read as one name.",
   "check": [

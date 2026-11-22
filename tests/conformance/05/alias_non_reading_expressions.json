@@ -1,6 +1,6 @@
 {
   "sections": [
-    "별칭"
+    "Aliasing"
   ],
   "note": "Next to `&mut x`, a value argument that mentions `x` in a call, an `if` or a field read is E0410.",
   "check": [

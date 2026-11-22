@@ -1,6 +1,6 @@
 {
   "sections": [
-    "정수 리터럴"
+    "Integer literals"
   ],
   "note": "A digit outside the radix and a prefix without digits are E0108.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "수량자와 트리거"
+    "Quantifiers and triggers"
   ],
   "note": "`#[trigger]` on a term outside a quantifier is E0510.",
   "check": [

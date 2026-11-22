@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세 문맥과 실행 문맥"
+    "Specification context and executable context"
   ],
   "note": "`forall`, `==>` and `old(..)` in executable code are E0503.",
   "check": [

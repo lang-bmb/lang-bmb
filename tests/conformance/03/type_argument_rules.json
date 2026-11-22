@@ -1,6 +1,6 @@
 {
   "sections": [
-    "제네릭과 trait"
+    "Generics and traits"
   ],
   "note": "Type arguments are value types (E0403); a wrong number is E0429 on a call and E0420 on a type; `where` is E0240.",
   "check": [

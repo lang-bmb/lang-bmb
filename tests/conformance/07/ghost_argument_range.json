@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "An argument of a `proof fn` call must lie inside its parameter's type, since ghost arithmetic is mathematical (E0819).",
   "check": [],

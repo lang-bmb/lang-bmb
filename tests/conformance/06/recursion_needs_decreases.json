@@ -1,6 +1,6 @@
 {
   "sections": [
-    "재귀와 `decreases`"
+    "Recursion and `decreases`"
   ],
   "note": "A recursive executable function, mutually recursive functions and a recursive proof fn each need `decreases` (E0507).",
   "check": [

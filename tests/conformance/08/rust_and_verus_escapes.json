@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구: `#[external_body]`"
+    "Escape hatch: `#[external_body]`"
   ],
   "note": "The Rust and Verus forms are rejected: `unsafe` (E0215), `#[verifier::external_body]` (E0216), `admit()` (E0217).",
   "check": [

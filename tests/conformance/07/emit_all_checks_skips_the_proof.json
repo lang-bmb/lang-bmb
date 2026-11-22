@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "`bmb emit-llvm --all-checks` does not prove: on a program whose three obligations all fail it prints no E08xx diagnostic and no status line, ends with exit code 0 and keeps three runtime checks.",
   "check": [],

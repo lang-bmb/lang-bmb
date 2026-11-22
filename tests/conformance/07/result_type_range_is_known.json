@@ -1,6 +1,6 @@
 {
   "sections": [
-    "호출자가 가정하는 것"
+    "What the caller assumes"
   ],
   "note": "About the result of a contract-less function the caller knows the range of its type and nothing more.",
   "check": [],

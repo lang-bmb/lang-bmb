@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "An index `a[i]`, read or written, must be in bounds (E0805).",
   "check": [],

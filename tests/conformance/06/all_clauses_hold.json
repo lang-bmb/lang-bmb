@@ -1,6 +1,6 @@
 {
   "sections": [
-    "계약 절"
+    "Contract clauses"
   ],
   "note": "Comma-separated clauses must all hold: a caller must establish every `requires` clause and the body every `ensures` clause.",
   "check": [],

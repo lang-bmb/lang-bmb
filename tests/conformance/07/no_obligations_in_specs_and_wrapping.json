@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Specification expressions, ghost code and wrapping arithmetic carry no overflow obligation.",
   "check": [],

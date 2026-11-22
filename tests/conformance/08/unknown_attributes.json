@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목이 받는 속성"
+    "Attributes an item accepts"
   ],
   "note": "The attribute list is closed: unknown attributes such as `#[inline]`, `#[repr(..)]` and an unknown unit attribute are E0605; `#[derive(..)]` is E0220.",
   "check": [

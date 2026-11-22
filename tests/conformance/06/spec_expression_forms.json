@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세 문맥과 실행 문맥"
+    "Specification context and executable context"
   ],
   "note": "Specification expressions include operators, `==>`, index, field, `.len()`, `if`, `match`, a binding `let` and spec fn calls.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구와 증명의 신뢰 등급"
+    "Escape hatches and trust levels"
   ],
   "note": "The status line of a definition proved with a trusted fact has `trust` `assumed`, an `#[external_body]` function has 0 obligations and `external`, a caller relying on either `ensures` is `assumed`, and a caller that does not rely on it has no `trust`.",
   "check": [],

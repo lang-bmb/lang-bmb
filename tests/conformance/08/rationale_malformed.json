@@ -1,6 +1,6 @@
 {
   "sections": [
-    "근거: `#[rationale(..)]`"
+    "Rationale: `#[rationale(..)]`"
   ],
   "note": "A malformed rationale is E1002: a kind outside the list, a missing or repeated kind, a missing, empty or second explanation, an unknown key.",
   "check": [

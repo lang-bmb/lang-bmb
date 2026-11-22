@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구문의 뼈대"
+    "Syntax skeleton"
   ],
   "note": "The contract clauses come in the order `requires`, `ensures`, `decreases`; another order is E0103.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "`fn` writes its return type, `-> ()` included (E0209); `proof fn` writes none (E0256).",
   "check": [

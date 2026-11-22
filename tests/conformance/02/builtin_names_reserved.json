@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "Types, functions, traits and constants cannot take the built-in names `Option`, `Some`, `Vec`, `Box`, ..; types, traits and constants cannot take a primitive type's name; traits cannot be `Copy`, `Eq`, `Ord` (E0309).",
   "check": [

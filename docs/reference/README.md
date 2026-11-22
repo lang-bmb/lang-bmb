@@ -1,39 +1,39 @@
-# BMB 언어 레퍼런스 (초안)
+# BMB language reference (draft)
 
-> 상태: 초안(백로그 5A-01). 기술 대상은 동결 지문(`dev-docs/health/surface.json`)이 고정하는 받아들이는 언어다.
-> 정본의 순서: 컴파일러의 판정(코퍼스가 고정한다) → 이 문서. 둘이 다르면 이 문서가 틀린 것이고, 고친다.
-> 설계의 이유는 `docs/DESIGN.md`와 ADR(`dev-docs/adr/`)에 있다. 여기에는 무엇이 프로그램이고 무엇이 아닌지만 적는다.
+> Status: draft (backlog 5A-01). What it describes is the accepted language pinned by the frozen fingerprint (`dev-docs/health/surface.json`).
+> Order of authority: the compiler's verdicts (pinned by the corpus) → this document. If the two differ, this document is wrong, and it is fixed.
+> The reasons for the design are in `docs/DESIGN.md` and the ADRs (`dev-docs/adr/`). This document only states what is a program and what is not.
 
-## 범위
+## Scope
 
-- **넣는 것:** 문법, 정적 의미(이름·타입·소유권·효과), 명세의 뜻, 증명 의무. 절마다 그 규칙을 어기면 나오는 진단 코드와 그 규칙을 보이는 코퍼스 파일을 적는다.
-- **넣지 않는 것:** 튜토리얼, 도구(`bmb lint`·`weaken`·`uses`·`fix`, 맵, MCP: `compiler/README.md`), 표준 라이브러리의 API(`lib/std/`의 정의 요약과 맵 L1), 코드 생성의 세부.
-- `W`로 시작하는 진단은 `bmb lint`와 `bmb weaken`만 내는 경고라 언어의 판정이 아니다. 목록은 `docs/diagnostics.md`.
+- **Included:** grammar, static semantics (names, types, ownership, effects), the meaning of specifications, proof obligations. Each section gives the diagnostic codes reported when its rules are broken and the corpus files that show those rules.
+- **Not included:** tutorials, tools (`bmb lint`, `weaken`, `uses`, `fix`, the map, MCP: `compiler/README.md`), the API of the standard library (the definition summaries of `lib/std/` and map L1), the details of code generation.
+- A diagnostic that starts with `W` is a warning that only `bmb lint` and `bmb weaken` report, so it is not a verdict of the language. The list is in `docs/diagnostics.md`.
 
-## 장
+## Chapters
 
-| 장 | 내용 |
+| Chapter | Contents |
 | --- | --- |
-| [01 어휘와 구문](01-lexical-and-syntax.md) | 토큰, 리터럴, 주석과 요약, 구문의 뼈대 |
-| [02 단위·항목·이름](02-units-items-names.md) | 단위(`mod`), 함수·타입·trait·상수 항목, 속성, 이름 찾기 |
-| [03 타입과 값](03-types-and-values.md) | 정수·`f64`·`bool`·`char`, 배열·슬라이스, 구조체·열거형, 제네릭·trait, 소유 타입 |
-| [04 식·문장·제어 흐름](04-expressions-and-control.md) | 식과 문장, `if`·`match`·루프, 받지 않는 Rust 습관과 그 대체 |
-| [05 소유권과 참조](05-ownership.md) | 이동, 빌림, 바깥으로 나가지 않는 참조 |
-| [06 계약과 명세](06-contracts-and-specs.md) | `requires`·`ensures`·불변식·감소식, `spec fn`·`proof fn`, 수량자 |
-| [07 증명 게이트](07-proof-gate.md) | 의무의 종류, 증명 문맥(`#[uses]`), 판정과 반례 |
-| [08 효과와 탈출구](08-effects-and-escape-hatches.md) | `#[effects]`, `#[external_body]`·`assume`와 근거 |
+| [01 Lexical structure and syntax](01-lexical-and-syntax.md) | Tokens, literals, comments and summaries, the skeleton of the syntax |
+| [02 Units, items and names](02-units-items-names.md) | Units (`mod`), function, type, trait and constant items, attributes, name lookup |
+| [03 Types and values](03-types-and-values.md) | Integers, `f64`, `bool`, `char`, arrays and slices, structs and enums, generics and traits, owning types |
+| [04 Expressions, statements and control flow](04-expressions-and-control.md) | Expressions and statements, `if`, `match`, loops, the Rust habits that are not accepted and their replacements |
+| [05 Ownership and references](05-ownership.md) | Moves, borrows, references that do not escape |
+| [06 Contracts and specifications](06-contracts-and-specs.md) | `requires`, `ensures`, invariants, decreases expressions, `spec fn`, `proof fn`, quantifiers |
+| [07 Proof gate](07-proof-gate.md) | Kinds of obligation, the proof context (`#[uses]`), verdicts and counterexamples |
+| [08 Effects and escape hatches](08-effects-and-escape-hatches.md) | `#[effects]`, `#[external_body]`, `assume` and the rationale |
 
-## 읽는 법
+## How to read
 
-- 예시는 코퍼스 파일을 가리킨다. `tests/run/`은 실행 출력까지 고정된 프로그램, `tests/verify/pass`·`fail`은 증명 판정, `tests/check/err`는 검사 오류와 그 진단(`.jsonl`)이다.
-- 진단 코드는 바뀌지 않고 재사용되지 않는다. 은퇴한 코드는 `docs/diagnostics.md` 끝에 있다.
-- 게이트(`scripts/reference.py check`)가 확인하는 것: 언어의 진단 코드가 모두 어느 장에 나오는가, 장이 가리키는 코퍼스 파일이 있는가, 절마다 코드나 코퍼스가 하나 이상 있는가.
+- Examples point to corpus files. `tests/run/` holds programs fixed down to their execution output, `tests/verify/pass` and `fail` hold proof verdicts, and `tests/check/err` holds check errors and their diagnostics (`.jsonl`).
+- Diagnostic codes do not change and are not reused. Retired codes are at the end of `docs/diagnostics.md`.
+- What the gate (`scripts/reference.py check`) confirms: whether every diagnostic code of the language appears in some chapter, whether the corpus files the chapters point to exist, whether each section has at least one code or corpus file.
 
-## 초안의 한계
+## Limits of the draft
 
-장의 서술은 `compiler/README.md`의 규칙표, 컴파일러 소스, 코퍼스에서 옮겼고, 예시와 의심스러운 규칙은 컴파일러를 돌려 확인했다. 문서·소스만 근거로 적었던 서술은 실행으로 확인했다(백로그 `5A-03`, 2026-11-11): 연산자 우선순위·단락 평가·계산 순서·`for`의 끝 값(`tests/run/order.bmb`), 메서드 찾기 순서(`tests/run/method_order.bmb`), `emit-llvm`이 남기는 검사(07장), 근거 해시의 입력(08장), 타입 불변식의 자리(06장), `Eq`·`Ord`를 가진 타입(03장). 남은 것은 내장 메서드의 전체 목록(03장은 예만 든다)과 해제 지점의 절별 시험이고, 적합성 시험(5A-02)이 절마다 시험을 붙인다.
+The text of the chapters was carried over from the rule tables of `compiler/README.md`, the compiler source and the corpus, and the examples and doubtful rules were confirmed by running the compiler. Statements that had been written on the basis of documents and source alone were confirmed by execution (backlog `5A-03`, 2026-11-11): operator precedence, short-circuit evaluation, evaluation order and the end value of `for` (`tests/run/order.bmb`), method lookup order (`tests/run/method_order.bmb`), the checks that `emit-llvm` leaves (chapter 07), the input of the rationale hash (chapter 08), the places of a type invariant (chapter 06), the types that have `Eq` and `Ord` (chapter 03). What remains is the full list of builtin methods (chapter 03 gives only examples) and section-by-section tests of deallocation points, and the conformance tests (5A-02) attach tests to each section.
 
-## 진단 코드 색인
+## Diagnostic code index
 
 <!-- reference:index begin (scripts/reference.py index --write; do not edit by hand) -->
 

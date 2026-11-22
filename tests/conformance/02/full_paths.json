@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "A single name is the using unit's definition; other paths start at a top-level unit (`unit::f`, `unit::T`, `unit::T::f`, `unit::N`, `outer::inner::f`), also for one's own unit.",
   "check": [],

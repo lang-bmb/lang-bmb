@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`impl`과 수신자"
+    "`impl` and receivers"
   ],
   "note": "`Self` is a type only inside a trait declaration (E0305 elsewhere).",
   "check": [

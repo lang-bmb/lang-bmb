@@ -1,6 +1,6 @@
 {
   "sections": [
-    "정수 리터럴"
+    "Integer literals"
   ],
   "note": "Decimal, `0x`, `0o` and `0b` literals; `_` between and after digits is a separator outside the value.",
   "check": [],

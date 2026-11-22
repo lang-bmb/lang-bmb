@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "The definitions joined by calls to a failed one, its callee and its caller, keep the checks of their proved obligations too; an unconnected proved definition does not. `--all-checks` keeps all four.",
   "check": [],

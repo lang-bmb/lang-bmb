@@ -1,6 +1,6 @@
 {
   "sections": [
-    "선언과 몸의 관계"
+    "Declaration and body"
   ],
   "note": "A `pure` function that calls a function with effect `io` gets E0603 at the call.",
   "check": [

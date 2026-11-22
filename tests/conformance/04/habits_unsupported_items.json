@@ -1,6 +1,6 @@
 {
   "sections": [
-    "받지 않는 Rust 습관"
+    "Rust habits that are not accepted"
   ],
   "note": "E0207: `pub`, const generics, generic traits, supertraits, items a unit does not hold (`type`), contract clauses on a `spec fn`, `decreases` on a trait method.",
   "check": [

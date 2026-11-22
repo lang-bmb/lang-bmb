@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Code that only moves a value of a type with an invariant has no E0823 obligation to fail, even with the predicate opaque.",
   "check": [],

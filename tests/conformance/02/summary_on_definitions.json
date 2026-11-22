@@ -1,6 +1,6 @@
 {
   "sections": [
-    "속성"
+    "Attributes"
   ],
   "note": "A summary is optional on functions, structs, enums, traits and constants, and on functions inside traits and impls.",
   "check": []

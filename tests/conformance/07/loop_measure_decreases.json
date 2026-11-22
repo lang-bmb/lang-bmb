@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A loop's `decreases` value must get smaller at the end of the body and stay non-negative (E0808).",
   "check": [],

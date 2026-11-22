@@ -1,6 +1,6 @@
 {
   "sections": [
-    "복사와 이동"
+    "Copy and move"
   ],
   "note": "len, indexing, field reads, deref of a copy value, a & argument and as_slice are reads, not moves.",
   "check": [],

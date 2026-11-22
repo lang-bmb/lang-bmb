@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세의 정수"
+    "Integers in specifications"
   ],
   "note": "In a specification a wider value where a narrower type is expected is E0401; a narrower value widens.",
   "check": [

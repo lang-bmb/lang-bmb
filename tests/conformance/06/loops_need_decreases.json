@@ -1,6 +1,6 @@
 {
   "sections": [
-    "루프의 `invariant`와 `decreases`"
+    "Loop `invariant` and `decreases`"
   ],
   "note": "`while` and `loop` need a `decreases` clause (E0506); a range `for` takes none.",
   "check": [

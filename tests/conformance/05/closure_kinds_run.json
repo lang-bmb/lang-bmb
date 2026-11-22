@@ -1,6 +1,6 @@
 {
   "sections": [
-    "클로저의 캡처"
+    "Closure captures"
   ],
   "note": "The chapter's example: move closures capturing a copy and an owned local run under an Fn bound; an FnOnce value is called once.",
   "check": [],

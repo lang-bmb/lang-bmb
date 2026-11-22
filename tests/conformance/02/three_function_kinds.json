@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "The three kinds of function: `fn`, `spec fn` and `proof fn`.",
   "check": [],

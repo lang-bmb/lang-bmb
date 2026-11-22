@@ -1,6 +1,6 @@
 {
   "sections": [
-    "복사와 이동"
+    "Copy and move"
   ],
   "note": "v.clone() makes a copy of a Vec or String, so the source stays owned after the clone is moved.",
   "check": [],

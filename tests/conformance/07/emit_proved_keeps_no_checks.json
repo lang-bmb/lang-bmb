@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "`bmb emit-llvm` of a fully proved program ends with exit code 0 and keeps no runtime check; `--all-checks` keeps the check of its one obligation.",
   "check": [],

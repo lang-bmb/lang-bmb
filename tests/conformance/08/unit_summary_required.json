@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목이 받는 속성"
+    "Attributes an item accepts"
   ],
   "note": "A unit needs `#[summary(\"..\")]` and its argument is one string (E0704).",
   "check": [

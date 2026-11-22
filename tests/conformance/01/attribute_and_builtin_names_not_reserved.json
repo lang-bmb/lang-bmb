@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식별자와 예약어"
+    "Identifiers and reserved words"
   ],
   "note": "Attribute names and the names of built-in types and functions are not reserved words.",
   "check": []

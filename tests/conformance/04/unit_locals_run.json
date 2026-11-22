@@ -1,7 +1,7 @@
 {
   "sections": [
-    "리터럴·경로·호출",
-    "문장"
+    "Literals, paths and calls",
+    "Statements"
   ],
   "note": "A local or parameter of type `()` holds the unit value: it is bound, assigned, passed and returned, and its initializer runs once.",
   "check": [],

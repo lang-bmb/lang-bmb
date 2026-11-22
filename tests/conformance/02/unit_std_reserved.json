@@ -1,6 +1,6 @@
 {
   "sections": [
-    "단위"
+    "Units"
   ],
   "note": "The top-level unit `std` belongs to the standard library and cannot be defined (E0309).",
   "check": [

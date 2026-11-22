@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "Definitions verified through an escape (`assume`, `#[external_body]`) do not block `build`.",
   "check": [],

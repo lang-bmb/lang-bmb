@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "The separate query of `assert(e) by (bit_vector);` must hold (E0818).",
   "check": [],

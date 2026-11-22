@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A sub-slice `&a[lo..hi]` and the ranges of `copy_within` must lie inside the slice (E0805).",
   "check": [],

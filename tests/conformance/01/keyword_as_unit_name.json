@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식별자와 예약어"
+    "Identifiers and reserved words"
   ],
   "note": "A reserved word as a unit name is one E0103, and the units after it are read.",
   "check": [

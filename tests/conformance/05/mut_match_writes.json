@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 `match`"
+    "Reference `match`"
   ],
   "note": "Bindings of a match on a `&mut T` parameter are written with `*n = v`, changing the value in place.",
   "check": [],

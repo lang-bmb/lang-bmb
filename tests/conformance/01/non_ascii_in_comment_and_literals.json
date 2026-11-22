@@ -1,6 +1,6 @@
 {
   "sections": [
-    "문자와 공백"
+    "Characters and whitespace"
   ],
   "note": "Non-ASCII characters are accepted in comments, string literals and character literals.",
   "check": [],

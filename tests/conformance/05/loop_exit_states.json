@@ -1,6 +1,6 @@
 {
   "sections": [
-    "갈래와 루프의 이동"
+    "Moves in branches and loops"
   ],
   "note": "Paths that meet at a loop's exit must agree on a value's move state: a move before one `break` only is E0414.",
   "check": [

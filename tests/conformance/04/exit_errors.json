@@ -1,6 +1,6 @@
 {
   "sections": [
-    "조기 탈출: return, break, continue, ?"
+    "Early exit: return, break, continue, ?"
   ],
   "note": "`break`/`continue` outside a loop are E0250, a label of no enclosing loop E0317, `break e` in `while`/`for` E0251; the value of `return` has the function's result type (E0401).",
   "check": [

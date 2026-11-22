@@ -1,6 +1,6 @@
 {
   "sections": [
-    "단위"
+    "Units"
   ],
   "note": "There is no `pub` (E0207); every definition is usable from another unit by its full path.",
   "check": [

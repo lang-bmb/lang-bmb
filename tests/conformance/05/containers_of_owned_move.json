@@ -1,6 +1,6 @@
 {
   "sections": [
-    "복사와 이동"
+    "Copy and move"
   ],
   "note": "A struct, enum or array that holds a move type is itself a move type.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "계약 절",
+    "Contract clauses",
     "`old`"
   ],
   "note": "In `ensures` a `&mut` parameter is its value at exit and `old(..)` its value at entry.",

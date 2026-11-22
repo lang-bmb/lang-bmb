@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "`==` on structs, enums and arrays exists in specifications only (E0425 in code); `==` on `Vec` is E0514.",
   "check": [

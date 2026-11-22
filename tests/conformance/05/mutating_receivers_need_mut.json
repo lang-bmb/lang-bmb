@@ -1,6 +1,6 @@
 {
   "sections": [
-    "쓸 수 있는 자리"
+    "Writable places"
   ],
   "note": "The receiver of a mutating built-in method (pop, truncate) or of a `self: &mut T` method, and a `&mut` argument, must be a writable place (E0408).",
   "check": [

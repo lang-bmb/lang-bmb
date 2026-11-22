@@ -1,6 +1,6 @@
 {
   "sections": [
-    "루프의 `invariant`와 `decreases`"
+    "Loop `invariant` and `decreases`"
   ],
   "note": "Code after a loop knows only the invariant and the exit condition: without an invariant relating `s` to `i`, a fact about `s` is not provable.",
   "check": [],

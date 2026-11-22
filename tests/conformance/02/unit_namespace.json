@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "Constants, types, traits, nested units and functions of a unit share one namespace (E0302); variants are not in it.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "스칼라 타입"
+    "Scalar types"
   ],
   "note": "Unary `-` on an unsigned value is E0411.",
   "check": [

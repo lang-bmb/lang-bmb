@@ -1,6 +1,6 @@
 {
   "sections": [
-    "if와 match"
+    "if and match"
   ],
   "note": "The condition of `if` is a `bool` and both branches have one type (E0401); `if let` is E0225.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "선언과 몸의 관계"
+    "Declaration and body"
   ],
   "note": "In mutual recursion the rule holds per direct call: a `pure` function calling an `alloc` one is E0606.",
   "check": [

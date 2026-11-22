@@ -1,6 +1,6 @@
 {
   "sections": [
-    "쓸 수 있는 자리"
+    "Writable places"
   ],
   "note": "Assigning to a `let` local, a value parameter, what a `&` parameter points to, or a `for` variable is E0408.",
   "check": [

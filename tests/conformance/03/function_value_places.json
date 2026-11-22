@@ -1,6 +1,6 @@
 {
   "sections": [
-    "함수 값"
+    "Function values"
   ],
   "note": "A closure bound by `let`, a function pointer type and a returned `impl Fn` are E0264; an argument-position `impl Fn(..)` is E0265.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "별칭"
+    "Aliasing"
   ],
   "note": "Aliasing is judged per variable: `&mut` of one field or element with a borrow of another field or element of the same variable is E0410.",
   "check": [

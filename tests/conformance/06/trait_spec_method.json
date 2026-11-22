@@ -1,6 +1,6 @@
 {
   "sections": [
-    "trait의 계약과 impl의 정제"
+    "Trait contracts and impl refinement"
   ],
   "note": "A trait may declare a body-less `spec fn` that each impl defines; the trait's contract speaks through it and the impl's contract refines it.",
   "check": [],

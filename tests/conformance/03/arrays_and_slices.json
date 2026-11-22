@@ -1,6 +1,6 @@
 {
   "sections": [
-    "배열과 슬라이스"
+    "Arrays and slices"
   ],
   "note": "`[T; N]` with `N` a decimal literal or a `usize` constant; values `[a, b, c]` and `[v; N]`, `a[i]`, `a.len()`; slice arguments are `&arr`, `&mut arr`, `v.as_slice()`, `v.as_mut_slice()` and `&v[lo..hi]`.",
   "check": [],

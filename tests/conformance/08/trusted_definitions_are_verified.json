@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구와 증명의 신뢰 등급"
+    "Escape hatches and trust levels"
   ],
   "note": "A definition proved with a trusted fact, an `#[external_body]` function and a caller relying on its `ensures` all have status `verified`, and the program builds and runs.",
   "check": [],

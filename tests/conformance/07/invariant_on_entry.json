@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Each loop invariant clause must hold where the loop is entered (E0806).",
   "check": [],

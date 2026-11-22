@@ -1,7 +1,7 @@
 {
   "sections": [
-    "복사와 이동",
-    "이동한 값의 사용"
+    "Copy and move",
+    "Use of a moved value"
   ],
   "note": "Vec, String and Box values move at a let initializer; a later use of the source is E0413.",
   "check": [

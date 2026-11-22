@@ -1,6 +1,6 @@
 {
   "sections": [
-    "선언과 몸의 관계"
+    "Declaration and body"
   ],
   "note": "A trait impl's function cannot have an effect the trait method does not declare (E0316); a call through a bound has the trait method's declared effects.",
   "check": [

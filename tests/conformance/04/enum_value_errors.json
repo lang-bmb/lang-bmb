@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체·열거형 값"
+    "Struct and enum values"
   ],
   "note": "An enum value is `T::V` or `T::V(e, ..)`: a wrong number of payload values is E0405, an unknown variant E0307; built-in variants are bare (`Option::Some` is E0221); tuples are neither values nor types (E0233).",
   "check": [

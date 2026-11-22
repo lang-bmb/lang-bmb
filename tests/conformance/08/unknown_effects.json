@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언"
+    "The `#[effects(..)]` declaration"
   ],
   "note": "An unknown effect name, a non-identifier argument and an empty list are E0602.",
   "check": [

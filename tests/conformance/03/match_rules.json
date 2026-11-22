@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체와 열거형"
+    "Structs and enums"
   ],
   "note": "`match` takes an enum value (E0423), one arm per variant in declaration order (E0426), a pattern binding as many names as the payload (E0427); an unknown variant is E0307, another pattern form E0232.",
   "check": [

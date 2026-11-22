@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "The methods of the integer types and of `f64` are a closed list: an unknown method is E0404, a wrong number of arguments to a method or function is E0405.",
   "check": [

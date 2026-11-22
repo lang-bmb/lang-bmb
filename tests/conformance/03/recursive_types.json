@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체와 열거형"
+    "Structs and enums"
   ],
   "note": "A type that holds itself by value, has no finite value, or holds itself with other type arguments is E0421; under `Box` or `Vec` it may hold itself.",
   "check": [

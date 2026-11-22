@@ -1,6 +1,6 @@
 {
   "sections": [
-    "스칼라 타입"
+    "Scalar types"
   ],
   "note": "`i128`, `u128` and `f32` are not types (E0402).",
   "check": [

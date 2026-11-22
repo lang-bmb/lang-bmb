@@ -1,6 +1,6 @@
 {
   "sections": [
-    "변환"
+    "Conversions"
   ],
   "note": "`T::try_from(x).unwrap()` carries the range obligation of `x as T`; `.ok()` carries none.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "지역 이름"
+    "Local names"
   ],
   "note": "A local name does not hide a visible name: a parameter, an outer block's local, the result name, the unit's constant (E0303); two parameters of one name are E0303.",
   "check": [

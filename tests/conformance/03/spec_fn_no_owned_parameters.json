@@ -1,6 +1,6 @@
 {
   "sections": [
-    "소유 타입"
+    "Owning types"
   ],
   "note": "A `spec fn` neither takes nor returns a `Vec` or `String` (E0402); it takes slices and `&str`.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "문장"
+    "Statements"
   ],
   "note": "`let` needs a type (E0201) and an initial value; a pattern `let` and `let .. else` are E0226, a destructuring `let` E0230.",
   "check": [

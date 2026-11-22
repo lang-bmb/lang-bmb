@@ -1,6 +1,6 @@
 {
   "sections": [
-    "해제"
+    "Release"
   ],
   "note": "return, break and continue leave scopes that own values, and a partially moved struct drops its remaining fields; the program runs to the end.",
   "check": [],

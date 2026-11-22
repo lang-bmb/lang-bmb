@@ -1,6 +1,6 @@
 {
   "sections": [
-    "재귀와 `decreases`"
+    "Recursion and `decreases`"
   ],
   "note": "A measure is an integer expression that decreases and stays non-negative, or a value of a recursive enum of which the callee's argument is a part.",
   "check": [],

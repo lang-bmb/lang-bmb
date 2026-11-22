@@ -1,6 +1,6 @@
 {
   "sections": [
-    "중첩 한도"
+    "Nesting limit"
   ],
   "note": "Syntax nested deeper than 256 levels is E0107 (300 parentheses).",
   "check": [

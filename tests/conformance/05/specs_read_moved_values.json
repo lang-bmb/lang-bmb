@@ -1,6 +1,6 @@
 {
   "sections": [
-    "이동한 값의 사용"
+    "Use of a moved value"
   ],
   "note": "A specification context (assert) reads a moved value without an E0413 and without changing its move state.",
   "check": [],

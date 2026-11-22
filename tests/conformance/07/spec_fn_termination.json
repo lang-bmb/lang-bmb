@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A recursive call in a recursive `spec fn` must decrease its measure (E0813).",
   "check": [],

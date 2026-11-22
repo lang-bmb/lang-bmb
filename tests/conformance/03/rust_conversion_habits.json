@@ -1,6 +1,6 @@
 {
   "sections": [
-    "변환"
+    "Conversions"
   ],
   "note": "`T::from(x)`, `x.into()` and `x.try_into()` are E0212; a conversion inside a specification is E0513.",
   "check": [

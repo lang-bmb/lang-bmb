@@ -1,7 +1,7 @@
 {
   "sections": [
-    "선언과 몸의 관계",
-    "탈출구: `#[external_body]`"
+    "Declaration and body",
+    "Escape hatch: `#[external_body]`"
   ],
   "note": "The body of an `#[external_body]` function is still checked for effects: effects are not trusted.",
   "check": [

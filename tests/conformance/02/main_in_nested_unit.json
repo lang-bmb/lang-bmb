@@ -1,6 +1,6 @@
 {
   "sections": [
-    "진입점"
+    "Entry point"
   ],
   "note": "With several `main`s, the first in the text is the entry point and each later one is E0702, whether it is in a nested unit or in the unit that holds one.",
   "check": [

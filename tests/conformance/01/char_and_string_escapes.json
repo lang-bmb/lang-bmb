@@ -1,6 +1,6 @@
 {
   "sections": [
-    "문자·문자열·바이트 리터럴"
+    "Character, string and byte literals"
   ],
   "note": "Character and string literals take the listed escapes; a string holds non-ASCII characters and line breaks as written.",
   "check": [],

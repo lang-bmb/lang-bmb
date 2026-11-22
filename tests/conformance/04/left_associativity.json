@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식의 문법과 우선순위"
+    "Expression grammar and precedence"
   ],
   "note": "Operators of one level associate to the left: `7 - 4 - 2` is 1.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 `match`"
+    "Reference `match`"
   ],
   "note": "Inside the arms of a match on a `&mut T` parameter, writing the scrutinee itself is E0410.",
   "check": [

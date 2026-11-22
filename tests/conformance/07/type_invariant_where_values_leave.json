@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A type invariant is owed where a value leaves the function: a call argument, a return, a `&mut` parameter at exit (E0823).",
   "check": [],

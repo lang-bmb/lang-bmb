@@ -1,6 +1,6 @@
 {
   "sections": [
-    "계약 절"
+    "Contract clauses"
   ],
   "note": "`ensures` names the result only through `-> (r: T)`; an undeclared name such as `result` is E0301.",
   "check": [

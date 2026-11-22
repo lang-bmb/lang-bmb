@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세의 정수"
+    "Integers in specifications"
   ],
   "note": "A narrowing `x as T` in a specification is E0513; a widening `as` is accepted.",
   "check": [

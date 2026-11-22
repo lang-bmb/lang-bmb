@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "A value of a type parameter `T` needs `T: Eq` for `==`/`!=` and `T: Ord` for ordering in executable code (E0428).",
   "check": [

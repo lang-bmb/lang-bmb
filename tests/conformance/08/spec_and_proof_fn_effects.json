@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세와 유령 코드의 효과"
+    "Effects of specifications and ghost code"
   ],
   "note": "A `spec fn` takes no effect attribute (E0604) and neither does a `proof fn` (E0256).",
   "check": [

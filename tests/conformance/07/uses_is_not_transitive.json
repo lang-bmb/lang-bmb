@@ -1,6 +1,6 @@
 {
   "sections": [
-    "증명 문맥"
+    "Proof context"
   ],
   "note": "`#[uses(a)]` unfolds the body of `a` only, not the spec fns that body calls; each needed name is listed.",
   "check": [],

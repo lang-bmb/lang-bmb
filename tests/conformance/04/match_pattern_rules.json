@@ -1,6 +1,6 @@
 {
   "sections": [
-    "if와 match"
+    "if and match"
   ],
   "note": "A pattern is a variant with a new name or `_` per payload: a wrong count is E0427, something that is no variant path E0307; guards, or-patterns, literal and nested patterns are E0232; all arms have one type (E0401).",
   "check": [

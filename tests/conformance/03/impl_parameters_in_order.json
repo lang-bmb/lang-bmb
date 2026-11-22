@@ -1,6 +1,6 @@
 {
   "sections": [
-    "제네릭과 trait"
+    "Generics and traits"
   ],
   "note": "The type parameters of an `impl` appear in order in the implemented type (E0420).",
   "check": [

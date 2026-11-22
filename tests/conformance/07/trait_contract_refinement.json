@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A trait impl's function must refine the trait's contract: no stronger precondition and no weaker postcondition (E0817).",
   "check": [],

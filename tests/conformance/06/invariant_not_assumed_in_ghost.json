@@ -1,6 +1,6 @@
 {
   "sections": [
-    "타입 불변식"
+    "Type invariants"
   ],
   "note": "A proof fn neither assumes nor owes a type invariant; a lemma that needs it states `requires p(x)`.",
   "check": [],

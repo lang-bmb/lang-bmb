@@ -1,6 +1,6 @@
 {
   "sections": [
-    "계약 절"
+    "Contract clauses"
   ],
   "note": "A clause that is a call of a predicate whose body is `true` is E0502.",
   "check": [

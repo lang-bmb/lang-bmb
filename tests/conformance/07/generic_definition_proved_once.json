@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 단위"
+    "Unit of obligation"
   ],
   "note": "A generic definition is proved once with its type parameter left open, so its obligations hold for every type argument.",
   "check": [],

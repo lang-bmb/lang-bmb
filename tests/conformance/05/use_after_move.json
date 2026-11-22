@@ -1,6 +1,6 @@
 {
   "sections": [
-    "이동한 값의 사용"
+    "Use of a moved value"
   ],
   "note": "Using a local after it was moved into a call is E0413 (the chapter's example).",
   "check": [

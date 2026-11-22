@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`impl`과 수신자"
+    "`impl` and receivers"
   ],
   "note": "An inherent `impl T` comes in the unit that declares `T` (E0308 for another unit's or an unknown type), one block per list of bounds (E0308).",
   "check": [

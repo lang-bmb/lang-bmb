@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`proof fn`과 `proof` 블록"
+    "`proof fn` and `proof` blocks"
   ],
   "note": "A `proof fn` is called only from ghost code; a call from executable code or a specification is E0258.",
   "check": [

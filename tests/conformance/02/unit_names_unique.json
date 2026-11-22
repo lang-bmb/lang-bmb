@@ -1,6 +1,6 @@
 {
   "sections": [
-    "단위"
+    "Units"
   ],
   "note": "A second top-level unit of the same name is E0302: a unit is not written in several blocks.",
   "check": [

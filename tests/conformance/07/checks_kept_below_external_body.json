@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "A definition `verified` only through an `#[external_body]` contract builds but keeps its runtime checks: when the contract is false the overflow ends the run in a trap.",
   "check": [],

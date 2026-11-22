@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구: `#[external_body]`"
+    "Escape hatch: `#[external_body]`"
   ],
   "note": "The body of an `#[external_body]` function still gets type and ownership checks.",
   "check": [

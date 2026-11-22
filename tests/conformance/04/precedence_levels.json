@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식의 문법과 우선순위"
+    "Expression grammar and precedence"
   ],
   "note": "Binary operators bind, loosest first: `||`, `&&`, comparison, `|`, `^`, `&`, shifts, `+ -`, `* / %`, `as`; unary operators bind tighter.",
   "check": [],

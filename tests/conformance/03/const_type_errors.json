@@ -1,6 +1,6 @@
 {
   "sections": [
-    "상수의 타입"
+    "Types of constants"
   ],
   "note": "A `const` holding a `Vec`, `String` or `Box` is E0437; the initializer is checked against the declared type (E0401, E0406, E0422).",
   "check": [

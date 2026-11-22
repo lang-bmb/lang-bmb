@@ -1,6 +1,6 @@
 {
   "sections": [
-    "제네릭과 trait"
+    "Generics and traits"
   ],
   "note": "A type argument that fails its bound, written or inferred, is E0428 once: the arguments of the call are not reported against it, and an inferred one is not also E0237.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "식별자와 예약어"
+    "Identifiers and reserved words"
   ],
   "note": "Identifiers are ASCII letters, digits and `_`, and may start with `_`.",
   "check": []

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "변환"
+    "Conversions"
   ],
   "note": "`as` to a type that is not an integer type is E0205.",
   "check": [

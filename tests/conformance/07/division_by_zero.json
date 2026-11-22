@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "The divisor of `/` and `%` in executable code must not be zero (E0804).",
   "check": [],

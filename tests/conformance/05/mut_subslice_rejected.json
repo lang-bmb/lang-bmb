@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 인자"
+    "Reference arguments"
   ],
   "note": "`&mut v[lo..hi]` is E0409: a sub-slice is read-only.",
   "check": [

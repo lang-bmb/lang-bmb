@@ -1,6 +1,6 @@
 {
   "sections": [
-    "복사와 이동"
+    "Copy and move"
   ],
   "note": "A value of a type parameter without a Copy bound moves; with a Copy bound it is copied.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언"
+    "The `#[effects(..)]` declaration"
   ],
   "note": "`pure` listed with another effect, or one effect listed twice, is E0607; a list of distinct atomic effects is accepted.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "Fields of a struct, variants of an enum, methods of a trait, type parameters of a list and the functions of a type's impl blocks are each unique (E0302).",
   "check": [

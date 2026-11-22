@@ -1,6 +1,6 @@
 {
   "sections": [
-    "리터럴·경로·호출"
+    "Literals, paths and calls"
   ],
   "note": "An unknown name is E0301, an unknown function E0304, a wrong number of arguments E0405, a wrong argument type E0401, a generic call without type arguments E0237.",
   "check": [

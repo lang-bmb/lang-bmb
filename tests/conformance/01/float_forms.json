@@ -1,6 +1,6 @@
 {
   "sections": [
-    "부동소수 리터럴"
+    "Floating-point literals"
   ],
   "note": "A float literal has digits on both sides of the point and an optional exponent with digits.",
   "check": [],

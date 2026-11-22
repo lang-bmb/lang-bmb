@@ -1,7 +1,7 @@
 {
   "sections": [
-    "효과의 집합",
-    "선언과 몸의 관계"
+    "The set of effects",
+    "Declaration and body"
   ],
   "note": "`Vec::new`, `Box::new` and a Vec's `clone` need the `alloc` effect; a function that lacks it gets E0606 on its attribute.",
   "check": [

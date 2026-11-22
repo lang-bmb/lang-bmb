@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Each `ensures` clause is an obligation at every exit of the function: the tail expression and each `return` (E0802).",
   "check": [],

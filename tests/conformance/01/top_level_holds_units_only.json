@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구문의 뼈대"
+    "Syntax skeleton"
   ],
   "note": "A function at the top level is E0703; any other token there is E0103.",
   "check": [

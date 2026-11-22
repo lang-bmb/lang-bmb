@@ -1,6 +1,6 @@
 {
   "sections": [
-    "배열과 슬라이스"
+    "Arrays and slices"
   ],
   "note": "`Vec` and `String` are not array elements wherever the array type is written: a parameter, a result, a type argument, a spec fn parameter, a local (E0402, once per type).",
   "check": [

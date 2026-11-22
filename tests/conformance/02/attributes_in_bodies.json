@@ -1,6 +1,6 @@
 {
   "sections": [
-    "속성"
+    "Attributes"
   ],
   "note": "A function's `#[rationale]` comes only with `#[external_body]` (E1002); inside a body the only attribute place is `#[rationale]` before `assume` (E1002 otherwise).",
   "check": [

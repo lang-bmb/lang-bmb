@@ -1,6 +1,6 @@
 {
   "sections": [
-    "갈래와 루프의 이동"
+    "Moves in branches and loops"
   ],
   "note": "A move on the right side of `&&` or `||` is E0414.",
   "check": [

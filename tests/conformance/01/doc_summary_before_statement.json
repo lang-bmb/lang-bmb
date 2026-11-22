@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`///`와 요약"
+    "`///` and summaries"
   ],
   "note": "`///` before a statement is E1002.",
   "check": [

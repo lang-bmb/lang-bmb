@@ -1,6 +1,6 @@
 {
   "sections": [
-    "주석"
+    "Comments"
   ],
   "note": "A block comment `/* .. */` is E0106.",
   "check": [

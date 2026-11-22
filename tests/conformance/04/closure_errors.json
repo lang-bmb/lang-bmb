@@ -1,6 +1,6 @@
 {
   "sections": [
-    "클로저"
+    "Closures"
   ],
   "note": "A capturing closure without `move` is E0262, a closure without parameter or result types E0263, a closure bound by `let` E0264.",
   "check": [

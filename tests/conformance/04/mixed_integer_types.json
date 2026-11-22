@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "Mixing integers of different width or sign is E0401: there is no implicit widening and `x as T` aligns them; unary `-` on an unsigned integer is E0411; `==` on structs in code is E0425.",
   "check": [

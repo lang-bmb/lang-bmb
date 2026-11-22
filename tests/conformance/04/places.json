@@ -1,6 +1,6 @@
 {
   "sections": [
-    "색인·필드·역참조"
+    "Indexing, fields and dereference"
   ],
   "note": "Assignable places are paths of variables, fields, elements and dereferences: `g[i][j]`, `b.rows[i].cells[j].v`, `*r`; a field is read through a reference with `p.x`.",
   "check": [],

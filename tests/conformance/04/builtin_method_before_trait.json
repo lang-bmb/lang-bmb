@@ -1,6 +1,6 @@
 {
   "sections": [
-    "메서드 호출"
+    "Method calls"
   ],
   "note": "A built-in method comes before a trait method of the same name, and an inherent function before a trait's.",
   "check": [],

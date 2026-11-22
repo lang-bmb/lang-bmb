@@ -1,6 +1,6 @@
 {
   "sections": [
-    "클로저"
+    "Closures"
   ],
   "note": "A capturing closure without `move` is E0262 and nothing else: the closure is not reported a second time.",
   "check": [

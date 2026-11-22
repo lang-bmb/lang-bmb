@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "An unresolved value name and a path to a function without call arguments are E0301; an unresolved callee is E0304.",
   "check": [

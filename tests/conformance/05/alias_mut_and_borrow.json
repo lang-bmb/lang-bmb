@@ -1,6 +1,6 @@
 {
   "sections": [
-    "별칭"
+    "Aliasing"
   ],
   "note": "`&mut x` together with `&x` or another `&mut x` in one call is E0410.",
   "check": [

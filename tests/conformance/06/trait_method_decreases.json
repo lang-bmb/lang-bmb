@@ -1,6 +1,6 @@
 {
   "sections": [
-    "재귀와 `decreases`"
+    "Recursion and `decreases`"
   ],
   "note": "A trait method declaration takes no `decreases` clause (E0207).",
   "check": [

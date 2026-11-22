@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`Option`과 `Result`"
+    "`Option` and `Result`"
   ],
   "note": "The built-in variants are written without a path (`Option::Some` is E0221) and matched in the order `None`, `Some` and `Ok`, `Err` (E0426).",
   "check": [

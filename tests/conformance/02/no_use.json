@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "There is no `use` (E0214).",
   "check": [

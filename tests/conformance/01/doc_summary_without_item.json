@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`///`와 요약"
+    "`///` and summaries"
   ],
   "note": "`///` that no item follows is E0103.",
   "check": [

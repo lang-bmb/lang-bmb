@@ -1,6 +1,6 @@
 {
   "sections": [
-    "제네릭과 trait"
+    "Generics and traits"
   ],
   "note": "A recursive call that wraps its own type parameter in a larger type is E0430.",
   "check": [

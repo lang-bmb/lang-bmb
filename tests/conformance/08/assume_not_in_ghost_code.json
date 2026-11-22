@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구: `assume`"
+    "Escape hatch: `assume`"
   ],
   "note": "`assume` inside ghost code (a proof fn, a proof block) is E1003.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "An executable `x as T` must keep the value inside `T` (E0815); a widening conversion always does.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "쓸 수 있는 자리"
+    "Writable places"
   ],
   "note": "A `mut` parameter is E0210; the value is copied into a `let mut` local instead.",
   "check": [

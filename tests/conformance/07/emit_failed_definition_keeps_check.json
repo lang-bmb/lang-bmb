@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "`bmb emit-llvm` of a program with failed definitions prints the diagnostics of `verify`, ends with exit code 1 and still writes IR, with one runtime check per unproved obligation.",
   "check": [],

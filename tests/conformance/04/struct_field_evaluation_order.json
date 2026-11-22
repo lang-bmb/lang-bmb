@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체·열거형 값"
+    "Struct and enum values"
   ],
   "note": "A struct value names every field in declaration order, and the written order is the evaluation order.",
   "check": [],

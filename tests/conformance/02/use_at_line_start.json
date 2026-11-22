@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "E0214 is reported on the line of the `use` keyword and on each line that uses an imported name.",
   "check": [

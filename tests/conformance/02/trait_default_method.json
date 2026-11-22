@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`impl`과 수신자"
+    "`impl` and receivers"
   ],
   "note": "A trait method with a body may be left out of an impl, or defined by it.",
   "check": [],

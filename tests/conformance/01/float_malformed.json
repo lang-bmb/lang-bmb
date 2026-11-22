@@ -1,6 +1,6 @@
 {
   "sections": [
-    "부동소수 리터럴"
+    "Floating-point literals"
   ],
   "note": "`1.`, `.5`, `1e5` and `1.0e` are E0109; a suffix is E0104.",
   "check": [

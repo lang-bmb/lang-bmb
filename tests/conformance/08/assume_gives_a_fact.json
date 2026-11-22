@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구: `assume`"
+    "Escape hatch: `assume`"
   ],
   "note": "`assume(p(..));` gives `p(..)` as a fact from its place on without a proof, so obligations after it that follow from it are verified.",
   "check": [],

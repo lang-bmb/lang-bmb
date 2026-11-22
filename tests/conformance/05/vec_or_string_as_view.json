@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 인자"
+    "Reference arguments"
   ],
   "note": "Passing `&v` (a Vec) where a slice is expected or `&s` (a String) where a `&str` is expected is E0218.",
   "check": [

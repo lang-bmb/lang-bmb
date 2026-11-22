@@ -1,6 +1,6 @@
 {
   "sections": [
-    "스칼라 타입"
+    "Scalar types"
   ],
   "note": "The scalar types: ten integer types, `f64`, `bool`, `char` and `()`.",
   "check": []

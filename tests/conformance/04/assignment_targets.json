@@ -1,6 +1,6 @@
 {
   "sections": [
-    "문장"
+    "Statements"
   ],
   "note": "Assignment goes to `let mut` locals and places through `&mut`: a `let` name, a parameter or a `for` variable is E0408, a `mut` parameter E0210; assignment is not an expression (E0103).",
   "check": [

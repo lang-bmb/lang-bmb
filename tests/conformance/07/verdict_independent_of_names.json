@@ -1,6 +1,6 @@
 {
   "sections": [
-    "결정론"
+    "Determinism"
   ],
   "note": "Definitions that differ only in the names of the definition and its locals get the same verdict and the same diagnostics, wherever they stand among other definitions.",
   "check": [],

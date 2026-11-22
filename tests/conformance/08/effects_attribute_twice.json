@@ -1,7 +1,7 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언",
-    "항목이 받는 속성"
+    "The `#[effects(..)]` declaration",
+    "Attributes an item accepts"
   ],
   "note": "Two `#[effects(..)]` attributes on one function are E0605.",
   "check": [

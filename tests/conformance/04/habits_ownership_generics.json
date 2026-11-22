@@ -1,6 +1,6 @@
 {
   "sections": [
-    "받지 않는 Rust 습관"
+    "Rust habits that are not accepted"
   ],
   "note": "Ownership, generics and function values not accepted: `drop` and `std::mem::take` (E0219), `Rc` and friends (E0238), moving out from behind `&mut` (E0239), blanket impl (E0235), `dyn` (E0236), `where` (E0240), closure forms (E0262-E0265).",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "단위"
+    "Units"
   ],
   "note": "A unit needs a summary (E0704), nested units too; the summary takes exactly one string (E0704); another attribute on a unit is E0605.",
   "check": [

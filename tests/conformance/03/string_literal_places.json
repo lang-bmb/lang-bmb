@@ -1,6 +1,6 @@
 {
   "sections": [
-    "텍스트"
+    "Text"
   ],
   "note": "A string literal is a `&str` and comes only as a call argument or a comparison operand (E0409 elsewhere).",
   "check": [

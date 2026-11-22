@@ -1,6 +1,6 @@
 {
   "sections": [
-    "호출자가 가정하는 것"
+    "What the caller assumes"
   ],
   "note": "After a call, a `&mut` argument keeps only what the callee's `ensures` says about it.",
   "check": [],

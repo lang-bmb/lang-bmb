@@ -1,6 +1,6 @@
 {
   "sections": [
-    "루프"
+    "Loops"
   ],
   "note": "The `for` variable has the integer type of the two ends (`i64` when both are literals), cannot be assigned (E0408) and is not visible after the loop (E0301); ends that are not integers or not of one type are E0401.",
   "check": [

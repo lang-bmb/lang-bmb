@@ -1,6 +1,6 @@
 {
   "sections": [
-    "텍스트"
+    "Text"
   ],
   "note": "`String` owns UTF-8 text and `&str` borrows it; the listed operations; comparison is by bytes.",
   "check": [],

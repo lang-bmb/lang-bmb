@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`proof fn`과 `proof` 블록"
+    "`proof fn` and `proof` blocks"
   ],
   "note": "A lemma call proves the lemma's `requires` and gives its `ensures` as a fact afterwards.",
   "check": [],

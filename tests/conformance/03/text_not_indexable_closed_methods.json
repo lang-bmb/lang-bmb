@@ -1,6 +1,6 @@
 {
   "sections": [
-    "텍스트"
+    "Text"
   ],
   "note": "Indexing text is E0407, a method outside the list is E0404, arithmetic on `char` is E0401.",
   "check": [

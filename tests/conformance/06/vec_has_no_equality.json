@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세의 정수"
+    "Integers in specifications"
   ],
   "note": "`==` and `!=` are not defined for `Vec` (E0514), also in specifications.",
   "check": [

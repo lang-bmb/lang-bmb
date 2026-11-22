@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 `match`"
+    "Reference `match`"
   ],
   "note": "Moving an owned value out of a binding of a reference match is E0413.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "Overflow, division by zero and the range of a shift amount are proof obligations, not type errors; the wrapping methods carry none.",
   "check": [],

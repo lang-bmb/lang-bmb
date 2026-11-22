@@ -1,6 +1,6 @@
 {
   "sections": [
-    "증명 문맥"
+    "Proof context"
   ],
   "note": "The spec fns called by a callee's `requires` and `ensures` are in the caller's default context without `#[uses(..)]`.",
   "check": [],

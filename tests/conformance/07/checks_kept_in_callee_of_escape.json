@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "A definition proved without trust but called by one that is `verified` through an `assume` keeps its runtime checks: the false `assume` ends the run in a trap at the callee's overflow.",
   "check": [],

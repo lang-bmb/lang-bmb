@@ -1,7 +1,7 @@
 {
   "sections": [
-    "탈출구: `assume`",
-    "탈출구와 증명의 신뢰 등급"
+    "Escape hatch: `assume`",
+    "Escape hatches and trust levels"
   ],
   "note": "An escape does not block `build`, and a run in which every `assume` holds ends normally: the kept checks do not fire.",
   "check": [],

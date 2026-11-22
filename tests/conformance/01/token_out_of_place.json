@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구두점"
+    "Punctuation"
   ],
   "note": "A token of the list where the grammar cannot take it is E0103.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "함수 값의 계약"
+    "Contracts of function values"
   ],
   "note": "A closure writes its contract in place: `|x: T| -> (r: R) requires P, ensures Q, { body }`.",
   "check": [],

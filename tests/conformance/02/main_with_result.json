@@ -1,6 +1,6 @@
 {
   "sections": [
-    "진입점"
+    "Entry point"
   ],
   "note": "A `main` whose result is not `()` is E0701.",
   "check": [

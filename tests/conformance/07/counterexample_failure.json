@@ -1,6 +1,6 @@
 {
   "sections": [
-    "판정"
+    "Verdicts"
   ],
   "note": "The chapter's example: `a / b` on `i64` fails both its overflow obligation (E0803) and its divisor obligation (E0804), and the definition is `failed`.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "Integer division truncates toward zero and `%` takes the dividend's sign; `!` is logical on `bool` and bitwise on integers; `bool` orders `false < true`; `&`, `|`, `^` work on `bool` too.",
   "check": [],

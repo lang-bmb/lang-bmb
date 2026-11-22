@@ -1,7 +1,7 @@
 {
   "sections": [
     "`spec fn`",
-    "재귀와 `decreases`"
+    "Recursion and `decreases`"
   ],
   "note": "A recursive `spec fn` with a decreasing measure is accepted and its termination proved.",
   "check": [],

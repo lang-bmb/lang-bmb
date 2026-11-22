@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목"
+    "Items"
   ],
   "note": "Constants that refer to each other are E0318.",
   "check": [

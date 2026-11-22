@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`impl`과 수신자"
+    "`impl` and receivers"
   ],
   "note": "A trait impl defines every method without a body, and nothing the trait lacks (E0315); signature and effects match the trait's with `Self` replaced (E0316).",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구: `#[external_body]`"
+    "Escape hatch: `#[external_body]`"
   ],
   "note": "`#[external_body]` accepts a function's contract without proving its body; callers prove its `requires` and assume its `ensures`.",
   "check": [],

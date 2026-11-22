@@ -1,6 +1,6 @@
 {
   "sections": [
-    "변환"
+    "Conversions"
   ],
   "note": "`x as f64` and `as` to a non-integer type are E0205; `T::from(x)`, `x.into()`, `x.try_into()` are E0212; `try_from(..).expect(..)` is E0213; a non-integer source is E0412.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "if와 match"
+    "if and match"
   ],
   "note": "`if` yields the taken branch, `else if` chains; `match` yields the arm of the value's variant, binds payloads (`_` binds nothing), and matching a reference binds references; an arm of type `!` follows the other arms.",
   "check": [],

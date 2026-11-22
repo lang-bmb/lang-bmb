@@ -1,6 +1,6 @@
 {
   "sections": [
-    "판정"
+    "Verdicts"
   ],
   "note": "A definition is `failed` when any one of its obligations is not proved, even when the others are.",
   "check": [],

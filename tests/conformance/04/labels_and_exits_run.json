@@ -1,6 +1,6 @@
 {
   "sections": [
-    "조기 탈출: return, break, continue, ?"
+    "Early exit: return, break, continue, ?"
   ],
   "note": "`break` and `continue` act on the innermost loop, `break 'l` and `continue 'l` on the enclosing loop labeled `'l`; `return e` leaves the function.",
   "check": [],

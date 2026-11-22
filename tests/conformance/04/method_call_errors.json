@@ -1,6 +1,6 @@
 {
   "sections": [
-    "메서드 호출"
+    "Method calls"
   ],
   "note": "A `&mut` receiver needs a writable place (E0408); an unknown method is E0404; a method of two traits is E0313; an associated function called as a method is E0314.",
   "check": [

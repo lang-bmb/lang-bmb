@@ -1,6 +1,6 @@
 {
   "sections": [
-    "주석"
+    "Comments"
   ],
   "note": "`//`, `////` and `//!` lines are comments to the end of the line and are not part of the program.",
   "check": [],

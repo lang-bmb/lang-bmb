@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Each `requires` clause of a callee is an obligation at every call (E0801).",
   "check": [],

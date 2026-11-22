@@ -1,6 +1,6 @@
 {
   "sections": [
-    "조기 탈출: return, break, continue, ?"
+    "Early exit: return, break, continue, ?"
   ],
   "note": "`?` with another error type, mixing `Option` and `Result`, or in a function with another result type is E0241; `.unwrap()` and `.expect()` are E0229.",
   "check": [

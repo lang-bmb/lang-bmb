@@ -1,6 +1,6 @@
 {
   "sections": [
-    "스칼라 타입"
+    "Scalar types"
   ],
   "note": "Every integer type has the constants `MIN` and `MAX`; `isize` and `usize` are 64 bits wide.",
   "check": [],

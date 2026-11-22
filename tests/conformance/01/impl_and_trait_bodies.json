@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구문의 뼈대"
+    "Syntax skeleton"
   ],
   "note": "The bodies of `impl` and `trait` hold `fn` and `spec fn` only (E0103).",
   "check": [

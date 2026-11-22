@@ -1,7 +1,7 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`",
-    "호출자가 가정하는 것"
+    "`build` and `emit-llvm`",
+    "What the caller assumes"
   ],
   "note": "A postcondition that is true at run time but not proved from the callee's contract refuses the build: only a proof makes an executable.",
   "check": [],

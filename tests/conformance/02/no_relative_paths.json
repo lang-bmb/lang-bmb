@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "There are no relative paths between a unit and its nested units (unresolved: E0304), and `crate::`, `super::`, `self::` are E0242.",
   "check": [

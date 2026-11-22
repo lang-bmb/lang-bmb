@@ -1,6 +1,6 @@
 {
   "sections": [
-    "이동한 값의 사용"
+    "Use of a moved value"
   ],
   "note": "Calling a `self: T` method twice on an owned value makes the second call E0413; a `self: &T` method can be called repeatedly.",
   "check": [

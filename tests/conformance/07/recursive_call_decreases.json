@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A call inside one recursive component (direct or mutual, executable or proof fn) must decrease the measure (E0809).",
   "check": [],

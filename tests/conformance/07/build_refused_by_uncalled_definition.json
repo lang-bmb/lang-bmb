@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`build`와 `emit-llvm`"
+    "`build` and `emit-llvm`"
   ],
   "note": "`bmb build` needs every definition `verified`: one failed definition refuses the build even when `main` does not reach it.",
   "check": [],

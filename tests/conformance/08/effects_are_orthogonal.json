@@ -1,6 +1,6 @@
 {
   "sections": [
-    "효과의 집합"
+    "The set of effects"
   ],
   "note": "Effects are independent: `io` does not include `alloc`, and `alloc` does not include `io`.",
   "check": [

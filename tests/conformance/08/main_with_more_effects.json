@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언"
+    "The `#[effects(..)]` declaration"
   ],
   "note": "`main` may declare other effects together with `io`.",
   "check": [],

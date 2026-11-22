@@ -1,7 +1,7 @@
 {
   "sections": [
-    "효과의 집합",
-    "탈출구: `assume`"
+    "The set of effects",
+    "Escape hatch: `assume`"
   ],
   "note": "An `assume` statement is a source of `panic`: its function must declare `panic` (E0606), and so must a caller of that function.",
   "check": [

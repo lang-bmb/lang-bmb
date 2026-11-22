@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세의 정수"
+    "Integers in specifications"
   ],
   "note": "Specification arithmetic is over mathematical integers: `requires a + b <= 255` on `u8` means the sum is at most 255, which makes the executable sum safe.",
   "check": [],

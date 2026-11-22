@@ -1,6 +1,6 @@
 {
   "sections": [
-    "타입을 적는 자리"
+    "Where types are written"
   ],
   "note": "Types are written on `let`, function results, closure parameters and `const`: E0201, E0209, E0263, E0103.",
   "check": [

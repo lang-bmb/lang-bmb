@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "`+`, `-` and `*` in executable code must not overflow their type (E0803).",
   "check": [],

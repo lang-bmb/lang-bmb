@@ -1,6 +1,6 @@
 {
   "sections": [
-    "타입을 적는 자리"
+    "Where types are written"
   ],
   "note": "A generic call writes its type arguments (E0237), `_` where a function value is passed; struct and variant values write none (E0301) and take them from the expected type or the values (E0424 when unknown).",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조는 매개변수에만"
+    "References only in parameters"
   ],
   "note": "Lifetime annotations are E0208.",
   "check": [

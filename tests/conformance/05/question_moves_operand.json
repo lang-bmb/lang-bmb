@@ -1,6 +1,6 @@
 {
   "sections": [
-    "이동한 값의 사용"
+    "Use of a moved value"
   ],
   "note": "The operand of `?` is moved; a later use is E0413.",
   "check": [

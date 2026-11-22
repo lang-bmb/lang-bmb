@@ -1,6 +1,6 @@
 {
   "sections": [
-    "항목이 받는 속성"
+    "Attributes an item accepts"
   ],
   "note": "An attribute in a place that does not take it is E0605: `#[effects]` on a struct, `#[invariant]` on a function, `#[uses]` on a struct.",
   "check": [

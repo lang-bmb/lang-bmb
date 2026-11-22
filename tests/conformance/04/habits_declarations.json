@@ -1,6 +1,6 @@
 {
   "sections": [
-    "받지 않는 Rust 습관"
+    "Rust habits that are not accepted"
   ],
   "note": "Declarations and signatures not accepted: untyped `let` (E0201), no return type (E0209), `mut` parameter (E0210), lifetime (E0208), `&self` forms (E0228), `#[derive]` (E0220), `static` (E0261).",
   "check": [

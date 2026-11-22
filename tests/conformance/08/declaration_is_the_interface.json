@@ -1,6 +1,6 @@
 {
   "sections": [
-    "선언과 몸의 관계"
+    "Declaration and body"
   ],
   "note": "A declaration wider than the body needs is accepted, and callers answer to the callee's declaration, not its body.",
   "check": [

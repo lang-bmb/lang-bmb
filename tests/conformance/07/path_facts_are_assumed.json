@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 단위"
+    "Unit of obligation"
   ],
   "note": "An obligation assumes the facts of its path: the `requires`, the parameter type's range, the conditions passed, an earlier `assert`, a callee's `ensures`.",
   "check": [],

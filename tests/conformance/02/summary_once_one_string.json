@@ -1,6 +1,6 @@
 {
   "sections": [
-    "속성"
+    "Attributes"
   ],
   "note": "A summary takes one string (E0704) and comes once per definition, on a unit too (E0605).",
   "check": [

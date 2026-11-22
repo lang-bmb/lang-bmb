@@ -1,7 +1,7 @@
 {
   "sections": [
-    "수량자와 트리거",
-    "루프의 `invariant`와 `decreases`"
+    "Quantifiers and triggers",
+    "Loop `invariant` and `decreases`"
   ],
   "note": "A quantifier may stand directly in a spec fn body, a loop invariant and an assert.",
   "check": [],

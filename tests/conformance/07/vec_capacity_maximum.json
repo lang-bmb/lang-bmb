@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "`Vec::with_capacity(n)` must not exceed a Vec's maximum length (E0816).",
   "check": [],

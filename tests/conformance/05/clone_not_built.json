@@ -1,6 +1,6 @@
 {
   "sections": [
-    "복사와 이동"
+    "Copy and move"
   ],
   "note": "clone is E0404 for a type that names a type parameter without Copy, for a type that holds a child process, and for a copy type; a parameter bounded by Copy is allowed.",
   "check": [

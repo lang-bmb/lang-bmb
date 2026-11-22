@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`Option`과 `Result`"
+    "`Option` and `Result`"
   ],
   "note": "There is no `.unwrap()` or `.expect()` on `Option` and `Result` (E0229).",
   "check": [

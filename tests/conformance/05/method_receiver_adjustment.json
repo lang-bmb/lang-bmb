@@ -1,6 +1,6 @@
 {
   "sections": [
-    "참조 인자"
+    "Reference arguments"
   ],
   "note": "A method call `x.f(..)` passes `&x`, `&mut x` or `x` as the declared receiver asks, and passes a reference receiver on as it is.",
   "check": [],

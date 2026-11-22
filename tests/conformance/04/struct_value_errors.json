@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체·열거형 값"
+    "Struct and enum values"
   ],
   "note": "A missing or repeated field is E0422, another order E0434, the shorthand `T { x }` E0222, the update syntax `..p` E0223.",
   "check": [

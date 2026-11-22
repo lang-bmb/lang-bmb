@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체와 열거형"
+    "Structs and enums"
   ],
   "note": "`#[invariant(p)]` names a `spec fn` taking `&T` and returning `bool` (E0254), one per type (E0255).",
   "check": [

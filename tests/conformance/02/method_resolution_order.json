@@ -1,6 +1,6 @@
 {
   "sections": [
-    "메서드 호출의 이름"
+    "Method call names"
   ],
   "note": "`x.f(..)` is the inherent impl function first, else the one trait that has a method of that name; a path call names a trait's method.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "루프"
+    "Loops"
   ],
   "note": "`while` runs while its condition holds; `for` runs an integer range, `lo..hi` without `hi` and `lo..=hi` with it, the ends evaluated once left to right on entry; `loop` is an expression whose value is that of `break e`.",
   "check": [],

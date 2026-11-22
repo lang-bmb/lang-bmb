@@ -1,6 +1,6 @@
 {
   "sections": [
-    "리터럴·경로·호출"
+    "Literals, paths and calls"
   ],
   "note": "`()` is the unit value.",
   "check": [],

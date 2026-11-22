@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "Each loop invariant clause must hold again at the end of the loop body, including at a `continue` (E0807).",
   "check": [],

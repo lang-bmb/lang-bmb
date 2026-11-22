@@ -1,6 +1,6 @@
 {
   "sections": [
-    "탈출구와 증명의 신뢰 등급"
+    "Escape hatches and trust levels"
   ],
   "note": "A trusted fact helps only definitions that reach the escape: an unrelated definition that fails without trust stays `failed`, and an `assume` in one function is not a fact in its caller.",
   "check": [],

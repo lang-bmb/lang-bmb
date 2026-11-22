@@ -1,6 +1,6 @@
 {
   "sections": [
-    "배열과 슬라이스"
+    "Arrays and slices"
   ],
   "note": "A value that cannot be indexed (`i64`, `&str`) is E0407.",
   "check": [

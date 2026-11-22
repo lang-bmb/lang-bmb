@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구문의 뼈대"
+    "Syntax skeleton"
   ],
   "note": "A token that starts no item inside `mod` is E0103.",
   "check": [

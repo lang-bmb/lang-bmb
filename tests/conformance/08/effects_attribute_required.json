@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언"
+    "The `#[effects(..)]` declaration"
   ],
   "note": "An executable function, a trait method declaration and an impl function each need `#[effects(..)]` (E0601).",
   "check": [

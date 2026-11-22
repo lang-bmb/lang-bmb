@@ -1,6 +1,6 @@
 {
   "sections": [
-    "trait의 계약과 impl의 정제"
+    "Trait contracts and impl refinement"
   ],
   "note": "A call through a bound uses the trait's contract; a call on the concrete type uses the impl function's own (here stronger) contract.",
   "check": [],

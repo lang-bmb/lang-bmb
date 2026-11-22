@@ -1,6 +1,6 @@
 {
   "sections": [
-    "블록과 꼬리 식"
+    "Blocks and tail expressions"
   ],
   "note": "A block is an expression: its value is the tail expression, `()` without one; a tail-less block ending in `return` has type `!` and fits any expected type.",
   "check": [],

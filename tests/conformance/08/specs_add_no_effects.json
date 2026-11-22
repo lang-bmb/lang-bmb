@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세와 유령 코드의 효과"
+    "Effects of specifications and ghost code"
   ],
   "note": "Contract clauses, invariants, asserts and proof blocks add nothing to a function's required effects: a `pure` function may hold them all.",
   "check": [],

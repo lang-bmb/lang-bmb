@@ -1,6 +1,6 @@
 {
   "sections": [
-    "단위"
+    "Units"
   ],
   "note": "A repeat count written as a constant's name is read in the unit that writes it, also when a nested unit follows.",
   "check": [],

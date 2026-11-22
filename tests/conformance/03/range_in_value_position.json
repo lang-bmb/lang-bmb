@@ -1,6 +1,6 @@
 {
   "sections": [
-    "배열과 슬라이스"
+    "Arrays and slices"
   ],
   "note": "A range `lo..hi` where a value is expected (a `let`, a condition, a returned value, an operand) is E0435 and nothing else.",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구문의 뼈대"
+    "Syntax skeleton"
   ],
   "note": "An item with a syntax error is skipped and reading resumes at the next item, so each broken item reports its own error.",
   "check": [

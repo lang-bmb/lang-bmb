@@ -1,6 +1,6 @@
 {
   "sections": [
-    "색인·필드·역참조"
+    "Indexing, fields and dereference"
   ],
   "note": "That an index is in range is a proof obligation (E0805), for arrays, slices and `Vec`.",
   "check": [],

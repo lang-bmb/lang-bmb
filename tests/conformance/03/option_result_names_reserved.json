@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`Option`과 `Result`"
+    "`Option` and `Result`"
   ],
   "note": "The six names of `Option` and `Result` and `Box` cannot be defined again (E0309).",
   "check": [

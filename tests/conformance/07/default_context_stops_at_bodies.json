@@ -1,6 +1,6 @@
 {
   "sections": [
-    "증명 문맥"
+    "Proof context"
   ],
   "note": "A spec fn called by the definition's own clause unfolds, but a spec fn called only inside that spec fn's body stays opaque (the chapter's example).",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "배열과 슬라이스"
+    "Arrays and slices"
   ],
   "note": "The length is part of an array's type: arrays of different lengths are different types (E0401).",
   "check": [

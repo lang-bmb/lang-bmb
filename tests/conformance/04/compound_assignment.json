@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "`t op= e;` is `t = t op e;` for the ten operators; a place that calls a function is E0103.",
   "check": [],

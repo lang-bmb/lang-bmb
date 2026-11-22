@@ -1,6 +1,6 @@
 {
   "sections": [
-    "명세의 정수"
+    "Integers in specifications"
   ],
   "note": "Specifications mix integer types without conversions; executable code does not (E0401).",
   "check": [

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "메서드 호출"
+    "Method calls"
   ],
   "note": "`x.f(a)` is `T::f(adjusted x, a)`: `&x` for `self: &T`, `&mut x` for `self: &mut T`, `x` for `self: T`; a reference is passed as it is.",
   "check": [],

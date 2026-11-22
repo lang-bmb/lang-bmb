@@ -1,6 +1,6 @@
 {
   "sections": [
-    "정수 리터럴"
+    "Integer literals"
   ],
   "note": "There are no negative literals: `-1` is unary minus applied to a literal, so `- 1` and `-(1)` are the same value.",
   "check": [],

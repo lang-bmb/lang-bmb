@@ -1,6 +1,6 @@
 {
   "sections": [
-    "자리에서 꺼내기와 부분 이동"
+    "Moving out of a place and partial moves"
   ],
   "note": "An owned value cannot be moved out of `*r` (shared reference) or `*b` (Box) (E0413).",
   "check": [

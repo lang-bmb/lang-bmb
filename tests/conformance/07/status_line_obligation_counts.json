@@ -1,7 +1,7 @@
 {
   "sections": [
-    "의무의 단위",
-    "판정"
+    "Unit of obligation",
+    "Verdicts"
   ],
   "note": "A status line counts the obligations of its definition and how many failed: none gives `verified` with 0, the chapter's `a / b` has 2 obligations and 2 failed.",
   "check": [],

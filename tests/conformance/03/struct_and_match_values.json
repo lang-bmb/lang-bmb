@@ -1,6 +1,6 @@
 {
   "sections": [
-    "구조체와 열거형"
+    "Structs and enums"
   ],
   "note": "Fields are read with `p.x`, payloads are positional, and `match` yields the arm of the value's variant.",
   "check": [],

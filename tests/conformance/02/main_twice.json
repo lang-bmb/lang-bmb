@@ -1,6 +1,6 @@
 {
   "sections": [
-    "진입점"
+    "Entry point"
   ],
   "note": "A program has one `main` whatever the unit: the second is E0702; `spec fn main` is not an entry point.",
   "check": [

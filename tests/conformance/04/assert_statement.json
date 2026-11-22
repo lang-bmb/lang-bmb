@@ -1,6 +1,6 @@
 {
   "sections": [
-    "문장"
+    "Statements"
   ],
   "note": "`assert(e);` is a proof obligation, not a run-time check (E0810 when it may not hold); `by (bit_vector)` is the one prover.",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "의무의 종류"
+    "Kinds of obligation"
   ],
   "note": "A type invariant is owed for a local at a loop head (E0823).",
   "check": [],

@@ -1,6 +1,6 @@
 {
   "sections": [
-    "경로와 이름 찾기"
+    "Paths and name lookup"
   ],
   "note": "An unknown field is E0306 (reading and building), an unknown variant E0307 (building and in a pattern), a label of no enclosing loop E0317.",
   "check": [

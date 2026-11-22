@@ -1,6 +1,6 @@
 {
   "sections": [
-    "호출자가 가정하는 것"
+    "What the caller assumes"
   ],
   "note": "A caller assumes only the callee's `ensures`, never its body: a contract-less `one()` leaves `one() + one() == 2` and its overflow unproved (the chapter's example).",
   "check": [],

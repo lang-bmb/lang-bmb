@@ -1,6 +1,6 @@
 {
   "sections": [
-    "호출자가 가정하는 것"
+    "What the caller assumes"
   ],
   "note": "With `ensures r == 1` on the callee, the caller's postcondition and overflow obligations are proved.",
   "check": [],

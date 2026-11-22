@@ -1,6 +1,6 @@
 {
   "sections": [
-    "클로저의 캡처"
+    "Closure captures"
   ],
   "note": "A capture is a value use where the closure is made: an owned local is moved into it (later use is E0413), a copy local stays usable.",
   "check": [

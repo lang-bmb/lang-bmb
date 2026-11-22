@@ -1,6 +1,6 @@
 {
   "sections": [
-    "연산자와 피연산자"
+    "Operators and operands"
   ],
   "note": "`&&` and `||` evaluate the right operand only when needed; `&` and `|` on `bool` evaluate both.",
   "check": [],

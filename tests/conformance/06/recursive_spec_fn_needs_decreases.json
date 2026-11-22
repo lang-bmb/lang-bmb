@@ -1,7 +1,7 @@
 {
   "sections": [
     "`spec fn`",
-    "재귀와 `decreases`"
+    "Recursion and `decreases`"
   ],
   "note": "A recursive `spec fn` without `decreases` is E0507.",
   "check": [

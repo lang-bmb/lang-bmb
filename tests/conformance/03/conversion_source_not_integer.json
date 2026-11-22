@@ -1,6 +1,6 @@
 {
   "sections": [
-    "변환"
+    "Conversions"
   ],
   "note": "`as` and `try_from` from `bool`, `char` or `f64`, and `T::try_from(x)` without `.ok()`/`.unwrap()`, are E0412.",
   "check": [

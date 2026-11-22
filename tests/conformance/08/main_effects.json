@@ -1,6 +1,6 @@
 {
   "sections": [
-    "`#[effects(..)]` 선언"
+    "The `#[effects(..)]` declaration"
   ],
   "note": "`main` declares `io`, possibly with other effects; a `main` without `io` is E0701.",
   "check": [

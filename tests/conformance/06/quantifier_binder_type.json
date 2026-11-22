@@ -1,6 +1,6 @@
 {
   "sections": [
-    "수량자와 트리거"
+    "Quantifiers and triggers"
   ],
   "note": "A quantifier's bound variable has an integer type; another type is E0402.",
   "check": [
