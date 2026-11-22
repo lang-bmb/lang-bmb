@@ -60,7 +60,7 @@
 
 <!-- progress:data begin (scripts/progress.py --write; do not edit by hand) -->
 
-생성: 2026-11-21 · 기준 커밋 `a14185eb` · 지난 보고: 이 파일의 직전 커밋 판
+생성: 2026-11-22 · 기준 커밋 `6b3507b8` · 지난 보고: 이 파일의 직전 커밋 판
 
 ### 1. 부트스트랩
 
@@ -68,7 +68,7 @@
 | --- | --- | --- | --- | --- |
 | 자립 사다리 도달 칸 | L2 | L2 | 같음 | `dev-docs/HEALTH.md` §4 |
 | 다음 칸 | L3: 4E | L3: 4E | 같음 | `dev-docs/HEALTH.md` §4 |
-| 4단계 태스크(✅/전체) | 4A 4/4 · 4B 4/4 · 4C 5/5 · 4D 46/50 · 4E 2/5 · 4F 0/1 · 4G 0/1 | 4A 4/4 · 4B 4/4 · 4C 5/5 · 4D 36/40 · 4E 0/2 · 4F 0/1 · 4G 0/1 | 바뀜 | 백로그 |
+| 4단계 태스크(✅/전체) | 4A 4/4 · 4B 4/4 · 4C 5/5 · 4D 46/50 · 4E 2/5 · 4F 0/1 · 4G 0/1 | 4A 4/4 · 4B 4/4 · 4C 5/5 · 4D 46/50 · 4E 2/5 · 4F 0/1 · 4G 0/1 | 같음 | 백로그 |
 | S1 외부 크레이트 | 0 | 0 | 같음 | health 기준선(2026-11-15 accept) |
 | S2 컴파일러가 실행하는 외부 프로세스 | clang, z3 | clang, z3 | 같음 | health 기준선(2026-11-15 accept) |
 | S3 생성 바이너리의 libc 밖 의존 | 없음 | 없음 | 같음 | health 기준선(2026-11-15 accept) |
@@ -81,9 +81,9 @@
 | 항목 | 현재 | 지난 보고 | 변화 | 출처 |
 | --- | --- | --- | --- | --- |
 | 2단계 페이즈 태스크(✅/전체) | 2A 17/24 · 2B 22/22 · 2C 6/6 · 2D 31/39 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 15/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 18/19 · 2M 3/3 · 2R 19/19 · 2V 36/36 · 2H 7/8 · 2P 4/6 | 2A 17/24 · 2B 22/22 · 2C 6/6 · 2D 31/39 · 2E 5/5 · 2F 4/5 · 2G 7/7 · 2S 3/3 · 2T 15/15 · 2O 11/11 · 2K 11/11 · 2U 7/7 · 2N 18/19 · 2M 3/3 · 2R 19/19 · 2V 36/36 · 2H 7/8 · 2P 4/6 | 같음 | 백로그 |
-| 트랙 태스크(✅/전체) | T0 32/40 · T1 45/59 · T2 17/20 · T3 1/5 · T4 5/6 · INF 43/43 | T0 32/40 · T1 45/59 · T2 17/20 · T3 1/5 · T4 5/5 · INF 42/42 | 바뀜 | 백로그 |
-| 백로그 ✅ / 🔄 / ⏳ / 🚫 | 571 / 9 / 62 / 7 | 554 / 8 / 58 / 7 | 바뀜 | 백로그 |
-| ADR 수 | 143 | 142 | +1 | `dev-docs/adr/` |
+| 트랙 태스크(✅/전체) | T0 32/40 · T1 46/63 · T2 17/20 · T3 1/5 · T4 5/6 · INF 43/43 | T0 32/40 · T1 45/59 · T2 17/20 · T3 1/5 · T4 5/6 · INF 43/43 | 바뀜 | 백로그 |
+| 백로그 ✅ / 🔄 / ⏳ / 🚫 | 575 / 9 / 63 / 7 | 571 / 9 / 62 / 7 | 바뀜 | 백로그 |
+| ADR 수 | 145 | 143 | +2 | `dev-docs/adr/` |
 | 진단 코드 수 | 191 | 191 | 같음 | `docs/diagnostics.md` |
 | V3 증명되지 않은 코퍼스·시드 정의 | 0 | 0 | 같음 | health 기준선(2026-11-15 accept) |
 | V4 코퍼스·시드 증명 비용(rlimit) | 13,414,887 | 13,414,887 | 같음 | health 기준선(2026-11-15 accept) |
@@ -104,11 +104,11 @@
 | --- | --- | --- | --- | --- |
 | 기준 벤치 BMB/안전 Rust 시간 비(범위) | 0.962 ~ 1.041 | 0.962 ~ 1.041 | 같음 | `bench/baseline/results/2026-11-04.md` |
 | 기준 벤치 G6(≤ 1.05) 충족 | 7/7 | 7/7 | 같음 | `bench/baseline/results/2026-11-04.md` |
-| 기준 벤치 마지막 측정 | 2026-11-04 (17일 전) | 2026-11-04 (13일 전) | 바뀜 | `bench/baseline/results/2026-11-04.md` |
+| 기준 벤치 마지막 측정 | 2026-11-04 (18일 전) | 2026-11-04 (17일 전) | 바뀜 | `bench/baseline/results/2026-11-04.md` |
 | 라이브러리 utf8 대 `std::str::from_utf8` 시간 비 | 0.870 | 0.870 | 같음 | `bench/lib/results/2026-11-02.md` |
 | 라이브러리 sha256 대 같은 알고리즘의 Rust 시간 비 | 1.011 | 1.011 | 같음 | `bench/lib/results/2026-11-02.md` |
 | 라이브러리 sha256 대 `sha2` 크레이트 시간 비 | 1.260 | 1.260 | 같음 | `bench/lib/results/2026-11-02.md` |
-| 라이브러리 벤치 마지막 측정 | 2026-11-02 (19일 전) | 2026-11-02 (15일 전) | 바뀜 | `bench/lib/results/2026-11-02.md` |
+| 라이브러리 벤치 마지막 측정 | 2026-11-02 (20일 전) | 2026-11-02 (19일 전) | 바뀜 | `bench/lib/results/2026-11-02.md` |
 | B1 기준 벤치 7개 strip 크기 합(바이트) | 101,664 | 101,664 | 같음 | health 기준선(2026-11-15 accept) |
 | Benchmarks Game 공식 제출 비교(T3-01·T3-04) | 🚫 · 🚫 | 🚫 · 🚫 | 같음 | 백로그 |
 | 야간 성능 회귀 추적(INF-12) | ✅ | ✅ | 같음 | 백로그 |
@@ -129,11 +129,11 @@
 | 항목 | 현재 | 지난 보고 | 변화 | 출처 |
 | --- | --- | --- | --- | --- |
 | 가설: 확정 | 0 | 0 | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 반증 | 5 (H-SCALE, H-COMPREHEND, H-REFACTOR, H-EFFECT, H-REPAIR) | 3 (H-SCALE, H-EFFECT, H-REPAIR) | 바뀜 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 반증 | 4 (H-SCALE, H-REFACTOR, H-EFFECT, H-REPAIR) | 5 (H-SCALE, H-COMPREHEND, H-REFACTOR, H-EFFECT, H-REPAIR) | 바뀜 | `docs/ROADMAP.md` 가설 등록부 |
 | 가설: 결정론 근거 | 7 (H-STABLE, H-MAINT, H-ID, H-PAR, H-VIEW, H-COMMUTE, H-COMPAT) | 7 (H-STABLE, H-MAINT, H-ID, H-PAR, H-VIEW, H-COMMUTE, H-COMPAT) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 측정 중 | 3 (H-AMORT, H-GAME, H-ENCAP) | 3 (H-AMORT, H-GAME, H-ENCAP) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 측정 중 | 4 (H-AMORT, H-GAME, H-ENCAP, H-COMPREHEND) | 3 (H-AMORT, H-GAME, H-ENCAP) | 바뀜 | `docs/ROADMAP.md` 가설 등록부 |
 | 가설: 파일럿 | 5 (H-SPEC, H-ORACLE, H-FAMILIAR, H-NAME, H-GRAIN) | 5 (H-SPEC, H-ORACLE, H-FAMILIAR, H-NAME, H-GRAIN) | 같음 | `docs/ROADMAP.md` 가설 등록부 |
-| 가설: 미측정 | 12 | 14 | -2 | `docs/ROADMAP.md` 가설 등록부 |
+| 가설: 미측정 | 15 | 12 | +3 | `docs/ROADMAP.md` 가설 등록부 |
 | 효용 2.1 테스트가 필요 없다 (G8) | 방향 일치, 이른 판단 | 방향 일치, 이른 판단 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.2 결함이 적다 (G5 결함, H-ORACLE, H-ENCAP) | 판정 불가 | 판정 불가 | 같음 | `dev-docs/reports/utility.md` §2 |
 | 효용 2.3 도구로 읽는다 (G4, H-VIEW) | 정확도는 충족, 규모 효용은 미측정 | 정확도는 충족, 규모 효용은 미측정 | 같음 | `dev-docs/reports/utility.md` §2 |
