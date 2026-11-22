@@ -23,3 +23,7 @@ target/debug/bmb verify tests/run/fn_values.bmb
 ```
 
 Z3와 LLVM(clang)이 필요하다. 판은 `scripts/toolchain.env`에 있다.
+
+## Rights
+
+All rights reserved. This repository is public to read; no license is granted to use, modify or distribute its contents.
