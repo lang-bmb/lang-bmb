@@ -1,133 +1,133 @@
-# BMB 설계 원칙
+# BMB design principles
 
-> 상태: 확정본 v1.3 · 2026-11-16(ADR-0142 언어의 본, ADR-0143 표면 승계의 지위) · 2026-11-11(ADR-0114 클로저의 증명 문맥, ADR-0117 정의의 요약) · 2026-11-09(ADR-0102 판정 단위·원칙 4 범위) · 2026-10-26(ADR-0045 판단 기준, ADR-0046~0051 언어 표면·원장 개정. v1.1: ADR-0040 전제 E1~E3·원칙 4 수정)
-> 과정·결정 근거·v0 분석은 `dev-docs/v2-genesis.md`에 있다. 이 문서는 현재 확정된 설계만 담는다.
+> Status: settled version v1.3 · 2026-11-16 (ADR-0142 the model of the language, ADR-0143 the standing of the surface succession) · 2026-11-11 (ADR-0114 the proof context of closures, ADR-0117 the summary of a definition) · 2026-11-09 (ADR-0102 the unit of judgement and the scope of principle 4) · 2026-10-26 (ADR-0045 judgement criteria, ADR-0046~0051 revisions of the language surface and the ledger. v1.1: ADR-0040 revision of premises E1~E3 and principle 4)
+> The process, the rationale of the decisions and the v0 analysis are in `dev-docs/v2-genesis.md`. This document holds only the design that is settled now.
 
-## 1. 정의
+## 1. Definition
 
-**BMB는 AI 에이전트가 쓰고, 결정론적 도구로 다루는 언어다. 본은 에이전트의 작동 방식이다.**
+**BMB is a language that AI agents write and that is handled with deterministic tools. Its model is the way agents work.**
 
-- **본은 에이전트의 작동 방식이다(ADR-0142).** 한글이 발음기관을 본떴듯, 형태는 쓰는 쪽의 작동 방식(학습된 분포, 유한한 컨텍스트, 확률적 출력, 도구 호출)의 어느 성질에 맞춘 것인지로 정당화한다.
-- **지금의 표면은 Rust·Verus를 승계한다(ADR-0143).** 모델이 BMB를 학습하지 않았다는 사정을 메우는 수단이고 정의가 아니다. 학습된 분포에 기대지 않는 수단(컨텍스트의 레퍼런스·예시, 도구, 진단)이 실측으로 충분한 자리에서는 그 수단이 먼저고, 형태는 본을 따른다.
-- **의미는 더 엄격하다.** Rust·Verus가 인간 편의 때문에 남겨 둔 것까지 포기하고, 그 대가로 검증·탐색·성능을 얻는다.
-- **컴파일러는 독자 구현이다.** rustc를 쓰지 않고, 파싱부터 증명 게이트, LLVM IR 생성까지 직접 수행한다.
+- **The model is the way agents work (ADR-0142).** As Hangul was modelled on the organs of speech, a form is justified by which property of the way its writer works (a learned distribution, a finite context, probabilistic output, tool calls) it is fitted to.
+- **The present surface succeeds Rust and Verus (ADR-0143).** It is a means of making up for the fact that language models have not been trained on BMB, and it is not the definition. Where means that do not lean on the learned distribution (reference and examples in the context, tools, diagnostics) are sufficient by measurement, those means come first and the form follows the model.
+- **The semantics are stricter.** BMB gives up even what Rust and Verus kept for human convenience, and in return gains verification, navigation and performance.
+- **The compiler is an independent implementation.** It does not use rustc, and performs everything itself from parsing through the proof gate to LLVM IR generation.
 
-| 기둥 | 내용 | 기반 |
+| Pillar | Content | Basis |
 | --- | --- | --- |
-| 컴파일러 | 확장 문법 파싱, 타입 검사, 소유권 검사, 검증 조건 생성과 증명 게이트, 프로파일 검사, 맵 도출, LLVM IR 생성 | 자체 + Z3 + LLVM. 참고: Verus(검증 설계, 유령 코드 소거), Rust(의미론) |
-| 문법 | Rust 문법 + Verus 계열 명세 문법(`requires`·`ensures`·`spec fn`·`decreases` 등) + 최소한의 확장(효과, 근거, 증명 문맥, 구성 단위) | Rust·Verus 참고, 독자 구현 |
-| 도구 | 맵(L0~L2 + 확장)과 읽기·쓰기 도구. 에이전트의 유일한 접근 경로 | 자체 |
+| Compiler | Parsing of the extended grammar, type checking, ownership checking, verification condition generation and the proof gate, profile checking, map derivation, LLVM IR generation | Own + Z3 + LLVM. References: Verus (verification design, ghost code erasure), Rust (semantics) |
+| Grammar | Rust grammar + Verus-family specification grammar (`requires`·`ensures`·`spec fn`·`decreases` and so on) + minimal extensions (effects, rationale, proof context, organizational units) | Rust and Verus as references, independent implementation |
+| Tools | Maps (L0~L2 + extensions) and read and write tools. The agent's only access path | Own |
 
-**언어의 책임 범위는 코드와 맵까지다.** 인간용 설계서와 도식은 맵을 소비하는 별도 도구가 맡는다. 이 도구도 직접 만들되 별도 리포로 두고, 마크다운 출력을 1순위로 한다.
+**The language's responsibility extends to the code and the maps.** Design documents and diagrams for humans are the job of a separate tool that consumes the maps. This tool is also built by the project, but lives in a separate repository, and Markdown output is its first priority.
 
-## 2. 전제와 목표
+## 2. Premises and goals
 
-**전제**
+**Premises**
 
-- **E1.** 줄 단위 읽기는 AI의 산출량을 따라가지 못한다. 인간의 검토 대상은 코드에서 의도와 명세로 옮긴다.
-- **E2.** AI 코딩의 병목은 생성이 아니라 검증과 탐색이다.
-  - 검증: (a) 테스트 통과가 정답을 보장하지 못하는 오라클 부족, (b) 산출량을 따라가지 못하는 리뷰 비용, (c) 변경마다 반복 실행되어 변경 수 × 테스트 수로 누적되는 테스트 비용(AI가 PR·push 빈도를 올리며 커진다), (d) 명세가 의도와 맞는지(명세 타당성).
-  - 탐색: 대형 코드베이스에서 고칠 곳과 영향을 파악하는 비용.
-- **E3.** 쓰기 때 한 번 치르는 비용(명세·증명 작성, 학습하지 않은 표면의 비용 포함)으로 변경마다 반복되는 검증 비용과 빠져나가는 결함을 줄이는 거래는 이득이다. 손익은 총 토큰, 누적 실행 비용, 결함률로 측정한다.
+- **E1.** Line-by-line reading cannot keep up with the output of AI. What humans review moves from code to intent and specification.
+- **E2.** The bottleneck of AI coding is not generation but verification and navigation.
+  - Verification: (a) the lack of an oracle, in that passing tests does not guarantee a correct answer, (b) review cost that cannot keep up with the output, (c) test cost that is run again on every change and accumulates as number of changes × number of tests (it grows as AI raises the frequency of PRs and pushes), (d) whether the specification matches the intent (specification validity).
+  - Navigation: the cost of finding where to fix and what is affected in a large codebase.
+- **E3.** A trade that pays a cost once at writing time (writing specifications and proofs, including the cost of a surface that was not learned) to reduce the verification cost repeated on every change and the defects that escape is a gain. Profit and loss are measured by total tokens, accumulated execution cost and defect rate.
 
-전제의 외부 근거와 반대 근거는 `dev-docs/research/`, 수정 결정은 ADR-0040이다.
+The external evidence for and against the premises is in `dev-docs/research/`, and the decision that revised them is ADR-0040.
 
-**목표**
+**Goals**
 
-- **정확성은 제약이다.** 만족하지 못하면 빌드하지 않는다.
-- **성능은 목적함수다.** 정확성 제약 안에서 최대화한다.
-- 대형 프로젝트 확장성과 개발 속도는 위 두 목표의 결과로 따라와야 한다.
-- **사용자는 에이전트다.** AI 친화성은 다른 목표와 경쟁하는 목표가 아니라 이 정의 자체다.
-- **에이전트가 쓰고 싶은 언어를 실측으로 만든다(ADR-0142).** 근거는 자기 보고가 아니라 마찰과 벤치의 측정이다. 학습된 언어와 견줄 때는 설계의 비용과 학습 안 됨의 비용을 갈라 보고, 가르지 않은 차이로 설계를 판정하지 않는다. 평가는 지금 쓸 수 있는 모델과 수단으로 하고, 전용 모델이나 외부 채택은 전제로 삼지 않는다(ADR-0143).
+- **Correctness is a constraint.** If it is not satisfied, there is no build.
+- **Performance is the objective function.** It is maximized within the correctness constraint.
+- Scalability to large projects and development speed must follow as results of the two goals above.
+- **The user is the agent.** AI friendliness is not a goal that competes with the other goals; it is this definition itself.
+- **The language that agents want to write is built by measurement (ADR-0142).** The evidence is not self-report but the measurement of friction and benchmarks. When comparing with a learned language, the cost of the design and the cost of not being learned are reported separately, and the design is not judged by a difference that was not separated. Evaluation is done with the language models and means that can be used now, and a dedicated language model or outside adoption is not taken as a premise (ADR-0143).
 
-**트레이드오프 원장(ADR-0041)**
+**Trade-off ledger (ADR-0041)**
 
-| 구분 | 항목 |
+| Category | Items |
 | --- | --- |
-| 극대화 | 안정성(정확성)·성능 최상, 테스트 코드 최저, AI 코딩 효율 최상(총 토큰·탐색·쓰기), 바이너리 크기 최저, 코드 재사용 최상, 결정론·변경 안전성 최상, 런타임 의존 최저 |
-| 수용 | 배우기·쓰기 어려움, 첫 빌드가 오래 걸림(맵·전체 증명), 빌드가 다소 오래 걸림(증명), 표현력 제한(원리적으로 증명 대상이 될 수 없는 것만 근거 있는 탈출구로, 의도된 엄격화는 §4.1 원장에 있는 것만. ADR-0045), 외부 툴체인(Z3·LLVM), 초기 생태계 부재 |
-| 규칙 | 읽기·쓰기는 도구 경유(코드 파일 직접 편집 비권장), 표현·정규형 하나, 탈출구는 근거 필수 |
+| Maximized | Highest stability (correctness) and performance, least test code, highest AI coding efficiency (total tokens, navigation, writing), smallest binary size, highest code reuse, highest determinism and change safety, least runtime dependency |
+| Accepted | Hard to learn and write, the first build takes long (maps, full proof), builds take somewhat long (proof), limited expressiveness (only what cannot in principle be an object of proof goes through an escape hatch with a rationale, and the only intended strictness is what is in the §4.1 ledger. ADR-0045), external toolchain (Z3, LLVM), no ecosystem at first |
+| Rules | Reading and writing go through the tools (editing code files directly is discouraged), one expression and one normal form, an escape hatch requires a rationale |
 
-- 테스트는 실행을 줄이는 것(선택·캐시)이 아니라 존재할 필요가 없게 만드는 것(구조적 제거)으로 다룬다.
-- 수용한 쓰기 비용의 판정 단위는 쓰기 한 번이 아니라 과제 전체의 총 토큰이다.
-- 판정은 두 층이다(ADR-0102). 과제 단위(G5)는 비용의 궤적으로 보고하고, 전제 E3의 판정은 수명 단위(G5-L: 작성 + 후속 변경 + 결함 수리의 총 토큰과 누적 검증 비용)와 빠져나간 결함률이 한다.
-- 극대화 축마다 지표가 있고(ADR-0041 §2), 지표가 없는 축은 주장하지 않는다.
+- Tests are handled not by reducing their execution (selection, caching) but by making them unnecessary to exist (structural removal).
+- The unit of judgement for the accepted writing cost is not a single write but the total tokens of the whole task.
+- The judgement has two layers (ADR-0102). The task unit (G5) is reported as the trajectory of cost, and the judgement of premise E3 is made by the lifetime unit (G5-L: the total tokens of writing + later changes + defect repair, and the accumulated verification cost) and by the rate of escaped defects.
+- Each maximized axis has a metric (ADR-0041 §2), and an axis without a metric is not claimed.
 
-## 3. 원칙
+## 3. Principles
 
-1. **코드가 유일한 정본이다.** 저장은 텍스트 파일이고, 파일 배치는 도구가 결정론적으로 정한다. 저장 형식 자체는 중요하지 않다.
-2. **맵은 코드에서 결정론적으로 도출되는 파생물이다.**
-   - 용도별로 여러 개일 수 있다(탐색, 캐시, 비용 절감, 다른 관심사).
-   - 표준 탐색 맵 L0~L2는 명세에 고정하고, 나머지는 확장 맵으로 둔다.
-   - 맵은 코드의 사본이 아니라 코드로 가는 길이다. 세부가 필요하면 코드로 간다.
-3. **의도는 선언으로 강제한다.** 양화사를 담는 계약은 이름 붙은 술어로 쓰고(양화사 없는 계약은 절에 식으로, ADR-0095), 의도·근거 산문은 노드 해시에 묶는다. 구현에서 의도를 역추론하지 않는다.
-4. **증명이 테스트를 대체한다.**
-   - 증명이 없으면 바이너리도 없다.
-   - 증명은 한 번 치른다. 바뀐 정의와 그 계약에 기대는 정의만 다시 증명한다(증명 캐시·증분 빌드). 테스트처럼 변경마다 전부 다시 돌지 않는다.
-   - 테스트가 필요한 면적은 컴파일러가 산출해 지표로 보고하고 최소화한다.
-   - 대체 범위는 단일 프로그램의 기능 정확성(단위 수준)이다. 통합, 신뢰 경계(외부 입력, 솔버·컴파일러 자신), 코드 밖 구성의 시험은 남는다.
-   - 대체되는 것은 순수 핵심(`pure` 정의)이다. `io` 효과 정의(껍데기)는 테스트 면적으로 남고 컴파일러가 그 면적을 산출한다(ADR-0102, H-EFFECT 반증).
-   - "테스트 0"은 지향점이지 주장이 아니다.
-5. **슬라이스 예산을 빌드 제약으로 둔다.** 어떤 정의도 "본문 + 의존 계약"이 정해진 예산 안에 자급적으로 들어와야 한다.
-6. **에이전트는 코드에 직접 접근하지 않는다.**
-   - 경로는 도구 하나뿐이고, 도구는 맵과 코드 위에서 동작한다.
-   - AI는 여전히 실수하고 컨텍스트 한계가 있다. 그 갭은 결정론적 도구가 메운다.
-     - 탐색을 쉽게 한다: 맵 질의, 슬라이스.
-     - 쓰기를 보조한다: 기계적으로 결정되는 표기는 도구가 채운다.
-     - 실수를 지적한다: 반례, 공허 계약, 약한 명세, 변경 영향.
-   - AI는 판단(의도, 설계, 명세 선택)만 맡는다. 결정론적으로 계산할 수 있는 일은 AI에게 맡기지 않는다.
-   - **명시성은 산출물의 성질이고, 그 노동은 도구의 몫이다.**
-7. **탐색 비용은 질의 범위에 비례한다.** 컨텍스트 한계는 파일 구조가 아니라 맵 수준과 도구 슬라이스로 다룬다. 파일은 의미를 갖지 않는다.
-8. **모호성은 0으로 만든다.** 한 가지 일에는 하나의 표현과 정규형만 둔다. 진단은 구조화된 데이터다.
-9. **증명이 곧 최적화 근거다.** 증명된 성질만이 런타임 검사를 지우고 최적화를 정당화한다. 검증되지 않은 계약은 최적화에 쓰지 않는다.
+1. **Code is the only source of truth.** Storage is text files, and the tools decide the file layout deterministically. The storage format itself does not matter.
+2. **A map is a derivative that is deterministically derived from the code.**
+   - There can be several, one per use (navigation, cache, cost reduction, other concerns).
+   - The standard navigation maps L0~L2 are fixed in the specification, and the rest are extension maps.
+   - A map is not a copy of the code but a way to the code. When detail is needed, go to the code.
+3. **Intent is enforced by declaration.** A contract that holds a quantifier is written as a named predicate (a contract without a quantifier is an expression in the clause, ADR-0095), and the prose of intent and rationale is bound to a node hash. Intent is not inferred backwards from the implementation.
+4. **Proof replaces tests.**
+   - Without a proof there is no binary.
+   - A proof is paid for once. Only the changed definitions and the definitions that rely on their contracts are proved again (proof cache, incremental build). It does not run all over again on every change as tests do.
+   - The compiler computes the area that needs tests, reports it as a metric and minimizes it.
+   - The scope of replacement is the functional correctness of a single program (unit level). Tests of integration, of trust boundaries (external input, the solver and the compiler themselves) and of configuration outside the code remain.
+   - What is replaced is the pure core (`pure` definitions). Definitions with the `io` effect (the shell) remain as test area, and the compiler computes that area (ADR-0102, H-EFFECT refuted).
+   - "Zero tests" is a direction, not a claim.
+5. **The slice budget is a build constraint.** For every definition, "body + the contracts it depends on" must fit self-sufficiently within a set budget.
+6. **Agents do not access the code directly.**
+   - There is only one path, the tools, and the tools operate on the maps and the code.
+   - AI still makes mistakes and has a context limit. Deterministic tools fill that gap.
+     - They make navigation easy: map queries, slices.
+     - They assist writing: the tools fill in notation that is determined mechanically.
+     - They point out mistakes: counterexamples, vacuous contracts, weak specifications, change impact.
+   - AI takes on only judgement (intent, design, choice of specification). Work that can be computed deterministically is not left to AI.
+   - **Explicitness is a property of the artifact, and its labour belongs to the tools.**
+7. **Navigation cost is proportional to the scope of the query.** The context limit is handled not by file structure but by map levels and tool slices. Files carry no meaning.
+8. **Ambiguity is brought to zero.** For one thing there is only one expression and one normal form. Diagnostics are structured data.
+9. **Proof is the rationale for optimization.** Only proved properties remove runtime checks and justify optimizations. Unverified contracts are not used for optimization.
 
-**비목표:** 인간의 학습 용이성, 손코딩 편의, 빠른 프로토타이핑, 텍스트 에디터 편집 경험, 설계서·도식 자체(언어 밖).
+**Non-goals:** ease of learning for humans, convenience of hand coding, fast prototyping, the editing experience in a text editor, design documents and diagrams themselves (outside the language).
 
-**보장 범위 밖(ADR-0040):** 코드 밖 장애(설정·배포·재시도 폭주), 에이전트 도구 일반의 보안(프롬프트 인젝션, 공급망). 단 BMB 자신의 도구 표면은 위협 모델을 갖는다.
+**Outside the guarantee (ADR-0040):** failures outside the code (configuration, deployment, retry storms), the security of agent tools in general (prompt injection, supply chain). BMB's own tool surface, however, has a threat model.
 
-## 4. 설계 방법: 표면은 승계하고, 의미는 엄격화한다
+## 4. Design method: succeed the surface, make the semantics stricter
 
-BMB가 "더 발전된 형태"라고 말할 수 있는 근거는 하나다. Rust·Verus가 인간 편의 때문에 남겨 둔 것까지 포기하고, 그 대가를 끝까지 회수한다.
+There is one ground on which BMB can be called "a more advanced form". It gives up even what Rust and Verus kept for human convenience, and collects the payback for that to the end.
 
-**엄격화의 형태 규칙**
+**Form rules of strictness**
 
-- 새 구문을 만들기보다, **Rust·Verus에서 선택이던 표기를 필수로** 만든다.
-- 유효한 BMB 코드는 "더 장황한 Rust"처럼 보여야 한다. 그래야 LLM의 사전 지식이 그대로 통한다.
-- 새 구문은 Rust에 대응하는 형태가 없을 때만 추가한다(효과, 근거, 증명 문맥).
-- 위 셋은 승계가 남아 있는 자리의 규칙이다. 승계는 본 아래의 수단이므로(ADR-0143), 벗어날 수단이 지금의 모델에서 실측으로 충분한 자리에서는 본에 맞는 꼴이 Rust 꼴보다 먼저다.
+- Rather than creating new syntax, BMB makes **notation that was optional in Rust and Verus mandatory**.
+- Valid BMB code must look like "more verbose Rust". Only then does the prior knowledge of an LLM carry over as it is.
+- New syntax is added only when Rust has no corresponding form (effects, rationale, proof context).
+- The three above are rules for the places where succession remains. Since succession is a means beneath the model (ADR-0143), where the means of leaving it are sufficient by measurement on the present language models, the shape that fits the model comes before the Rust shape.
 
-### 4.1 편의 포기 원장
+### 4.1 Ledger of conveniences given up
 
-| 영역 | Rust·Verus가 허용한 편의 | BMB | 얻는 것 |
+| Area | Convenience Rust and Verus allowed | BMB | What is gained |
 | --- | --- | --- | --- |
-| 타입 | 지역 변수 타입 추론 | 모든 타입 명시 | 슬라이스가 타입 검사기 없이 자급, 맵 L1이 정확 |
-| 수명 | 수명 생략·추론, 참조를 캡처하는 클로저 | 2차 참조(§5). 수명 표기 자체가 사라짐. 클로저는 이동 캡처(`move`)만이고 만든 함수 밖으로 나가지 않는다(반환·함수 포인터 없음, ADR-0053) | 별칭 분석 단순화, 프레임 조건 축소 |
-| 호출 해석 | auto-deref 연쇄, Deref 강제 변환, 메서드 탐색 | 금지. 메서드 호출의 수신자 조정은 한 단계이고 시그니처가 정한다(ADR-0051). 호출 대상이 구문과 명시 타입으로 확정 | 호출 그래프(L2)가 결정론적이고 정확 |
-| 다형성 | blanket impl, 암묵적 trait 해석, `dyn Fn`·함수 포인터 | 겹침 없는 명시적 impl만. 고유 `impl` 블록은 경계 목록마다 하나(ADR-0097). 함수 값은 `Fn`·`FnMut`·`FnOnce` 경계의 타입 매개변수로 단형화하고, 계약은 `f.requires(..)`·`f.ensures(..)`(ADR-0053) | 정적 호출 대상, 모듈 단위 검증 |
-| 메타프로그래밍 | `macro_rules!`, proc macro | 금지 | 보이는 코드가 곧 실행 코드. 맵과 증명의 대상이 일치 |
-| 이름 | 셰도잉, glob import, 재수출, `type` 별칭, `const`와 같은 일을 하는 불변 `static` | 금지. 상수는 `const`이고 검사기가 평가한다(호출 없는 상수 식, 배열 길이에 쓴다, ADR-0052). 이름 하나에 정의 하나(`use`는 도구가 전체 경로로 고친다). 지역 이름은 보이는 이름을 가리지 못한다(매개변수 포함). 범위가 겹치지 않는 같은 이름(형제 블록, 다른 `match` 갈래)은 받는다(ADR-0095) | 맵 L0가 정확, 질의 모호성 0 |
-| 산술 | 릴리스 빌드의 조용한 오버플로 래핑, `as` 절단 변환 | 무오버플로 증명 또는 명시 연산자(래핑·포화·검사), 검사된 변환만: 정수 사이의 `x as T`는 값을 보존하고 대상 범위가 증명 의무다(ADR-0028, 표면은 ADR-0095). 부동소수(`f64`)는 IEEE 전함수라 의무가 없다. 정수 → `f64`은 `f64::from` 하나이고 64비트 원본은 정확성 의무(`\|x\| <= 2^53`), `f64` → 정수와 비트 재해석은 없다(ADR-0061) | 숨은 실패 경로 제거, 범위 사실이 최적화 근거 |
-| 실패 | 인덱싱·`unwrap` 등 암묵적 panic, `?`의 암묵적 `From` 변환 | panic 없는 전함수가 기본, 오류는 타입으로 명시 | 테스트가 겨냥하던 예외 경로가 사라짐 |
-| 종료 | 종료성 증명은 선택 | `decreases` 필수. 예외는 바깥 입력이 끝을 정하는 `nondet` 정의의 `loop`뿐이고, 종료 미증명으로 표시된다(ADR-0094) | 전함수 보장(표시된 예외 밖에서) |
-| 효과 | 어떤 함수든 IO·할당·시간·난수 사용 가능, 전역 가변 상태(`static mut`) | 효과 선언과 검사(IO, 할당, panic, 비결정). 전역 가변 상태 없음, 문맥은 인자로 | 테스트 필요 면적 산출, 순수 구간은 증명만으로 충분, 프레임 조건이 인자로 닫힘 |
-| 증명 자동화 | 트리거 자동 선택, spec 함수 자동 전개, 전역 문맥 | 트리거 명시, 정의는 기본 불투명, 증명 문맥은 정의 자신의 계약·불변식·`assert`와 피호출자 계약이 부르는 `spec fn`이고(그 본문 속으로는 들어가지 않는다), 그 밖의 사실은 `#[uses(..)]`로 더한다(ADR-0095, ADR-0096). 클로저는 그것을 쓴 함수의 `#[uses(..)]`를 물려받고, 클로저가 적은 절은 그 자신의 계약이다(ADR-0114). 귀납 사실은 `proof fn`으로 명시하고 코드 생성에서 지운다(ADR-0062) | **증명 안정성**(SMT 취약성의 주원인인 무관한 문맥 제거), 의존 해시 기반 증명 캐시 |
-| 탈출구 | `assume`, `external_body`, `unsafe` 블록 | 근거 선언 필수(`#[rationale(kind = .., "..")]`), 맵에 미증명 면적으로 집계. 신뢰 사실은 그것이 필요한 증명에만 쓰고(먼저 없이 증명, 실패만 다시: `assumed`) 최적화에 쓰지 않는다(그 정의와 그것이 부르는 정의는 모든 검사를 남긴다, ADR-0029). `unsafe`는 없다(E0215) | 신뢰 기반의 크기가 측정됨, 거짓 신뢰 사실은 trap으로 끝난다 |
-| 표현 | 같은 일을 여러 방식으로(반복자·루프, `match`·`if let`, 튜플·튜플 구조체·이름 붙은 필드) | 정규형 하나: 셀 수 있는 루프는 범위 `for`, 그 밖은 `while`·`loop`(ADR-0049), 분기는 `match`, 곱 타입은 이름 붙은 필드 구조체(ADR-0026) | 모호성 0, 동형 함수 탐지, 맵에 필드 이름이 남음 |
-| 이동 상태 | drop 플래그로 "아마 이동"된 값 허용 | `if`·`else`와 `match`의 합류점에서는 옮기지 않은 갈래가 끝에서 해제(ADR-0081), 그 밖의 합류점(`else` 없는 `if`, `&&`·`\|\|`의 오른쪽, 루프 머리)은 같은 이동 상태(E0414, ADR-0031·0047) | 해제 지점이 텍스트로 고정, 런타임 플래그 없음 |
-| 주석 | 자유 텍스트 | 노드 해시에 묶인 구조화 근거. 정의의 한 줄 요약은 `#[summary("..")]`이고(`///`는 그 입력 꼴, ADR-0117) 어떤 해시도 읽지 않는다. 그 밖의 주석은 정규형에 남지 않는다 | 의도가 맵의 일부가 되고, 어긋나면 감지됨. 요약이 맵 L1에 실린다 |
-| 구성 단위 | 파일 = 모듈 | 선언된 단위, 파일은 투영 | 원칙 7 |
-| 보호 | 가시성(`pub`/private)으로 자료 불변식을 모듈 경계에서 지킴. 불변식은 주석·테스트 | 가시성 없음. 불변식은 타입에 붙은 이름 붙은 술어(`#[invariant(p)]`)이고 값을 잊는 모든 경계에서 증명된다(ADR-0060) | 불변식이 맵(L1 타입 표면)에 남고, 어느 정의가 고쳐도 게이트가 지킨다. 계약 반복 제거. 단위가 의미를 갖지 않는다(원칙 7) |
-| 정체성 | 정의의 정체성이 경로(이름)다. 이름 바꾸기가 모든 참조자를 바꾼다 | 정체성은 이름 없는 정규형의 해시(`id`)이고 이름은 색인이다. 저장은 이름으로 쓴 텍스트 그대로(ADR-0059) | 이름 바꾸기·이동이 다른 정의의 해시·증분 키·증명 캐시를 바꾸지 않는다(해시는 구현됨. 증분 키·증명 캐시는 질의 기호를 이름 없이 지은 뒤, 백로그 T1-10e). 알파 동치 정의에 정확한 키 |
+| Types | Type inference for local variables | All types explicit | Slices are self-sufficient without a type checker, map L1 is exact |
+| Lifetimes | Lifetime elision and inference, closures that capture references | Second-class references (§5). Lifetime notation itself disappears. Closures capture by move (`move`) only and do not leave the function that made them (no return, no function pointer, ADR-0053) | Simpler alias analysis, smaller frame conditions |
+| Call resolution | auto-deref chains, Deref coercion, method lookup | Forbidden. The receiver adjustment of a method call is one step and the signature decides it (ADR-0051). The call target is fixed by syntax and explicit types | The call graph (L2) is deterministic and exact |
+| Polymorphism | blanket impl, implicit trait resolution, `dyn Fn` and function pointers | Only explicit impls without overlap. One inherent `impl` block per bound list (ADR-0097). Function values are monomorphized as type parameters with `Fn`·`FnMut`·`FnOnce` bounds, and their contracts are `f.requires(..)`·`f.ensures(..)` (ADR-0053) | Static call targets, modular verification |
+| Metaprogramming | `macro_rules!`, proc macro | Forbidden | The visible code is the code that runs. The object of the maps and the object of the proofs coincide |
+| Names | Shadowing, glob import, re-export, `type` aliases, immutable `static` that does the same job as `const` | Forbidden. A constant is a `const` and the checker evaluates it (a constant expression without calls, used for array lengths, ADR-0052). One definition per name (the tools rewrite `use` to the full path). A local name cannot hide a visible name (parameters included). The same name in scopes that do not overlap (sibling blocks, different `match` arms) is accepted (ADR-0095) | Map L0 is exact, zero query ambiguity |
+| Arithmetic | Silent overflow wrapping in release builds, truncating `as` conversions | A proof of no overflow or an explicit operator (wrapping, saturating, checked), and only checked conversions: `x as T` between integers preserves the value and the target range is a proof obligation (ADR-0028, the surface is ADR-0095). Floating point (`f64`) is an IEEE total function, so it has no obligation. Integer → `f64` is `f64::from` alone and a 64-bit source has an exactness obligation (`\|x\| <= 2^53`), and there is no `f64` → integer and no bit reinterpretation (ADR-0061) | Hidden failure paths removed, range facts are the rationale for optimization |
+| Failure | Implicit panics such as indexing and `unwrap`, the implicit `From` conversion of `?` | Total functions without panic are the default, errors are explicit in the types | The exception paths that tests aimed at disappear |
+| Termination | A termination proof is optional | `decreases` is mandatory. The only exception is the `loop` of a `nondet` definition whose end is decided by outside input, and it is marked as termination unproved (ADR-0094) | A total function guarantee (outside the marked exception) |
+| Effects | Any function can use IO, allocation, time and random numbers, global mutable state (`static mut`) | Effect declaration and checking (IO, allocation, panic, nondeterminism). No global mutable state, context is passed as arguments | The area that needs tests is computed, proof alone suffices for pure regions, frame conditions are closed over the arguments |
+| Proof automation | Automatic trigger selection, automatic unfolding of spec functions, a global context | Triggers are explicit, definitions are opaque by default, the proof context is the `spec fn`s called by the definition's own contracts, invariants and `assert`s and by the contracts of its callees (it does not go into their bodies), and other facts are added with `#[uses(..)]` (ADR-0095, ADR-0096). A closure inherits the `#[uses(..)]` of the function that wrote it, and the clauses the closure writes are its own contract (ADR-0114). Inductive facts are stated with `proof fn` and erased in code generation (ADR-0062) | **Proof stability** (removal of irrelevant context, the main cause of SMT brittleness), a proof cache based on dependency hashes |
+| Escape hatches | `assume`, `external_body`, `unsafe` blocks | A rationale declaration is mandatory (`#[rationale(kind = .., "..")]`), counted in the maps as unproved area. A trusted fact is used only for the proofs that need it (prove without it first, and solve only the failures again: `assumed`) and is not used for optimization (that definition and the definitions it calls keep all checks, ADR-0029). There is no `unsafe` (E0215) | The size of the trust base is measured, a false trusted fact ends in a trap |
+| Expression | Several ways to do the same thing (iterators and loops, `match` and `if let`, tuples, tuple structs and named fields) | One normal form: a countable loop is a range `for`, the rest are `while`·`loop` (ADR-0049), branching is `match`, a product type is a struct with named fields (ADR-0026) | Zero ambiguity, detection of isomorphic functions, field names remain in the maps |
+| Move state | A value that is "maybe moved" is allowed through drop flags | At the join points of `if`·`else` and `match`, the arm that did not move it releases it at its end (ADR-0081), and at the other join points (an `if` without `else`, the right side of `&&`·`\|\|`, a loop head) the move state is the same (E0414, ADR-0031·0047) | The release point is fixed by the text, no runtime flag |
+| Comments | Free text | A structured rationale bound to a node hash. The one-line summary of a definition is `#[summary("..")]` (`///` is its input form, ADR-0117) and no hash reads it. Other comments do not remain in the normal form | Intent becomes part of the maps, and a mismatch is detected. The summary is carried in map L1 |
+| Organizational unit | File = module | Declared units, a file is a projection | Principle 7 |
+| Protection | Visibility (`pub`/private) guards data invariants at the module boundary. Invariants are comments and tests | No visibility. An invariant is a named predicate attached to the type (`#[invariant(p)]`) and is proved at every boundary that forgets the value (ADR-0060) | The invariant remains in the maps (the L1 type surface), and the gate guards it whichever definition changes it. Repetition of contracts removed. Units carry no meaning (principle 7) |
+| Identity | The identity of a definition is its path (name). A rename changes every referrer | Identity is the hash of the nameless normal form (`id`) and a name is an index. Storage is the text as written with names (ADR-0059) | A rename or a move does not change the hashes, incremental keys or proof caches of other definitions (the hash is implemented. The incremental key and the proof cache come after query symbols are built without names, backlog T1-10e). An exact key for alpha-equivalent definitions |
 
-**긴장과 대응.** 의미를 엄격화할수록 LLM은 Rust 습관대로 쓰다가 거부당한다. 타입을 생략하거나 `vec!`·`println!` 같은 매크로를 쓰는 경우다. 대응은 셋이다.
+**Tension and response.** The stricter the semantics, the more an LLM writes by Rust habit and is rejected. These are cases such as omitting a type or using macros like `vec!`·`println!`. There are three responses.
 
-1. 컴파일러가 "Rust 습관 → BMB 형태"를 구조화된 수정 제안으로 돌려준다. 기계적으로 바꿀 수 있는 것은 도구가 자동으로 고친다(원칙 6). 뜻이 하나로 정해지는 습관 꼴(절 키워드 되풀이, 루프 몸 안의 불변식, 복합 대입 `x op= e`, `T::try_from(x).unwrap()`, 경로 호출 `T::f(&x)`)은 입력 별칭으로 오류 없이 받고, 정규형(`bmb fmt`)과 `bmb fix`가 정본으로 옮긴다(ADR-0051·0095). 맵·해시·증명은 정본의 것이다.
-2. **Rust 습관 오류율**을 측정 축에 넣어, 엄격화 하나하나가 유추 가능성을 얼마나 깎는지 숫자로 본다.
-3. 회수하는 대가보다 유추 손실이 큰 항목은 되돌린다.
+1. The compiler returns "Rust habit → BMB form" as a structured fix suggestion. What can be changed mechanically is fixed automatically by the tools (principle 6). Habit forms whose meaning is determined uniquely (a repeated clause keyword, an invariant inside the loop body, compound assignment `x op= e`, `T::try_from(x).unwrap()`, the path call `T::f(&x)`) are accepted without error as input aliases, and the normal form (`bmb fmt`) and `bmb fix` move them to the canonical form (ADR-0051·0095). The maps, hashes and proofs are those of the canonical form.
+2. The **Rust habit error rate** is put among the measurement axes, to see in numbers how much each piece of strictness cuts into inferability.
+3. An item whose loss of inferability is larger than the payback it collects is reverted.
 
-### 4.2 비규범 예시
+### 4.2 Non-normative example
 
-문법의 정본은 언어 레퍼런스(`docs/reference/`)이고 2026-11-14에 동결됐다(ADR-0100). 아래는 "더 장황한 Rust"라는 방향을 보여 주는 예시이고 규범이 아니다.
+The source of truth for the grammar is the language reference (`docs/reference/`), and it was frozen on 2026-11-14 (ADR-0100). Below is an example that shows the direction of "more verbose Rust"; it is not normative.
 
 ```rust
 #[effects(pure)]
@@ -148,132 +148,132 @@ fn index_of(arr: &[i64], target: i64) -> (result: Option<usize>)
 }
 ```
 
-## 5. 메모리 모델
+## 5. Memory model
 
-- **소유·이동 + 2차 참조**를 쓴다. 참조(`&`, `&mut`)는 함수 인자로만 넘길 수 있고, 저장하거나 반환할 수 없다.
-- 그 결과 수명 표기와 수명 추론이 언어에서 사라진다. 표면은 Rust의 `&`·`&mut` 그대로다.
-- 별칭이 제한되므로 검증기의 프레임 조건이 단순해지고, 모든 `&mut`에 noalias를 붙일 수 있다.
-- **소유 타입**(`Vec<T>`, `Box<T>`, `String`, 이것을 담는 구조체·열거형)은 이동하고, 해제 지점은 텍스트로 정해진다(drop glue, ADR-0031·0047). 재귀 자료는 `Box`·`Vec` 아래에서 쓴다. 사본은 `x.clone()`이다: 메모리를 가진 값이면 어느 타입이든 구조로 정해지는 깊은 사본이고 증명에서는 원본과 같은 값이다(ADR-0141).
-- **비용:** 참조를 담는 구조(반복자, 뷰 등)는 핸들이나 인덱스 방식으로 대체해야 한다.
+- BMB uses **ownership and moves + second-class references**. References (`&`, `&mut`) can only be passed as function arguments, and cannot be stored or returned.
+- As a result, lifetime notation and lifetime inference disappear from the language. The surface is Rust's `&`·`&mut` as they are.
+- Since aliasing is restricted, the verifier's frame conditions become simple, and noalias can be attached to every `&mut`.
+- **Owning types** (`Vec<T>`, `Box<T>`, `String`, and the structs and enums that hold them) move, and the release point is determined by the text (drop glue, ADR-0031·0047). Recursive data is used under `Box`·`Vec`. A copy is `x.clone()`: for a value that owns memory, of whatever type, it is a deep copy determined by structure, and in proofs it is the same value as the original (ADR-0141).
+- **Cost:** structures that hold references (iterators, views and so on) must be replaced by a handle or index scheme.
 
-## 6. 아키텍처
+## 6. Architecture
 
 ```mermaid
 flowchart TB
-    A["에이전트"] <--> T
-    subgraph T["도구 — 유일한 경로, 결정론적 보조"]
-        W["쓰기: 트랜잭션 · 자동 채움 · 실수 지적"]
-        R["읽기: 맵 질의 · 코드 슬라이스"]
+    A["Agent"] <--> T
+    subgraph T["Tools — the only path, deterministic assistance"]
+        W["Write: transactions · auto-fill · pointing out mistakes"]
+        R["Read: map queries · code slices"]
     end
-    R -->|질의| M
-    subgraph M["맵 — 코드에서 결정론적 도출"]
-        S["표준 맵: L0 목차 · L1 표면 · L2 관계"]
-        X["확장 맵: 다중 관점 뷰 · 캐시"]
+    R -->|query| M
+    subgraph M["Maps — deterministically derived from the code"]
+        S["Standard maps: L0 contents · L1 surface · L2 relations"]
+        X["Extension maps: multi-perspective views · caches"]
     end
-    W -->|"트랜잭션 커밋 (구조·타입 유효성)"| C["코드 — 유일한 정본"]
-    C -->|결정론적 도출| M
-    C -->|빌드| G["증명 게이트 → LLVM IR → 바이너리"]
-    M -.->|소비| D["설계서 도구 (언어 밖, 별도 리포)"]
+    W -->|"transaction commit (structural and type validity)"| C["Code — the only source of truth"]
+    C -->|deterministic derivation| M
+    C -->|build| G["Proof gate → LLVM IR → binary"]
+    M -.->|consumed by| D["Design document tool (outside the language, separate repository)"]
 ```
 
-- **읽기**는 맵 질의에서 시작해, 필요한 만큼만 코드 슬라이스로 내려간다.
-- **쓰기**는 트랜잭션 단위로 코드에 커밋된다.
-  - 커밋 시점에 구조와 타입의 유효성은 필수다.
-  - 증명은 빌드 게이트에서 강제한다. 편집 중에는 미완성 증명을 허용하되, 그 상태를 맵에 표시한다.
-- **맵**은 정의 단위 해시를 키로 증분 재도출된다. 모든 맵은 본질적으로 코드 해시를 키로 하는 캐시다.
-- **정체성**은 이름 없는 정규형의 해시다(ADR-0059). 참조는 대상의 `id`로 해석되고, 이름은 텍스트에서 도출한 `경로 → id` 색인이다. 에이전트는 이름으로 쓰고 읽으며, 도구가 커밋할 때 `id`로 해석한다.
-- **증명 게이트**는 unknown, timeout, 솔버 부재를 모두 실패로 처리한다.
-- **실행 환경**은 닫힌 내장 목록이다(ADR-0091). 파일·표준 입출력·인자·환경·종료·시계·파이프 프로세스는 컴파일러가 아는 내장 함수(Rust 표준 라이브러리의 이름, BMB 꼴의 시그니처)뿐이고, 사용자 `extern`·FFI는 없다. 구현은 생성 IR에 함께 들어가는 libc 위 런타임이다. 시스템 내장은 `io`, 값이 실행마다 다를 수 있는 것은 `nondet`도 쓰고, 증명에서 결과는 타입 사실만 갖는다.
-- **표준 라이브러리**는 BMB로 쓰고 전부 증명한 `std` 단위다(ADR-0092): `std::str`·`std::num`·`std::slice`·`std::collections`(정렬된 `Vec` 위의 `BTreeMap`·`BTreeSet`)·`std::json`.
-- **확장 맵 생성기**는 BMB 순수 함수로 작성한다. 결정론은 규약이 아니라 언어가 증명하는 성질이다.
+- **Reading** starts from a map query and goes down to code slices only as far as needed.
+- **Writing** is committed to the code in units of transactions.
+  - At commit time, structural and type validity are mandatory.
+  - Proof is enforced at the build gate. Unfinished proofs are allowed during editing, but that state is shown in the maps.
+- **Maps** are re-derived incrementally, keyed by per-definition hashes. Every map is in essence a cache keyed by a code hash.
+- **Identity** is the hash of the nameless normal form (ADR-0059). A reference resolves to the `id` of its target, and names are a `path → id` index derived from the text. Agents write and read by name, and the tools resolve to `id` at commit.
+- **The proof gate** treats unknown, timeout and a missing solver all as failure.
+- **The execution environment** is a closed list of builtins (ADR-0091). Files, standard input and output, arguments, environment, exit, clock and pipe processes are only the builtin functions the compiler knows (names from the Rust standard library, signatures in BMB shape), and there is no user `extern` or FFI. The implementation is a runtime on top of libc that goes into the generated IR. System builtins carry `io`, those whose value can differ from run to run also carry `nondet`, and in proofs their results have only type facts.
+- **The standard library** is the `std` unit, written in BMB and proved in full (ADR-0092): `std::str`·`std::num`·`std::slice`·`std::collections` (`BTreeMap`·`BTreeSet` over a sorted `Vec`)·`std::json`.
+- **Extension map generators** are written as BMB pure functions. Determinism is not a convention but a property the language proves.
 
-## 7. 맵
+## 7. Maps
 
-### 7.1 표준 탐색 맵 (명세에 고정)
+### 7.1 Standard navigation maps (fixed in the specification)
 
-| 수준 | 내용 | 답하는 질문 |
+| Level | Content | Question it answers |
 | --- | --- | --- |
-| L0 목차 | 구성 단위 계층, 이름, 한 줄 요약 | 전체가 어떤 단위로 이루어져 있나 |
-| L1 표면 | 공개 시그니처, 계약 이름, 효과, 정의의 요약(ADR-0117) | 이것을 쓰려면 무엇을 알아야 하나 |
-| L2 관계 | 해석이 끝난 호출·의존·데이터 흐름 엣지 | 이것을 바꾸면 어디가 영향받나 |
+| L0 contents | The hierarchy of organizational units, names, one-line summaries | What units does the whole consist of |
+| L1 surface | Public signatures, contract names, effects, the summary of a definition (ADR-0117) | What must be known to use this |
+| L2 relations | Resolved call, dependency and data flow edges | What is affected if this changes |
 
-- 코드는 맵에 들어가지 않는다. 맵은 위치와 해시로 가리키기만 하고, 필요할 때 도구가 꺼내 준다.
-- 이후 수준 추가는 하위 호환으로만 허용한다.
+- Code does not go into the maps. A map only points by location and hash, and the tools fetch the code when needed.
+- Later additions of levels are allowed only in a backward compatible way.
 
-### 7.2 다중 관점 뷰
+### 7.2 Multi-perspective views
 
-표어는 **"추적하지 말고 조회한다"**다. 모든 해석은 빌드 시점에 한 번 계산되어 평탄화된다. 에이전트는 상속 체인을 따라가거나 파일을 하나씩 열지 않는다.
+The motto is **"look up, do not trace"**. Every resolution is computed once at build time and flattened. Agents do not follow inheritance chains or open files one by one.
 
-| 뷰 | 답하는 질문 |
+| View | Question it answers |
 | --- | --- |
-| 구성 (L0) | 전체가 어떤 단위로 이루어져 있나 |
-| 표면 (L1) | 이것을 쓰려면 무엇을 알아야 하나 |
-| 호출 (L2) | 누가 부르고 무엇을 부르나(해석이 끝난 대상, 정·역방향, 전이) |
-| 타입 능력 | 이 타입이 할 수 있는 모든 것(모든 impl을 출처와 함께 평탄화) |
-| 계약 | 이 술어를 보장하는 곳과 요구하는 곳 |
-| 효과 | IO·할당·비결정에 닿는 모든 경로 |
-| 변이·데이터 흐름 | 이 필드를 쓰는 곳, `&mut`이 흘러가는 경로 |
-| 증명 의존 | 이 보조정리·계약에 기대는 증명들 |
-| 미증명 면적 | 탈출구와 그 근거, 테스트가 필요한 경계 |
-| 중복·동형 | 같거나 거의 같은 정의의 묶음 |
-| 변경 영향 | 이것을 바꾸면 무엇을 다시 검증해야 하나 |
+| Organization (L0) | What units does the whole consist of |
+| Surface (L1) | What must be known to use this |
+| Calls (L2) | Who calls it and what does it call (resolved targets, forward and reverse, transitive) |
+| Type capabilities | Everything this type can do (all impls flattened with their origins) |
+| Contracts | Where this predicate is guaranteed and where it is required |
+| Effects | Every path that reaches IO, allocation and nondeterminism |
+| Mutation and data flow | Where this field is written, the paths a `&mut` flows along |
+| Proof dependencies | The proofs that rely on this lemma or contract |
+| Unproved area | Escape hatches and their rationales, the boundaries that need tests |
+| Duplicates and isomorphs | Groups of identical or nearly identical definitions |
+| Change impact | What must be verified again if this changes |
 
-모든 뷰는 같은 그래프의 투영이다. 이 뷰들이 정확할 수 있는 이유는 언어가 해석을 모호하게 만드는 요소(auto-deref, blanket impl, 매크로, glob import)를 미리 없앴기 때문이다(§4.1).
+Every view is a projection of the same graph. These views can be exact because the language removed in advance the elements that make resolution ambiguous (auto-deref, blanket impl, macros, glob import) (§4.1).
 
-## 8. 대가 회수 카탈로그
+## 8. Payback catalogue
 
-### 8.1 컴파일러 레벨 (결정론적으로 자동 적용)
+### 8.1 Compiler level (applied deterministically and automatically)
 
-| 회수 | 내용 | 가능하게 하는 포기 |
+| Payback | Content | The giving up that enables it |
 | --- | --- | --- |
-| 동등 규약 병합 | 계약·술어를 정규형으로 만들어 해시한다. 동등한 것은 하나의 이름 붙은 술어로 합치고, 증명도 한 번만 한다 | 정규형 하나 |
-| 동형 함수 병합 | 알파 동치인 정의를 바이너리에서 하나로 합친다. 키는 정체성 해시다(ADR-0059) | 정규형, 매크로 금지 |
-| 계약 방화벽 증분 빌드 | 본문이 바뀌어도 계약이 그대로면 호출자를 다시 검증·컴파일하지 않는다. 정의 해시와 의존 계약 해시로 캐시한다(키는 ADR-0032, 질의 선언은 ADR-0033) | 모듈 단위 검증, 증명 문맥 선언 |
-| 편집의 교환 판정 | 두 편집의 쓰기 집합(정체성이 바뀐 정의)이 서로의 읽기 집합(증분 증명 키)과 겹치지 않으면 교환하고 정의 단위로 합친다. 겹치면 합친 판에서 겹친 정의만 다시 증명해 병합 가능을 가린다(ADR-0065) | 모듈 단위 검증, 증명 문맥 선언, 정체성 해시 |
-| 검사 제거 | 증명된 범위·비널·비영 사실로 런타임 검사를 지우고, 그 사실을 LLVM에 전달한다(검증된 것만) | 암묵적 panic·오버플로 금지 |
-| 별칭 부재 보장 | 모든 `&mut`에 noalias를 붙인다. Rust보다 강한 별칭 사실로 벡터화·재배치를 돕는다 | 2차 참조 |
-| 효과 기반 최적화 | 순수 구간의 공통 부분식 제거, 메모화, 병렬화, 컴파일 타임 평가 | 효과 선언 |
-| 닫힌 세계 최적화 | 호출 대상이 정적으로 확정되므로 가상 호출과 죽은 코드를 정확히 제거한다 | 암묵적 해석·blanket impl 금지 |
+| Merging of equivalent contracts | Contracts and predicates are brought to normal form and hashed. Equivalent ones are merged into one named predicate, and the proof is also done only once | One normal form |
+| Merging of isomorphic functions | Alpha-equivalent definitions are merged into one in the binary. The key is the identity hash (ADR-0059) | Normal form, no macros |
+| Contract-firewall incremental build | If the contract stays the same even though the body changed, callers are not verified or compiled again. The cache is keyed by the definition hash and the hashes of the contracts it depends on (the key is ADR-0032, the query declaration is ADR-0033) | Modular verification, declared proof context |
+| Commutation verdict for edits | If the write sets of two edits (the definitions whose identity changed) do not overlap each other's read sets (the incremental proof keys), the edits commute and are merged per definition. If they overlap, only the overlapping definitions are proved again in the merged edition to decide whether the merge is possible (ADR-0065) | Modular verification, declared proof context, identity hash |
+| Check removal | Runtime checks are removed by proved range, non-null and non-zero facts, and those facts are passed to LLVM (only verified ones) | No implicit panic or overflow |
+| Guaranteed absence of aliasing | noalias is attached to every `&mut`. Alias facts stronger than Rust's help vectorization and reordering | Second-class references |
+| Effect-based optimization | Common subexpression elimination, memoization, parallelization and compile-time evaluation of pure regions | Effect declaration |
+| Closed-world optimization | Since call targets are fixed statically, virtual calls and dead code are removed exactly | No implicit resolution or blanket impl |
 
-### 8.2 도구 레벨 (결정론적 제안, 채택은 AI가)
+### 8.2 Tool level (deterministic suggestions, adoption is up to the AI)
 
-| 제안 | 내용 |
+| Suggestion | Content |
 | --- | --- |
-| 해체·분할 | 슬라이스 예산을 넘는 정의에 분할 지점을 제안하고, 그 지점의 중간 단언으로 추출 함수의 계약 초안을 만든다 |
-| 재조립·일반화 | 상수나 타입만 다른 유사 정의를 찾아 제네릭으로 묶는 안을 낸다 |
-| 재사용 검색 | 필요한 술어를 함의하는 post를 가진 정의를 찾는다. 새로 쓰기 전에 제안한다 |
-| 계약 조정 | 증명에 쓰이지 않는 pre(약화 가능), 어느 호출자도 쓰지 않는 post, 구현을 변형해도 통과하는 약한 명세를 지적한다(셋 모두와 함께 성립할 수 없는 pre: `bmb lint`). 두 판 사이에서 약해진 계약을 반례와 함께 지적한다(`bmb weaken`) |
-| 기계적 표기 자동 채움 | 명시 타입, import, 정규형 변환, `decreases`·트리거·프레임 조건 후보, 증명 문맥(`#[uses]`, `bmb uses`), Rust 습관 교정 |
-| 보존형 리팩터링 | 이름 변경·이동·분할·합치기를 증명을 깨지 않는 트랜잭션 연산으로 제공한다 |
-| 사전 영향 분석 | 커밋 전에 깨질 증명, 호출자, 효과 변화를 보여 준다 |
-| 실수 지적 | SMT 반례를 구체적인 입력값으로, 공허 계약, 동형·중복 정의 |
+| Decomposition and splitting | Suggests split points for a definition that exceeds the slice budget, and drafts the contract of the extracted function from the intermediate assertions at those points |
+| Reassembly and generalization | Finds similar definitions that differ only in constants or types and proposes grouping them into a generic |
+| Reuse search | Finds definitions whose post implies the needed predicate. It suggests them before something new is written |
+| Contract adjustment | Points out a pre that is not used in the proof (can be weakened), a post that no caller uses, and a weak specification that still passes when the implementation is mutated (all three, together with pres that cannot hold together: `bmb lint`). Points out a contract weakened between two editions, with a counterexample (`bmb weaken`) |
+| Auto-fill of mechanical notation | Explicit types, imports, normal form conversion, candidates for `decreases`, triggers and frame conditions, proof context (`#[uses]`, `bmb uses`), correction of Rust habits |
+| Preserving refactoring | Provides rename, move, split and merge as transaction operations that do not break proofs |
+| Impact analysis in advance | Shows, before commit, the proofs that will break, the callers and the effect changes |
+| Pointing out mistakes | SMT counterexamples as concrete input values, vacuous contracts, isomorphic and duplicate definitions |
 
-### 8.3 관행 레벨 (ADR-0145)
+### 8.3 Practice level (ADR-0145)
 
-개발 관행은 언어에 없는 성질을 메운다. 그 성질이 BMB에 있으면 관행이 하던 일은 회수의 대상이다. 회수는 증명되는 것에만 서고(`io` 껍데기, 성능, 자원, 코드 밖 구성에는 관행이 그대로 남는다), 근거가 "미측정"인 줄은 주장이 아니다.
+Development practices fill in for properties a language does not have. If BMB has that property, what the practice did is an object of payback. Payback stands only on what is proved (for the `io` shell, performance, resources and configuration outside the code, the practices remain as they are), and a row whose evidence is "not measured" is not a claim.
 
-| 관행 | 메우는 결핍 | 그 결핍을 없애는 성질 | 회수한 꼴 | 근거 |
+| Practice | The lack it fills | The property that removes the lack | The shape after payback | Evidence |
 | --- | --- | --- | --- | --- |
-| 브랜치·PR·병합 큐 | 두 편집이 독립인지 모른다. 떨어져 고치고 합친 결과를 통째로 시험한다 | 읽기 집합과 교환 판정(ADR-0065) | 줄기 하나: 모든 에이전트가 같은 작업 공간에 정의 단위로 커밋하고, 겹친 정의만 다시 증명한다 | 판정의 건전성은 결정론 근거(H-COMMUTE). 운영 방식은 미측정(H-TRUNK) |
-| CI(변경마다 전부 시험) | 변경의 영향 범위를 모른다 | 증분 증명 키, `impact` | 게이트가 커밋 연산의 일부다 | 증명 게이트는 그렇다. 껍데기의 시험은 남는다(H-EFFECT 반증) |
-| 코드 리뷰 | 오라클이 없다 | 계약, `bmb weaken` | 사람은 계약의 변경만 본다. 정제는 승인 없이, 약화만 사람에게 | 미측정(H-REVIEW, H-INTENT) |
-| 버전 번호·호환성 정책 | 새 판이 옛 약속을 지키는지 모른다 | 정제의 증명, 정체성 해시(ADR-0059) | 버전 대신 정제 관계, 의존은 해시로 | 판정은 결정론 근거(H-COMPAT). 패키지는 열지 않았다 |
-| 배포·재시작·카나리·롤백 | 새 코드가 돌던 상태와 맞는지, 옛 행동을 지키는지 모른다 | 전역 가변 상태 없음, 타입 불변식(ADR-0060), 계약 방화벽 | 배포 단위가 정의다: 정제로 증명된 교체는 재시작 없이 | 미측정(H-LIVE). 실제 이력의 고친 정의 83%가 계약이 그대로다(`dev-docs/experiments/edit-shape`). 닫힌 세계 최적화와 부딪친다 |
-| 한 사람이 한 구현을 쓴다 | 여러 구현 가운데 맞는 것을 고를 수단이 없다 | 계약이 오라클, 성능이 목적함수(§2) | 경쟁 구현: 증명된 것 가운데 측정으로 고른다 | 미측정(H-RACE) |
-| 기능 플래그, 이슈 추적, 인수인계 문서 | 덜 된 것과 할 일과 의도가 코드 밖에 있다 | 계약만 있고 증명이 없는 정의, 맵, 노드에 묶인 근거 | 맵이 공유 칠판이다(`query status`) | 도구는 있다. 점유(임대)는 없다 |
+| Branches, PRs, merge queues | It is not known whether two edits are independent. They are made apart and the merged result is tested as a whole | Read sets and the commutation verdict (ADR-0065) | One trunk: every agent commits to the same workspace per definition, and only the overlapping definitions are proved again | The soundness of the verdict has deterministic evidence (H-COMMUTE). The way of operating is not measured (H-TRUNK) |
+| CI (test everything on every change) | The scope of a change's impact is not known | Incremental proof keys, `impact` | The gate is part of the commit operation | True of the proof gate. Tests of the shell remain (H-EFFECT refuted) |
+| Code review | There is no oracle | Contracts, `bmb weaken` | A person looks only at changes to contracts. A refinement goes in without approval, only a weakening goes to a person | Not measured (H-REVIEW, H-INTENT) |
+| Version numbers, compatibility policy | It is not known whether a new edition keeps the old promises | Proof of refinement, identity hash (ADR-0059) | A refinement relation instead of versions, dependencies by hash | The verdict has deterministic evidence (H-COMPAT). Packages have not been opened |
+| Deployment, restart, canary, rollback | It is not known whether the new code fits the state that was running, or keeps the old behaviour | No global mutable state, type invariants (ADR-0060), the contract firewall | The unit of deployment is the definition: a replacement proved as a refinement needs no restart | Not measured (H-LIVE). 83% of the definitions changed in the real history have an unchanged contract (`dev-docs/experiments/edit-shape`). It conflicts with closed-world optimization |
+| One person writes one implementation | There is no means of choosing the right one among several implementations | The contract is the oracle, performance is the objective function (§2) | Competing implementations: among the proved ones, choose by measurement | Not measured (H-RACE) |
+| Feature flags, issue tracking, handoff documents | What is unfinished, what is to be done and the intent are outside the code | Definitions that have a contract and no proof, the maps, rationale bound to nodes | The maps are the shared blackboard (`query status`) | The tool exists. There is no claiming (leases) |
 
-**도구 체인의 결정론 규칙**
-- 도구 체인 안에는 LLM 같은 비결정 판단을 넣지 않는다. 같은 입력이면 같은 제안이 나와야 한다.
-- SMT를 쓰는 제안은 시간 제한이 아니라 고정 자원 한도(Z3 `rlimit`)로 실행한다.
+**Determinism rules of the toolchain**
+- No nondeterministic judgement such as an LLM is put inside the toolchain. The same input must give the same suggestion.
+- Suggestions that use SMT run under a fixed resource limit (Z3 `rlimit`), not a time limit.
 
-## 9. 열린 연구 주제
+## 9. Open research topics
 
-- **R2. 에이전트 출력 형태:** 텍스트 코드 조각과 구조화 편집 연산(JSON 등) 중 어느 쪽의 성공률이 높은가.
-- **R3. 인간 패러다임 너머:** OOP 등을 전제하지 않는 구조. 동형 함수 병합, 의미 기반 분할, 전체 프로그램 최적화를 다룬다.
-- **R5. 협업과 배포의 기반(ADR-0145):** 동시 커밋을 받는 작업 공간 서버, 돌고 있는 프로그램의 정의를 바꾸는 런타임, 경쟁 구현의 조정기. 언어가 정하는 것은 관계(교환, 정제)이고 기구는 판정과 상한을 잰 뒤에 따로 결정한다. 정의 단위 교체는 닫힌 세계 최적화(§8.1)·런타임 의존 최저(§2)와 부딪치므로 빌드 방식 하나로 둔다. 타입의 읽기 집합이 선언 전체라 공유 타입의 편집이 넓게 번진다(백로그 `T1-54`).
-- **R4. 측정 축:** 처음부터 측정 대상으로 둔다.
-  - 대형 코드베이스 탐색·수정 정확도
-  - 질의당 토큰 비용과 슬라이스 크기
-  - 1회 성공률(재시도 없음, 문제·프롬프트 고정)
-  - Rust 습관 오류율
-  - 테스트 필요 면적과 미증명 면적의 추이
+- **R2. Form of agent output:** which has the higher success rate, text code fragments or structured edit operations (JSON and so on).
+- **R3. Beyond human paradigms:** structures that do not presuppose OOP and the like. It covers merging of isomorphic functions, meaning-based splitting and whole-program optimization.
+- **R5. The basis of collaboration and deployment (ADR-0145):** a workspace server that accepts concurrent commits, a runtime that replaces the definitions of a running program, a coordinator of competing implementations. What the language fixes is the relations (commutation, refinement), and the machinery is decided separately after the verdict and the upper bound are measured. Replacement per definition conflicts with closed-world optimization (§8.1) and least runtime dependency (§2), so it is kept as one build mode. The read set of a type is its whole declaration, so an edit to a shared type spreads widely (backlog `T1-54`).
+- **R4. Measurement axes:** these are objects of measurement from the start.
+  - Accuracy of navigation and modification in a large codebase
+  - Token cost per query and slice size
+  - First-attempt success rate (no retries, problems and prompts fixed)
+  - Rust habit error rate
+  - The trend of the area that needs tests and the unproved area
