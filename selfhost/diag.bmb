@@ -286,7 +286,7 @@ mod diag {
     fn codes_markdown() -> String {
         let t: Vec<Code> = codes();
         let g: Vec<Code> = groups();
-        let mut out: String = String::from("# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n");
+        let mut out: String = String::from("# Diagnostic codes\n\n> Generated: `bmb codes --md` writes it from `CODES` in `compiler/src/diag.rs`. Do not edit by hand.\n> A code is never changed or reused. The shape of a diagnostic is in `compiler/README.md`.\n");
         let mut k: usize = 0;
         while k < g.len()
             decreases g.len() - k,
@@ -295,11 +295,11 @@ mod diag {
             out.push_str(g[k].code.as_str());
             out.push_str("xx ");
             out.push_str(g[k].text.as_str());
-            out.push_str("\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+            out.push_str("\n\n| Code | Meaning |\n| --- | --- |\n");
             push_rows(&mut out, t.as_slice(), g[k].code.as_str());
             k = k + 1;
         }
-        out.push_str("\n## 은퇴한 코드(다시 쓰지 않는다)\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+        out.push_str("\n## Retired codes (never used again)\n\n| Code | Meaning |\n| --- | --- |\n");
         let r: Vec<Code> = retired();
         push_rows(&mut out, r.as_slice(), "");
         out
@@ -315,17 +315,17 @@ mod diag {
     #[effects(alloc)]
     fn groups() -> Vec<Code> {
         let mut v: Vec<Code> = Vec::new();
-        v.push(Code { code: String::from("E01"), text: String::from("어휘·구문") });
-        v.push(Code { code: String::from("E02"), text: String::from("Rust 습관(수정 제안 포함)") });
-        v.push(Code { code: String::from("E03"), text: String::from("이름") });
-        v.push(Code { code: String::from("E04"), text: String::from("타입·소유권") });
-        v.push(Code { code: String::from("E05"), text: String::from("명세") });
-        v.push(Code { code: String::from("E06"), text: String::from("효과·속성") });
-        v.push(Code { code: String::from("E07"), text: String::from("프로그램 구조") });
-        v.push(Code { code: String::from("E08"), text: String::from("증명 게이트") });
-        v.push(Code { code: String::from("W09"), text: String::from("계약 조정(경고, `bmb lint`·`bmb weaken`만)") });
-        v.push(Code { code: String::from("E10"), text: String::from("탈출구와 근거(ADR-0029)") });
-        v.push(Code { code: String::from("W10"), text: String::from("탈출구와 근거(경고, `bmb lint`만)") });
+        v.push(Code { code: String::from("E01"), text: String::from("Lexical and syntax") });
+        v.push(Code { code: String::from("E02"), text: String::from("Rust habits (with a suggested fix)") });
+        v.push(Code { code: String::from("E03"), text: String::from("Names") });
+        v.push(Code { code: String::from("E04"), text: String::from("Types and ownership") });
+        v.push(Code { code: String::from("E05"), text: String::from("Specifications") });
+        v.push(Code { code: String::from("E06"), text: String::from("Effects and attributes") });
+        v.push(Code { code: String::from("E07"), text: String::from("Program structure") });
+        v.push(Code { code: String::from("E08"), text: String::from("Proof gate") });
+        v.push(Code { code: String::from("W09"), text: String::from("Contract tuning (warnings, `bmb lint` and `bmb weaken` only)") });
+        v.push(Code { code: String::from("E10"), text: String::from("Escape hatches and rationale (ADR-0029)") });
+        v.push(Code { code: String::from("W10"), text: String::from("Escape hatches and rationale (warnings, `bmb lint` only)") });
         v
     }
 

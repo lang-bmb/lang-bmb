@@ -37,7 +37,7 @@
 
 <!-- reference:index begin (scripts/reference.py index --write; do not edit by hand) -->
 
-| 코드 | 뜻 | 장 |
+| Code | Meaning | Chapter |
 | --- | --- | --- |
 | E0101 | unexpected character | [01](01-lexical-and-syntax.md) |
 | E0102 | unterminated string literal | [01](01-lexical-and-syntax.md) |

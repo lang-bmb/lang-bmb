@@ -1,11 +1,11 @@
-# 진단 코드
+# Diagnostic codes
 
-> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.
-> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.
+> Generated: `bmb codes --md` writes it from `CODES` in `compiler/src/diag.rs`. Do not edit by hand.
+> A code is never changed or reused. The shape of a diagnostic is in `compiler/README.md`.
 
-## E01xx 어휘·구문
+## E01xx Lexical and syntax
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0101 | unexpected character |
 | E0102 | unterminated string literal |
@@ -17,9 +17,9 @@
 | E0108 | malformed integer literal: a digit outside its base, or a base prefix without digits |
 | E0109 | malformed float literal: digits on both sides of the point (`1.0`, `0.5`) and after an exponent `e` are required |
 
-## E02xx Rust 습관(수정 제안 포함)
+## E02xx Rust habits (with a suggested fix)
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0201 | `let` requires an explicit type |
 | E0202 | macros are not allowed |
@@ -75,9 +75,9 @@
 | E0232 | pattern form not allowed (guard, or, literal, nested, struct) |
 | E0233 | tuples, tuple structs and struct-like variants are not allowed |
 
-## E03xx 이름
+## E03xx Names
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0301 | unknown name |
 | E0302 | duplicate definition |
@@ -98,9 +98,9 @@
 | E0317 | a `break` or `continue` names a label no loop around it has |
 | E0318 | `const`s that refer to each other (ADR-0052 §3) |
 
-## E04xx 타입·소유권
+## E04xx Types and ownership
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0401 | type mismatch |
 | E0402 | unsupported type |
@@ -136,9 +136,9 @@
 | E0437 | a type a `const` cannot have: a `const` holds a value type, an integer, `bool` or `char`, or an array, struct or enum of them (ADR-0052 §2) |
 | E0438 | an inclusive range `lo..=hi` outside the range of a `for` loop |
 
-## E05xx 명세
+## E05xx Specifications
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0501 | a contract clause with a quantifier must be a call to a named predicate (`spec fn ... -> bool`); one without is an expression (ADR-0095 A2) |
 | E0502 | vacuous predicate used in a contract |
@@ -157,9 +157,9 @@
 | E0511 | `forall` and `exists` require at least one `#[trigger]` |
 | E0512 | the triggers of a `forall` or `exists` must together mention every bound variable |
 
-## E06xx 효과·속성
+## E06xx Effects and attributes
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0601 | function requires an `#[effects(..)]` attribute |
 | E0602 | unknown effect |
@@ -170,18 +170,18 @@
 | E0607 | `pure` listed with another effect, or an effect listed twice |
 | E0608 | a function value whose effects the generic function that calls it does not declare (ADR-0053 §5) |
 
-## E07xx 프로그램 구조
+## E07xx Program structure
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0701 | `main` must be `#[effects(io)] fn main() -> ()` |
 | E0702 | more than one `main` |
 | E0703 | items must be declared inside a `mod` |
 | E0704 | `mod` requires a `#[summary("..")]` attribute |
 
-## E08xx 증명 게이트
+## E08xx Proof gate
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0801 | precondition of a call may not hold |
 | E0802 | postcondition may not hold |
@@ -204,9 +204,9 @@
 | E0820 | a string position may not be a character boundary (`&s[a..b]` needs `s.is_char_boundary(a)`, `s.is_char_boundary(b)` and `a <= b`, ADR-0050 §2) |
 | E0823 | a type invariant may not hold where a value leaves the function's hands: a call argument, a return, a `&mut` parameter at exit, a loop head (ADR-0060 §2) |
 
-## W09xx 계약 조정(경고, `bmb lint`·`bmb weaken`만)
+## W09xx Contract tuning (warnings, `bmb lint` and `bmb weaken` only)
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | W0901 | preconditions are unsatisfiable together: the function can never be called and its proofs are vacuous |
 | W0902 | precondition is not needed by this function's proof |
@@ -227,25 +227,25 @@
 | W0910 | a loop of an `io` function prints and carries state whose every update is pure: the update can be a pure function, proved instead of tested |
 | W0908 | the contract is weaker than in the old version: a stronger `requires`, a weaker `ensures` or `pure` become `io` (`bmb weaken`, with the counterexample) |
 
-## E10xx 탈출구와 근거(ADR-0029)
+## E10xx Escape hatches and rationale (ADR-0029)
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E1001 | an escape (`assume`, `#[external_body]`) without a `#[rationale(..)]` before it |
 | E1002 | a malformed `#[rationale(..)]`: `kind` outside the list, no explanation, or not before an escape |
 | E1003 | `assume` takes one named predicate call, in executable code |
 | E1004 | `#[external_body]` on a spec fn, a proof fn or `main` |
 
-## W10xx 탈출구와 근거(경고, `bmb lint`만)
+## W10xx Escape hatches and rationale (warnings, `bmb lint` only)
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | W1001 | an unconfirmed rationale: what it is bound to changed, or it carries no hash (`bmb fix --confirm`) |
 | W1002 | an `assume` the proof does not need: the definition is proved without it |
 
-## 은퇴한 코드(다시 쓰지 않는다)
+## Retired codes (never used again)
 
-| 코드 | 뜻 |
+| Code | Meaning |
 | --- | --- |
 | E0814 | construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded) |
 | E0203 | `return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049) |

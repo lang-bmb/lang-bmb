@@ -733,30 +733,30 @@ pub fn codes_jsonl() -> String {
 /// `CODES` so it cannot drift (backlog 1A-08).
 pub fn codes_markdown() -> String {
     let groups = [
-        ("E01", "어휘·구문"),
-        ("E02", "Rust 습관(수정 제안 포함)"),
-        ("E03", "이름"),
-        ("E04", "타입·소유권"),
-        ("E05", "명세"),
-        ("E06", "효과·속성"),
-        ("E07", "프로그램 구조"),
-        ("E08", "증명 게이트"),
-        ("W09", "계약 조정(경고, `bmb lint`·`bmb weaken`만)"),
-        ("E10", "탈출구와 근거(ADR-0029)"),
-        ("W10", "탈출구와 근거(경고, `bmb lint`만)"),
+        ("E01", "Lexical and syntax"),
+        ("E02", "Rust habits (with a suggested fix)"),
+        ("E03", "Names"),
+        ("E04", "Types and ownership"),
+        ("E05", "Specifications"),
+        ("E06", "Effects and attributes"),
+        ("E07", "Program structure"),
+        ("E08", "Proof gate"),
+        ("W09", "Contract tuning (warnings, `bmb lint` and `bmb weaken` only)"),
+        ("E10", "Escape hatches and rationale (ADR-0029)"),
+        ("W10", "Escape hatches and rationale (warnings, `bmb lint` only)"),
     ];
     let mut out = String::from(
-        "# 진단 코드\n\n> 생성 파일: `bmb codes --md`가 `compiler/src/diag.rs`의 `CODES`에서 만든다. 손으로 고치지 않는다.\n> 코드는 바꾸거나 재사용하지 않는다. 진단 형식은 `compiler/README.md`.\n",
+        "# Diagnostic codes\n\n> Generated: `bmb codes --md` writes it from `CODES` in `compiler/src/diag.rs`. Do not edit by hand.\n> A code is never changed or reused. The shape of a diagnostic is in `compiler/README.md`.\n",
     );
     for (prefix, title) in groups {
         out.push_str(&format!(
-            "\n## {prefix}xx {title}\n\n| 코드 | 뜻 |\n| --- | --- |\n"
+            "\n## {prefix}xx {title}\n\n| Code | Meaning |\n| --- | --- |\n"
         ));
         for (c, d) in CODES.iter().filter(|(c, _)| c.starts_with(prefix)) {
             out.push_str(&format!("| {c} | {} |\n", d.replace('|', "\\|")));
         }
     }
-    out.push_str("\n## 은퇴한 코드(다시 쓰지 않는다)\n\n| 코드 | 뜻 |\n| --- | --- |\n");
+    out.push_str("\n## Retired codes (never used again)\n\n| Code | Meaning |\n| --- | --- |\n");
     for (c, d) in RETIRED {
         out.push_str(&format!("| {c} | {} |\n", d.replace('|', "\\|")));
     }

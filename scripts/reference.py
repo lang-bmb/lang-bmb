@@ -33,7 +33,7 @@ def codes(root=ROOT):
     live, retired, gone = {}, set(), False
     for line in text.splitlines():
         if line.startswith("## "):
-            gone = "은퇴" in line
+            gone = "Retired" in line
         m = re.match(r"\| ([EW]\d{4}) \| (.*) \|$", line)
         if m:
             if gone:
@@ -90,7 +90,7 @@ def problems(root=ROOT):
 def index_block(root=ROOT):
     live, _ = codes(root)
     named = where(root)
-    lines = [BEGIN, "", "| 코드 | 뜻 | 장 |", "| --- | --- | --- |"]
+    lines = [BEGIN, "", "| Code | Meaning | Chapter |", "| --- | --- | --- |"]
     for c in sorted(live):
         if language(c):
             files = ", ".join(f"[{f[:2]}]({f})" for f in named.get(c, [])) or "—"
