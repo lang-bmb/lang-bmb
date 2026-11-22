@@ -362,14 +362,14 @@ def cell(s):
 def table_block(root=ROOT):
     cover, _ = coverage(root)
     exempt = exemptions(root)
-    lines = [BEGIN, "", "| 장 | 절 | 사례 수 | 사례 (또는 면제 사유) |", "| --- | --- | --- | --- |"]
+    lines = [BEGIN, "", "| Chapter | Section | Cases | Cases (or the reason for the exemption) |", "| --- | --- | --- | --- |"]
     bare = 0
     for (ch, h), names in cover.items():  # in chapter order, then the order of the headings
         why = exempt.get(ch, {}).get(h)
-        what = ", ".join(f"`{n}`" for n in names) if names else f"면제: {why}" if why else "없음"
+        what = ", ".join(f"`{n}`" for n in names) if names else f"exempt: {why}" if why else "none"
         bare += not names and not why
         lines.append(f"| {ch} | {cell(h)} | {len(names)} | {cell(what)} |")
-    lines += ["", f"절 {len(cover)}개, 사례 {len(cases(root))}개, 사례도 면제도 없는 절 {bare}개.", "", END]
+    lines += ["", f"{len(cover)} sections, {len(cases(root))} cases, {bare} sections with neither a case nor an exemption.", "", END]
     return "\n".join(lines)
 
 

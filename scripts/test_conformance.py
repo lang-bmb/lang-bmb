@@ -161,18 +161,18 @@ def tree_rules():
         assert not has(bad, "`Tokens`")
 
         # an incomplete chapter is tolerated by the table: it says what is missing
-        assert "| 02 | Units | 0 | 없음 |" in conformance.table_block(root)
-        assert "| 01 | `///` and \\| bars | 0 | 없음 |" in conformance.table_block(root)
+        assert "| 02 | Units | 0 | none |" in conformance.table_block(root)
+        assert "| 01 | `///` and \\| bars | 0 | none |" in conformance.table_block(root)
 
         put(root, "01", "doc_ok", case(sections=["`///` and | bars", "Tokens"]))
-        (root / conformance.EXEMPT).write_text(json.dumps({"02": {"Units": "색인뿐이다"}}), encoding="utf-8")
+        (root / conformance.EXEMPT).write_text(json.dumps({"02": {"Units": "only an index"}}), encoding="utf-8")
         assert has(conformance.problems(root), "README.md is stale")
         write_table(root)
         assert conformance.problems(root) == []
         block = conformance.table_block(root)
         assert "| 01 | Tokens | 2 | `doc_ok`, `tokens_ok` |" in block
-        assert "| 02 | Units | 0 | 면제: 색인뿐이다 |" in block
-        assert "절 3개, 사례 2개, 사례도 면제도 없는 절 0개." in block
+        assert "| 02 | Units | 0 | exempt: only an index |" in block
+        assert "3 sections, 2 cases, 0 sections with neither a case nor an exemption." in block
 
         # exemptions: of an existing section, without cases, with a reason
         (root / conformance.EXEMPT).write_text(json.dumps(
@@ -181,7 +181,7 @@ def tree_rules():
         assert has(bad, "`Tokens` of chapter 01 has cases")
         assert has(bad, "`Gone` is not a section of chapter 01")
         assert has(bad, "`Units` of chapter 02 has no reason")
-        (root / conformance.EXEMPT).write_text(json.dumps({"02": {"Units": "색인뿐이다"}}), encoding="utf-8")
+        (root / conformance.EXEMPT).write_text(json.dumps({"02": {"Units": "only an index"}}), encoding="utf-8")
         write_table(root)
         assert conformance.problems(root) == []
 
