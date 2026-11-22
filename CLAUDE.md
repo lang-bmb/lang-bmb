@@ -15,7 +15,7 @@ BMB v2: AI 에이전트가 쓰고 결정론적 도구로 다루는 언어. 본�
 - `dev-docs/reports/progress.md`: 진행 리포트(부트스트랩·언어·성능·생태계·미션 효용). 한 파일을 제자리에서 갱신하고 지난 판은 git 이력으로 본다. 표는 `scripts/progress.py --write`, 주기는 주 1회와 국면 종료.
 - `dev-docs/HEALTH.md`: 지속 관리 지침(다섯 축 지표, 래칫 기준선 `dev-docs/health/baseline.json`, 신뢰 기반, 자립 사다리, 실용성 점검). 푸시는 `scripts/ship.sh`로 한다.
 - `compiler/`: 컴파일러(Rust). 사용법과 표면 규칙은 `compiler/README.md`. 변경 후 `cargo fmt`, `cargo clippy --all-targets`, `cargo test` 통과.
-- v0(v0.100) 코드는 `legacy/v0` 브랜치에만 있다. v0 코드는 가져오지 않는다. 설계와 측정 자산만 참고한다.
+- v0(v0.100) 코드는 보관 저장소 `lang-bmb/lang-bmb-legacy-v0`에 있다(2026-11-22에 `legacy/v0` 브랜치에서 이력째 옮겼다). v0 코드는 가져오지 않는다. 설계와 측정 자산만 참고한다.
 
 ## 커밋 규칙
 
