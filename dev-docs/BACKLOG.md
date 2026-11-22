@@ -137,7 +137,6 @@
 
 | ID | 태스크 | 완료 기준 | 의존 | 상태 |
 | --- | --- | --- | --- | --- |
-| INF-44 | 저장소 재편 1: `bmb-works`의 뼈대와 옮길 것의 목록 (ADR-0147) | `bmb-works`에 `lang-bmb` 서브모듈, 안내문, 그리고 `lang-bmb`의 추적 경로마다 갈 곳(제품에 남음·`docs/decisions`·`bmb-works`)과 고칠 참조(`dev-docs/`를 읽는 코드, 백로그 ID)를 적은 목록. `lang-bmb`에서는 아무것도 지우지 않는다 | — | ✅ 2026-11-22 `bmb-works`의 브랜치 `claude/nifty-edison-otse97`(커밋 `3265bfb`): 서브모듈 `lang-bmb`(`145df12`), 안내문, `tools/inventory.py`와 `migration/inventory.md`. 추적 경로 6,296개: 남는 것 3,631(그중 둘은 다시 쓰고 하나는 가른다), `docs/decisions`로 146, `bmb-works`로 2,519(결과 행 2,313, 과정 문서와 스크립트 206). 남는 파일 안의 고칠 참조: 옮겨 가는 `dev-docs/` 경로 261개, 백로그 ID 3,788개(`compiler` 1,060, ADR 966, `bench` 682, `docs` 491, `tests` 351). `bmb-works`의 main에는 올리지 않았다(사람 확인 뒤) |
 | INF-45 | 저장소 재편 2: 게이트를 둘로 | 제품 게이트(빌드·시험·증명·차등 시험·고정점·벤치 하네스의 자기 검사)는 `lang-bmb`만으로 통과. 과정 게이트(백로그, health 래칫, 진행·효용 리포트, 재생성)와 두 게이트를 차례로 도는 `ship`은 `bmb-works`. 벤치 결과 행의 자리를 인자로 | INF-44 | ⏳ |
 | INF-46 | 저장소 재편 3: 공개 문서 | `docs/ROADMAP.md`를 상태와 계획으로, 가설 등록부를 '주장과 근거'로, 언어 안내와 시작 문서. 백로그 ID와 `dev-docs` 경로 없이 선다 | INF-44 | ⏳ 영어로 쓴다(사람 결정 2026-11-22, ADR-0147 결정 7) |
 | INF-47 | 저장소 재편 4: OSS 기본 파일 | `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, 이슈·PR 템플릿, 보안 안내 | INF-44 | 🚫 라이선스는 사람 결정(ADR-0147 결정 7) |
