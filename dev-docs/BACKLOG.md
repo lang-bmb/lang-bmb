@@ -139,7 +139,7 @@
 | --- | --- | --- | --- | --- |
 | INF-45 | 저장소 재편 2: 게이트를 둘로 | 제품 게이트(빌드·시험·증명·차등 시험·고정점·벤치 하네스의 자기 검사)는 `lang-bmb`만으로 통과. 과정 게이트(백로그, health 래칫, 진행·효용 리포트, 재생성)와 두 게이트를 차례로 도는 `ship`은 `bmb-works`. 벤치 결과 행의 자리를 인자로 | INF-44 | ⏳ |
 | INF-46 | 저장소 재편 3: 공개 문서 | `docs/ROADMAP.md`를 상태와 계획으로, 가설 등록부를 '주장과 근거'로, 언어 안내와 시작 문서. 백로그 ID와 `dev-docs` 경로 없이 선다 | INF-44 | ⏳ 영어로 쓴다(사람 결정 2026-11-22, ADR-0147 결정 7) |
-| INF-47 | 저장소 재편 4: OSS 기본 파일 | `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, 이슈·PR 템플릿, 보안 안내 | INF-44 | 🚫 라이선스는 사람 결정(ADR-0147 결정 7) |
+| INF-47 | 저장소 재편 4: OSS 기본 파일 | `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, 이슈·PR 템플릿, 보안 안내 | INF-44 | 🚫 `lang-bmb`의 라이선스는 사람 결정(ADR-0147 결정 7). `bmb-works`는 라이선스 없음으로 정해졌다(2026-11-22) |
 | INF-49 | 저장소 재편: `lang-bmb`에 남는 한국어를 영어로 | `lang-bmb`에 남는 파일의 한글 줄 13,140개(1,919개 파일, 2.4MB; `bmb-works`의 `tools/inventory.py`로 셈): ADR 146개(862KB), 포트의 요약 1,513줄(334KB), `docs/`(225KB), `compiler/README.md`와 시험(195KB), `tests/`의 설명(약 90KB), 벤치의 안내문. 동결 집합 안의 글(`bench/review` 289KB, `bench/intent` 96KB 등)은 자료라 그대로 둔다(자리는 사람 결정: `bench/`를 통째로 `bmb-works`로 옮기는 안). 통과: 남는 파일에 한글이 없다(게이트의 검사, 자료는 목록으로 뺀다), 포트는 정규형과 증명 그대로 | INF-44 | 🔄 2026-11-22 사람 결정("권장안 채택"): ADR은 모두 옮겨 쓴다, 벤치는 통째로 `bmb-works`로. ADR부터 `docs/decisions/`에 |
 | INF-48 | 저장소 재편 5: 옮기기와 죽은 참조 검사 | `dev-docs`의 이력을 `bmb-works`로 복사, ADR을 `docs/decisions`로, `lang-bmb`에서 과정 문서·결과 행·`CLAUDE.md`를 지움, 남는 파일의 백로그 ID를 걷음(`INF-44`의 목록: ADR 밖에 2,822개. ADR 안의 966개는 채택된 기록이라 고치지 않고 검사에서 뺀다), `lang-bmb` 게이트에 죽은 참조 검사(`dev-docs/`, 백로그 ID). 한 번에 한다 | INF-45, INF-46, 3P-05b | ⏳ 돌고 있는 측정 뒤(ADR-0147 결정 8) |
 
