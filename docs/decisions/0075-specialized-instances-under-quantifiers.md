@@ -1,0 +1,43 @@
+# ADR-0075: The ground instance retry adds specialized instances for applications under quantifiers, and completeness is judged per application
+
+- Status: Accepted (Accepted (autonomous), AUTONOMY.md §4). Supplements ADR-0023 (ground instance retry). The retry still runs only when the first query is `unknown`
+- Date: 2026-11-01
+- Related: ADR-0023, ADR-0064 (definitions that bind an array and MBQI), backlog T0-19, T0-24
+
+## Context
+
+- In the hidden specification strength check of T0-10 BVB, six sessions that were proved and had the right signature failed as `undecided`. T0-19 ran the same judge as is and split the cause in two (`dev-docs/experiments/T0-19/results.md` §1·§2).
+- **A specification with the same meaning is undecided (form (ii)):** when the agent writes an existential form that uses an index predicate application as the trigger (`r == !(forall|j| !#[trigger] hit_at(arr, k, j))`), the judge's query has no term that matches that trigger. Z3's model-based instantiation should fill the gap, but the definition axiom of `hit_at` binds an array-sort variable and it ends with `incomplete (theory array)`. The retry instantiates only applications outside quantifiers (`collect_apps` does not descend into `forall`), so `hit_at(arr, k, j)` has no instance. The same form also blocked the agent's own proofs (809·max_of_list).
+- **A weak specification is undecided too:** for the four weak reference solutions of the tasks (454·804·808·809), even though the solver gives a real counterexample (454: `text = [122]`), the retry saw "a `forall` in the body of a definition means incomplete" and discarded the model. So `undecided` could not tell weak from same-meaning.
+- The prototype (`specialize.py`) solved all six cases as `unsat` (rlimit 7~14K) and added nothing to the recursive and weak cases.
+
+## Decision
+
+1. The instances of the retry are made from every application in the query (and in the bodies of instances already added). The variables bound by `forall`·`exists`·`let` at the place where the application sits are tracked with it (`verify::collect_apps`).
+2. An application with no argument that mentions a bound variable gets the ground instance `(=> guard (= f(args) body[args]))`, as now.
+3. An application of a **non-recursive** definition with an argument that mentions a bound variable gets a **specialized instance**: the arguments that do not mention bound variables are substituted, the remaining parameters are quantified with the sorts of the definition, and that application is used as the pattern. `(forall (rest) (! (=> guard (= f(..) body[..])) :pattern (f(..))))`. At the next depth its body is put under the same quantifier and applications are searched for again (`verify::instance`).
+4. Recursive definitions (recursive `spec fn`s, the validity functions of recursive data types) get no instance for applications under quantifiers.
+5. The completeness that lets a `sat` of the retry be used as a counterexample is "every application (including those under quantifiers) got an instance, and nothing was cut off at the depth (3)". A `forall` left in the body of a definition is not in itself incompleteness. Otherwise it is the E0811 of "unconfirmed counterexample", as in ADR-0023.
+6. The satisfiability checks (ADR-0069) also use the same retry with the same meaning. The precondition satisfiability check (W0901) accepts a complete `sat` from the retry it already had as satisfiable (before, only `unsat`). For the reach points of the vacuity check (W0905), if the probe and the full query are `unknown`, the retry is solved once more on the probe share (`probe_limit`, rlimit 50,000): `unsat` is refuted, a complete `sat` is reachable.
+
+## Rationale
+
+- **Cause and layer:** the prover encoding (compiler layer). The judge (frozen harness) and the prompt are not changed (candidates (B)·(D) of T0-19 §5 rejected).
+- **Soundness (proof):** a specialized instance is the quantified definition with arguments substituted, so it is a consequence of it. An `unsat` obtained with it is an `unsat` under the definition.
+- **Soundness (counterexample):** when complete, the retry query evaluates defined symbols only at points the instances cover (ground points and the pieces of specialized instances). If in the model the defined symbols are replaced at uncovered points by the value of the body (for non-recursive ones in dependency order; for recursive ones the ground points are closed under calls, so by induction on the decreasing measure it is the same value), the truth of the query is unchanged and the whole definition holds. So that model is a model of the original query. The remaining quantifiers (the `forall` of bodies, the assumptions of the query, the specialized instances) go through model checking before Z3 gives `sat` (since ADR-0023 the query's own `forall`s were trusted in that way).
+- **Canonical way:** bringing it into a decidable fragment by quantifier instantiation over ground terms (Ge·de Moura, CAV 2009 "Complete instantiation for quantified formulas in SMT"). After specialization no array-sort variable is quantified, so it falls in the essentially uninterpreted fragment. It is the same direction as the decision procedure of the array property fragment (Bradley·Manna·Sipma, VMCAI 2006) instantiating over the index set.
+- **Why recursion is excluded:** if the piece of a recursive definition is added as a quantifier, the recursive application in its body becomes an application under a quantifier again and the pieces grow with every depth, and the first version of the prototype (specializing the whole definition per array) ran to rlimit 5,000,000 on recursive B. Recursion is a problem that needs induction (T1-24·T1-25) and is not solved by instances.
+- **The share of the vacuity check retry (measurement):** retrying with the limit of reach points (rlimit 1,000,000) gave V12 292 → 261 but V11 263,981,532 → 354,329,360 (+34%, over the +10% budget). It runs to the limit at every undecided point. With the probe share (50,000) it is V12 → 265 (26 of the same 30 decided) and V11 → 270,327,604 (+2.4%), so this was chosen.
+- **Measurement (before → this decision on the same working tree, including the new corpus files):**
+  - The T0-19 verdict table (`dev-docs/experiments/T0-19/results-t0-24.jsonl`, the frozen judge as is): of 65 verdicts, accepted 40 → 47, `undecided` 18 → 9. The six of same-meaning form (ii) (454·804·808 H, 809 D, choose_odd D·Q2) are accepted, the agent proofs of 809 D·max_of_list D pass, and the four weak references become `refuted` (counterexample confirmed). The remaining nine are all recursive predicates.
+  - Failing corpus: the expected output of existing files is byte-identical (no E0811 → E0802 change).
+  - V4 7,309,829 → 7,315,846 (the difference is only the cost of two definitions of the new corpus file now being proved), V3 2 → 0 (the same file), V5·V7·V8·V9·V10 unchanged (V7 0.0, V8 24,316,281, V10 11,946,407). The retry runs only when the first query is `unknown`, so it does not touch existing proofs.
+  - V11 263,981,532 → 270,327,604 (W0905 243,327,287 → 249,666,361, W0901 20,654,245 → 20,661,243), V12 292 → 265 (W0905 287 → 261, W0901 5 → 4). The baseline (285) is the value before the new corpus files, and the seven undecided of that file also became 0.
+
+## Consequences
+
+- The verdict of decided obligations does not change (the retry runs only when the first query is `unknown`). What changes is only undecided → proved (same meaning) and undecided → confirmed counterexample (E0811 → E0802).
+- The key of the proof cache is the first query text, so it is unchanged, and the retry text replayed from the cache contains the new instances.
+- Measurement condition (ADR-0070): the compiler tree changes, so it is a new condition. Recorded results stay as they are, and the hidden check of the frozen harness calls `bmb verify`, so later runs use the new verdict.
+- Tests: `verify::tests::applications_under_quantifiers_get_specialized_instances`, `recursive_definitions_under_quantifiers_leave_the_instances_incomplete`, `a_quantifier_in_a_body_keeps_the_instances_complete`, `ground_instances_take_datatype_arguments`, corpus `tests/verify/pass/index_preds.bmb` (two E0811 on the previous compiler), `tests/verify/fail/weak_witness.bmb` (E0811 → E0802, counterexample `text = [122]`).
+- Revert: if `collect_apps` does not descend into quantifiers and `ground_instances` treats a `forall` in a body as incomplete, it is ADR-0023 as it was. If the satisfiability checks discard the `sat` of the retry and the retry of the vacuity check is removed, it is ADR-0069 as it was.
