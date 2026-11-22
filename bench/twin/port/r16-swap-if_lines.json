@@ -19,6 +19,17 @@
    "fmt::Printer::lines_of"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::Printer::expr_stmt",
+   "fmt::Printer::if_lines",
+   "fmt::Printer::multiline_value"
+  ],
+  "bmb": [
+   "fmt::Printer::if_lines",
+   "fmt::Printer::lines_of"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -194,6 +205,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

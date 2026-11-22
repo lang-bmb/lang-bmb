@@ -15,6 +15,18 @@
    "main::step"
   ]
  },
+ "must_change": {
+  "bmb": [
+   "vm::drop",
+   "vm::discard",
+   "main::step"
+  ],
+  "rust": [
+   "vm::drop",
+   "vm::discard",
+   "main::step"
+  ]
+ },
  "oracle": {
   "bmb": [
    [
@@ -173,6 +185,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

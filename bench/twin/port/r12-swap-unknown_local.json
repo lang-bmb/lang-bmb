@@ -25,6 +25,23 @@
    "body::Body::var_place"
   ]
  },
+ "must_change": {
+  "rust": [
+   "check::Checker::expr_inner",
+   "check::Checker::place",
+   "check::Checker::place_of_inner",
+   "check::Checker::ref_arg",
+   "check::Checker::unknown_local"
+  ],
+  "bmb": [
+   "body::Body::place_index",
+   "body::Body::place_var",
+   "body::Body::ref_arg",
+   "body::Body::unknown_local",
+   "body::Body::var_expr",
+   "body::Body::var_place"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -248,6 +265,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

@@ -20,6 +20,18 @@
    "fmt::type_hashes_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::qualified_hashes",
+   "fmt::type_hashes",
+   "fmt::type_hashes_renamed"
+  ],
+  "bmb": [
+   "fmt::qualified_hashes",
+   "fmt::type_hashes",
+   "fmt::type_hashes_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -174,6 +186,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

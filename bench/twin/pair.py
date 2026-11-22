@@ -32,7 +32,9 @@ Task kinds (JSON files under tasks/):
 
 Agents: `oracle` replays the task's scripted calls for the arm, and so does
 each of its `weak` controls (the gate: every oracle succeeds, every weak
-control fails the check it names: answer, build, corpus or scope);
+control fails the check it names: answer, build, corpus, scope or done:
+a task's `must_change` lists the definitions the change must touch, and a
+control that does nothing fails it);
 `openai:MODEL` and `anthropic:MODEL` run a real model (ADR-0066).
 
   pair.py check [--tasks DIR]               twins agree on the corpus, oracles
@@ -768,8 +770,12 @@ def judge_change(task, arm, root, before, work):
                                                         else run_cases(exe, cases))
     out["out_of_scope"] = out_of_scope(task, arm, before, after)
     out["changed"] = changed(before, after)
+    # The change that was asked for took place (backlog 3P-13): every
+    # definition of `must_change` changed, appeared or went. Without it a
+    # session that changes nothing passes the three checks above.
+    out["not_done"] = sorted(set(task.get("must_change", {}).get(arm, [])) - set(out["changed"]))
     out["success"] = (out["built"] and out["tests"] is not False and out["corpus_passed"] == len(cases)
-                      and not out["out_of_scope"])
+                      and not out["out_of_scope"] and not out["not_done"])
     return out
 
 
@@ -1104,6 +1110,7 @@ def check_twins(fixture):
 WEAK_CHECKS = {
     "corpus": lambda r: r.get("built") and r["corpus_passed"] < r["corpus_total"],
     "scope": lambda r: bool(r.get("out_of_scope")),
+    "done": lambda r: bool(r.get("not_done")),
     "build": lambda r: not r.get("built"),
     "answer": lambda r: not r["success"],
 }

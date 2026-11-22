@@ -20,6 +20,18 @@
    "parser::Parser::range_bound_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "parser::Parser::parse_for",
+   "parser::Parser::range_bound",
+   "parser::Parser::range_bound_renamed"
+  ],
+  "bmb": [
+   "parser::Parser::parse_for",
+   "parser::Parser::range_bound",
+   "parser::Parser::range_bound_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -198,6 +210,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

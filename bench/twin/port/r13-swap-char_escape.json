@@ -19,6 +19,17 @@
    "lexer::string_lit"
   ]
  },
+ "must_change": {
+  "rust": [
+   "lexer::char_escape",
+   "lexer::lex_as"
+  ],
+  "bmb": [
+   "lexer::char_escape",
+   "lexer::char_lit",
+   "lexer::string_lit"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -170,6 +181,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

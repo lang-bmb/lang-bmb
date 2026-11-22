@@ -19,6 +19,17 @@
    "fmt::Printer::type_def"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::Printer::module",
+   "fmt::Printer::type_def",
+   "fmt::type_text"
+  ],
+  "bmb": [
+   "fmt::Printer::module",
+   "fmt::Printer::type_def"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -197,6 +208,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

@@ -20,6 +20,18 @@
    "closures::local_types"
   ]
  },
+ "must_change": {
+  "rust": [
+   "closures::bound_names",
+   "closures::captures",
+   "closures::local_types"
+  ],
+  "bmb": [
+   "closures::bound_names",
+   "closures::captures",
+   "closures::local_types"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -171,6 +183,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

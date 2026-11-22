@@ -265,6 +265,11 @@ class Twin:
         return True
 
 
+# The control that does nothing: the change did not take place (`must_change`
+# is the scope: what the reference solution changes, backlog 3P-13).
+NOTHING = {"fails": "done", "bmb": [], "rust": []}
+
+
 def weak(arm, twin, kind):
     """Calls that spoil a solution: `scope` edits a function no task
     names, `corpus` changes what every diagnostic prints."""
@@ -440,18 +445,19 @@ def make(commit):
                 "commit": commit,
                 "prompt": {arm: PROMPT[family].format(**t["names"][arm]) for arm in ("bmb", "rust")},
                 "scope": t["scope"],
+                "must_change": t["scope"],
                 "oracle": t["oracle"],
                 "weak": [{"fails": k, **{arm: t["oracle"][arm] + weak(arm, twin, k) for arm in ("bmb", "rust")}}
-                         for k in ("scope", "corpus")],
+                         for k in ("scope", "corpus")] + [NOTHING],
             }
             out[tid + ".json"] = json.dumps(task, indent=1, ensure_ascii=False) + "\n"
     me = sys.modules[__name__]
     for t in port_hand.tasks(twin, me):
         tid = f"r{len(out) + 1:02d}-{t['family']}-{t['name']}"
         task = {"id": tid, "kind": "change", "family": t["family"], "fixture": "port", "commit": commit,
-                "prompt": t["prompt"], "scope": t["scope"], "oracle": t["oracle"],
+                "prompt": t["prompt"], "scope": t["scope"], "must_change": t["scope"], "oracle": t["oracle"],
                 "weak": [{"fails": k, **{arm: t["oracle"][arm] + weak(arm, twin, k) for arm in ("bmb", "rust")}}
-                         for k in ("scope", "corpus")]}
+                         for k in ("scope", "corpus")] + [NOTHING]}
         out[tid + ".json"] = json.dumps(task, indent=1, ensure_ascii=False) + "\n"
     return out
 

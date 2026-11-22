@@ -22,6 +22,20 @@
    "decls::Checker::vec_type"
   ]
  },
+ "must_change": {
+  "rust": [
+   "check::Checker::targ_ok",
+   "check::Checker::vec_elem_ok",
+   "check::Checker::vec_elem_ok_renamed",
+   "check::Checker::vec_type"
+  ],
+  "bmb": [
+   "decls::Checker::targ_ok",
+   "decls::Checker::vec_elem_ok",
+   "decls::Checker::vec_elem_ok_renamed",
+   "decls::Checker::vec_type"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -224,6 +238,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

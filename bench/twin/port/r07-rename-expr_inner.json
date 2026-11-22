@@ -20,6 +20,18 @@
    "body::Body::expr_inner_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "check::Checker::expr",
+   "check::Checker::expr_inner",
+   "check::Checker::expr_inner_renamed"
+  ],
+  "bmb": [
+   "body::Body::expr",
+   "body::Body::expr_inner",
+   "body::Body::expr_inner_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -198,6 +210,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

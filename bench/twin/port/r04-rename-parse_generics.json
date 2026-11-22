@@ -24,6 +24,22 @@
    "parser::Parser::parse_type_def"
   ]
  },
+ "must_change": {
+  "rust": [
+   "parser::Parser::parse_fn",
+   "parser::Parser::parse_generics",
+   "parser::Parser::parse_generics_renamed",
+   "parser::Parser::parse_impl",
+   "parser::Parser::parse_type_def"
+  ],
+  "bmb": [
+   "parser::Parser::parse_fn",
+   "parser::Parser::parse_generics",
+   "parser::Parser::parse_generics_renamed",
+   "parser::Parser::parse_impl",
+   "parser::Parser::parse_type_def"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -226,6 +242,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

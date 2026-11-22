@@ -18,6 +18,16 @@
    "types::reserved_name"
   ]
  },
+ "must_change": {
+  "rust": [
+   "check::primitive_name",
+   "check::reserved_name"
+  ],
+  "bmb": [
+   "types::primitive_name",
+   "types::reserved_name"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -121,6 +131,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

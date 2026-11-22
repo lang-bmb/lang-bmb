@@ -25,6 +25,23 @@
    "fmt::qualified_text_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "escape::Hashes::of",
+   "fmt::caller_text",
+   "fmt::qualified_hashes",
+   "fmt::qualified_text",
+   "fmt::qualified_text_renamed",
+   "incremental::Session::keys",
+   "lib::dump_stage"
+  ],
+  "bmb": [
+   "fmt::caller_text",
+   "fmt::qual_row",
+   "fmt::qualified_text",
+   "fmt::qualified_text_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -371,6 +388,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

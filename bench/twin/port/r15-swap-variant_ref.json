@@ -21,6 +21,19 @@
    "fmt::Printer::variant_ref"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::IdMode::variant_ref",
+   "fmt::Printer::expr_raw",
+   "fmt::Printer::pat"
+  ],
+  "bmb": [
+   "fmt::Printer::call_text",
+   "fmt::Printer::pat",
+   "fmt::Printer::path_text",
+   "fmt::Printer::variant_ref"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -196,6 +209,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

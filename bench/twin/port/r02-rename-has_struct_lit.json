@@ -20,6 +20,18 @@
    "fmt::has_struct_lit_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::Printer::cond",
+   "fmt::has_struct_lit",
+   "fmt::has_struct_lit_renamed"
+  ],
+  "bmb": [
+   "fmt::Printer::cond",
+   "fmt::has_struct_lit",
+   "fmt::has_struct_lit_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -294,6 +306,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

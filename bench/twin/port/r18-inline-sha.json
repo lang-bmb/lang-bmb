@@ -20,6 +20,18 @@
    "identity::sha"
   ]
  },
+ "must_change": {
+  "rust": [
+   "identity::Ids::finish",
+   "identity::Ids::method_order",
+   "identity::sha"
+  ],
+  "bmb": [
+   "identity::Ids::finish",
+   "identity::Ids::method_order",
+   "identity::sha"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -342,6 +354,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

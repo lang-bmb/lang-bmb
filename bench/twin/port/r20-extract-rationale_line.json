@@ -18,6 +18,16 @@
    "fmt::rationale_text"
   ]
  },
+ "must_change": {
+  "rust": [
+   "fmt::Printer::rationale_line",
+   "fmt::rationale_text"
+  ],
+  "bmb": [
+   "fmt::Printer::rationale_line",
+   "fmt::rationale_text"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -145,6 +155,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

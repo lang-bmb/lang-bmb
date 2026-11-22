@@ -23,6 +23,21 @@
    "body::Body::while_stmt"
   ]
  },
+ "must_change": {
+  "rust": [
+   "check::Checker::expr_inner",
+   "check::Checker::spec_loop",
+   "check::Checker::spec_loop_renamed",
+   "check::Checker::stmt"
+  ],
+  "bmb": [
+   "body::Body::for_stmt",
+   "body::Body::loop_expr",
+   "body::Body::spec_loop",
+   "body::Body::spec_loop_renamed",
+   "body::Body::while_stmt"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -225,6 +240,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }

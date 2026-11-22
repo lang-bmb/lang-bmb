@@ -20,6 +20,18 @@
    "parser::Parser::attr_impl_path_renamed"
   ]
  },
+ "must_change": {
+  "rust": [
+   "parser::Parser::attr_impl_path",
+   "parser::Parser::attr_impl_path_renamed",
+   "parser::Parser::attrs"
+  ],
+  "bmb": [
+   "parser::Parser::attr_args",
+   "parser::Parser::attr_impl_path",
+   "parser::Parser::attr_impl_path_renamed"
+  ]
+ },
  "oracle": {
   "rust": [
    [
@@ -174,6 +186,11 @@
      }
     ]
    ]
+  },
+  {
+   "fails": "done",
+   "bmb": [],
+   "rust": []
   }
  ]
 }
