@@ -1,6 +1,6 @@
 # ADR-0076: The session output limit counts only visible output, and a response cut off at the output limit is continued once in the same turn
 
-- Status: Accepted (approved by the maintainer 2026-11-01 "recommendation adopted, approval items approved": recommendation (나) of backlog T0-16). Supplements ADR-0066 §3 (measurement conditions) and ADR-0070 (same conditions)
+- Status: Accepted (approved by the maintainer 2026-11-01 "recommendation adopted, approval items approved": recommendation (b) of backlog T0-16). Supplements ADR-0066 §3 (measurement conditions) and ADR-0070 (same conditions)
 - Date: 2026-11-01
 - Related: ADR-0021 §3 (session rules), ADR-0034 §2 (fairness), ADR-0066, ADR-0070, backlog T0-16, T0-27, T1-40
 
@@ -21,10 +21,10 @@
 ## Rationale
 
 - **Cause and the layer it belongs to:** the measurement condition (process). The limit counts reasoning tokens, so the same limit means different things for a reasoning model and a non-reasoning model (S1 fairness, ADR-0034 §2).
-- **Standard practice:** evaluations of reasoning models keep the reasoning budget apart from the output budget, or count only visible output. Fixing the reasoning length through the API (T0-16 candidate (다)) differs per provider and was not confirmed on the qwen gateway, so it was dropped.
+- **Standard practice:** evaluations of reasoning models keep the reasoning budget apart from the output budget, or count only visible output. Fixing the reasoning length through the API (T0-16 candidate (c)) differs per provider and was not confirmed on the qwen gateway, so it was dropped.
 - **Why bytes/4:** it does not depend on whether the provider reports reasoning tokens separately, and it gives both models the same rule from only what the model actually emitted visibly. The harness already counts the amount read the same way (tokens per query in `harness.py`, ceil(bytes/4)).
 - **Why continue only once:** it stops a cut-off first response from ending the whole session, but does not let endless reasoning extend the session without bound. The limit of 40 tool calls does not count the continuation request (it is not a tool call). The number of requests is kept in `model_usage.requests`.
-- **Rejected:** (가) the current condition as is (T0-16 candidate (가)). The qwen results keep measuring the token budget. Removing the session limit is not done, because ADR-0034 §2 requires the same budget for both arms.
+- **Rejected:** (a) the current condition as is (T0-16 candidate (a)). The qwen results keep measuring the token budget. Removing the session limit is not done, because ADR-0034 §2 requires the same budget for both arms.
 
 ## Consequences
 

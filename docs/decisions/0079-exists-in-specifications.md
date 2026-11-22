@@ -8,7 +8,7 @@
 
 - For existence-shaped contracts, agents first write Verus's `exists` quantifier. That is 11 of the 45 BVB sessions of the second pilot, all five existence-shaped tasks, and also qwen's BRB `t12` (`dev-docs/experiments/T0-19/results.md` §3).
 - BMB had no `exists`. The compiler rejected it with E0103 "expected `;`, found `:`" and a wrong mechanical fix ("insert `;` before `:`").
-- The shapes agents wrote instead (a recursive predicate, an index predicate trigger) meant the same but were shapes the judge could not decide (T0-19 (가)·(나)). (나) was solved by T0-24 (ADR-0075). The upstream cause, the absence of `exists`, remained.
+- The shapes agents wrote instead (a recursive predicate, an index predicate trigger) meant the same but were shapes the judge could not decide (T0-19 (a)·(b)). (b) was solved by T0-24 (ADR-0075). The upstream cause, the absence of `exists`, remained.
 - JUDGMENT §7: a restriction that is not in the ledger of conveniences given up (DESIGN §4.1) is a defect. `exists` is the standard Verus surface (DESIGN §1 "Verus-family specification syntax"), and making people write the same meaning as `!(forall|x| !P)` is a tightening that is not in the ledger.
 
 ## Decision

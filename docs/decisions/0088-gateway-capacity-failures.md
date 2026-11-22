@@ -25,7 +25,7 @@ The rule of ADR-0066 assumed a cause on the model side (context overflow, HTTP 4
 ## Rationale
 
 - Counting capacity-failure sessions as failures makes the measurement measure the gateway's operational state. Running the same set again at the same commit is not the "task retry" of ADR-0021 §3. It does not select after seeing the model's answer; it discards by rule a run in which the model could not answer.
-- **Rejected:** (가) running only the voided sessions again and swapping in the rows. That selects sessions within one run to run again, which does not fit the run-level rule (ADR-0077 §1). (나) retrying 402 too. The cap is daily, so a retry would wait for hours, which is the same as the run standing still in the meantime.
+- **Rejected:** (a) running only the voided sessions again and swapping in the rows. That selects sessions within one run to run again, which does not fit the run-level rule (ADR-0077 §1). (b) retrying 402 too. The cap is daily, so a retry would wait for hours, which is the same as the run standing still in the meantime.
 
 ## Consequences
 

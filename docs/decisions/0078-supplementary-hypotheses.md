@@ -1,6 +1,6 @@
 # ADR-0078: Registration of six supplementary hypotheses (H-EFFECT, H-INTENT, H-REVIEW, H-SMALL, H-REPAIR, H-COMPAT)
 
-- Status: Accepted (approved by the maintainer 2026-11-01 "recommendation adopted, approval items approved": recommendation (나) of §3 of the review `dev-docs/reviews/hypotheses-2026-11-01.md`). It adds rows to the hypothesis registry of ADR-0058 §4, so the pass criteria of T1 cover more
+- Status: Accepted (approved by the maintainer 2026-11-01 "recommendation adopted, approval items approved": recommendation (b) of §3 of the review `dev-docs/reviews/hypotheses-2026-11-01.md`). It adds rows to the hypothesis registry of ADR-0058 §4, so the pass criteria of T1 cover more
 - Date: 2026-11-01
 - Related: ADR-0034 (targets), ADR-0040·0058 (hypotheses), ADR-0030 (effects), ADR-0066 (measurement models), ADR-0076 (measurement condition), ADR-0077 (judging rule), backlog T1-42
 

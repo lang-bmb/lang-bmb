@@ -21,7 +21,7 @@
 
 - Using the D set from the range of m1 unchanged for BVB, which has 4.5 times as many tasks, is wrong in the direction of losing discriminating power. One task's share is 2.2%p, so the range of the variation will differ too. It is not known without measuring.
 - qwen has no repeat cost (ADR-0066 §2, local equipment behind the gateway). The time is about 8 minutes per qwen session. Five runs of one BVB edition take about 8 hours at parallelism 4, and BRB about 16 hours at parallelism 1 because of the wall-clock limit of the BRB verdict.
-- **Rejected:** (가) the global D as is. It has no discriminating power, so running more measurement lines only piles up "cannot be judged". (나) repeating sonnet too. It is at the ceiling, so the variation cannot be measured, and it is paid (the same reason as ADR-0077 (나)). (다) computing D with a per-task binomial model. Trials of the same task are not independent (ADR-0077 rationale), so the run-level range is measured.
+- **Rejected:** (a) the global D as is. It has no discriminating power, so running more measurement lines only piles up "cannot be judged". (b) repeating sonnet too. It is at the ceiling, so the variation cannot be measured, and it is paid (the same reason as ADR-0077 (b)). (c) computing D with a per-task binomial model. Trials of the same task are not independent (ADR-0077 rationale), so the run-level range is measured.
 
 ## Consequences
 
