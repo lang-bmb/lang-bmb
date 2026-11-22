@@ -24,6 +24,15 @@ target/debug/bmb verify tests/run/fn_values.bmb
 
 Z3와 LLVM(clang)이 필요하다. 판은 `scripts/toolchain.env`에 있다.
 
-## Rights
+## License
 
-All rights reserved. This repository is public to read; no license is granted to use, modify or distribute its contents.
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
