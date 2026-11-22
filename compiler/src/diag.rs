@@ -741,9 +741,15 @@ pub fn codes_markdown() -> String {
         ("E06", "Effects and attributes"),
         ("E07", "Program structure"),
         ("E08", "Proof gate"),
-        ("W09", "Contract tuning (warnings, `bmb lint` and `bmb weaken` only)"),
+        (
+            "W09",
+            "Contract tuning (warnings, `bmb lint` and `bmb weaken` only)",
+        ),
         ("E10", "Escape hatches and rationale (ADR-0029)"),
-        ("W10", "Escape hatches and rationale (warnings, `bmb lint` only)"),
+        (
+            "W10",
+            "Escape hatches and rationale (warnings, `bmb lint` only)",
+        ),
     ];
     let mut out = String::from(
         "# Diagnostic codes\n\n> Generated: `bmb codes --md` writes it from `CODES` in `compiler/src/diag.rs`. Do not edit by hand.\n> A code is never changed or reused. The shape of a diagnostic is in `compiler/README.md`.\n",
