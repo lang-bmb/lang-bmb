@@ -1,5 +1,5 @@
 #[summary("Places of attributes and type arguments: a duplicate unit summary, attributes before an impl block, reference arguments of the built-in Option and Result, a rationale on a function without an escape hatch")]
-#[summary("extra")]
+#[summary("second summary")]
 mod attr_places {
     struct P {
         x: i64,
@@ -13,7 +13,7 @@ mod attr_places {
         }
     }
 
-    /// A doc line.
+    /// Docs go on definitions.
     impl P {
         #[effects(pure)]
         fn twice(self: &P) -> i64
@@ -33,7 +33,7 @@ mod attr_places {
         0
     }
 
-    #[rationale(kind = boundary, "nothing")]
+    #[rationale(kind = boundary, "there is no escape hatch")]
     #[effects(pure)]
     fn lone() -> i64 {
         0

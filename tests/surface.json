@@ -216,8 +216,8 @@
    "src": "5ea2de427ceca69b"
   },
   "tests/check/err/attr_places.bmb": {
-   "out": "010af9b1da8506ee",
-   "src": "cd17caa6ac9af8c0"
+   "out": "2d421fc81a40e2cb",
+   "src": "2f566d1127f9adf6"
   },
   "tests/check/err/attrs.bmb": {
    "out": "a9b321987049b3dc",
