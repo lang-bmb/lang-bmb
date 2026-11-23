@@ -198,3 +198,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0145](0145-practices-are-payback-targets.md) | Development practices are also targets of payback | Accepted |
 | [0146](0146-text-search-and-bounded-twin-arm.md) | Text search of bodies `query text`; the BMB arm of the porting twins turns on the response window | Accepted |
 | [0147](0147-two-repositories.md) | Two repositories: the refined `lang-bmb` and the work-only `bmb-works` | Accepted |
+| [0148](0148-one-place-for-decision-records.md) | One place for decision records, `docs/adr`; nothing of the process stays in this repository | Accepted |

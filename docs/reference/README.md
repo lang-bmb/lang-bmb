@@ -2,7 +2,7 @@
 
 > Status: draft (backlog 5A-01). What it describes is the accepted language pinned by the frozen fingerprint (`tests/surface.json`).
 > Order of authority: the compiler's verdicts (pinned by the corpus) → this document. If the two differ, this document is wrong, and it is fixed.
-> The reasons for the design are in `docs/DESIGN.md` and the decision records (`docs/decisions/`). This document only states what is a program and what is not.
+> The reasons for the design are in `docs/DESIGN.md` and the decision records (`docs/adr/`). This document only states what is a program and what is not.
 
 ## Scope
 

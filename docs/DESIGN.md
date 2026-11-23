@@ -1,7 +1,7 @@
 # BMB design principles
 
 > Status: settled version v1.3 · 2026-11-16 (ADR-0142 the model of the language, ADR-0143 the standing of the surface succession) · 2026-11-11 (ADR-0114 the proof context of closures, ADR-0117 the summary of a definition) · 2026-11-09 (ADR-0102 the unit of judgement and the scope of principle 4) · 2026-10-26 (ADR-0045 judgement criteria, ADR-0046~0051 revisions of the language surface and the ledger. v1.1: ADR-0040 revision of premises E1~E3 and principle 4)
-> This document holds only the design that is settled now. The reasons for the decisions are in [`decisions/`](decisions/).
+> This document holds only the design that is settled now. The reasons for the decisions are in [`adr/`](adr/).
 
 ## 1. Definition
 

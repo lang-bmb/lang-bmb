@@ -31,7 +31,7 @@ The plan and where the work stands on it are in [`docs/ROADMAP.md`](docs/ROADMAP
 | [`docs/reference/`](docs/reference/) | Language reference and the conformance tests that follow it |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Stages, decision gates, current position, plan |
 | [`docs/CLAIMS.md`](docs/CLAIMS.md) | Each claim, its state, the evidence |
-| [`docs/decisions/`](docs/decisions/) | Decision records (ADRs) |
+| [`docs/adr/`](docs/adr/) | Decision records (ADRs) |
 | [`docs/diagnostics.md`](docs/diagnostics.md) | Diagnostic codes |
 | [`compiler/README.md`](compiler/README.md) | Using the compiler; surface rules |
 

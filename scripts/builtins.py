@@ -119,17 +119,17 @@ def raw(rows: list) -> str:
         mut = "mut " if n else ""
         helpers += f"    #[effects(alloc)]\n    fn tys{n}({ps}) -> Vec<ast::TypeKind> {{\n        let {mut}v: Vec<ast::TypeKind> = Vec::new();\n{body}        v\n    }}\n\n"
     return (
-        '#[summary("검사기의 내장 선언: scripts/builtins.py가 아무것도 선언하지 않는 프로그램의 `bmb dump decls`에서 만든다(손으로 고치지 않는다). '
-        'stage0의 Checker::new·system_builtins·builtin_adts의 자리 (ADR-0091, 백로그 4D-03d)")]\n'
+        "#[summary(\"The checker's built-in declarations: scripts/builtins.py generates them from `bmb dump decls` of a program that declares nothing (not edited by hand). "
+        "Takes the place of stage0's Checker::new·system_builtins·builtin_adts (ADR-0091)\")]\n"
         "mod builtins {\n"
-        '    #[summary("시스템 타입들 (경로의 순서)")]\n'
+        '    #[summary("System types (in path order)")]\n'
         "    #[effects(alloc)]\n"
         "    fn adts() -> Vec<types::Adt> {\n"
         "        let mut out: Vec<types::Adt> = Vec::new();\n"
         f"{blocks}"
         "        out\n"
         "    }\n\n"
-        '    #[summary("내장 함수들 (경로의 순서)")]\n'
+        '    #[summary("Built-in functions (in path order)")]\n'
         "    #[effects(alloc)]\n"
         "    fn fns() -> Vec<types::FnSig> {\n"
         "        let mut out: Vec<types::FnSig> = Vec::new();\n"

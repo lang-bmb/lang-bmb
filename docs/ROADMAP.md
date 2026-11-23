@@ -1,6 +1,6 @@
 # BMB roadmap
 
-This document says what BMB has to become, where it stands, and what comes next. The design is in [`DESIGN.md`](DESIGN.md), the reasons for decisions in [`decisions/`](decisions/), and the state of each claim in [`CLAIMS.md`](CLAIMS.md).
+This document says what BMB has to become, where it stands, and what comes next. The design is in [`DESIGN.md`](DESIGN.md), the reasons for decisions in [`adr/`](adr/), and the state of each claim in [`CLAIMS.md`](CLAIMS.md).
 
 ## Rules
 

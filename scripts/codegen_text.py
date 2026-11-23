@@ -32,8 +32,8 @@ def raw(bmb: str) -> str:
         for row in sorted(rows, key=lambda row: row["name"])
     )
     return (
-        '#[summary("코드 생성의 상수 IR 글: scripts/codegen_text.py가 stage0의 bmb dump runtime에서 만든다'
-        "(손으로 고치지 않는다). stage0 codegen.rs의 문자열 상수의 자리 (백로그 4D-05c1)\")]\n"
+        "#[summary(\"Constant IR text of code generation: scripts/codegen_text.py makes it from stage0's bmb dump runtime "
+        "(not edited by hand). Takes the place of the string constants of stage0 codegen.rs\")]\n"
         "mod codegen_text {\n" + fns + "}\n"
     )
 
