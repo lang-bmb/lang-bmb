@@ -33,7 +33,7 @@
 //!   or leak: every owned value is freed exactly once at the point the
 //!   move check fixes.
 //!
-//! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS` and
+//! It drives the `bmb` command line. `BMB_SOUND_ITERS` and
 //! `BMB_SOUND_SEED` as in the other fuzzers.
 
 use std::collections::VecDeque;

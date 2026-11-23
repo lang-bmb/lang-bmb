@@ -32,7 +32,7 @@
 //! `first_or`, whose contract fixes its result (escapes included: quote,
 //! backslash, NUL, newline and bytes above 127 as `\xHH`).
 //!
-//! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS` and
+//! It drives the `bmb` command line. `BMB_SOUND_ITERS` and
 //! `BMB_SOUND_SEED` as in the other fuzzers.
 
 use std::fmt::Write as _;

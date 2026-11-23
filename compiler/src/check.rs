@@ -8888,7 +8888,7 @@ impl<'a> Checker<'a> {
                 // length).
                 let slice = matches!(&lt, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)));
                 // A type parameter: equality in specifications (ADR-0046 §4);
-                // in code it needs the bound `Eq` (traits, backlog 2T).
+                // in code it needs the bound `Eq` (traits).
                 if let TypeKind::Param(n) = &lt
                     && op.is_cmp()
                     && !matches!(op, BinOp::Eq | BinOp::Ne)

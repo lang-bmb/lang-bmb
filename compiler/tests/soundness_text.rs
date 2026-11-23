@@ -27,7 +27,7 @@
 //! - a call the interpreter says faults runs as a program of its own
 //!   (`common::trap`): both builds print the line before it and trap.
 //!
-//! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS` and
+//! It drives the `bmb` command line. `BMB_SOUND_ITERS` and
 //! `BMB_SOUND_SEED` as in the other fuzzers.
 
 use std::fmt::Write as _;

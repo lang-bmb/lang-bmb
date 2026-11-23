@@ -32,7 +32,7 @@
 //! names before the trait's: the run prints `r.get()` (the inherent one)
 //! next to `Val::get(&r)` (the trait's random body).
 //!
-//! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS`
+//! It drives the `bmb` command line. `BMB_SOUND_ITERS`
 //! raises the number of batches for longer runs.
 
 use std::fmt::Write as _;

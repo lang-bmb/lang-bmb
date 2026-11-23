@@ -18,7 +18,7 @@
 //!   kept), prints what the interpreter computes.
 //!
 //! It drives the `bmb` command line, as tests that outlive the Rust
-//! implementation must (HEALTH.md S5). `BMB_SOUND_ITERS` raises the number
+//! implementation must. `BMB_SOUND_ITERS` raises the number
 //! of batches for longer runs.
 
 use std::fmt::Write as _;

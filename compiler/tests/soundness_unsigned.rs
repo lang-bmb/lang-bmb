@@ -16,7 +16,7 @@
 //! range above 255), the sum of two low bytes in `u8` (overflows above
 //! 255), and their wrapping and saturating products.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;

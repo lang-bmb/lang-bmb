@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Detection power of the gate against prover and code-generator defects
-(HEALTH.md §7).
+"""Detection power of the gate against prover and code-generator defects.
 
   gate_power.py check                  every mutant applies to the current sources
   gate_power.py check --compile --work DIR [--only ID,..]

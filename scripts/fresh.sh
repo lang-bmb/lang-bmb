@@ -38,6 +38,7 @@ check "diagnostic codes document" diagnostics
 check "language reference index" python3 scripts/reference.py check
 check "surface fingerprint" python3 scripts/surface.py check
 check "conformance table" python3 scripts/conformance.py check
+check "the repository reads on its own" python3 scripts/standalone.py check
 check "components and port ledger" python3 scripts/components.py quick
 # A gate-power run applies one mutant, so its mutants do not all apply.
 if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then

@@ -26,7 +26,7 @@ trap 'rm -f "$tree" "$built"' EXIT
 python3 scripts/tree_state.py snapshot > "$tree"
 
 step "format";  cargo fmt --all --check
-# The generated documents, the backlog's form, the surface fingerprint, the
+# The generated documents, the surface fingerprint, the
 # gate-power mutants and the solver-free health metrics.
 # A gate-power run applies one mutant: the documents that count source lines
 # are stale by construction and are no evidence about the mutant, so of these

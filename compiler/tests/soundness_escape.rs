@@ -26,7 +26,7 @@
 //!    call component), an `assumed` or `external` definition and everything
 //!    a checked definition calls carry no `; proved` (no check was removed).
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5).
+//! It drives the `bmb` command line (`common::cli`).
 //! `BMB_SOUND_ITERS` raises the number of batches.
 
 use std::collections::BTreeSet;

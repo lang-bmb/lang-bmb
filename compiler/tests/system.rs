@@ -835,7 +835,7 @@ fn tool(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     (dir, exe)
 }
 
-/// A tool with input and output (HEALTH.md §5 after 4C): `wc` against
+/// A tool with input and output: `wc` against
 /// GNU `wc` on standard input.
 #[test]
 fn the_wc_tool_counts_as_wc_does() {

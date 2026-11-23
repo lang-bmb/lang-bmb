@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Second-solver cross-check (HEALTH.md §3).
+"""Second-solver cross-check.
 
   scripts/cross_solver.py [--jobs N] [--groups a,b,..] [--write FILE]
 

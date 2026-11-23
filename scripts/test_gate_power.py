@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gate_power as g  # noqa: E402
 
-JOBS = ["== format", "== lint", "== build", "== backlog", "== test, bench m1, health (concurrent)"]
+JOBS = ["== format", "== lint", "== build", "== fresh", "== test, bench m1, health (concurrent)"]
 
 
 def test_a_job_catches():

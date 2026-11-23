@@ -18,7 +18,7 @@
 //! (`gen_edge`): `-x`, `x % y` or `x / y` at `i64::MIN`
 //! and `-1`, where random contracts rarely reach.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` raises the number of batches for longer runs.
+//! It drives the `bmb` command line (`common::cli`). `BMB_SOUND_ITERS` raises the number of batches for longer runs.
 
 use std::fmt::Write as _;
 use std::fs;

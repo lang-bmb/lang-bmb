@@ -18,7 +18,7 @@
 //! - the compiled program, built twice (proved checks removed, and every
 //!   check kept), prints what the interpreter computes.
 //!
-//! It drives the `bmb` command line (HEALTH.md S5). `BMB_SOUND_ITERS`
+//! It drives the `bmb` command line. `BMB_SOUND_ITERS`
 //! raises the number of batches for longer runs.
 
 use std::fmt::Write as _;

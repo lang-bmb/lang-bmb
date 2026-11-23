@@ -11,7 +11,7 @@
 //! postcondition allows). Both builds must print what the interpreter
 //! computes.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
