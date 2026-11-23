@@ -86,8 +86,8 @@
         "selfhost/ast.bmb"
       ],
       "pin": {
-        "stage0": "54bbc87daa5bb56bbc786f68ca30a598f537d9a3b5e0f0d304496332620fc35a",
-        "port": "3d29d1622d00732b5a53d7e6bdf9ef3dc088109df8c01dc51e1a4e2c62b497aa"
+        "stage0": "ccd292295f1d7515aaac26d82caefcc0cd37510167c5e5e2718befd71e94126e",
+        "port": "59976e6da0690b38dc820e014bd422b157f3ef352c6e6f7745f5b76d7512eb82"
       },
       "ledger": {
         "session_tokens": null,

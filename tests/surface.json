@@ -199,12 +199,17 @@
    "kind": "result changed",
    "name": "tests/check/err/nested_vecs.bmb",
    "reason": "4D-28 (ADR-0141, \uc0ac\ub78c \uc2b9\uc778 2026-11-15): \uba54\ubaa8\ub9ac\ub97c \uac00\uc9c4 \uac12\uc758 clone. 4D-27: \uc81c\ub124\ub9ad Vec<T>.clone()\uc758 \uc774\uc911 \ud574\uc81c(\uac74\uc804\uc131)\ub97c E0404\ub85c. \uc6d0\ubb38\ub3c4 \uac19\uc740 \ucee4\ubc0b\uc5d0\uc11c \uace0\uccd0 \ube44\uad50 \ub300\uc0c1\uc740 \uc544\ub2c8\ub2e4: \ub3d9\uacb0 \uc2dc\uc810 \ucef4\ud30c\uc77c\ub7ec(2cdb2e4b, \uc624\ub298\uc758 lib/std)\uc640 \uc9c1\uc811 \ub300\uc870\ud574 \ub2ec\ub77c\uc9c4 \ud56d\ubaa9\uc740 \uc774\uac83\uacfc \uc0c8 \uc0ac\ub840 clones\u00b7clone_values\ubfd0. clones\uc758 \uc9c4\ub2e8 \ub458\uc5d0 \uc218\uc815 \uc548\ub0b4\ub97c \ubd99\uc784(\uac19\uc740 \ucee4\ubc0b \uc548\uc758 \ubcc0\uacbd)"
+  },
+  {
+   "kind": "result changed",
+   "name": "tests/check/err/consts.bmb",
+   "reason": "The fix text of E0261 names a section of DESIGN.md by its title. The document is in English now (ADR-0147 decision 7), so the title reads \"Effects\". No program is accepted or rejected differently."
   }
  ],
  "programs": {
   "lib/std": {
-   "out": "b551c6b9ff2a1152",
-   "src": "1f1fd6f13eecbd55"
+   "out": "8bada38689c12ba2",
+   "src": "3e9e54533c8b3813"
   },
   "tests/check/err/arith_methods.bmb": {
    "out": "0316b2e9f7cbdc81",
@@ -243,7 +248,7 @@
    "src": "81a08d26105370dd"
   },
   "tests/check/err/consts.bmb": {
-   "out": "ffb3bc5a7a0447be",
+   "out": "3073ad2bd4fb07c4",
    "src": "234a647ecf8ecc74"
   },
   "tests/check/err/conversions.bmb": {
@@ -660,7 +665,7 @@
   },
   "tests/run/numlist.bmb": {
    "out": "70a8d3a08b11d104",
-   "src": "8a389e62de0eea35"
+   "src": "f1201cf873c0bd85"
   },
   "tests/run/order.bmb": {
    "out": "562eac4774261725",
