@@ -43,21 +43,13 @@ def test_fresh_names_each_stale_document():
         copy_of_tree(root)
         r, _ = fresh(root)
         assert r.returncode == 0, r.stderr
-        # one stale document, one stale generated block, one health ratchet
+        # one stale document
         with open(root / "docs" / "diagnostics.md", "a") as f:
             f.write("\nstale\n")
-        text = (root / "docs" / "ROADMAP.md").read_text()
-        mark = "<!-- roadmap:status begin"
-        assert mark in text
-        i = text.index("\n", text.index(mark)) + 1
-        (root / "docs" / "ROADMAP.md").write_text(text[:i] + "stale\n" + text[i:])
-        (root / "compiler" / "tests" / "bound.rs").write_text("use bmb::map;\n")
         r, took = fresh(root)
         assert r.returncode == 1, r.stdout + r.stderr
-        for name in ("diagnostic codes document", "roadmap status block", "health (quick)"):
-            assert f"fresh: {name}" in r.stderr, r.stderr
-        assert "S5_tests_bound_to_rust_api" in r.stderr, r.stderr
-        assert "fresh: backlog" not in r.stderr, r.stderr
+        assert "fresh: diagnostic codes document" in r.stderr, r.stderr
+        assert "fresh: language reference index" not in r.stderr, r.stderr
         assert took < 120, took
 
 

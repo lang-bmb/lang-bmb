@@ -60,13 +60,6 @@ def test_the_table_leaves_invalid_runs_out_of_the_rate():
     assert "- unsound: 1/1" in text and "- miscompile: 0/1" in text, text
 
 
-def test_the_committed_record_has_no_invalid_run():
-    path = Path(g.ROOT) / "dev-docs" / "measurements" / "gate-power" / "results.jsonl"
-    rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
-    assert [r["id"] for r in rows if g.status_of(r) == "invalid"] == []
-    assert {r["id"] for r in rows} == {m[0] for m in g.MUTANTS}
-
-
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

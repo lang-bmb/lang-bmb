@@ -1268,7 +1268,7 @@ mod app {
 }
 "#;
 
-/// The rest of stage0's outside contacts (backlog 4C-06, `dev-docs/health/4C.md`):
+/// The rest of stage0's outside contacts:
 /// `metadata` (follows a link) and `symlink_metadata` (does not) tell the
 /// same as Rust's `std::fs` on a file, a link to it, a directory and a
 /// missing path; `write_new` writes a new file, refuses an existing one and

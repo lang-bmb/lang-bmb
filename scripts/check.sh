@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Single verification gate (AUTONOMY.md §2 step 5, INF-05).
+# The product gate: build, tests, proofs, differential tests, fixed point and
+# the self-checks of the bench harnesses. It passes with this repository alone.
 # Local runs and CI use this same script. Judge it by its exit code.
 #
 # The quick sequential steps stop at the first failure. After the one build,
@@ -39,7 +40,6 @@ fi
 step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "build"   # every test executable and target/debug/bmb, which the benches use
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
-step "backlog"; python3 scripts/test_backlog.py > /dev/null
 # The port is proved once, into an empty cache: the jobs that read its proof
 # (port difftest, components, health S7) reuse it instead of each proving the
 # whole port again (backlog INF-40). Its definitions are proved in as many
@@ -77,7 +77,7 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job "bench condition (ADR-0070)=python3 bench/test_condition.py" \
   --job "bench failure table (T0-16)=python3 bench/test_failures.py" \
   --job "bench repeated runs (ADR-0077)=python3 bench/test_repeat.py" \
-  --job "bench utility report (T0-26)=python3 bench/test_utility.py && python3 bench/utility.py --check dev-docs/reports/utility.md" \
+  --job "bench utility report (T0-26)=python3 bench/test_utility.py" \
   --job "surface (4D-01)=python3 scripts/test_surface.py" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
@@ -243,11 +243,9 @@ python3 bench/brb-hard/harness.py run --arm rust --agent weak --proptest off --e
 python3 bench/brb-hard/harness.py summarize "$b" "$r" | grep -qF "| 성공(숨은 테스트 전부 통과) | 12/12 | 12/12 |" || { echo "brb-hard summarize: unexpected table"; exit 1; }' \
   --job "bench brb-hard adequacy=python3 bench/brb-hard/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-hard tests=python3 bench/brb-hard/test_brb_hard.py" \
-  --job "health=python3 scripts/health.py" \
   --job "gate scripts (INF-34..36)=python3 scripts/test_gate_scripts.py" \
   --job "gate power rules (1B-59)=python3 scripts/test_gate_power.py" \
-  --job "health rules=python3 scripts/test_health.py && python3 scripts/test_solver_stability.py" \
-  --job "progress report (INF-24)=python3 scripts/test_progress.py" \
+  --job "solver stability rules=python3 scripts/test_solver_stability.py" \
   --job "conformance suite (5A-02)=python3 scripts/test_conformance.py && python3 scripts/conformance.py run" \
   --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null" \
   --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"

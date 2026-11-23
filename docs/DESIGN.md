@@ -1,7 +1,7 @@
 # BMB design principles
 
 > Status: settled version v1.3 · 2026-11-16 (ADR-0142 the model of the language, ADR-0143 the standing of the surface succession) · 2026-11-11 (ADR-0114 the proof context of closures, ADR-0117 the summary of a definition) · 2026-11-09 (ADR-0102 the unit of judgement and the scope of principle 4) · 2026-10-26 (ADR-0045 judgement criteria, ADR-0046~0051 revisions of the language surface and the ledger. v1.1: ADR-0040 revision of premises E1~E3 and principle 4)
-> The process, the rationale of the decisions and the v0 analysis are in `dev-docs/v2-genesis.md`. This document holds only the design that is settled now.
+> This document holds only the design that is settled now. The reasons for the decisions are in [`decisions/`](decisions/).
 
 ## 1. Definition
 
@@ -30,7 +30,7 @@
   - Navigation: the cost of finding where to fix and what is affected in a large codebase.
 - **E3.** A trade that pays a cost once at writing time (writing specifications and proofs, including the cost of a surface that was not learned) to reduce the verification cost repeated on every change and the defects that escape is a gain. Profit and loss are measured by total tokens, accumulated execution cost and defect rate.
 
-The external evidence for and against the premises is in `dev-docs/research/`, and the decision that revised them is ADR-0040.
+The decision that revised the premises against external evidence is ADR-0040.
 
 **Goals**
 
@@ -258,7 +258,7 @@ Development practices fill in for properties a language does not have. If BMB ha
 | CI (test everything on every change) | The scope of a change's impact is not known | Incremental proof keys, `impact` | The gate is part of the commit operation | True of the proof gate. Tests of the shell remain (H-EFFECT refuted) |
 | Code review | There is no oracle | Contracts, `bmb weaken` | A person looks only at changes to contracts. A refinement goes in without approval, only a weakening goes to a person | Not measured (H-REVIEW, H-INTENT) |
 | Version numbers, compatibility policy | It is not known whether a new edition keeps the old promises | Proof of refinement, identity hash (ADR-0059) | A refinement relation instead of versions, dependencies by hash | The verdict has deterministic evidence (H-COMPAT). Packages have not been opened |
-| Deployment, restart, canary, rollback | It is not known whether the new code fits the state that was running, or keeps the old behaviour | No global mutable state, type invariants (ADR-0060), the contract firewall | The unit of deployment is the definition: a replacement proved as a refinement needs no restart | Not measured (H-LIVE). 83% of the definitions changed in the real history have an unchanged contract (`dev-docs/experiments/edit-shape`). It conflicts with closed-world optimization |
+| Deployment, restart, canary, rollback | It is not known whether the new code fits the state that was running, or keeps the old behaviour | No global mutable state, type invariants (ADR-0060), the contract firewall | The unit of deployment is the definition: a replacement proved as a refinement needs no restart | Not measured (H-LIVE). 83% of the definitions changed in the real history have an unchanged contract. It conflicts with closed-world optimization |
 | One person writes one implementation | There is no means of choosing the right one among several implementations | The contract is the oracle, performance is the objective function (§2) | Competing implementations: among the proved ones, choose by measurement | Not measured (H-RACE) |
 | Feature flags, issue tracking, handoff documents | What is unfinished, what is to be done and the intent are outside the code | Definitions that have a contract and no proof, the maps, rationale bound to nodes | The maps are the shared blackboard (`query status`) | The tool exists. There is no claiming (leases) |
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Push the current branch only after the gate passes on exactly what is pushed
-# (ADR-0039 §5; AUTONOMY.md §2). Twice a commit was pushed while the gate had
+# (ADR-0039 §5). Twice a commit was pushed while the gate had
 # failed because its output was piped and the exit code was lost: this script
 # makes the gate's exit code the only thing that decides.
 #
@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 
 branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$branch" = "main" ]; then
-  echo "ship: on main; work on a branch and fast-forward main after CI (AUTONOMY.md §5)" >&2
+  echo "ship: on main; work on a branch and fast-forward main after CI" >&2
   exit 1
 fi
 head=$(git rev-parse HEAD)

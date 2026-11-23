@@ -61,7 +61,7 @@ mod nl {
 
     // A power of ten grows with its exponent: induction on `b`
     // (ADR-0062, backlog T1-18; it replaces a predicate unfolded case by
-    // case, `dev-docs/measurements/m1.md` §6).
+    // case, the first measurement).
     #[uses(pow10)]
     proof fn pow10_grows(a: u64, b: u64)
         requires le(a, b),

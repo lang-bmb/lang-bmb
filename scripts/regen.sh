@@ -3,11 +3,10 @@
 # INF-34), then check them with scripts/fresh.sh:
 #
 #   docs/diagnostics.md, the reference index, the surface fingerprint (while
-#   the surface is not frozen), the conformance table, the port ledger, the
-#   backlog archive, the roadmap's status block.
+#   the surface is not frozen), the conformance table, and the port ledger
+#   when BMB_PORT_LEDGER names it.
 #
 #   scripts/regen.sh              # all of the above
-#   scripts/regen.sh --progress   # also dev-docs/reports/progress.md (weekly)
 #
 # They are generated from the working tree: what is committed must be the
 # tree they were made from. Uncommitted changes are listed at the end, and
@@ -22,16 +21,13 @@ cargo build --release --quiet
 export BMB_PROOF_BMB="$PWD/target/release/bmb"
 bmb=target/debug/bmb
 "$bmb" codes --md > docs/diagnostics.md
-python3 scripts/backlog.py archive
 python3 scripts/reference.py index --write
-if grep -q '"frozen": false' dev-docs/health/surface.json; then
+if grep -q '"frozen": false' tests/surface.json; then
   python3 scripts/surface.py record
 fi
 python3 scripts/conformance.py table --write
-python3 scripts/components.py ledger --write
-python3 scripts/progress.py --write-roadmap
-if [ "${1:-}" = "--progress" ]; then
-  python3 scripts/progress.py --write dev-docs/reports/progress.md
+if [ -n "${BMB_PORT_LEDGER:-}" ]; then
+  python3 scripts/components.py ledger --write
 fi
 
 rc=0

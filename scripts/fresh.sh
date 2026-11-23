@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # What goes stale, checked in seconds (backlog INF-34, INF-37): the generated
-# documents and blocks, the backlog's form, the surface fingerprint, the
-# gate-power mutants and the health metrics that need no solver. The gate
+# documents and blocks, the surface fingerprint and the gate-power mutants.
+# The gate
 # runs this first: these used to fail forty minutes into a run, three times
 # in one plan.
 #
@@ -35,15 +35,12 @@ diagnostics() {
 }
 
 check "diagnostic codes document" diagnostics
-check "backlog" python3 scripts/check_backlog.py
 check "language reference index" python3 scripts/reference.py check
 check "surface fingerprint" python3 scripts/surface.py check
 check "conformance table" python3 scripts/conformance.py check
 check "components and port ledger" python3 scripts/components.py quick
-check "roadmap status block" python3 scripts/progress.py --check-roadmap
 # A gate-power run applies one mutant, so its mutants do not all apply.
 if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   check "gate-power mutants" python3 scripts/gate_power.py check
 fi
-check "health (quick)" python3 scripts/health.py quick
 exit $bad

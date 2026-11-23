@@ -6,7 +6,7 @@
 
 | Subject | Trust | Reason |
 | --- | --- | --- |
-| The person who started the server and their environment (the `DIR` argument, `z3`·`clang` on `PATH`) | Trusted | The server runs with that person's privileges. The toolchain is the trust base (`dev-docs/HEALTH.md` §3) |
+| The person who started the server and their environment (the `DIR` argument, `z3`·`clang` on `PATH`) | Trusted | The server runs with that person's privileges. The toolchain is the trust base |
 | Requests from the MCP client (the agent) | Partly trusted | The agent is the party that was given the job of changing the workspace. But it can be deceived by text inside the workspace into sending a wrong request, so no request may reach outside the workspace |
 | The contents of the workspace (`src/`, `.bmb-cache/`, `target/`) | Untrusted | It may be a repository someone else made. File names, links, unit summaries and definition names are all input |
 

@@ -906,7 +906,7 @@ fn pinned(key: &str) -> String {
 #[test]
 fn advisory_queries_end_at_their_own_memory_limit() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let tree = root.join("dev-docs/experiments/port-shape/tree.bmb");
+    let tree = root.join("tests/lint/port_shape_tree.bmb");
     let tmp = std::env::temp_dir().join(format!("bmb-lint-advisory-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let bin = tmp.join("bin");

@@ -14,7 +14,7 @@
   components.py pin ID           pin a component at the current files
   components.py repin ID         accept a change to a pinned component
 
-dev-docs/health/components.json lists, for each component of the port map,
+tests/port/components.json lists, for each component of the port map,
 its stage0 files (under compiler/src), its port files (under selfhost/) and
 its pin. A component is pinned once its port passes the differential test
 (ADR-0113): from then on a change to its stage0 files must come with a change
@@ -22,7 +22,9 @@ to the port. `check` fails when a pinned component's stage0 files differ from
 the pin; `repin` records the new state and refuses when the port did not
 change too. The differential test itself is a gate job of its own.
 
-The ledger (dev-docs/measurements/port-ledger.md) has one row per component:
+The ledger is a Markdown file outside this repository, named by the
+environment variable BMB_PORT_LEDGER (without it `check` and `quick` do not
+look at a ledger and `ledger --write` has nowhere to write). It has one row per component:
 what the files give (lines, definitions, escape hatches, the proved share of
 the port) and what the sessions that wrote the port cost (entered under
 `ledger` in components.json). Standard library only.
@@ -36,8 +38,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FILE = Path("dev-docs/health/components.json")
-LEDGER = Path("dev-docs/measurements/port-ledger.md")
+FILE = Path("tests/port/components.json")
+LEDGER = Path(os.environ["BMB_PORT_LEDGER"]).resolve() if os.environ.get("BMB_PORT_LEDGER") else None
 BEGIN = "<!-- ledger:data begin (scripts/components.py ledger --write; do not edit by hand) -->"
 END = "<!-- ledger:data end -->"
 # The end of the early fixed point (port map §4): components before it run
@@ -247,7 +249,9 @@ def stale(root=ROOT, proof=True):
     """Whether the ledger file differs from what the files give. Without
     `proof` the port is not proved and the proof's columns are not compared
     (INF-37: what runs before the gate needs no solver)."""
-    text = (root / LEDGER).read_text(encoding="utf-8")
+    if LEDGER is None:
+        return False
+    text = LEDGER.read_text(encoding="utf-8")
     new = replace(text, ledger_block(root, proof))
     return new != text if proof else without_proof(new) != without_proof(text)
 
@@ -370,7 +374,9 @@ def main():
     if cmd == "ledger":
         block = ledger_block()
         if "--write" in sys.argv:
-            p = ROOT / LEDGER
+            if LEDGER is None:
+                raise SystemExit("components: set BMB_PORT_LEDGER to the ledger file")
+            p = LEDGER
             p.write_text(replace(p.read_text(encoding="utf-8"), block), encoding="utf-8")
         else:
             print(block)

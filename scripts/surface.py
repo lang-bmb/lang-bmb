@@ -10,7 +10,7 @@ source. An entry whose source is unchanged but whose result changed is a
 change of the language (or of the compiler's observable behavior), and a
 new diagnostic code is one too.
 
-  scripts/surface.py record [--bmb BIN]   rewrite dev-docs/health/surface.json
+  scripts/surface.py record [--bmb BIN]   rewrite tests/surface.json
   scripts/surface.py check  [--bmb BIN]   compare; under a freeze, fail on a
                                           change not in "exceptions"
 
@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE = ROOT / "dev-docs/health/surface.json"
+STATE = ROOT / "tests/surface.json"
 CORPORA = ["tests/check", "tests/verify", "tests/run"]
 LIBRARY = "lib/std"
 
@@ -157,7 +157,7 @@ def main():
         print(f"surface: recorded {len(new['programs'])} programs, {len(new['codes'])} codes")
         return 0
     if not STATE.exists():
-        sys.exit("surface: no dev-docs/health/surface.json; run `scripts/surface.py record`")
+        sys.exit("surface: no tests/surface.json; run `scripts/surface.py record`")
     old = json.loads(STATE.read_text())
     changes = compare(old, new)
     allowed = {(x["kind"], x["name"]) for x in old.get("exceptions", [])}
@@ -170,7 +170,7 @@ def main():
     if open_changes and old.get("frozen"):
         print(
             "surface: the stage0 freeze is on (ADR-0037 §3): record each change as an "
-            "exception with its reason in dev-docs/health/surface.json, then "
+            "exception with its reason in tests/surface.json, then "
             "`scripts/surface.py record`",
             file=sys.stderr,
         )

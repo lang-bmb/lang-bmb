@@ -16,7 +16,7 @@ again by std::json::push_string) and runs every case of test_parsing:
   i_  implementation-defined: accepted or rejected, counted
 
 It fails unless every y_ and n_ case agrees. --write records the counts as
-one JSON line (dev-docs/measurements/json-suite/).
+one JSON line.
 """
 import argparse
 import json

@@ -18,7 +18,7 @@ def setup(t, comps):
     root = Path(t)
     (root / "compiler" / "src" / "sub").mkdir(parents=True)
     (root / "selfhost").mkdir()
-    (root / "dev-docs" / "health").mkdir(parents=True)
+    (root / "tests" / "port").mkdir(parents=True)
     (root / "compiler" / "src" / "a.rs").write_text("fn a() {}\n// note\n#[cfg(test)]\nmod tests {}\n")
     (root / "compiler" / "src" / "sub" / "b.rs").write_text("fn b() {}\n")
     components.save({"components": comps}, root)

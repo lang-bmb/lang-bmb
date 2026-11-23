@@ -1806,7 +1806,7 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
     // satisfiable queries over a datatype nested in an array whose every
     // constructor holds it, and not uninterpreted sorts: with a quantified
     // spec fn its model search ran to the resource limit where `Int`
-    // handles answer at once (`dev-docs/measurements/z3-nested-datatypes`).
+    // handles answer at once (measured against Z3 4.15.4).
     //
     // The order of the declarations is a property of the types alone
     // (backlog 4D-33): by type text here, by depth below. The order of first
@@ -7682,8 +7682,7 @@ fn needed_decls(
     }
     // The prelude after the datatypes: Z3 4.15.4 does not end a satisfiable
     // query (and ignores `rlimit`) when a datatype nested in an array is
-    // declared after the prelude's `div` macros (backlog 2O-03c,
-    // `dev-docs/measurements/z3-nested-datatypes`).
+    // declared after the prelude's `div` macros.
     // The bit-vector functions of the bit methods the query applies (none
     // in a query without them: its text is unchanged).
     // The `f64` operations the query applies, uninterpreted (ADR-0061 §5;
