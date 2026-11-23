@@ -1,4 +1,4 @@
-#[summary("trait 기본 본문: 한 번 증명, 빠진 impl은 기본으로, 재정의는 정제 (2T-07c)")]
+#[summary("trait default bodies: proved once, a missing impl falls to the default, an override refines")]
 mod df {
     trait Shape {
         #[effects(pure)]

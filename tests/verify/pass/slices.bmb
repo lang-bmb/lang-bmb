@@ -1,4 +1,4 @@
-#[summary("데이터 타입 슬라이스: 잎마다 배열 (ADR-0027 §2, backlog 2B-05c)")]
+#[summary("Slices of data types: an array per leaf (ADR-0027 §2)")]
 mod geo {
     struct Point { x: i64, y: i64 }
 

@@ -1,11 +1,11 @@
-//! Soundness fuzzing of the proof gate over data types (backlog 2B-09).
+//! Soundness fuzzing of the proof gate over data types.
 //!
 //! Random functions build a struct (fields in declaration order, ADR-0080), may
-//! update a field, may route it through a nested array (backlog 2V-04b: a
+//! update a field, may route it through a nested array (a
 //! 2x2 grid of the values, one cell written, one cell read back), pick an
 //! enum variant under a random condition, `match` it and return an integer
 //! or a struct. Half the batches give `P` a random type invariant
-//! (ADR-0060, backlog T1-11): a function may then take a `q: P` (assumed
+//! (ADR-0060): a function may then take a `q: P` (assumed
 //! valid) and returns a `P` it must prove valid. As in `soundness.rs`, an
 //! independent interpreter checks every claim:
 //!
@@ -277,7 +277,7 @@ struct Stats {
     verified_runs: usize,
     cexes: usize,
     compiled_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
     /// Under a random invariant: verified functions that take a `q` or
     /// return a `P`, and E0823 counterexamples replayed.
@@ -316,7 +316,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let funcs: Vec<DFunc> = (0..6)
         .map(|k| gen_dfunc(&mut rng, k, inv.is_some()))
         .collect();
-    let mut src = String::from("#[summary(\"데이터 타입 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"data type soundness fuzzing\")]\nmod m {\n");
     match &inv {
         Some(p) => {
             let _ = write!(
@@ -333,7 +333,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     src.push_str("}\n\n");
     let module = src.clone();
-    let main_head = "#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
+    let main_head = "#[summary(\"run\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
     src.push_str(main_head);
     // Values of `P` that keep the invariant: a function's `q`.
     let mut qs: Vec<(i64, i64)> = Vec::new();
@@ -348,7 +348,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     let q_inputs = |f: &DFunc| -> Vec<(i64, i64)> { if f.q { qs.clone() } else { vec![(0, 0)] } };
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    // Calls that fault in the interpreter, as `main` lines.
     let mut faults: Vec<(usize, String)> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         for (x, y) in f.base.inputs(&mut rng) {

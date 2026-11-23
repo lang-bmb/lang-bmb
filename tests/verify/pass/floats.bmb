@@ -1,4 +1,4 @@
-#[summary("f64 증명: 불투명 연산 위의 정수·인덱스 의무, f64::from 정확성(E0815), print_f64 정밀도, by (bit_vector) 안의 IEEE 사실 (ADR-0061 §4·§5, backlog T2-03)")]
+#[summary("f64 proofs: integer·index obligations over opaque operations, f64::from exactness (E0815), print_f64 precision, IEEE facts inside by (bit_vector) (ADR-0061 §4·§5)")]
 mod fp {
     struct Sample {
         t: f64,

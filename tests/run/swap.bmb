@@ -1,4 +1,4 @@
-#[summary("배열 리터럴 대입: 오른쪽은 대입 전 값을 읽는다")]
+#[summary("Array literal assignment: the right side reads the values before the assignment")]
 mod arr {
     spec fn swapped(r: i64) -> bool { r == 1 }
 
@@ -19,7 +19,7 @@ mod arr {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {

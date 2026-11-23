@@ -1,4 +1,4 @@
-#[summary("Vec을 거친 재귀: 원소의 구조적 감소 (ADR-0047 §3, backlog 2O-03c)")]
+#[summary("Recursion through Vec: structural decrease of elements (ADR-0047 §3)")]
 mod vp {
     enum Tree { Leaf(i64), Many(Vec<Tree>) }
 

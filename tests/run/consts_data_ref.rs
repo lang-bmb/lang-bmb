@@ -1,4 +1,4 @@
-// Rust translation of tests/run/consts_data.bmb (backlog 2V-19b), for its
+// Rust translation of tests/run/consts_data.bmb, for its
 // expected output (`rustc --edition 2021`). The types derive `Copy` so a
 // const array's element can be passed by value, as BMB's value types are.
 mod kd {

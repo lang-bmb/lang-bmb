@@ -1,4 +1,4 @@
-#[summary("Box<T> 실행: 할당, 읽기·쓰기, 이동, 해제 지점 (ADR-0047, backlog 2O-01)")]
+#[summary("Running Box<T>: allocation, reading·writing, moves, drop points (ADR-0047)")]
 mod bx {
     struct Pt { x: i64, y: i64 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reference for tests/lib_run/base64.bmb (backlog T4-03): the same inputs
+"""Reference for tests/lib_run/base64.bmb: the same inputs
 through Python's `base64`. A string is a canonical encoding (RFC 4648 §3.5)
 when `b64decode(t, validate=True)` accepts it and `b64encode` gives `t` back.
 `python3 base64_ref.py > base64.out`."""

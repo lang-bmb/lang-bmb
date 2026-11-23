@@ -1,4 +1,4 @@
-#[summary("루프와 배열: 불변식, 수량자, &mut, old")]
+#[summary("Loops and arrays: invariants, quantifiers, &mut, old")]
 mod loops {
     spec fn small(n: u64) -> bool { n <= 1000000 }
 
@@ -128,7 +128,7 @@ mod loops {
     }
 
     // After the loop the array is havocked: only the type range of the
-    // element read keeps `v / 2 + v / 2` in `i64` (backlog 1B-38).
+    // element read keeps `v / 2 + v / 2` in `i64`.
     #[effects(pure)]
     fn element_after_loop(n: i64) -> i64 {
         let mut a: [i64; 4] = [0; 4];

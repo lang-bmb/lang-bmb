@@ -1,4 +1,4 @@
-#[summary("ADR-0024: 값으로 읽는 인자와 &mut 함께 넘기기, 명세의 부호 없는 부정과 큰 리터럴")]
+#[summary("ADR-0024: passing an argument read by value together with &mut, unsigned negation and large literals in specs")]
 mod relax {
     spec fn idx_ok(a: &[i64], i: usize) -> bool { i < a.len() }
 
@@ -30,7 +30,7 @@ mod relax {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {

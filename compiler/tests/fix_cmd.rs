@@ -1,5 +1,5 @@
-//! `bmb fix` (backlog 2D-04): applies every mechanical fix, re-checks and
-//! repeats until none applies. Through the command line (backlog 4A-04):
+//! `bmb fix`: applies every mechanical fix, re-checks and
+//! repeats until none applies. Through the command line:
 //! `bmb fix --write` in a directory of its own, then the files and the
 //! report it printed.
 
@@ -234,7 +234,7 @@ fn cli_reports_by_default_and_writes_only_with_write() {
     assert!(report.status.success());
     let stdout = String::from_utf8(report.stdout).unwrap();
     // `changed` lists the files either way; `written` says whether they
-    // were (backlog 2E-05: a report read as a write).
+    // were (a report read as a write).
     let summary = stdout.lines().last().unwrap();
     assert!(summary.contains("\"applied\":7"), "{summary}");
     assert!(summary.ends_with(",\"written\":false}"), "{summary}");
@@ -275,7 +275,7 @@ fn cli_reports_by_default_and_writes_only_with_write() {
 
 #[test]
 fn literal_fixes_keep_the_value() {
-    // `0x10` once lost its `x10` and became `0` (2R-02 finding). Bases are
+    // `0x10` once lost its `x10` and became `0`. Bases are
     // literals now (ADR-0048 §3); a suffix goes, the base and digits stay.
     let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn f() -> i64 { 0x10 + 0o17 + 0b1_01 + 5i64 + 0xfi64 }\n}\n";
     let out = fix(&one(text));
@@ -294,7 +294,7 @@ fn literal_fixes_keep_the_value() {
     assert!(out.files[0].1.contains("7abc"));
 }
 
-/// The data type habits with a mechanical fix (ADR-0026 §5, backlog 2B-04d):
+/// The data type habits with a mechanical fix (ADR-0026 §5):
 /// `bmb fix` turns them into a program that checks, in one round.
 const DATA_HABITS: &str = r#"#[summary("habits with mechanical fixes")]
 mod shapes {
@@ -387,7 +387,7 @@ fn data_type_habits_are_fixed_into_a_checked_program() {
     }
 }
 
-/// The conversion habits with a mechanical fix (ADR-0028 §8, backlog 2C-02):
+/// The conversion habits with a mechanical fix (ADR-0028 §8):
 /// each becomes the canonical `x as T` (ADR-0095 A4: the checker's fixes
 /// write the alias `T::try_from(x).unwrap()` and W0915 rewrites it), which
 /// checks; the range is the prover's (E0815), not the fix's. `x as T`
@@ -437,7 +437,7 @@ fn conversion_habits_are_fixed_into_a_checked_program() {
 }
 
 /// `&v` / `&mut v` for a slice parameter (Rust's Deref coercion, ADR-0031
-/// §7, backlog 2G-02) becomes `v.as_slice()` / `v.as_mut_slice()`.
+/// §7) becomes `v.as_slice()` / `v.as_mut_slice()`.
 #[test]
 fn vec_coercions_are_fixed_into_a_checked_program() {
     let text = "#[summary(\"t\")]\nmod m {\n    #[effects(pure)]\n    fn read(a: &[i64]) -> usize { a.len() }\n\n    #[effects(pure)]\n    fn write(a: &mut [i64]) -> () {}\n\n    #[effects(alloc)]\n    fn f(r: &Vec<i64>) -> usize {\n        let mut v: Vec<i64> = Vec::new();\n        write(&mut v);\n        read(&v) + read(r)\n    }\n}\n";
@@ -478,7 +478,7 @@ fn text_habits_are_fixed_into_a_checked_program() {
     }
 }
 
-/// A `&T` given where a struct `T` is expected gets `*e` (backlog 2B-16):
+/// A `&T` given where a struct `T` is expected gets `*e`:
 /// `moved(old(self), self)` in an `ensures`, a `let` from a reference.
 #[test]
 fn reference_where_a_value_is_expected_is_fixed() {
@@ -498,7 +498,7 @@ fn reference_where_a_value_is_expected_is_fixed() {
 
 #[test]
 fn use_items_are_rewritten_to_full_paths() {
-    // Backlog 2V-15: `use` is deleted and every name it imports is written
+    // `use` is deleted and every name it imports is written
     // in full; the result checks and proves.
     let text = "#[summary(\"g\")]\nmod geo {\n    struct Point { x: i64, y: i64 }\n\n    #[effects(pure)]\n    fn origin() -> Point {\n        Point { x: 0, y: 0 }\n    }\n}\n\n#[summary(\"a\")]\nmod app {\n    use geo::Point;\n    use geo::origin;\n\n    #[effects(pure)]\n    fn x_of(p: Point) -> i64 {\n        p.x\n    }\n\n    #[effects(pure)]\n    fn go() -> i64 {\n        let p: Point = origin();\n        x_of(p)\n    }\n}\n";
     let input = one(text);
@@ -538,7 +538,7 @@ fn omitted_type_arguments_are_written_out() {
 
 #[test]
 fn where_clauses_move_to_the_parameters() {
-    // Backlog 2T-03: a `where` clause (E0240) is rewritten to bounds next
+    // A `where` clause (E0240) is rewritten to bounds next
     // to the type parameters, on a function, an `impl` and a type.
     let text = "#[summary(\"w\")]\nmod w {\n    trait Shape {\n        #[effects(pure)]\n        fn area(self: &Self) -> i64;\n    }\n\n    struct Cell<T> where T: Copy { v: T }\n\n    impl<T> Shape for Cell<T>\n    where\n        T: Copy + Shape,\n    {\n        #[effects(pure)]\n        fn area(self: &Cell<T>) -> i64 {\n            Shape::area(&self.v)\n        }\n    }\n\n    #[effects(pure)]\n    fn least<T: Copy, U>(a: T, b: T, u: U) -> T\n        where T: Ord, U: Copy\n    {\n        if a <= b { a } else { b }\n    }\n}\n";
     let input = one(text);
@@ -626,7 +626,7 @@ mod c {
 }
 "#;
 
-/// W0907 (ADR-0057, backlog 2K-04): a counting `while` becomes a range
+/// W0907 (ADR-0057): a counting `while` becomes a range
 /// `for`, comments and invariants kept; the others stay.
 #[test]
 fn counting_while_becomes_a_range_for() {
@@ -650,7 +650,7 @@ fn counting_while_becomes_a_range_for() {
     assert!(fix(&after).codes.is_empty());
 }
 
-/// The fixes leave the normal form around them (backlog 2R-04e): removing
+/// The fixes leave the normal form around them: removing
 /// `pub`, `mut` and a lifetime takes the space after it, and the effects
 /// attribute goes on a line of its own at the function's indentation.
 #[test]
@@ -678,7 +678,7 @@ mod m {
     assert!(text.contains("fn first(a: &[i64]) -> i64"), "{text}");
 }
 
-/// E0511 (backlog 2R-04g): a quantifier over one variable gets its first
+/// E0511: a quantifier over one variable gets its first
 /// `name[var]` term as the trigger, the one the written corpora choose
 /// (137 of 156); with two variables the fix only advises.
 #[test]
@@ -704,7 +704,7 @@ mod t {
     assert!(out.diagnostics.contains("E0511"), "{}", out.diagnostics);
 }
 
-/// The input aliases of ADR-0095 (B5, B6) and backlog 2N-07: a repeated
+/// The input aliases of ADR-0095 (B5, B6): a repeated
 /// clause keyword, loop clauses at the start of the body and compound
 /// assignments are read as the canonical syntax tree. So the program
 /// checks, its nameless hashes and its proof verdicts are the canonical
@@ -932,7 +932,7 @@ mod u {
 }
 
 /// E0201's fix for `let x = 0;` and `let v = Vec::new();` takes the type
-/// from the local's first use (backlog 2N-12): an index is `usize`, an
+/// from the local's first use: an index is `usize`, an
 /// argument its parameter's type, a `Vec`'s first `push` its element. The
 /// fixed program checks (before, `i64` and no fix left E0401 and E0201).
 #[test]
@@ -993,7 +993,7 @@ mod e {
         "let mut i: usize = 0;",
         "let mut v: Vec<u32> = Vec::new();",
         "let k: u8 = 3;",
-        // Through a type parameter (2N-13): the call's type argument, the
+        // Through a type parameter: the call's type argument, the
         // struct expression's instance.
         "let v: Vec<i16> = Vec::new();",
         "let items: Vec<T> = Vec::new();",
@@ -1003,8 +1003,7 @@ mod e {
     assert!(checks(&out.files));
 }
 
-/// A widening conversion in a specification is an input alias (ADR-0099,
-/// backlog 2N-08): W0917, and `fix` writes the value, in parentheses where
+/// A widening conversion in a specification is an input alias (ADR-0099): W0917, and `fix` writes the value, in parentheses where
 /// the context needs them.
 #[test]
 fn widening_conversions_in_specifications_are_removed() {
@@ -1030,7 +1029,7 @@ mod w {
 }
 
 /// A program that passes a closure checks into generated functions with no
-/// source text (`closures`): `fix` leaves them alone (found with the conformance suite, backlog 2V-21: it
+/// source text (`closures`): `fix` leaves them alone (found with the conformance suite: it
 /// indexed the generated file and ended with a panic).
 #[test]
 fn a_program_with_a_closure_is_fixed() {
@@ -1056,7 +1055,7 @@ fn max_list_without_its_lemma() -> String {
     text.replace(call, "")
 }
 
-/// ADR-0062 §5, ADR-0135 (backlog T1-24): `bmb fix --induction` writes the
+/// ADR-0062 §5, ADR-0135: `bmb fix --induction` writes the
 /// lemma from a recursive predicate to the quantified one a postcondition
 /// reaches, and its call, when the gate proves the lemma and the function
 /// with them. The function was not proved before (BVB `vc-vv0039`: the

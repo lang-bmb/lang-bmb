@@ -1,4 +1,4 @@
-#[summary("trait: 도형 넓이의 정적 호출 (ADR-0046 §5)")]
+#[summary("trait: static calls of shape areas (ADR-0046 §5)")]
 mod tr {
     trait Shape {
         #[effects(pure)]

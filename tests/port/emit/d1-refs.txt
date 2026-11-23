@@ -1,4 +1,4 @@
-#[summary("스칼라의 참조: 지역 변수의 자리, 참조 매개변수를 그대로 넘기기, 원소의 임시 자리와 되돌려 쓰기 (좁은 정수와 bool), 값을 빌려주기, *x의 읽기와 쓰기")]
+#[summary("References to scalars: the slot of a local variable, passing a reference parameter on as is, the temporary slot of an element and writing it back (narrow integers and bool), lending a value, reading and writing *x")]
 mod refs {
     #[effects(pure)]
     fn add_to(x: &mut i64, d: i64) -> () {

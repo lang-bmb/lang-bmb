@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::num: 10진·16진 읽기와 쓰기, 경계 값과 되읽힘 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Standard library std::num: reading and writing decimal·hexadecimal, boundary values and reading back (ADR-0092 §2)")]
 mod uses_num {
     #[effects(io)]
     fn show_u(r: Option<u64>) -> () {

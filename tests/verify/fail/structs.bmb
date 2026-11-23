@@ -1,4 +1,4 @@
-#[summary("구조체: 거짓 주장은 증명되지 않는다 (backlog 2B-05a)")]
+#[summary("Structs: false claims are not proved")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -99,7 +99,7 @@ mod geo {
 
     struct Grid { w: [i64; 3] }
 
-    // An element of an array field, out of bounds (backlog 2B-15).
+    // An element of an array field, out of bounds.
     #[effects(pure)]
     fn set_cell(g: &mut Grid, i: usize) -> () {
         g.w[i] = 1;
@@ -109,7 +109,7 @@ mod geo {
 
     spec fn first_x(a: i64) -> bool { a == 5 }
 
-    // An element of a local array of structs, out of bounds (backlog 2B-14).
+    // An element of a local array of structs, out of bounds.
     #[effects(pure)]
     fn local_elem(i: usize) -> i64 {
         let a: [Point; 2] = [Point { x: 1, y: 2 }; 2];
@@ -135,7 +135,7 @@ mod geo {
 
     spec fn first_is(r: [Point; 2], p: Point) -> bool { r[0] == p }
 
-    // An array result: the claim names the wrong element (backlog 2V-04).
+    // An array result: the claim names the wrong element.
     #[effects(pure)]
     fn wrong_first(a: [Point; 2]) -> (r: [Point; 2])
         ensures first_is(r, a[0]),
@@ -145,7 +145,7 @@ mod geo {
 
     spec fn is_123(a: [i64; 3]) -> bool { a == [1, 2, 3] }
 
-    // A spec array literal (backlog 2V-05): the order differs.
+    // A spec array literal: the order differs.
     #[effects(pure)]
     fn not_123() -> (r: [i64; 3])
         ensures is_123(r),

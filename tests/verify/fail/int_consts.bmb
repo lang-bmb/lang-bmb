@@ -1,4 +1,4 @@
-#[summary("정수 상수 실패: 상한 근처의 넘침 (2N-06)")]
+#[summary("Integer constant failures: overflow near the upper bound")]
 mod ic {
     spec fn pos(x: i64) -> bool { x > 0 }
 

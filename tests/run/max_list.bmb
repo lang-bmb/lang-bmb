@@ -1,4 +1,4 @@
-#[summary("목록의 최댓값과 합: 재귀 술어로 쓴 계약을 귀납 보조 정리로 한정 기호 계약에 잇는다 (BVB vc-vv0039, ADR-0062, backlog T1-18)")]
+#[summary("Maximum and sum of a list: a contract written with recursive predicates is connected to a quantifier contract by induction lemmas (BVB vc-vv0039, ADR-0062)")]
 mod ml {
     spec fn non_empty(a: &[i64]) -> bool {
         a.len() > 0
@@ -30,7 +30,7 @@ mod ml {
 
     // Recursion to quantifier, by induction on `n`. Without it the step
     // from `contains_prefix` to the quantifier needs an induction the
-    // solver does not do (backlog T1-14: the judge was undecided).
+    // solver does not do (the judge was undecided).
     #[uses(contains_prefix)]
     proof fn contains_has_index(a: &[i64], n: usize, r: i64)
         requires prefix_ok(a, n, r),

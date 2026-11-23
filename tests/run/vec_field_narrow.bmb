@@ -1,4 +1,4 @@
-#[summary("구조체의 Vec 필드에서 64비트보다 좁은 정수 원소를 읽는다: 원소의 폭은 Vec의 원소 타입 (코드 생성이 필드의 Vec을 8바이트 원소로 읽던 결함의 회귀 시험)")]
+#[summary("Reads integer elements narrower than 64 bits from a Vec field of a struct: the element width is that of the Vec's element type (regression test for the defect where code generation read a field's Vec as 8-byte elements)")]
 mod vfn {
     struct Limbs { w: Vec<u32>, b: Vec<u8>, h: Vec<i16> }
 

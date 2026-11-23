@@ -1,4 +1,4 @@
-#[summary("실행: SHA-256 라이브러리의 시험(T4-01). FIPS 180-4·NIST 예제 다섯(\"abc\", 빈 문자열, 448·896비트, 100만 개의 a), NIST CAVP SHA256ShortMsg 65개와 SHA256Monte 100개(sha256_cavp/), 의사 난수 바이트열의 길이 0~200(블록 경계 55·56·63·64·65 등)과 긴 길이 여섯. 기대 출력은 sha256_ref.py(CAVP 줄은 .rsp 파일의 값, 나머지는 Python hashlib.sha256)")]
+#[summary("Run: test of the SHA-256 library. The five FIPS 180-4·NIST examples (\"abc\", the empty string, 448·896 bits, one million a's), the 65 NIST CAVP SHA256ShortMsg and 100 SHA256Monte cases (sha256_cavp/), pseudo-random byte strings of length 0~200 (block boundaries 55·56·63·64·65 and so on) and six long lengths. The expected output is sha256_ref.py (the CAVP lines are the values of the .rsp files, the rest is Python hashlib.sha256)")]
 mod app {
     spec fn short(v: &[u8], n: usize) -> bool { v.len() <= n }
 

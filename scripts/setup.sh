@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares the pinned toolchain (INF-02, INF-03, INF-04). Idempotent.
+# Prepares the pinned toolchain. Idempotent.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
@@ -11,7 +11,7 @@ if ! command -v z3 >/dev/null || [[ "$(z3 --version)" != *"version ${Z3_VERSION}
     || python3 -m pip install --quiet "z3-solver==${Z3_VERSION}.0"
 fi
 
-# The second solver of the cross-check (scripts/cross_solver.py, backlog 1B-39).
+# The second solver of the cross-check (scripts/cross_solver.py).
 if ! python3 -c "import cvc5, sys; sys.exit(cvc5.__version__ != '${CVC5_VERSION}')" 2>/dev/null; then
   echo "installing cvc5 ${CVC5_VERSION}"
   python3 -m pip install --quiet --break-system-packages "cvc5==${CVC5_VERSION}" 2>/dev/null \

@@ -1,4 +1,4 @@
-#[summary("제네릭 함수와 타입의 인스턴스: 스칼라와 구조체 타입 인자, 인스턴스가 부르는 인스턴스, 인스턴스 안에서만 나오는 타입, 제네릭 구조체와 열거형, impl<T>의 함수, 힙을 가진 타입 인자(해제와 복제), 같은 인스턴스를 여러 곳에서 부르기")]
+#[summary("Instances of generic functions and types: scalar and struct type arguments, an instance calling an instance, types that appear only inside an instance, generic structs and enums, functions of impl<T>, type arguments that hold heap memory (drop and clone), calling the same instance from several places")]
 mod generics {
     struct Pt { x: i64, y: i64 }
     struct Pair<A: Copy, B: Copy> { a: A, b: B }

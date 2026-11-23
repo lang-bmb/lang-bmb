@@ -1,8 +1,8 @@
-//! `#[uses(..)]` auto-fill (backlog 2D-05).
+//! `#[uses(..)]` auto-fill.
 //!
 //! A `spec fn` is opaque to a proof unless the definition names it in
 //! `#[uses(..)]` (ADR-0017 §4). A failed obligation's diagnostic already lists
-//! the predicates the proof saw only by name (backlog 1D-13). This module
+//! the predicates the proof saw only by name. This module
 //! turns those hints into a minimal attribute: for each failing definition it
 //! reveals its current entries plus every hinted predicate, repeating while
 //! newly revealed bodies mention further hidden predicates (bounded), and if
@@ -14,7 +14,7 @@
 //! definition's obligations depend only on its own `#[uses]` (revealing is not
 //! transitive, callees are seen through their contracts), so all failing
 //! definitions advance in lockstep, one program verification per step. The
-//! runs share an incremental cache (backlog 2D-15, `incremental::Session`,
+//! runs share an incremental cache (`incremental::Session`,
 //! in memory unless `--cache DIR`): a definition whose text and context did
 //! not change since an earlier run is not encoded again, and the proof cache
 //! keeps the changed definitions' unchanged obligations from being solved
@@ -290,7 +290,7 @@ struct Seen {
 /// The caches every verification of one `fill_uses` call shares.
 struct Caches<'a> {
     proofs: ProofCache,
-    /// Created on the first run; later runs re-key it (backlog 2D-15).
+    /// Created on the first run; later runs re-key it.
     defs: Option<Session>,
     dir: Option<&'a Path>,
 }

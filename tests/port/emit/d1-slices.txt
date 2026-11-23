@@ -1,4 +1,4 @@
-#[summary("스칼라 원소의 슬라이스: 읽기와 쓰기의 매개변수, len, 범위로 자른 조각, 바이트열과 글 리터럴, print_str과 print_bytes")]
+#[summary("Slices of scalar elements: parameters for reading and writing, len, pieces cut by a range, byte string and text literals, print_str and print_bytes")]
 mod slices {
     #[effects(pure)]
     fn total(v: &[i64]) -> i64 {

@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 /// Output into a closed pipe (`bmb codes | head -1` once `head` has exited)
 /// ends quietly with status 141, as a process killed by SIGPIPE, instead of
-/// panicking with a backtrace (backlog 1D-24).
+/// panicking with a backtrace.
 #[test]
 fn a_closed_stdout_ends_quietly() {
     let bmb = env!("CARGO_BIN_EXE_bmb");
@@ -24,7 +24,7 @@ fn a_closed_stdout_ends_quietly() {
 }
 
 /// An unknown local name suggests the one visible local within edit
-/// distance 2, as a replacement `bmb fix` can apply (backlog 2D-18); two
+/// distance 2, as a replacement `bmb fix` can apply; two
 /// equally near names suggest nothing.
 #[test]
 fn an_unknown_local_suggests_the_nearest_one() {
@@ -59,10 +59,10 @@ fn an_unknown_local_suggests_the_nearest_one() {
 }
 
 /// Data types in signatures, impl functions and type-qualified calls pass the
-/// checker (backlog 2B-04), are proved (2B-05) and compiled (2B-06).
+/// checker, are proved and compiled.
 #[test]
 fn data_types_in_signatures_prove_and_compile() {
-    const SRC: &str = r#"#[summary("data types in signatures (ADR-0026, backlog 2B-04)")]
+    const SRC: &str = r#"#[summary("data types in signatures (ADR-0026)")]
 mod geo {
     enum Shape { Dot, Square(i64), Rect(Point, Point) }
 
@@ -118,7 +118,7 @@ mod user {
     let verify = Command::new(bmb).arg("verify").arg(&f).output().unwrap();
     let out = String::from_utf8_lossy(&verify.stdout);
     assert!(verify.status.success(), "{out}");
-    // Code generation lowers them (backlog 2B-06).
+    // Code generation lowers them.
     let ll = dir.join("t.ll");
     let emit = Command::new(bmb)
         .arg("emit-llvm")
@@ -140,8 +140,8 @@ mod user {
 #[test]
 fn a_spec_reaching_a_struct_result_proves() {
     // Integer signatures, and the revealed spec fn reaches one returning a
-    // struct: one SMT function per field (backlog 2B-05d); before that this
-    // was E0814 (and, before 2B-05a, a solver error E0812).
+    // struct: one SMT function per field; before that this
+    // was E0814 (and, earlier still, a solver error E0812).
     const SRC: &str = r#"#[summary("a spec reaching a struct result")]
 mod p {
     struct Point { x: i64, y: i64 }
@@ -181,7 +181,7 @@ mod p {
 
 #[test]
 fn data_values_fields_and_variants_check() {
-    const SRC: &str = r#"#[summary("data type values (ADR-0026, backlog 2B-04b)")]
+    const SRC: &str = r#"#[summary("data type values (ADR-0026)")]
 mod geo {
     enum Shape { Dot, Square(i64), Rect(Point, Point) }
 
@@ -291,7 +291,7 @@ mod geo {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `verify --def` proves only the named definitions (backlog T1-29, ADR-0065
+/// `verify --def` proves only the named definitions (ADR-0065
 /// §4: the overlapping reads of two edits, re-proved in their merge). Each
 /// named definition gets the status line of a whole-program run, with and
 /// without the caches; the exit code follows the named ones alone; a name
@@ -352,7 +352,7 @@ fn verify_def_proves_only_the_named_definitions() {
 
 /// `bmb lint --select` runs only the listed checks, each reporting what it
 /// reports in a full run, and the summary gives what the two
-/// satisfiability checks cost (backlog T2-12): W0901's and W0905's `rlimit`
+/// satisfiability checks cost: W0901's and W0905's `rlimit`
 /// and undecided count, the same in both runs, `null` for a check that did
 /// not run. `health.py` reads them (V11, V12).
 #[test]
@@ -477,9 +477,9 @@ mod s {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The ground-instance retry at the probe's share (backlog 1B-46) is a
+/// The ground-instance retry at the probe's share is a
 /// stage of the emitted script, and a proof from the proof cache prints the
-/// same script and status as the run that stored it (backlog 2V-03).
+/// same script and status as the run that stored it.
 #[test]
 fn an_early_retry_prints_the_same_script_from_the_proof_cache() {
     let dir = std::env::temp_dir().join(format!("bmb-cli-early-{}", std::process::id()));

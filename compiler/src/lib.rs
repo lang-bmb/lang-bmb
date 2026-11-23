@@ -42,7 +42,7 @@ use source::SourceMap;
 
 /// Stack size for compiler work. Every recursive pass is bounded by the
 /// parser's nesting limit (`parser::MAX_NESTING`); this is enough for a program
-/// at that limit even in a debug build (backlog 1A-11, `tests/nesting.rs`).
+/// at that limit even in a debug build (`tests/nesting.rs`).
 pub const STACK_BYTES: usize = 256 << 20;
 
 /// Runs `f` on a thread with `STACK_BYTES` of stack. The CLI and the MCP
@@ -75,7 +75,7 @@ pub struct VerifyOutput {
     /// Proof cache (hits, misses); zero without a cache. Obligations of a
     /// definition reused by the incremental cache count as hits.
     pub cache: (usize, usize),
-    /// What the incremental cache did (backlog 2D-10); empty without a cache.
+    /// What the incremental cache did; empty without a cache.
     pub incr: incremental::Stats,
 }
 
@@ -90,8 +90,7 @@ struct Frontend {
     tables: verify::Tables,
 }
 
-/// `bmb examples`: examples of the contracts of `defs` (backlog T1-44c,
-/// `verify::examples`), `count` inputs each, as JSONL: per definition its
+/// `bmb examples`: examples of the contracts of `defs` (`verify::examples`), `count` inputs each, as JSONL: per definition its
 /// rows and a summary row. The program is checked, not proved: the examples
 /// come from the contracts alone. The queries are advisory
 /// (`smt::advisory`): a report, never a verdict of the gate. They look for
@@ -136,8 +135,7 @@ fn frontend(files: &[(String, String)]) -> Frontend {
     }
 }
 
-/// The reach points the program's own proofs refute (backlog 1B-44,
-/// `verify::vacuous_ends`), as `path: what`, for every definition; empty
+/// The reach points the program's own proofs refute (`verify::vacuous_ends`), as `path: what`, for every definition; empty
 /// when the program does not check. `bmb lint` reports the ones of verified
 /// functions as W0905.
 pub fn vacuous_points(files: &[(String, String)]) -> Vec<String> {
@@ -232,7 +230,7 @@ impl FixOutput {
 
 /// `report` for the command line: the summary row also says whether the
 /// changed files were written (`--write`), since `changed` lists them
-/// either way (backlog 2E-05: read as written when they were not).
+/// either way (read as written when they were not).
 pub fn with_written(report: String, written: bool) -> String {
     let last = report.trim_end().rfind('\n').map_or(0, |i| i + 1);
     match report.strip_suffix("}\n") {
@@ -246,8 +244,7 @@ pub fn with_written(report: String, written: bool) -> String {
 /// Upper bound on fix rounds; each round re-checks the program.
 pub const FIX_MAX_ROUNDS: usize = 16;
 
-/// Applies the mechanical fixes (diagnostic `replacement`s, DESIGN.md §8.2,
-/// backlog 2D-04) until none applies. Each round checks the program, takes
+/// Applies the mechanical fixes (diagnostic `replacement`s, DESIGN.md §8.2) until none applies. Each round checks the program, takes
 /// the replacements in (file, start, end, code, text) order and keeps each
 /// one that does not overlap one already kept (two insertions at the same
 /// point overlap), applies them, and checks again. It stops when no
@@ -426,7 +423,7 @@ pub fn fix_sources_opts(files: &[(String, String)], confirm: bool, induction: bo
     }
 }
 
-/// A replacement in the layout of the text around it (backlog 2R-04e:
+/// A replacement in the layout of the text around it (the faults this removes:
 /// `pub fn` and `(mut x` left a space behind, and an attribute added on the
 /// line of its `fn`): a deletion takes the spaces after it on the same line
 /// when a space, `(`, `&` or `<` is before it (`(mut x`, `&'a T`), and a line
@@ -524,10 +521,10 @@ pub fn verify_sources(files: &[(String, String)]) -> VerifyOutput {
     verify_sources_cached(files, None)
 }
 
-/// As `verify_sources`, with the proof cache in `cache_dir` (backlog 2D-01):
+/// As `verify_sources`, with the proof cache in `cache_dir`:
 /// obligations proved before with the same solver input are not sent to the
 /// solver again, and new proofs are added. Definitions whose incremental key
-/// is unchanged are not even encoded (backlog 2D-10, `incremental.rs`). The
+/// is unchanged are not even encoded (`incremental.rs`). The
 /// output is the same as without the cache; `scripts` then holds only the
 /// definitions that were encoded.
 pub fn verify_sources_cached(
@@ -548,7 +545,7 @@ pub fn verify_sources_opts(
 }
 
 /// As `verify_sources_opts`, proving only the definitions in `only` (full
-/// paths, `bmb verify --def`; backlog T1-29, ADR-0065 §4: re-proving the
+/// paths, `bmb verify --def`, ADR-0065 §4: re-proving the
 /// overlapping reads of two edits in their merge). The whole program is
 /// still checked, and each listed definition gets the status of a
 /// whole-program run (`verify::verify_only`); the output has status lines for
@@ -628,7 +625,7 @@ fn hundredths(hi: u64, lo: u64) -> u128 {
     (hi * 200 + lo) / (2 * lo)
 }
 
-/// Proof stability (backlog 1B-19): proves the program once per solver seed
+/// Proof stability: proves the program once per solver seed
 /// `0..seeds` and reports, per definition, the verdict and `rlimit` under each
 /// seed. A definition is unstable when its verdict differs between seeds.
 /// Returns JSONL (one line per definition, then a summary line) and whether
@@ -648,7 +645,7 @@ pub fn stability_sources(files: &[(String, String)], seeds: u64) -> Result<(Stri
     let mut out = String::new();
     let mut unstable = 0;
     // The largest `hi / lo` in hundredths, rounded half up: integer fixed
-    // point, so no float formatting is involved (backlog 4A-03).
+    // point, so no float formatting is involved.
     let mut spread_max: u128 = 100;
     for (i, s) in runs[0].iter().enumerate() {
         let per: Vec<&verify::FnStatus> = runs.iter().map(|r| &r[i]).collect();
@@ -783,7 +780,7 @@ fn emit_llvm_frontend(
     }
 }
 
-/// Proved obligations whose runtime checks may be dropped (backlog 1B-31).
+/// Proved obligations whose runtime checks may be dropped.
 /// A proof assumes the function's `requires` (established by its callers),
 /// its callees' `ensures` (proved by them, under their own callees), and
 /// earlier facts in the same function. So a proof is usable only when every
@@ -836,7 +833,7 @@ fn usable_proofs(
 }
 
 /// Proves a checked program, through the proof cache in `cache_dir` when
-/// given (backlog 2D-01). Returns the outcome and the cache (hits, misses).
+/// given. Returns the outcome and the cache (hits, misses).
 fn prove(
     fe: &Frontend,
     diags: &mut Diags,
@@ -846,7 +843,7 @@ fn prove(
     prove_defs(fe, diags, cache_dir, incr, None)
 }
 
-/// As `prove`; with `only`, proves just those definitions (backlog 3A-04).
+/// As `prove`; with `only`, proves just those definitions.
 /// A definition's status depends only on its own obligations, so it is the
 /// same as in a whole-program run.
 fn prove_defs(
@@ -887,7 +884,7 @@ fn status_lines(outcome: &verify::Outcome) -> String {
             t if s.failed == 0 => format!(",\"trust\":\"{}\"", t.name()),
             _ => String::new(),
         };
-        // Only when the backstop ended a query (backlog INF-26).
+        // Only when the backstop ended a query.
         let trust = if s.backstop > 0 {
             format!("{trust},\"backstop\":{}", s.backstop)
         } else {
@@ -912,7 +909,7 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
     }
-    // Method calls by path become method syntax (ADR-0051, backlog 2M-02).
+    // Method calls by path become method syntax (ADR-0051).
     let normal = check::methodize(&fe.source, &fe.program, &fe.tables);
     // The program's units: the library is not its text (ADR-0092 §1).
     let mut units = fmt::format_units(&normal);
@@ -920,7 +917,7 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     Ok(units)
 }
 
-/// Normal form of parsed sources without checking them (backlog 2B-03: the
+/// Normal form of parsed sources without checking them (the
 /// data type surface is parsed before the checker accepts it). Err holds the
 /// syntax errors.
 pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, String>, String> {
@@ -941,7 +938,7 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 
 /// The stages between the parser and the checker's bodies, each as text
 /// another implementation's output compares with byte for byte (`bmb dump
-/// std|lower|decls`, backlog 4D-03a). Syntax errors end it as `dump parse`
+/// std|lower|decls`). Syntax errors end it as `dump parse`
 /// does. Otherwise the output is every diagnostic so far as JSONL, a line
 /// `---`, and the stage's text; `Err` when a diagnostic is an error.
 ///
@@ -953,16 +950,15 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 /// - `decls`: the declarations pass 1 of the checker reads
 ///   (`check::dump_decls`).
 /// - `types`, `moves`: what the checker's bodies compute
-///   (`check::dump_tables`, backlog 4D-03e1).
-/// - `texts`: the qualified texts the incremental keys read (ADR-0019 §2,
-///   backlog 4D-03f4), when the program checks: per definition its
+///   (`check::dump_tables`).
+/// - `texts`: the qualified texts the incremental keys read (ADR-0019 §2),
+///   when the program checks: per definition its
 ///   qualified normal form and the surface a caller reads
 ///   (`fmt::qualified_text`, `fmt::caller_text`), then the qualified hash of
 ///   every item (`fmt::qualified_hashes`).
-/// - `lowered`: the tables the code generator reads (`dump_lowered`,
-///   backlog 4D-05a).
+/// - `lowered`: the tables the code generator reads (`dump_lowered`).
 /// - `layout`: how the code generator lays the types out
-///   (`codegen::dump_layout`, backlog 4D-05b), when the program checks.
+///   (`codegen::dump_layout`), when the program checks.
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1075,7 +1071,7 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
     }
 }
 
-/// `bmb dump lowered` (backlog 4D-05a): the tables the code generator
+/// `bmb dump lowered`: the tables the code generator
 /// reads (`Tables::lowered`: text as bytes, a `char` as a `u32`), as JSONL
 /// rows. Per function its parameter and result types; per data type its
 /// fields or variants; per trait `impl` its head; per definition its
@@ -1179,7 +1175,7 @@ fn dump_lowered(t: &verify::Tables, file: &dyn Fn(u32) -> String) -> String {
     out
 }
 
-/// The tokens of `files` as JSONL (`bmb dump tokens`, backlog 4A-03): one
+/// The tokens of `files` as JSONL (`bmb dump tokens`): one
 /// row per token with its file, byte span, kind and value, for comparing
 /// another lexer with this one. A literal's `text` is its normal form
 /// (ADR-0019 §1); a float also gives the bits of its `f64`, a byte string
@@ -1251,7 +1247,7 @@ pub fn hash_sources(files: &[(String, String)]) -> Result<String, String> {
     Ok(out)
 }
 
-/// `bmb reads` (backlog T1-27, ADR-0065 §2): each definition's proof key as
+/// `bmb reads` (ADR-0065 §2): each definition's proof key as
 /// rows, the read set of its proof (`incremental::proof_reads`), then each
 /// data type's digest. JSONL, by path:
 /// `{"def","kind","key","contract","decl","uses":[..],"reads":[{"kind","path","digest"},..]}`
@@ -1321,12 +1317,11 @@ pub fn map_request_cached(
     map_answer(&fe, &ix, request, cache_dir)
 }
 
-/// What a map request needs proved (backlog 1D-17, 3A-04).
+/// What a map request needs proved.
 enum ProofNeed {
     None,
     /// The rows of these definitions: the L1 row of one (`query surface
-    /// DEF`), the definitions in a scope (`query status PATH..`, backlog
-    /// 2D-17).
+    /// DEF`), the definitions in a scope (`query status PATH..`).
     Defs(std::collections::BTreeSet<String>),
     All,
 }
@@ -1339,17 +1334,17 @@ fn map_answer(
     cache_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
     // Proof results reach only the L1 rows (`map L1`/`all`, `query surface`),
-    // `query status` (backlog 1D-17) and `query tests` (2D-21). Every other answer is built from
+    // `query status` and `query tests`. Every other answer is built from
     // the checked program alone, so the solver does not run for it.
     // `surface DEF` shows the status of DEF alone, which depends only on
-    // DEF's own obligations, so only DEF is proved (backlog 3A-04).
+    // DEF's own obligations, so only DEF is proved.
     let need = match (
         request.first().map(String::as_str),
         request.get(1).map(String::as_str),
     ) {
         (Some("map"), level) if matches!(level.unwrap_or("all"), "L1" | "all") => ProofNeed::All,
         // With a scope, `status` and `tests` show the definitions in it
-        // alone, so only those are proved (backlog 2D-17).
+        // alone, so only those are proved.
         (Some("query"), Some("status" | "tests")) => match ix.scope(&request[2..]) {
             Ok(None) => ProofNeed::All,
             Ok(Some(scope)) => ProofNeed::Defs(
@@ -1417,7 +1412,7 @@ fn map_answer(
     }
 }
 
-/// One workspace file as last read and parsed (backlog 3A-03).
+/// One workspace file as last read and parsed.
 struct ParsedFile {
     name: String,
     text: String,
@@ -1430,7 +1425,7 @@ struct ParsedFile {
 }
 
 /// Front-end results kept between calls by a long-lived process, the MCP
-/// server (backlog 3A-03). `update` takes the files as just read and redoes
+/// server. `update` takes the files as just read and redoes
 /// only what they changed: a file whose name, position and text are those of
 /// the last call is not lexed or parsed again (its syntax tree and
 /// diagnostics are reused; spans carry the file's position, so a file that

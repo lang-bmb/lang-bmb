@@ -1,4 +1,4 @@
-//! Proof gate (backlog 1B-02 .. 1B-11, semantics in ADR-0017).
+//! Proof gate (semantics in ADR-0017).
 //!
 //! Each executable function is symbolically executed over its checked syntax
 //! tree. Local variables become single-assignment SMT constants; loops are cut
@@ -74,7 +74,7 @@ pub struct Tables {
     /// (`lowered`) and tell text operations from byte ones by this.
     pub text: BTreeSet<(u32, u32, u32)>,
     /// Which parameters and whether the result of each function are text,
-    /// by path (ADR-0050 §3, backlog 2U-06): the values the prover assumes
+    /// by path (ADR-0050 §3): the values the prover assumes
     /// valid UTF-8 where they enter a definition (`Enc::assume_text`).
     pub text_sigs: BTreeMap<String, (Vec<bool>, bool)>,
     /// The program's `const`s by path (ADR-0052 §7, for the maps).
@@ -93,7 +93,7 @@ pub struct Tables {
 
 impl Tables {
     /// `text` with each item the function-value lowering made named as a
-    /// reader knows it (`names`, backlog 2V-20g): a closure's
+    /// reader knows it (`names`): a closure's
     /// `<u::__closure$0 as u::__fn$0_0>::call` is `u::f::{closure#0}` and
     /// its `pre`·`post` that closure's `requires`·`ensures`; a function
     /// item's `<u::__fnitem$0 as u::__fn$0_0>::call` is
@@ -774,8 +774,7 @@ pub struct FnStatus {
     /// (compare with the pinned rlimit to see how close a proof is to failing).
     pub rlimit_total: u64,
     pub rlimit_max: u64,
-    /// Queries the wall-clock backstop ended instead of the rlimit (backlog
-    /// INF-26): nonzero means this definition's result depends on the
+    /// Queries the wall-clock backstop ended instead of the rlimit: nonzero means this definition's result depends on the
     /// machine. Status lines carry it only when nonzero.
     pub backstop: usize,
 }
@@ -794,7 +793,7 @@ pub struct Outcome {
     /// SMT-LIB script per definition, as sent to the solver (without model queries).
     pub scripts: BTreeMap<String, String>,
     /// Under `vacuous_ends` only: the points of each definition whose path
-    /// condition the solver refutes (backlog 1B-44).
+    /// condition the solver refutes.
     pub vacuous: Vec<(String, Span, &'static str)>,
     /// Under `vacuous_ends` only: what deciding the reach points cost.
     pub reach_cost: SatCost,
@@ -808,7 +807,7 @@ pub struct Outcome {
 }
 
 /// What a satisfiability check (`vacuous_ends`, `preconditions_satisfiable`)
-/// cost the solver (backlog T2-12): the `rlimit` of every query it sent
+/// cost the solver: the `rlimit` of every query it sent
 /// (probes, full queries, ground-instance retries) and the number of its
 /// points or functions left undecided. An undecided one is not reported,
 /// so this cost is the check's only trace of it.
@@ -820,7 +819,7 @@ pub struct SatCost {
 
 /// Whether a query's answer is undecided: `unknown`, or a limit ended the
 /// query before it answered (the `rlimit` in a command before `check-sat`,
-/// the memory limit, backlog T2-17). What follows an undecided query (the
+/// the memory limit). What follows an undecided query (the
 /// ground-instance retry, the bounded search) follows either.
 fn undecided(a: &Result<Answer, String>) -> bool {
     match a {
@@ -846,8 +845,7 @@ fn check_sat_counted(sol: &mut Solver, spent: &mut u64) -> Result<Answer, String
 const REACH_LIMIT: &str = "(set-option :rlimit 1000000)";
 
 /// The reach-point query `q` (assertions) over the encoder's declarations
-/// `decls` as an exact bit-vector query (backlog T2-13,
-/// `subproof::bit_vector_sat`), when every integer constant it uses is
+/// `decls` as an exact bit-vector query (`subproof::bit_vector_sat`), when every integer constant it uses is
 /// asserted in an integer type's range and it names nothing else than
 /// constants: no definition is then relevant to it.
 fn bv_reach(decls: &str, q: &str) -> Option<crate::subproof::SatQuery> {
@@ -981,7 +979,7 @@ enum RefineAt {
     /// A trait impl function against its trait (E0817): the `ensures`
     /// obligations at the function's name.
     Trait,
-    /// Two versions of a definition (backlog 2D-19): each obligation at
+    /// Two versions of a definition: each obligation at
     /// its clause, the result shown in a counterexample.
     Version { own_domain: bool },
 }
@@ -1024,7 +1022,7 @@ pub enum ClauseAnswer {
     Undecided(String),
 }
 
-/// The contract comparisons `jobs` (backlog 2D-19, `weaken.rs`), each by the
+/// The contract comparisons `jobs` (`weaken.rs`), each by the
 /// prover's own encoding: the refiner's parameters on entry, the spec fns
 /// its `#[uses]` reveals, every obligation on a reset solver with the
 /// pinned `rlimit` and the ground-instance retry. No body is encoded.
@@ -1108,14 +1106,13 @@ pub fn contract_refinements(
     out
 }
 
-/// The points of a definition that its own encoding makes unreachable
-/// (backlog 1B-44): each loop exit and the end of each executable body,
+/// The points of a definition that its own encoding makes unreachable: each loop exit and the end of each executable body,
 /// with the path condition there (contracts, revealed definitions, loop
 /// invariants, callee postconditions) refuted by the solver. In a verified
 /// function with satisfiable preconditions this cannot happen honestly:
 /// proved obligations never trap, every loop has a decreasing measure, so
 /// the end is reached. A refuted point means its proofs hold vacuously:
-/// contradictory contracts, or a fault in the encoding (2G-05 found one).
+/// contradictory contracts, or a fault in the encoding (the loop-length fault was one).
 /// An undecided point is not reported; it is counted in the cost.
 pub fn vacuous_ends(p: &Program, t: &Tables) -> (Vec<(String, Span, &'static str)>, SatCost) {
     let prev = REACH.with(|r| r.replace(true));
@@ -1158,9 +1155,9 @@ fn select_val(elem: &Val, i: &str) -> Val {
     match elem {
         Val::S(a) => Val::S(format!("(select {a} {i})")),
         Val::Struct(fs) => Val::Struct(fs.iter().map(|f| select_val(f, i)).collect()),
-        // An array inside the element (backlog 2V-04b): its leaves are
+        // An array inside the element: its leaves are
         // arrays over the outer index; a fixed length is a constant, an
-        // inner `Vec`'s is one more array (backlog 2O-03b).
+        // inner `Vec`'s is one more array.
         Val::A { elems, len } => Val::A {
             elems: format!("(select {elems} {i})"),
             len: select_len(len, i),
@@ -1280,7 +1277,7 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
     }
 }
 
-/// Some value of type `t` (backlog 2V-05: the base of an empty array): the
+/// Some value of type `t` (the base of an empty array): the
 /// default scalar, each field's, the first variant with default payloads
 /// that does not need a value of an enum being built (a recursive type,
 /// ADR-0047: the checker ensures one exists, E0421).
@@ -1333,7 +1330,7 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
             },
         },
         TypeKind::Unit => Val::Unit,
-        // An empty `Vec` (backlog 2O-03b: an inner one's default).
+        // An empty `Vec` (an inner one's default).
         _ if is_array(t) => {
             let e = elem_ty(t);
             match const_elems(&e, &elem_default(&e, tb), tb) {
@@ -1353,7 +1350,7 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
 
 /// The value an array of `e` holds at every element by default: the
 /// default value, or for a recursive struct (whose default holds such an
-/// array) an arbitrary one, `arb` (backlog 2O-03d).
+/// array) an arbitrary one, `arb`.
 fn elem_default(e: &TypeKind, tb: &Tables) -> Val {
     if dt_struct(e, tb) {
         Val::S(arb(e))
@@ -1446,7 +1443,7 @@ fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
 }
 
 /// Whether an array of `e` holds its elements as one array per leaf
-/// (ADR-0027 §2): structs and fixed-size arrays (backlog 2V-04b).
+/// (ADR-0027 §2): structs and fixed-size arrays.
 fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
     flat_fields(e, tb).is_some() || is_array(e)
 }
@@ -1468,7 +1465,7 @@ fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, S
             elem_leaves(&inner.kind, tb, &format!("{suffix}.e"), &mut el);
             out.extend(el.into_iter().map(|(n, s)| (n, format!("(Array Int {s})"))));
         }
-        // An inner `Vec` (backlog 2O-03b): its leaves one level deeper and
+        // An inner `Vec`: its leaves one level deeper and
         // its length.
         TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)) => {
             let el = elem_ty(e);
@@ -1630,7 +1627,7 @@ pub(crate) fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Ve
 
 /// Whether `t` (through a reference) is a struct that contains itself
 /// through structs alone: a datatype of one constructor, not a tuple of
-/// leaves (ADR-0047 §3, backlog 2O-03d).
+/// leaves (ADR-0047 §3).
 fn dt_struct(t: &TypeKind, tb: &Tables) -> bool {
     struct_fields(t, tb).is_some() && crate::check::struct_cycle(t, &tb.adts)
 }
@@ -1800,7 +1797,7 @@ fn enum_dts(tb: &Tables) -> (Vec<String>, BTreeMap<String, Dt>) {
 /// entries name it).
 fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
     let (all, dts) = enum_dts(tb);
-    // Recursive structs (backlog 2O-03d) are handles, `Int` under the
+    // Recursive structs are handles, `Int` under the
     // struct's sort name, declared before every datatype, with their
     // selector functions after them. Not datatypes: Z3 4.15.4 does not end
     // satisfiable queries over a datatype nested in an array whose every
@@ -1808,8 +1805,7 @@ fn datatypes(tb: &Tables) -> Vec<(String, String, String)> {
     // spec fn its model search ran to the resource limit where `Int`
     // handles answer at once (measured against Z3 4.15.4).
     //
-    // The order of the declarations is a property of the types alone
-    // (backlog 4D-33): by type text here, by depth below. The order of first
+    // The order of the declarations is a property of the types alone: by type text here, by depth below. The order of first
     // use in the program put a definition's declarations in another order
     // when an unrelated definition was added before it, so its script, and
     // with it the solver's cost, changed while its proof key did not.
@@ -2133,7 +2129,7 @@ fn set_at(
                 len,
             }
         }
-        // A scalar element, or a recursive struct one (backlog 2O-03d).
+        // A scalar element, or a recursive struct one.
         (Some((Step::Index(i), rest)), Val::A { elems, len }) => {
             let cur = Val::S(format!("(select {elems} {i})"));
             let new = set_at(cur, rest, new, tb, mk);
@@ -2209,7 +2205,7 @@ struct Prog<'p> {
 /// Whether a type as written is one whose length changes: a `Vec` or a
 /// `String` (both a byte or element array and a length to the encoder; a
 /// `String` was missed here, so a loop or a callee growing one kept its
-/// old length: backlog 4B-02).
+/// old length).
 fn growable(t: &TypeKind) -> bool {
     match t {
         TypeKind::Named { path, .. } => {
@@ -2245,7 +2241,7 @@ struct Enc<'p, 'q> {
     /// Obligations that hold by their own text (a goal that folded to
     /// `true`, as a shift by a local of a known value): nothing is asked,
     /// and code generation drops their checks as it does a proved one's
-    /// (found by the conformance suite, backlog 5A-02).
+    /// (found by the conformance suite).
     trivial: Vec<(&'static str, Span)>,
     /// Entry constants of the parameters, for counterexamples: (name, terms,
     /// type).
@@ -2272,7 +2268,7 @@ struct Enc<'p, 'q> {
     /// obligations); its effects are the facts it proves.
     ghost: bool,
     /// The text values known valid UTF-8 here, bytes and length
-    /// (`assume_text`, backlog 2U-06).
+    /// (`assume_text`).
     texts: Vec<(String, String)>,
     /// Type invariants (ADR-0060 §2, `invariants.rs`): the validity
     /// symbols declared, the nesting depth of element quantifiers (their
@@ -2447,7 +2443,7 @@ fn and(xs: &[String]) -> String {
 
 /// The facts of one side of a branch (or of the right of `&&`/`||`) under
 /// its guard `c`, with connectives nested no deeper than `LIFT_DEPTH` plus
-/// the guard (backlog T2-09). The facts stay one `(=> c (and ..))`, except
+/// the guard. The facts stay one `(=> c (and ..))`, except
 /// that an implication `(=> g x)` among them at least `LIFT_DEPTH` deep, such
 /// as an inner branch's own facts, becomes `(=> (and c g) x)` beside it.
 /// Nesting `(=> c (and .. (=> g (and ..))))` at every `if` made Z3's context
@@ -2480,7 +2476,7 @@ fn guarded(c: &str, facts: &[String]) -> Vec<String> {
 /// `(=> (and (>= a 0) (> b 0)) (and ..))` costs `ctx-simplify` a constant
 /// factor, and lifting it too changed the nonlinear search of `gcd_exec`
 /// (`vc-va0053-aspect-pairs`) from 226,723 to 3,755,290 at seed 0 and to
-/// `unknown` at two of seeds 0..7 (backlog T2-09).
+/// `unknown` at two of seeds 0..7.
 const LIFT_DEPTH: usize = 3;
 
 /// The nesting depth of the connectives `and`, `or` and `=>` in term `t`.
@@ -2926,7 +2922,7 @@ fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
     }
 }
 
-/// A bit method `a.m(n)` of integer type `i` (ADR-0048 §2, backlog 2N-03)
+/// A bit method `a.m(n)` of integer type `i` (ADR-0048 §2)
 /// in a specification: its term and the facts about it when `a` is in
 /// range (code assumes them, as `bit_op`'s). Rust's semantics: a rotation or
 /// wrapping shift moves by `n mod w` (`n` is a `u32`); the counts are `u32`
@@ -2944,7 +2940,7 @@ pub fn bit_method(m: &str, i: IntTy, a: &str, n: Option<&str>) -> (String, Vec<S
 }
 
 /// Byte `k` (array index) of `a.to_be_bytes()` (`le` false) or
-/// `a.to_le_bytes()` of type `i` (backlog 2N-09c): bits `s..s + 8` of `a`'s
+/// `a.to_le_bytes()` of type `i`: bits `s..s + 8` of `a`'s
 /// two's complement image, `s` counted from the end the order starts at.
 /// `div` by a positive constant is the floor, so the bits are those of the
 /// image for every integer `a`, in `i`'s range or not (ADR-0090). Linear;
@@ -2960,7 +2956,7 @@ pub fn byte_term(i: IntTy, le: bool, a: &str, k: u32) -> String {
 }
 
 /// `T::from_be_bytes(b)` (`le` false) or `T::from_le_bytes(b)` of the byte
-/// terms `bs` in index order (backlog 2N-09c): the unsigned sum of each
+/// terms `bs` in index order: the unsigned sum of each
 /// byte's image at its place, read as a value of `i`.
 pub fn from_bytes_term(i: IntTy, le: bool, bs: &[String]) -> String {
     let n = bs.len() as u32;
@@ -3069,7 +3065,7 @@ fn method_term(m: &str, i: IntTy, a: &str, xa: &str, n: Option<&str>, xn: Option
         "count_zeros" => format!("(- {w} (bv2nat ({} {xa})))", h("ctpop")),
         "leading_zeros" => format!("(bv2nat ({} {xa}))", h("clz")),
         "trailing_zeros" => format!("(bv2nat ({} {xa}))", h("ctz")),
-        // The ones as the zeros of the complement (backlog 2N-09).
+        // The ones as the zeros of the complement.
         "leading_ones" => format!("(bv2nat ({} (bvnot {xa})))", h("clz")),
         "trailing_ones" => format!("(bv2nat ({} (bvnot {xa})))", h("ctz")),
         "reverse_bits" => from_bv(i, &format!("({} {xa})", h("brev"))),
@@ -3264,7 +3260,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let mut testers = Vec::new();
                 let mut cur = b.as_str();
                 loop {
-                    // An element of a `Vec` payload (backlog 2O-03c): an
+                    // An element of a `Vec` payload: an
                     // index below that `Vec`'s length.
                     let (head, arg) = if let Some((arr, i)) = select_app(cur)
                         && let Some((sel, x)) = sel_app(arr)
@@ -3342,7 +3338,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
-    /// A value of the recursive struct `t` with `fields` (backlog 2O-03d):
+    /// A value of the recursive struct `t` with `fields`:
     /// a fresh constant of its sort whose selectors are the field leaves,
     /// as ground facts (no constructor function: the queries stay free of
     /// quantifiers).
@@ -3380,12 +3376,12 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// A fresh array of elements of type `e`. Every element is within its
-    /// type's range, also where only a specification reads it (backlog 1B-30).
+    /// type's range, also where only a specification reads it.
     /// `i64` elements get the fact only when `signed` is set: for parameters
     /// and declared locals, where a spec fn over an element unfolds only when
-    /// its argument is known to be in range (1B-37, ADR-0017 §4). After a call
+    /// its argument is known to be in range (ADR-0017 §4). After a call
     /// or loop havoc the callee's contract or the invariant states the range
-    /// it needs; the extra quantifier there cost proofs their rlimit (1B-37).
+    /// it needs; the extra quantifier there cost proofs their rlimit.
     fn fresh_elems(&mut self, base: &str, e: &TypeKind, signed: bool) -> String {
         let elems = self.fresh(base, &format!("(Array Int {})", sort_of(e)));
         let wanted = e.int().is_some_and(|i| !i.signed() || signed);
@@ -3407,7 +3403,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             .map(|(name, sort)| self.fresh(name, &format!("(Array Int {sort})")))
             .collect();
         let v = elem_template(e, self.prog.t, &mut terms.into_iter());
-        // Every inner `Vec`'s length is a length (backlog 2O-03b).
+        // Every inner `Vec`'s length is a length.
         let mut facts = Vec::new();
         inner_len_facts(&v, e, self.prog.t, &mut facts);
         self.pc.extend(facts);
@@ -3463,7 +3459,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 self.pc.push(r);
             } else if let Some(vs) = enum_variants(t, self.prog.t) {
                 // A value of code: each variant's payload leaves are in
-                // their ranges when it is that variant (backlog 1B-50; a
+                // their ranges when it is that variant (a
                 // `match` states the same facts on its arms, ADR-0027 §5).
                 // A spec fn taking a payload slice unfolds only for an
                 // argument whose length is in range.
@@ -3539,8 +3535,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         }
     }
 
-    /// Facts about the product of `a` and `b` when neither is a constant
-    /// (backlog 2V-02): its zero and sign, and for each pair of upper bounds
+    /// Facts about the product of `a` and `b` when neither is a constant: its zero and sign, and for each pair of upper bounds
     /// the path condition states for the operands, the bound of a nonnegative
     /// product. Without them the solver's nonlinear search took a bounded
     /// `i * i` past three million steps.
@@ -3724,7 +3719,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             // Structural `==` (ADR-0026 §2): field by field; a value that
             // holds an array compares its elements below the length only,
-            // also inside enum payloads (backlog 2V-05).
+            // also inside enum payloads.
             ExprKind::Binary(op @ (BinOp::Eq | BinOp::Ne), l, r)
                 if flat_fields(&self.ty(l), self.prog.t).is_some()
                     || has_array(&self.ty(l), self.prog.t) =>
@@ -3831,7 +3826,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                         let b = args.first().map(|x| self.spec(x, env, old).s());
                         Val::S(f64_method(m, &rv.s(), b.as_deref()))
                     }
-                    // Backlog 2N-09b: `Some` of the wrapping shift exactly
+                    // `Some` of the wrapping shift exactly
                     // when the amount is below the width; a power of two has
                     // one bit set.
                     m @ ("checked_shl" | "checked_shr") => {
@@ -3881,7 +3876,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Call { path, args, .. } if crate::check::is_box_new(path) => {
                 self.spec(&args[0], env, old)
             }
-            // An integer from its bytes (backlog 2N-09c).
+            // An integer from its bytes.
             // `u32::from(c)`: a character's scalar value (ADR-0050 §2).
             ExprKind::Call { path, args, .. } if is_char_value(path) => {
                 self.spec(&args[0], env, old)
@@ -4067,7 +4062,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
             }
             ExprKind::Deref(x) => self.spec(x, env, old),
-            // Array values in specifications (backlog 2V-05): a constant
+            // Array values in specifications: a constant
             // array of the first element (or the default scalar) with every
             // element stored; a repeat is a constant array per leaf.
             ExprKind::Array(items) => {
@@ -4160,7 +4155,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         let goal = self.decrease_goal(&(caller_measure, data), &callee_measure);
         let msg = format!("recursive call to `{target}` may not decrease its `decreases` measure");
         // Inside `forall`: for every value of the bound variables that
-        // reaches the call (backlog 2V-05), as Dafny checks it.
+        // reaches the call, as Dafny checks it.
         if let Some((_, _, start)) = self.foralls.first() {
             let start = *start;
             let decls: Vec<String> = self.foralls.iter().flat_map(|f| f.0.clone()).collect();
@@ -4334,7 +4329,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     return Val::S(lt);
                 }
                 // Facts learned on the right (a callee's `ensures`, division
-                // lemmas, element ranges) hold whenever it ran (1B-29).
+                // lemmas, element ranges) hold whenever it ran.
                 let facts: Vec<String> = self.pc[n + 1..].to_vec();
                 self.pc.truncate(n);
                 self.pc.extend(guarded(&guard, &facts));
@@ -4647,7 +4642,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 )
             }
             ExprKind::Block(b) => self.block(b),
-            // An array of structs or enums (2B-14): fresh element arrays
+            // An array of structs or enums: fresh element arrays
             // with each item stored, so no default value is needed.
             ExprKind::Array(items)
                 if matches!(elem_ty(&self.ty(e)), TypeKind::Named { .. })
@@ -4691,8 +4686,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Repeat { value, count, .. }
                 if agg_elem(&elem_ty(&self.ty(e)), self.prog.t) =>
             {
-                // One constant array per leaf of the element value (2B-14,
-                // 2V-04b).
+                // One constant array per leaf of the element value.
                 let elem = elem_ty(&self.ty(e));
                 let v = self.eval(value);
                 Val::Arr {
@@ -4736,7 +4730,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 let k = field_index(&bt, self.prog.t, &name.name);
                 match self.eval(base) {
                     Val::Struct(mut fs) => fs.swap_remove(k),
-                    // A recursive struct (backlog 2O-03d): its selectors
+                    // A recursive struct: its selectors
                     // (their facts are added to each query, `struct_facts`).
                     Val::S(x) if dt_struct(&bt, self.prog.t) => {
                         dt_fields(value_ty(&bt), &x, self.prog.t).swap_remove(k)
@@ -4816,7 +4810,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         // names that side bound (an arm's bindings, a block's `let`s) end
         // with it, as they do at a join: one left behind met a later loop
         // variable of the same name, which is gone after its loop on one
-        // side of a later branch only (backlog 4D-31).
+        // side of a later branch only.
         match (then_dead, else_dead) {
             (true, true) => {
                 self.dead = true;
@@ -4858,7 +4852,7 @@ impl<'p, 'q> Enc<'p, 'q> {
 
     /// `ite(c, a, b)`. A large merged term is bound to a fresh constant so
     /// that later merges refer to it instead of copying it: copying doubles
-    /// the term at every sequential `if` (backlog 1B-26).
+    /// the term at every sequential `if`.
     fn merge(&mut self, c: &str, a: &Val, b: &Val, t: &TypeKind) -> Val {
         // A term's size in atoms, not characters: a size in characters
         // counted the length of the names in it, so renaming a definition
@@ -4961,7 +4955,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// the examples of a contract (`examples`) all start here. Each
     /// parameter is a fresh value in its type's range, valid (ADR-0060 §2:
     /// its caller proved it) and, where it is text, valid UTF-8 (ADR-0050
-    /// §3, backlog 2U-06); the value behind a `&mut` parameter is also its
+    /// §3); the value behind a `&mut` parameter is also its
     /// `old`. The parameters are `inputs`, in order.
     fn entry_params(&mut self, f: &FnDef) {
         let path = self.path.clone();
@@ -4993,7 +4987,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// The value behind a `&mut` parameter after the function: the callee
     /// may change the place, the elements of a slice but never its length;
     /// a `&mut Vec<T>` or a `&mut String` also its length (text is bytes
-    /// here: `Tables::lowered`, backlog 4B-02). `before` is the value on
+    /// here: `Tables::lowered`). `before` is the value on
     /// entry, `ty` the parameter's type and `grows` whether it is growable.
     fn behind_mut_after(&mut self, base: &str, before: &Val, ty: &TypeKind, grows: bool) -> Val {
         let e = elem_ty(ty);
@@ -5072,7 +5066,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         self.vars.retain(|k, _| before.contains(k));
     }
 
-    /// `assert(e) by (bit_vector)` (ADR-0048 §4, backlog 2N-03): `e` is
+    /// `assert(e) by (bit_vector)` (ADR-0048 §4): `e` is
     /// proved in a query of its own (`subproof::bit_vector`) that sees its
     /// free variables only, each over its whole type, and none of the path's
     /// facts (Verus's rule; a needed fact is written as `p ==> q`). The
@@ -5081,8 +5075,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// (true of every value of code: a variable of code is in its type).
     /// Code, a `proof` block and a `proof fn` body treat it alike.
     fn sub_proof(&mut self, _prover: Prover, cond: &Expr, span: Span) {
-        // Elements, fields and the like are variables of the sub-proof
-        // (backlog 2N-11): it proves the fact for every value of them, and
+        // Elements, fields and the like are variables of the sub-proof: it proves the fact for every value of them, and
         // the assumed fact is the original term, so instantiating them is
         // the only step between the two.
         let mut reads = Vec::new();
@@ -5155,7 +5148,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     /// value behind a reference, a method of a non-scalar receiver) that
     /// names no `let` of the assertion replaced by a variable, one per
     /// distinct read (by its text), listed in `reads` with the read
-    /// (backlog 2N-11, `check::bit_vector_terms`). The variable keeps the
+    /// (`check::bit_vector_terms`). The variable keeps the
     /// read's span, so it has the read's type.
     fn abstract_reads(
         &self,
@@ -5445,7 +5438,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             // `let mut i = lo; while i < hi invariant lo <= i && (i <= hi
             // || i == lo), .. decreases hi - i { body; i = i + 1; }` with
             // the bounds evaluated once (ADR-0049 §2, §3): the encoding is
-            // that expansion's, query for query (backlog 2K-01d).
+            // that expansion's, query for query.
             Stmt::For {
                 label,
                 var,
@@ -5772,8 +5765,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// The length of `v` after a loop that changes it: an array's or a
-    /// slice's stays, a `Vec`'s is any value in its range (backlog 2G-05:
-    /// keeping it made the code after a `push` loop unreachable).
+    /// slice's stays, a `Vec`'s is any value in its range (keeping it made the code after a `push` loop unreachable).
     fn loop_len(&mut self, v: &str, len: String, e: &TypeKind) -> String {
         if !self.is_vec_local(v) {
             return len;
@@ -5887,7 +5879,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         );
         // Constant bounds (a short copy): stores of the old values, which a
         // model of the query can satisfy without instantiating anything
-        // (the reachability checks decide them, T2-10). Otherwise a fresh
+        // (the reachability checks decide them). Otherwise a fresh
         // array per leaf and one quantified fact.
         let constant = match (lo.parse::<u64>(), hi.parse::<u64>(), dest.parse::<u64>()) {
             (Ok(l), Ok(h), Ok(d)) if l <= h && h - l <= COPY_UNROLL => Some((l, h, d)),
@@ -6039,7 +6031,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         (vals, facts)
     }
 
-    /// Rust `==` on values `a`, `b` of type `t` (backlog 2V-05): SMT
+    /// Rust `==` on values `a`, `b` of type `t`: SMT
     /// equality for scalars and enums without arrays; field by field for
     /// structs; equal lengths and elements below the length for arrays;
     /// for an enum with an array in a payload, the same variant with equal
@@ -7038,11 +7030,11 @@ pub const SIGNED_DIV_LEMMAS: &[&str] = &[
     "(=> (> (bmb_abs {b}) 1) (<= (* 2 (bmb_abs {q})) (bmb_abs {a})))",
     "(=> (not (= {b} 0)) (< (bmb_abs {r}) (bmb_abs {b})))",
     "(=> (not (= {b} 0)) (or (= {r} 0) (= (>= {r} 0) (>= {a} 0))))",
-    // The quotient's sign (backlog 1B-42): without it, `a / (x / g) >= 0`
+    // The quotient's sign: without it, `a / (x / g) >= 0`
     // for positive operands took the solver past its limit.
     "(=> (not (= {b} 0)) (or (= {q} 0) (= (> {q} 0) (= (> {a} 0) (> {b} 0)))))",
     // Nonnegative operands divide as SMT `div` and `mod` do, which `u64`
-    // specifications use (1B-42: `a % b` against `gcd(b, a % b)`).
+    // specifications use (`a % b` against `gcd(b, a % b)`).
     "(=> (and (>= {a} 0) (> {b} 0)) (and (= {q} (div {a} {b})) (= {r} (mod {a} {b}))))",
 ];
 
@@ -7052,7 +7044,7 @@ pub const UNSIGNED_DIV_LEMMAS: &[&str] = &[
     "(=> (> {b} 0) (and (<= 0 {r}) (< {r} {b})))",
 ];
 
-/// Facts about a product `{p}` of `{a}` and `{b}` (backlog 2V-02), proved by
+/// Facts about a product `{p}` of `{a}` and `{b}`, proved by
 /// `tests/lemmas.rs`.
 pub const MUL_LEMMAS: &[&str] = &[
     "(= (= {p} 0) (or (= {a} 0) (= {b} 0)))",
@@ -7133,7 +7125,7 @@ pub const PRELUDE: &str = "(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- 
 
 impl<'p> Prog<'p> {
     /// The facts of the recursive struct fields `text` reads outside a
-    /// quantifier (backlog 2O-03d): each selector application's range or
+    /// quantifier: each selector application's range or
     /// length bounds, which every program value meets. Ground, so the
     /// queries stay quantifier-free. `text` is an obligation's path
     /// condition and goal, never the definitions of the values `mk_struct`
@@ -7242,7 +7234,7 @@ impl<'p> Prog<'p> {
         // Once each: an impl's spec method named both by its own path and
         // through its trait's is one definition. Two copies of one macro
         // each waited for the other in the probe's order, which then left
-        // the definition out and answered `sat` (backlog 2V-20f).
+        // the definition out and answered `sat`.
         let mut seen = BTreeSet::new();
         out.retain(|u| seen.insert(u.clone()));
         out
@@ -7254,7 +7246,7 @@ impl<'p> Prog<'p> {
     /// `(define-fun f (..) (ite guard body (f!ext ..)))`: the same meaning
     /// (the body where the parameters are in their types, an unconstrained
     /// value elsewhere) with no quantifier, so a satisfiable query needs no
-    /// model search over it (backlog T2-04: a quantified definition over an
+    /// model search over it (a quantified definition over an
     /// `(Array Int Float64)` parameter kept Z3 from ending a satisfiable
     /// query, `incomplete (theory array)`). `relevant_axioms` picks the form
     /// (ADR-0064, ADR-0067). A non-recursive definition that is not a leaf
@@ -7361,7 +7353,7 @@ impl<'p> Prog<'p> {
         // Ground instances (ADR-0023): one definition per SMT function, so a
         // struct result's fields are instantiated too. With the first field
         // only, applications of the others had no instance and the instances
-        // were still called complete (backlog 1B-53).
+        // were still called complete.
         let parts = spec_funs(path, self.t)
             .iter()
             .zip(&bodies)
@@ -7506,14 +7498,13 @@ pub fn verify_program(p: &Program, t: &Tables, diags: &mut Diags) -> Outcome {
 }
 
 /// As `verify_program` with another solver seed. Seed 0 is the pinned
-/// configuration; other seeds exist to measure proof stability (backlog
-/// 1B-19): a proof whose verdict depends on the seed is brittle.
+/// configuration; other seeds exist to measure proof stability: a proof whose verdict depends on the seed is brittle.
 pub fn verify_program_seeded(p: &Program, t: &Tables, diags: &mut Diags, seed: u64) -> Outcome {
     verify_program_with(p, t, diags, seed, None)
 }
 
 /// As `verify_program_seeded`, skipping obligations the proof cache already
-/// holds as proved (backlog 2D-01). Output is the same with or without it.
+/// holds as proved. Output is the same with or without it.
 pub fn verify_program_with(
     p: &Program,
     t: &Tables,
@@ -7525,7 +7516,7 @@ pub fn verify_program_with(
 }
 
 /// As `verify_program_with` (seed 0), reusing the stored result of every
-/// definition whose incremental key is unchanged (backlog 2D-10): such a
+/// definition whose incremental key is unchanged: such a
 /// definition is not encoded at all. Its obligations count as proof cache
 /// hits. Output is the same as without it, except that `scripts` holds only
 /// the definitions that were encoded.
@@ -7548,8 +7539,7 @@ pub fn query_header() -> String {
 }
 
 /// The SMT declaration of every spec fn of a program, by full path. A query
-/// holds the declarations of exactly the spec fns its text mentions (backlog
-/// 2D-14), so the incremental key takes these for the spec fns a definition
+/// holds the declarations of exactly the spec fns its text mentions, so the incremental key takes these for the spec fns a definition
 /// can reach.
 pub fn spec_decl_map(p: &Program, t: &Tables) -> BTreeMap<String, String> {
     let view = prepare(p, t);
@@ -7564,10 +7554,8 @@ pub fn spec_decl_map(p: &Program, t: &Tables) -> BTreeMap<String, String> {
 /// `only` (full paths). Every other definition is still seen through its
 /// contract and `#[uses]`, exactly as in a whole-program run, so a listed
 /// definition gets the same verdict as there. Used by `bmb lint` to
-/// re-verify one definition or its callers after a contract change
-/// (backlog 2D-08). Lint only asks whether every listed definition verifies
-/// completely, so the run stops at the first obligation that fails
-/// (backlog 2D-15): after a failure, statuses and diagnostics cover only
+/// re-verify one definition or its callers after a contract change. Lint only asks whether every listed definition verifies
+/// completely, so the run stops at the first obligation that fails: after a failure, statuses and diagnostics cover only
 /// what ran.
 pub fn verify_defs(
     p: &Program,
@@ -7580,8 +7568,7 @@ pub fn verify_defs(
 }
 
 /// Proves only the definitions in `only` (full paths), through the
-/// incremental cache when given, without stopping at a failure (backlog
-/// 3A-04). Each listed definition gets the status and proved obligations
+/// incremental cache when given, without stopping at a failure. Each listed definition gets the status and proved obligations
 /// of a whole-program run (`verify_program_incremental` with the same
 /// caches): a definition's queries are built from its own text and what it
 /// sees of other definitions (contracts, `#[uses]`), never from another
@@ -7616,7 +7603,7 @@ fn header(seed: u64) -> Vec<String> {
 
 /// The search within small bounds for undecided obligations (ADR-0108
 /// §1), off unless asked (`bmb verify --bounded-search`, `bmb mcp
-/// --undecided-info`) until its measurement (backlog T0-37) decides the
+/// --undecided-info`) until its measurement decides the
 /// default, as for the compact view (ADR-0068 §5).
 static BOUNDED_SEARCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -7629,7 +7616,7 @@ fn bounded_search() -> bool {
 }
 
 /// The declarations of the spec fns whose symbol occurs in `text`, one per
-/// line, in path order (backlog 2D-14). `text` is everything the query
+/// line, in path order. `text` is everything the query
 /// asserts after them (revealed definitions, local declarations, ground
 /// instances, assumptions and goal); revealed definitions are already closed
 /// over the spec fns their bodies name (`relevant_axioms`), so no symbol of
@@ -7696,7 +7683,7 @@ fn needed_decls(
 }
 
 /// Whether the `requires` clauses of every executable function that has
-/// any can hold together (backlog 2D-08). The query is the prover's own
+/// any can hold together. The query is the prover's own
 /// encoding of the function's entry state: parameter range facts and type
 /// invariants (ADR-0060), the definitions its `#[uses]` reveals, and the
 /// clauses, under the pinned seed
@@ -7764,7 +7751,7 @@ pub fn preconditions_satisfiable(
     (out, cost)
 }
 
-/// What a function's contract says of its result (T1-44a, W0918).
+/// What a function's contract says of its result (W0918).
 pub enum Determinacy {
     /// One result for every input the `requires` admit.
     One,
@@ -7795,8 +7782,7 @@ fn differ(a: &Val, b: &Val) -> Option<String> {
     }
 }
 
-/// Whether each executable function's contract fixes its result (backlog
-/// T1-44a, AI-user feedback P7): without the body, can
+/// Whether each executable function's contract fixes its result (AI-user feedback P7): without the body, can
 /// `requires(x) ∧ ensures(x, r1) ∧ ensures(x, r2) ∧ r1 ≠ r2` hold? The
 /// query is W0901's (the entry state, the revealed definitions, the pinned
 /// seed and `rlimit`) with two results. Only functions with a named result
@@ -7938,7 +7924,7 @@ struct SatRun<'a, 'p> {
 }
 
 /// Whether the facts of `enc` (its path condition) can hold together, as
-/// W0901 asks (backlog 2D-08) and T1-44a's determinacy check: the probe
+/// W0901 asks and the determinacy check (W0918): the probe
 /// first in the forms of a satisfiability check (ADR-0072), then the full
 /// query, then ground instances (ADR-0075). `Some(true)` leaves the solver
 /// at that model. `None`: undecided, or the solver could not run.
@@ -7994,8 +7980,7 @@ fn sat_of(r: &mut SatRun) -> Option<bool> {
             .and_then(|_| check_sat_counted(sol, r.spent));
         matches!(a, Ok(Answer::Unsat | Answer::Sat)).then_some(a)
     });
-    // Recursive definitions as recursive functions, at the probe's share
-    // (backlog T2-13): the same meaning.
+    // Recursive definitions as recursive functions, at the probe's share: the same meaning.
     let probed = probed.or_else(|| {
         if !r.rec {
             return None;
@@ -8071,7 +8056,7 @@ fn verify_impl(
     } else {
         verify_trusting(p, t, diags, seed, cache, only, stop_at_failure, incr)
     };
-    // Generated items by the names a reader knows (backlog 2V-20g).
+    // Generated items by the names a reader knows.
     for d in &mut diags.items[from..] {
         d.message = t.shown(&d.message);
         // The hint's words too; a replacement is program text, untouched.
@@ -8364,14 +8349,14 @@ fn verify_pass(
         ));
     }
 
-    // Every spec fn by SMT symbol, for proof-context suggestions (backlog 1D-13).
+    // Every spec fn by SMT symbol, for proof-context suggestions.
     let spec_syms: Vec<(String, String)> = prog
         .defs
         .iter()
         .filter(|(_, d)| d.f.kind == FnKind::Spec && !d.inst)
         .map(|(p, _)| (p.clone(), sym(p)))
         .collect();
-    // One solver process serves every definition (backlog 1D-18): each
+    // One solver process serves every definition: each
     // obligation starts with `(reset)` and re-sends its whole base, options
     // included (ADR-0018 §1), so nothing carries over between obligations.
     // Started on the first obligation the cache does not hold, replaced when
@@ -8401,7 +8386,7 @@ fn verify_pass(
             });
             continue;
         }
-        // Incremental build (backlog 2D-10): an unchanged, fully proved
+        // Incremental build: an unchanged, fully proved
         // definition is not encoded again. One that may rest on trusted
         // facts (ADR-0029) is neither looked up nor stored: its result
         // depends on how its callees' proofs stand.
@@ -8584,7 +8569,7 @@ fn verify_pass(
                 // A query of bounded integers and bit-vectors alone, which
                 // the integer form leaves undecided when it mixes `bv2nat`
                 // with linear arithmetic: its exact bit-vector form at the
-                // probe's share before the full limit (backlog T2-13).
+                // probe's share before the full limit.
                 let probed = probed.or_else(|| {
                     let bq = bv_reach(&decls, &q)?;
                     let a = sol
@@ -8599,7 +8584,7 @@ fn verify_pass(
                     }
                 });
                 // Recursive definitions as recursive functions, at the
-                // probe's share (backlog T2-13): the same meaning.
+                // probe's share: the same meaning.
                 let probed = probed.or_else(|| {
                     let rb = rec_base(&axiom_parts, &q, &spec_decls, &dts, &prefix, &decls)?;
                     let a = sol
@@ -8641,7 +8626,7 @@ fn verify_pass(
                     Ok(Answer::Unsat) => vacuous.push((path.clone(), *span, *what)),
                     Ok(Answer::Sat) => {}
                     Ok(Answer::Unknown(_)) => reach_cost.undecided += 1,
-                    // A limit ended the query (backlog T2-16): undecided.
+                    // A limit ended the query: undecided.
                     Err(e) if smt::limit_reason(&e).is_some() => reach_cost.undecided += 1,
                     // The solver cannot be read: this point is undecided and
                     // the next one starts a new solver, as in `sat_of`.
@@ -8827,8 +8812,7 @@ fn verify_pass(
             let relevant_text = relevant.clone();
             let hint =
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
-            // Only the spec fns the query mentions are declared (backlog
-            // 2D-14): an unrelated spec fn does not change the query text.
+            // Only the spec fns the query mentions are declared: an unrelated spec fn does not change the query text.
             let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
             let base = format!("{prefix}{used}{relevant}{decls}");
             // The probe (ADR-0067): every leaf definition a macro, under a
@@ -8857,7 +8841,7 @@ fn verify_pass(
                 .as_ref()
                 .map(|_| ProofCache::key(&format!("{base}\n{q}")));
             // The ground-instance retry of an obligation: the same text
-            // whether it runs or comes from the proof cache (2V-03).
+            // whether it runs or comes from the proof cache.
             let retry_script = |q: &str| {
                 let (inst, complete) = ground_instances(&axiom_parts, q, 3);
                 let inst = format!("{inst}{}", prog.struct_facts(&inst));
@@ -8981,8 +8965,7 @@ fn verify_pass(
                 }
             }
             // The probe undecided with quantified definitions: the
-            // ground-instance retry at the probe's share before the full query
-            // (backlog 1B-46). Its answers count as in the late retry below
+            // ground-instance retry at the probe's share before the full query. Its answers count as in the late retry below
             // (`unsat` proves, `sat` refutes when the instances are complete);
             // a false obligation's cheap counterexample no longer waits for
             // the full query to exhaust its limit.
@@ -9172,7 +9155,7 @@ fn verify_pass(
                 Ok(Answer::Sat) => {
                     // An `f64` model is shown only when IEEE arithmetic
                     // agrees with it (G1), else one is searched for with
-                    // IEEE arithmetic (ADR-0061 §5, backlog T2-03).
+                    // IEEE arithmetic (ADR-0061 §5).
                     let confirmed = match f64_model_check(sol, &answered) {
                         Ok(()) => Ok(()),
                         Err(why) => {
@@ -9399,7 +9382,7 @@ fn abstract_bits(head: &str, q: &str) -> Option<String> {
 
 /// Congruence facts (assertions) between the abstracted ground terms
 /// `terms` (each a `(bv2nat ..)`) of the query `cmds` that apply the same
-/// operations to the same values written differently (backlog 1B-49). Code
+/// operations to the same values written differently. Code
 /// names each operand of a bit operation by a bitvector constant with a
 /// stated value (`Enc::operand_bv`: `(= (bv2nat |'bv@k|) v)` on its path), a
 /// specification converts its operand (`((_ int2bv w) v)`), and a literal is
@@ -9475,8 +9458,8 @@ fn bit_congruences(head: &str, cmds: &[smt::Sexp], terms: &[String]) -> Vec<Stri
     // Terms by their reading; the first of each reading is the one the
     // others are equated with. The firsts of different readings of one
     // shape (the tree with each leaf read as its width only) are related
-    // pairwise, under the equality of the leaves that differ (backlog
-    // 2N-03: a table entry `t[i]` and the spec fn value it equals,
+    // pairwise, under the equality of the leaves that differ
+    // (a table entry `t[i]` and the spec fn value it equals,
     // `byte(i, 0)`, are different leaves of one `^`).
     let mut first: BTreeMap<String, smt::Sexp> = BTreeMap::new();
     let mut shapes: BTreeMap<String, Vec<smt::Sexp>> = BTreeMap::new();
@@ -9700,12 +9683,12 @@ struct AxiomParts {
 }
 
 /// Instances of the definitions for the applications occurring in `text`, to
-/// `depth` levels of nesting (backlog 1B-14, ADR-0023). An application outside
+/// `depth` levels of nesting (ADR-0023). An application outside
 /// quantifiers gets the ground instance of its definition. One under a
 /// quantifier whose arguments mention the variables bound there gets, for a
 /// non-recursive definition, the definition specialized to the arguments that
 /// do not: the other parameters stay quantified, with that application as the
-/// pattern (ADR-0075, backlog T0-24). Every instance follows from the
+/// pattern (ADR-0075). Every instance follows from the
 /// quantified definition, so a proof with them is a proof. The second result
 /// is true when every application, under quantifiers too, got its instance
 /// and none was cut at `depth`: a model of the instances then extends to a
@@ -9916,7 +9899,7 @@ fn with_hint(d: Diag, hidden: &[String], nonlinear: bool) -> Diag {
     }
 }
 
-/// True if some term multiplies two non-constant factors (backlog 1B-16).
+/// True if some term multiplies two non-constant factors.
 pub fn has_nonlinear_product(text: &str) -> bool {
     fn constant(e: &smt::Sexp) -> bool {
         match e {
@@ -10067,7 +10050,7 @@ fn axioms_in_forms(axioms: &[(String, String)], text: &str, forms_of: Forms) -> 
     // Macros that wait for each other cannot be ordered: they go in their
     // quantified form, which names the others as declared symbols. Left
     // out, the query lacked their definitions and a probe's `sat` was taken
-    // for a counterexample (backlog 1B-58).
+    // for a counterexample.
     for &k in &order {
         if !done[k] {
             out.push_str(quantified(&axioms[k].1));
@@ -10120,8 +10103,7 @@ fn quantified(ax: &str) -> &str {
 /// smaller limit.
 const PROBE_SHARE: u64 = 100;
 
-/// The script text of the ground-instance retry at the probe's share
-/// (backlog 1B-46): a stage of obligation `k` as the stability measure
+/// The script text of the ground-instance retry at the probe's share: a stage of obligation `k` as the stability measure
 /// reads it (`; retry of obligation k`), with the probe's limit.
 fn early_retry_text(k: usize, head: &str, limit: &str, inst: &str, q: &str) -> String {
     format!(
@@ -10204,7 +10186,7 @@ fn probe_limit() -> String {
 }
 
 /// The base of a satisfiability check's query with the definitions `q`
-/// reaches written as recursive functions (backlog T2-13): one
+/// reaches written as recursive functions: one
 /// `define-funs-rec` of them all, each its body inside its parameters' types
 /// and its uninterpreted `!ext` outside, which is what the quantified
 /// definition says. Z3 unfolds such a definition at the applications its
@@ -10396,7 +10378,7 @@ fn sub_counterexample(sol: &mut Solver, q: &crate::subproof::Query) -> String {
 
 /// Whether the current model gives every `f64` operation of the query
 /// (`script`: what was asserted) the value IEEE 754 gives its operands'
-/// values (ADR-0061 §5, backlog T2-03). In an ordinary query the operations
+/// values (ADR-0061 §5). In an ordinary query the operations
 /// are uninterpreted, so a model may make `x < 1.0` false at `x = 0.0`: a
 /// counterexample read from it would be false (G1). Each application
 /// outside a quantifier is recomputed with Rust's `f64` arithmetic on the
@@ -10581,8 +10563,7 @@ fn model_values(
     inputs: &[(String, Val, TypeKind)],
     tb: &Tables,
 ) -> Option<Vec<(String, String)>> {
-    // A recursive struct is shown by its fields, one level deep (backlog
-    // 2O-03d): its own model value is an element of an uninterpreted sort.
+    // A recursive struct is shown by its fields, one level deep: its own model value is an element of an uninterpreted sort.
     let inputs: Vec<(String, Val, TypeKind)> = inputs
         .iter()
         .map(|(n, v, t)| match v {
@@ -10595,7 +10576,7 @@ fn model_values(
         })
         .collect();
     // A closure's or function item's `self` (`closures::lower`) is the
-    // closure's captures, each by its own name (backlog 2V-20g); its
+    // closure's captures, each by its own name; its
     // placeholder field `item` and the struct are not shown.
     let inputs: Vec<(String, Val, TypeKind)> = inputs
         .into_iter()
@@ -10715,7 +10696,7 @@ fn show_leaves<'a>(
     }
     if is_array(t) {
         // A payload array of scalars: its elements read from the model's
-        // array value (2V-05); anything else is elided.
+        // array value; anything else is elided.
         let (elems, len) = (it.next(), it.next());
         let e = elem_ty(t);
         let n = len
@@ -10895,8 +10876,8 @@ fn show(v: &Val, t: &TypeKind, tb: &Tables, it: &mut impl Iterator<Item = String
 mod tests {
     use super::*;
 
-    /// Two macros that wait for each other (backlog 1B-58: one definition
-    /// revealed twice, 2V-20f) are still in the query, in their quantified
+    /// Two macros that wait for each other (one definition
+    /// revealed twice) are still in the query, in their quantified
     /// form; left out, a probe's `sat` was a false counterexample.
     #[test]
     fn macros_that_wait_for_each_other_stay_in_the_query() {
@@ -10916,7 +10897,7 @@ mod tests {
         );
     }
 
-    /// Congruence facts of the abstracted query (backlog 1B-49) relate a
+    /// Congruence facts of the abstracted query relate a
     /// code term and a specification term of the same operation, unsigned
     /// and in two's complement, through nested terms, and every fact holds
     /// without the path condition: Z3 refutes its negation at edge and
@@ -10981,9 +10962,8 @@ mod tests {
     }
 
     /// Ground instances (ADR-0023) take datatype terms as arguments: the
-    /// applications are found and substituted whole (backlog 2B-05d).
-    /// The precondition check probes like an obligation (backlog T2-06,
-    /// ADR-0069). With the quantified definition of the scalar leaf `le` Z3
+    /// applications are found and substituted whole.
+    /// The precondition check probes like an obligation (ADR-0069). With the quantified definition of the scalar leaf `le` Z3
     /// found no model of `le(a, b)` over `u64` (`unknown`, the function was
     /// undecided: `arith_ok::sub_guarded` in the pass corpus); the probe
     /// with `le` a macro finds one.
@@ -11037,7 +11017,7 @@ mod m {
     /// as a macro (ADR-0072). `is_parity` names `parity`, so it is no leaf:
     /// in the obligations' probe its quantified definition kept Z3 from
     /// finding a model and the check ran to the limit undecided
-    /// (`pass/recursion.bmb`'s reach points, backlog T2-10).
+    /// (`pass/recursion.bmb`'s reach points).
     #[test]
     fn satisfiability_probe_unfolds_definitions_outside_recursion() {
         let src = r#"#[summary("t")]
@@ -11113,7 +11093,7 @@ mod m {
     }
 
     /// Branch facts keep their text unless an implication among them nests
-    /// `LIFT_DEPTH` connectives deep (backlog T2-09); then it is lifted with
+    /// `LIFT_DEPTH` connectives deep; then it is lifted with
     /// the guard conjoined, the same meaning without the nesting.
     #[test]
     fn guarded_lifts_only_deep_implications() {
@@ -11228,7 +11208,7 @@ mod m {
     /// its ground instance. With the first field's definition only, an
     /// application of another field had none and the instances were still
     /// called complete: a confirmed counterexample that was not one
-    /// (`lib/std/sha256.bmb`'s `chain`, backlog 1B-53).
+    /// (`lib/std/sha256.bmb`'s `chain`).
     #[test]
     fn every_field_of_a_struct_result_has_ground_instances() {
         let src = r#"#[summary("t")]
@@ -11256,7 +11236,7 @@ mod m {
         assert!(inst.contains(&format!("(= ({second} 5)")), "{inst}");
     }
 
-    /// Backlog T2-13: the definitions a satisfiability query reaches as
+    /// The definitions a satisfiability query reaches as
     /// one group of recursive functions, each its body inside its
     /// parameters' types and `!ext` outside; none without recursion.
     #[test]
@@ -11356,7 +11336,7 @@ mod nonlinear_tests {
     use super::has_nonlinear_product;
 
     /// The syntactic test behind the nonlinear hint (moved from
-    /// `tests/verify.rs`: it tests a function of this file, backlog 4A-04).
+    /// `tests/verify.rs`: it tests a function of this file).
     #[test]
     fn nonlinear_detection() {
         assert!(has_nonlinear_product("(assert (= r (* x y)))"));

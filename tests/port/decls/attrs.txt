@@ -1,4 +1,4 @@
-#[summary("1패스의 가장자리: 속성, 효과, 근거, 불변식, 수신자의 진단 (4D-03d)")]
+#[summary("Edges of the first pass: diagnostics for attributes, effects, rationales, invariants, receivers")]
 mod at {
     #[invariant]
     struct A { x: i64 }

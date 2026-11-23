@@ -1,4 +1,4 @@
-#[summary("Vec proved: push, pop, truncate, clone, moves, &mut Vec contracts, handles (ADR-0031 §3, §5, backlog 2G-03)")]
+#[summary("Vec proved: push, pop, truncate, clone, moves, &mut Vec contracts, handles (ADR-0031 §3, §5)")]
 mod vp {
     spec fn room(a: &[i64]) -> bool { a.len() < 1000 }
 

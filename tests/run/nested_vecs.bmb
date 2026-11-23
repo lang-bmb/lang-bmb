@@ -1,4 +1,4 @@
-#[summary("중첩 Vec과 이동 원소: 행렬, 행 구조체, Box 원소 (ADR-0047, backlog 2O-03b)")]
+#[summary("Nested Vecs and move elements: a matrix, row structs, Box elements (ADR-0047)")]
 mod nv {
     struct Row { cells: Vec<i64>, tag: u8 }
 

@@ -1,4 +1,4 @@
-#[summary("메서드 구문 증명: 수신자 조정, 고유 impl, 경계 trait, 계약의 메서드 (ADR-0051, 2M-01)")]
+#[summary("Method syntax proofs: receiver adjustment, inherent impls, bound traits, methods in contracts (ADR-0051)")]
 mod mt {
     struct Counter { n: u64, cap: u64 }
 

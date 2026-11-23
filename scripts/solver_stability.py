@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Solver stability fuzzer (backlog 1B-40, H-STABLE, ADR-0040 §4).
+"""Solver stability fuzzer (H-STABLE, ADR-0040 §4).
 
   solver_stability.py [--variants N] [--json] [--bmb BMB] FILE.bmb|DIR...
 
@@ -18,7 +18,7 @@ bit obligation (ADR-0048 §4), the probe with every leaf definition a macro
 (ADR-0067), the full or exact query, and the retry with ground instances
 (ADR-0023) when it ran. Its verdict is proved when some stage answers
 `unsat`, as in the compiler. Every stage is solved, unchanged and under each
-variant (backlog T2-07), and an obligation is unstable when some variant's
+variant, and an obligation is unstable when some variant's
 verdict differs from the unchanged script's. A retry the compiler did not
 need is not in the script, so a variant that leaves the full query undecided
 is not given one: the measure errs towards unstable. The resource limit

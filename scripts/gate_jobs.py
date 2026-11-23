@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs the gate's independent checks concurrently (backlog INF-08).
+"""Runs the gate's independent checks concurrently.
 
   gate_jobs.py [--slots N] [--timeout S] [--cargo-json FILE] [--job NAME=CMD]...
 

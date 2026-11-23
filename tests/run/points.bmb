@@ -1,4 +1,4 @@
-#[summary("실행: 구조체와 열거형의 배열 (backlog 2B-14)")]
+#[summary("Run: arrays of structs and enums")]
 mod pts {
     enum Cell { Empty, Wall, Coin(i64) }
 

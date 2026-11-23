@@ -1,4 +1,4 @@
-#[summary("문자열: 증명되는 것 (ADR-0050 §3, backlog 2U-02)")]
+#[summary("Strings: what is proved (ADR-0050 §3)")]
 mod sp {
     spec fn three(t: &str) -> bool {
         t.len() == 3

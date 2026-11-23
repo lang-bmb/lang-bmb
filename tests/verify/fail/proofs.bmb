@@ -1,4 +1,4 @@
-#[summary("증명 함수: 증명되지 않는 것 (ADR-0062 §2, backlog T1-18)")]
+#[summary("Proof functions: what is not proved (ADR-0062 §2)")]
 mod pff {
     spec fn sum_to(a: &[u64], n: usize) -> u64
         decreases n,

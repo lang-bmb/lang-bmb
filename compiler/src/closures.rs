@@ -1,4 +1,4 @@
-//! Function values (ADR-0053, backlog 2V-20): lowered before checking to
+//! Function values (ADR-0053): lowered before checking to
 //! the traits, structs and `impl`s Rust itself has underneath, so the
 //! checker, prover and code generator see ADR-0046 generics only.
 //!
@@ -20,7 +20,7 @@
 //! - A closure is a struct of its caller's unit and that trait's `impl`:
 //!   `pre` and `post` are its `requires` and `ensures`, `call` its body
 //!   with the `ensures` clauses themselves (so a failed one is reported
-//!   where it is written, backlog 2V-20f); the impl's refinement (E0817)
+//!   where it is written); the impl's refinement (E0817)
 //!   proves the trait's `post` from them.
 //!
 //! The generated items are text parsed under file ids of their own
@@ -402,12 +402,12 @@ fn leftover_closures(p: &mut Program, diags: &mut Diags) {
 pub struct Lowered {
     pub quiet: Vec<u32>,
     /// Each generated struct and trait by full path, and what a reader
-    /// calls it (backlog 2V-20g): a closure `u::f::{closure#0}` (numbered
+    /// calls it: a closure `u::f::{closure#0}` (numbered
     /// in source order within the definition that writes it, as rustc's
     /// definition paths), a function item passed as a value by its own
     /// path, a bound's trait `u::g::F` (the function and its parameter).
     pub names: BTreeMap<String, String>,
-    /// Each place a function value is passed (backlog 2V-20h): the
+    /// Each place a function value is passed: the
     /// argument's span and what it passes, the closure's `call` or the
     /// function item. The map draws a `passes` edge from the definition
     /// whose body holds the span.
@@ -558,7 +558,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
         }
         (generics.contains_key(&full) || items.contains_key(&full)).then_some(full)
     };
-    // Rounds (backlog 2V-20e): a closure spliced into the `call` of
+    // Rounds: a closure spliced into the `call` of
     // another closure's impl is lowered in the next round, as a call in a
     // function written so.
     let mut closures_made = 0usize;
@@ -875,7 +875,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
         // Each unit takes its own: `done` holds them in the order of the
         // walk above. A unit is not looked up by its path, which two units
         // of a rejected program may share (E0302): the functions of one
-        // would land in the other (backlog 4D-29).
+        // would land in the other.
         fn put_back(m: &mut Mod, done: &mut std::vec::IntoIter<(String, Vec<FnDef>)>) {
             if let Some((_, fs)) = done.next() {
                 let slots = m
@@ -909,7 +909,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                 for (k, _, _, at) in &g.bounded {
                     // A second function of the same name (E0302) is found
                     // by the first one's path: it has its own parameters
-                    // (backlog 4D-29: indexed with the first one's).
+                    // (indexed with the first one's).
                     let Some(tp) = f.generics.get_mut(*k) else {
                         continue;
                     };
@@ -1100,8 +1100,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
                                 .unwrap_or_default();
                             f.attrs.extend(inherited);
                             // `call` ensures the closure's own clauses, so a
-                            // failed one is reported at the clause written
-                            // (backlog 2V-20f); the trait's `post` follows
+                            // failed one is reported at the clause written; the trait's `post` follows
                             // from them (the impl's refinement, E0817). An
                             // `FnMut`'s clauses are of the state before the
                             // call, as its `post` is (ADR-0053 open question 3).
@@ -1166,8 +1165,7 @@ pub fn lower(p: &mut Program, diags: &mut Diags) -> Lowered {
 /// Whether `base` of a field read is a closure's own struct as
 /// `through_self` and `of_before` write it (`self` named in the file
 /// `source::CAPTURE`, or `old` of that): the read is of a capture, which
-/// the closure's text names alone (`count`, not `self.count`, backlog
-/// 2V-20g). No parsed or JSON-read `self` is in that file.
+/// the closure's text names alone (`count`, not `self.count`). No parsed or JSON-read `self` is in that file.
 pub fn is_capture_base(base: &Expr) -> bool {
     let me = |e: &Expr| matches!(&e.kind, ExprKind::Var(v) if v.name == "self" && v.span.file == crate::source::CAPTURE);
     match &base.kind {

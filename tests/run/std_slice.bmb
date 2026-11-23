@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::slice: 키의 안정 정렬 순서로 기록을 늘어놓고(같은 키는 들어온 순서), 정렬된 키에서 이진 탐색한다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Standard library std::slice: lays out records in the stable sort order of their keys (equal keys in arrival order), and binary-searches the sorted keys (ADR-0092 §2)")]
 mod uses_slice {
     // A record: its key and its name's letter.
     struct Rec { key: u64, tag: u8 }

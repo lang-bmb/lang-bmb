@@ -1,4 +1,4 @@
-#[summary("Vec: what does not follow (ADR-0031 §3, backlog 2G-03)")]
+#[summary("Vec: what does not follow (ADR-0031 §3)")]
 mod vf {
     // No bound on the length: `push` may pass the maximum (E0816).
     #[effects(alloc)]
@@ -58,7 +58,7 @@ mod vf {
     }
 
     // A loop that pushes changes the length: the code after it is reachable
-    // (backlog 2G-05 found the loop havoc keeping the length, which made
+    // (the loop havoc once kept the length, which made
     // this verify).
     #[effects(alloc)]
     fn after_push_loop(x: i64, y: i64) -> i64 {

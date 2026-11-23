@@ -1,5 +1,4 @@
-//! The proof gate fails closed (backlog 1B-13). Through the CLI (backlog
-//! 4A-04): each case runs `bmb verify` with its own environment.
+//! The proof gate fails closed. Through the CLI: each case runs `bmb verify` with its own environment.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -79,7 +78,7 @@ fn gate_fails_without_solver_or_resources() {
     assert!(!texts.iter().any(|s| s.contains("999999999999")));
 
     // A query the wall-clock backstop ends, before its rlimit, is marked:
-    // that verdict depends on the machine (backlog INF-26). `pff::tri_le`
+    // that verdict depends on the machine. `pff::tri_le`
     // spends the whole rlimit (about a second); 50 ms ends it.
     let fail = "tests/verify/fail/proofs.bmb";
     let line = |out: &str| {
@@ -98,7 +97,7 @@ fn gate_fails_without_solver_or_resources() {
     assert!(out.contains("E0812"), "{out}");
 
     // A solver that starts and then dies mid-run (one process now serves many
-    // definitions, backlog 1D-18): a solver error, no hang, no success, and a
+    // definitions): a solver error, no hang, no success, and a
     // new process for the next definition. The fake records each start.
     let bin = tmp.join("bin");
     fs::create_dir_all(&bin).unwrap();
@@ -147,8 +146,7 @@ fn gate_fails_without_solver_or_resources() {
 }
 
 /// A query that reaches the solver's memory limit is undecided, and only
-/// that query: the process ends there and the next query starts a new one
-/// (backlog T2-16). Before, the process grew until the system killed it
+/// that query: the process ends there and the next query starts a new one. Before, the process grew until the system killed it
 /// and every later obligation of the definition counted as failed.
 #[test]
 fn a_query_at_the_memory_limit_is_undecided_and_the_rest_go_on() {
@@ -268,8 +266,8 @@ fn probe_limit() -> String {
 }
 
 /// A process that has answered other queries, or runs under the working
-/// limit, does not decide that a query is out of memory (ADR-0129, backlog
-/// T2-17 a): Z3 counts what its process allocated, and a process keeps a
+/// limit, does not decide that a query is out of memory (ADR-0129):
+/// Z3 counts what its process allocated, and a process keeps a
 /// little of every query, so the same query fit or did not fit depending on
 /// what was asked before it. Here every process under the working limit
 /// ends at its first query; each query is asked again alone under the
@@ -309,8 +307,8 @@ fn a_memory_end_in_a_working_process_is_asked_again_alone() {
     let _ = fs::remove_dir_all(&tmp);
 }
 
-/// A probe that ends at the memory limit leaves its query to be asked
-/// (backlog T2-17 b): the full query went to the process that had ended and
+/// A probe that ends at the memory limit leaves its query to be asked:
+/// before this, the full query went to the process that had ended and
 /// was reported undecided for memory without having been asked. Here every
 /// query under the probe's `rlimit` ends its process; the full queries
 /// prove every obligation.
@@ -335,7 +333,7 @@ fn after_a_probe_at_the_memory_limit_the_query_is_asked() {
 }
 
 /// A query that ends at the memory limit gets the ground-instance retry
-/// that a query the `rlimit` ends gets (backlog T2-17 c). Here every query
+/// that a query the `rlimit` ends gets. Here every query
 /// under the probe's `rlimit` and every query with a quantifier ends its
 /// process; the retry, which has the instances of the recursive definition
 /// in place of its quantified axiom, proves the obligation.
@@ -347,7 +345,7 @@ fn a_query_at_the_memory_limit_gets_the_ground_instance_retry() {
     let file = tmp.join("tri.bmb");
     fs::write(
         &file,
-        r#"#[summary("삼각수")]
+        r#"#[summary("triangular numbers")]
 mod series {
     spec fn tri_spec(n: u64) -> u64
         decreases n,

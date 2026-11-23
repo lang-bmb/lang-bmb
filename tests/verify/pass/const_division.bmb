@@ -1,9 +1,9 @@
-#[summary("상수 나눗셈의 같은 뜻 명세")]
+#[summary("Specs of constant division with the same meaning")]
 mod const_division {
     // Floor division and modulo written two ways: Euclidean-style through a
     // divisor parameter, and through truncation by constants. The BVB task
     // `vc-va0093-max-balance` judged one against the other and was undecided
-    // at the rlimit before ADR-0085 (backlog 1B-47).
+    // at the rlimit before ADR-0085.
     spec fn ref_fmod(n: i64, d: i64) -> i64 { (n % d + d) % d }
 
     spec fn ref_fdiv(n: i64, d: i64) -> i64 { (n - ref_fmod(n, d)) / d }

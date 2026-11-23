@@ -1,4 +1,4 @@
-#[summary("정수 메서드를 폭과 부호마다: wrapping·saturating 산술, 비트 메서드(회전, 세기, 뒤집기, 감기는 시프트, 2의 거듭제곱), MIN과 MAX, f64로의 변환")]
+#[summary("Integer methods for each width and sign: wrapping·saturating arithmetic, bit methods (rotate, count, reverse, wrapping shift, power of two), MIN and MAX, conversion to f64")]
 mod methods {
     #[effects(pure)]
     fn wrapping_add_i8(a: i8, b: i8) -> i8 { a.wrapping_add(b) }

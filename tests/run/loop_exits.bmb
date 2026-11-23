@@ -1,4 +1,4 @@
-#[summary("루프 탈출: break, continue, 레이블, loop의 값, 탈출 간선의 해제 (backlog 2K-01b, 2K-01c)")]
+#[summary("Loop exits: break, continue, labels, the value of loop, drops on exit edges")]
 mod lx {
     spec fn below(n: u64) -> bool {
         n < 1000000

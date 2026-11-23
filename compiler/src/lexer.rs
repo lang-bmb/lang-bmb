@@ -45,7 +45,7 @@ pub fn lex(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
 
 /// The text the compiler generates (`closures::lower`): its identifiers may
 /// hold `$`, which no source identifier can, so a generated item's name is
-/// never a name the user wrote (backlog 2V-20j).
+/// never a name the user wrote.
 pub fn lex_generated(file: u32, text: &str, diags: &mut Diags) -> Vec<Token> {
     lex_as(file, text, diags, true)
 }

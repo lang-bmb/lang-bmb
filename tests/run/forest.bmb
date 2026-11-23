@@ -1,4 +1,4 @@
-#[summary("상호 재귀 타입과 제네릭 리스트의 실행 (ADR-0047, backlog 2O-02)")]
+#[summary("Running mutually recursive types and a generic list (ADR-0047)")]
 mod fo {
     enum Tree { Leaf(i64), Branch(Box<Forest>) }
 

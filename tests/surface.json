@@ -209,1023 +209,1023 @@
  "programs": {
   "lib/std": {
    "out": "8bada38689c12ba2",
-   "src": "3e9e54533c8b3813"
+   "src": "08479b24a83abbc4"
   },
   "tests/check/err/arith_methods.bmb": {
    "out": "0316b2e9f7cbdc81",
-   "src": "71c5e7c79109b1b4"
+   "src": "5ea2de427ceca69b"
   },
   "tests/check/err/attr_places.bmb": {
    "out": "010af9b1da8506ee",
-   "src": "0ec47d3b11f8a345"
+   "src": "cd17caa6ac9af8c0"
   },
   "tests/check/err/attrs.bmb": {
    "out": "a9b321987049b3dc",
-   "src": "2445cc38e88a0e9c"
+   "src": "624e73b9658f6627"
   },
   "tests/check/err/bit_vector.bmb": {
    "out": "1bc28fe911b242e8",
-   "src": "00c67302bc0b8820"
+   "src": "0778988e5e1755fb"
   },
   "tests/check/err/bits.bmb": {
    "out": "8fa1d0335fcc864a",
-   "src": "4722a6230f0e584d"
+   "src": "d41c632c54a1ac3a"
   },
   "tests/check/err/boxes.bmb": {
    "out": "49b637b9a9d76e10",
-   "src": "06d096770e4b836c"
+   "src": "5f65faee96823bc6"
   },
   "tests/check/err/bytes.bmb": {
    "out": "724bbedaee19f82d",
-   "src": "1c5bed56067b7026"
+   "src": "a93d774b58387b95"
   },
   "tests/check/err/child.bmb": {
    "out": "49be10e840379829",
-   "src": "bfb338a55cf685d4"
+   "src": "42ab20054ae6007e"
   },
   "tests/check/err/clones.bmb": {
    "out": "73e33c5d07fb391a",
-   "src": "81a08d26105370dd"
+   "src": "663f9b410b5c9e39"
   },
   "tests/check/err/consts.bmb": {
    "out": "3073ad2bd4fb07c4",
-   "src": "234a647ecf8ecc74"
+   "src": "896343227037f2a9"
   },
   "tests/check/err/conversions.bmb": {
    "out": "f0c0717c504ef18a",
-   "src": "e7dc4ea42ff09eff"
+   "src": "8bc9dc21708b8173"
   },
   "tests/check/err/copy_within.bmb": {
    "out": "ba686fb425e066f7",
-   "src": "2e5685b613c30349"
+   "src": "e1d2ac4daa5e9fc6"
   },
   "tests/check/err/data_arrays.bmb": {
    "out": "ccbe3cd9d9cc3a2c",
-   "src": "52f3599370eba35f"
+   "src": "5536db64033b3909"
   },
   "tests/check/err/data_types.bmb": {
    "out": "e8055bab7b756052",
-   "src": "d0f0cc7727fbe39c"
+   "src": "9a156823a03d773d"
   },
   "tests/check/err/data_values.bmb": {
    "out": "3d0245783bbe0748",
-   "src": "8cbef32fc187aa5d"
+   "src": "457ea5eb17945e7d"
   },
   "tests/check/err/effects.bmb": {
    "out": "d5342c41a96d408f",
-   "src": "9411e6682fb671d9"
+   "src": "da6a946d335773c9"
   },
   "tests/check/err/escapes.bmb": {
    "out": "4daadcedc5a60752",
-   "src": "be40bcc54e0ff49d"
+   "src": "b58ca1a7a7af6b7d"
   },
   "tests/check/err/exists.bmb": {
    "out": "565bf2e76567dffb",
-   "src": "25d6fd2a968a7627"
+   "src": "bfdd3eecab0c1686"
   },
   "tests/check/err/field_order.bmb": {
    "out": "c911be696d1e5eed",
-   "src": "51fb4f1ec8daea1c"
+   "src": "dcf3823c287ac754"
   },
   "tests/check/err/float_literals.bmb": {
    "out": "34ae590db463fd17",
-   "src": "8cb151697c7b814a"
+   "src": "f303011534e44a45"
   },
   "tests/check/err/floats.bmb": {
    "out": "0d5876644e322869",
-   "src": "18eabe33b4e3a2a0"
+   "src": "7dce6e6e0f383267"
   },
   "tests/check/err/fn_values.bmb": {
    "out": "c2f544540a8105c0",
-   "src": "15c5f240fdf18ae0"
+   "src": "667badcdd44895b3"
   },
   "tests/check/err/from_arity.bmb": {
    "out": "7bdd2354ef4cfe05",
-   "src": "36dd979d443848ea"
+   "src": "2d474e4e593acc29"
   },
   "tests/check/err/generics.bmb": {
    "out": "c00e67cfaa57f647",
-   "src": "daeef4dd9e51ca5c"
+   "src": "74ba1662a4b596b7"
   },
   "tests/check/err/habits.bmb": {
    "out": "6ba233499f52e7c0",
-   "src": "cc09659653c992bf"
+   "src": "a52e4cbb47cc2f10"
   },
   "tests/check/err/impl_blocks.bmb": {
    "out": "048fab48be7759d8",
-   "src": "501a2957d2f2fd0c"
+   "src": "edfe740dfbd8a48c"
   },
   "tests/check/err/inclusive_ranges.bmb": {
    "out": "dc2890169f4b92aa",
-   "src": "681cc50840859af0"
+   "src": "bf6830db542d985e"
   },
   "tests/check/err/invariants.bmb": {
    "out": "bd66d9e107febd7a",
-   "src": "5d8c65e501ab9141"
+   "src": "beda87e3f1a660d8"
   },
   "tests/check/err/items.bmb": {
    "out": "10337eb3d093be51",
-   "src": "18ad96c70e9a14de"
+   "src": "a77941c714a3a3de"
   },
   "tests/check/err/lexing.bmb": {
    "out": "6d75f3a7ef061315",
-   "src": "7c71cb64a03e19aa"
+   "src": "5f6423b344666bcd"
   },
   "tests/check/err/loop_exits.bmb": {
    "out": "afc7b6ebc3fecbfb",
-   "src": "d76261f27ab337b1"
+   "src": "29fa06f26be4b2c8"
   },
   "tests/check/err/match.bmb": {
    "out": "b256951dd3ab0206",
-   "src": "83d848681b431f9c"
+   "src": "0364a2708b979af4"
   },
   "tests/check/err/mem_moves.bmb": {
    "out": "76a5563ab0b764b4",
-   "src": "0f33c86e5e1fbc7b"
+   "src": "aba316c99128584b"
   },
   "tests/check/err/methods.bmb": {
    "out": "2d47d4f73528bec3",
-   "src": "ac7964dc9609f9a1"
+   "src": "83073e0c9c6e954f"
   },
   "tests/check/err/move_traits.bmb": {
    "out": "f91f24c6bbdc1809",
-   "src": "d24e5154c0ecb549"
+   "src": "bf092da5f615d126"
   },
   "tests/check/err/moves.bmb": {
    "out": "f49d3bde527908be",
-   "src": "c40c8e52ff83b4c1"
+   "src": "069b5fcd3f361910"
   },
   "tests/check/err/mut_match.bmb": {
    "out": "4276d7d65c25fe2e",
-   "src": "6be2f705259536de"
+   "src": "fd4a2ca0239f2598"
   },
   "tests/check/err/nested_vecs.bmb": {
    "out": "8952a62ce5b022d3",
-   "src": "fa2c387837435280"
+   "src": "7067feb909aa4b1d"
   },
   "tests/check/err/nesting.bmb": {
    "out": "e9a61d35884b49c6",
-   "src": "0a5aff4984f74222"
+   "src": "2e7e942086538702"
   },
   "tests/check/err/owned_fields.bmb": {
    "out": "2a85678b163541ac",
-   "src": "ea352f5c9dead234"
+   "src": "e1d3490baec6a757"
   },
   "tests/check/err/places.bmb": {
    "out": "ffc898da88c0561b",
-   "src": "d6b6f18f182e9ee4"
+   "src": "48d50605711c6707"
   },
   "tests/check/err/proofs.bmb": {
    "out": "e97bf837c297898e",
-   "src": "437a3d07659283e8"
+   "src": "d099a18a1f9de9b2"
   },
   "tests/check/err/ranges.bmb": {
    "out": "7829721a98b075d4",
-   "src": "ae275525e2ec4665"
+   "src": "2bd7e6b4aaabb40b"
   },
   "tests/check/err/rec_structs.bmb": {
    "out": "d6ae9d2c3191fe3d",
-   "src": "8eb413a97b46ad7c"
+   "src": "ccdac86178316f2e"
   },
   "tests/check/err/recursive.bmb": {
    "out": "45140137d48ac19b",
-   "src": "5a4d140dbe14fb81"
+   "src": "9d8a83125bbad8b5"
   },
   "tests/check/err/rejected_impls.bmb": {
    "out": "e5af5623a193297f",
-   "src": "6a00dd3b8c318b25"
+   "src": "05d962eb6bb54fe2"
   },
   "tests/check/err/reserved_names.bmb": {
    "out": "d2035b90d5b51b00",
-   "src": "021fe1f377128b61"
+   "src": "3701b92524572108"
   },
   "tests/check/err/returns.bmb": {
    "out": "a0b6aeb06b689686",
-   "src": "edb302bc5b30ce44"
+   "src": "92785039b0f44c40"
   },
   "tests/check/err/rust_habits.bmb": {
    "out": "34991c93b263b88a",
-   "src": "e84e06fa47b8690f"
+   "src": "5ad432367f4b40a9"
   },
   "tests/check/err/rust_paths.bmb": {
    "out": "7f0cec87a7277240",
-   "src": "bb85800a1a93fac4"
+   "src": "f80364de95bfb674"
   },
   "tests/check/err/spec_mode.bmb": {
    "out": "bbf5a52cfcbbf4bb",
-   "src": "ee6201a069e07742"
+   "src": "513fa55a9453464a"
   },
   "tests/check/err/spec_widening.bmb": {
    "out": "d461ad5850dffe1e",
-   "src": "586b7ef2115d587d"
+   "src": "5789029ca39c7b4a"
   },
   "tests/check/err/specs.bmb": {
    "out": "b6f1a0640d243410",
-   "src": "b6db59df243b96ea"
+   "src": "afba2cb98598dc42"
   },
   "tests/check/err/std_unit.bmb": {
    "out": "078a7b24a8710eea",
-   "src": "f82fa2d8487f779b"
+   "src": "3ff28417ab897799"
   },
   "tests/check/err/strings.bmb": {
    "out": "93576557f6f026ec",
-   "src": "a2e3f77eca26842d"
+   "src": "e5311a1b7ff4922b"
   },
   "tests/check/err/subslices.bmb": {
    "out": "8c603d44e8253fef",
-   "src": "6e891f70099fcfa4"
+   "src": "8f687aeac6f78a2e"
   },
   "tests/check/err/summaries.bmb": {
    "out": "510462f5e75a9312",
-   "src": "d1b7b097eab89ce4"
+   "src": "3b7d9b3b4a47e0cd"
   },
   "tests/check/err/traits.bmb": {
    "out": "ac70dafc4ab3888f",
-   "src": "0b1ab9692d278341"
+   "src": "dbb6977b96fe987d"
   },
   "tests/check/err/tries.bmb": {
    "out": "5e3ec1bc3a9a7741",
-   "src": "0a1935268e4e2bdb"
+   "src": "0d7f4572efe74170"
   },
   "tests/check/err/types.bmb": {
    "out": "c529e56926d47267",
-   "src": "95f5661bc7fe3229"
+   "src": "ecfddca6e416b4de"
   },
   "tests/check/err/unsupported.bmb": {
    "out": "e7c7e80bd361d0a5",
-   "src": "2c8c807d1f0c2f36"
+   "src": "b1f6d952748d3c63"
   },
   "tests/check/err/vec.bmb": {
    "out": "a9ebcf9d4d074eeb",
-   "src": "521df02db3d15d07"
+   "src": "67bd881683920eeb"
   },
   "tests/check/err/vec_params.bmb": {
-   "out": "6a6640446608123c",
-   "src": "fb0b469ccaf107ba"
+   "out": "852403c5e5b7ea71",
+   "src": "45f17816da34d184"
   },
   "tests/check/err/vec_recursion.bmb": {
    "out": "e3424bda6e9c731b",
-   "src": "29f6acb20b405aa3"
+   "src": "2bd6505996a11149"
   },
   "tests/check/err/verus_external_body.bmb": {
    "out": "676adf5d89ae3cb0",
-   "src": "dc5e2e7309c4a537"
+   "src": "91821c9c4e720021"
   },
   "tests/check/err/widths.bmb": {
    "out": "1cd8f2fef34ab7ae",
-   "src": "eb09558ae772ad9b"
+   "src": "2989ad16f33b6957"
   },
   "tests/check/ok/literals.bmb": {
-   "out": "2f7dcf3bf54e7973",
-   "src": "5d1b9f14f1322f69"
+   "out": "a6f5edfec0461c86",
+   "src": "59eb51b637118f8b"
   },
   "tests/check/ok/search.bmb": {
-   "out": "2344d28f4d95a30b",
-   "src": "2857cde61ab677ae"
+   "out": "0c52e02460ab7602",
+   "src": "2b82024a887154d2"
   },
   "tests/run/arith_methods.bmb": {
-   "out": "c062136b4eea0a60",
-   "src": "4df5d355cb09c074"
+   "out": "0dd189cb7a09784c",
+   "src": "43ae2518a8d891ce"
   },
   "tests/run/array_if.bmb": {
-   "out": "490dab60bf21a271",
-   "src": "1b8bb609739c05af"
+   "out": "e0f828b4d65bf356",
+   "src": "6456ab7f3aed913f"
   },
   "tests/run/arrays.bmb": {
-   "out": "c133b1ae716ee404",
-   "src": "d11052bd9c13565c"
+   "out": "6bb39953a58191b3",
+   "src": "41ff6b68200ce8d7"
   },
   "tests/run/basics.bmb": {
-   "out": "f7060ce3b7bdb058",
-   "src": "cecccb58d42d5cf6"
+   "out": "677c4c4d34f5c65e",
+   "src": "a61e5a12f7abb0cd"
   },
   "tests/run/bit_methods.bmb": {
-   "out": "ff1913994ba09647",
-   "src": "362d89dbbc53108e"
+   "out": "a91c454fa51eab11",
+   "src": "1d0b768d575eafc9"
   },
   "tests/run/bits.bmb": {
-   "out": "2994ec6a4e643852",
-   "src": "1b3208472ea8cfcb"
+   "out": "f171a1a5c99a9947",
+   "src": "5e3c38c11e790ef8"
   },
   "tests/run/bool_order.bmb": {
-   "out": "edb6b32da1b69ff4",
-   "src": "6b6ae8f48c7b6928"
+   "out": "fadffe0807ea751a",
+   "src": "6a2d132ea7d0e048"
   },
   "tests/run/bools.bmb": {
-   "out": "d31ad84f5183ca12",
-   "src": "8cbdc033235ad69c"
+   "out": "4b978cf035648169",
+   "src": "eeceb6ca479bad44"
   },
   "tests/run/box_places.bmb": {
-   "out": "7b959674b9b45f30",
-   "src": "ba3a069b58a9f5cd"
+   "out": "946f79789e81e0c8",
+   "src": "2b4eb3573ddbfe63"
   },
   "tests/run/boxes.bmb": {
-   "out": "e3019a21c6f35fd1",
-   "src": "8e6d6223ca849632"
+   "out": "e6124fccf91a30e9",
+   "src": "da90503300af3418"
   },
   "tests/run/branch_drops.bmb": {
-   "out": "783e83cfb322f7b6",
-   "src": "060cc4a3924c346b"
+   "out": "482cdec3d65a98c0",
+   "src": "96628f274c9097a0"
   },
   "tests/run/bytes.bmb": {
-   "out": "603f9753f30696da",
-   "src": "b712c3f5767ef251"
+   "out": "27cc1dd16b8bc592",
+   "src": "a4588b01c357e70f"
   },
   "tests/run/calc.bmb": {
-   "out": "10730b1b984fcd9b",
-   "src": "94e81373d97845b7"
+   "out": "8a7c97cd1f0f3789",
+   "src": "3ee1240bcb65f090"
   },
   "tests/run/clone_values.bmb": {
-   "out": "7f5cb0523bad9722",
-   "src": "fc719047d6fa74e3"
+   "out": "0f1d7873dfdfd378",
+   "src": "7e839be295d722f9"
   },
   "tests/run/collatz.bmb": {
    "out": "d39f1d077a351c9f",
    "src": "17252cae016e42bc"
   },
   "tests/run/consts.bmb": {
-   "out": "34ea25c249fb2c6c",
-   "src": "34f6894c0d7a5342"
+   "out": "1dd39fb0e1b8f9d6",
+   "src": "020b6ecef1612fea"
   },
   "tests/run/consts_data.bmb": {
-   "out": "03240d15b3dd803b",
-   "src": "4e46c8a51efff9ae"
+   "out": "00e162d14040a424",
+   "src": "7bf25d520e688a9f"
   },
   "tests/run/conversions.bmb": {
-   "out": "1bbc670498e4558d",
-   "src": "884b3ebd604b081f"
+   "out": "cfd6cb2088c1795a",
+   "src": "6ae83c4afe597c59"
   },
   "tests/run/else_if_temp.bmb": {
-   "out": "28652ed71a1bc461",
-   "src": "e01a04cd25b4afb8"
+   "out": "f868a2e40a0cffef",
+   "src": "1553c78c5795635e"
   },
   "tests/run/escape.bmb": {
-   "out": "b3946573883c6e72",
-   "src": "19a0af12ea2e85f6"
+   "out": "7f0f6b2bcc1abcee",
+   "src": "5916f0ece0c7d327"
   },
   "tests/run/escapes.bmb": {
    "out": "1678358d1246c9da",
    "src": "43065941d8513ace"
   },
   "tests/run/expr_tree.bmb": {
-   "out": "6593d670a56fbd7b",
-   "src": "8577ae3b8fac585f"
+   "out": "3f195c82ef68125a",
+   "src": "28adcb59239b55b9"
   },
   "tests/run/fields.bmb": {
-   "out": "b9546489e095af6c",
-   "src": "fc4d81f294aae181"
+   "out": "0bfa5f8697c686ff",
+   "src": "1373db734a8560b7"
   },
   "tests/run/floats.bmb": {
-   "out": "50c347e33f0bed24",
-   "src": "d1f9d22caa461a0d"
+   "out": "79e30f338066085f",
+   "src": "1803621cfa9dd941"
   },
   "tests/run/fn_names.bmb": {
-   "out": "7c8cd2fee59b38b6",
-   "src": "cddceb84217eeabe"
+   "out": "18232105e560a6b0",
+   "src": "c706945dd4506976"
   },
   "tests/run/fn_nested.bmb": {
-   "out": "dc3c5f772089d6b7",
-   "src": "e9ee0ff210acf33b"
+   "out": "dacf9ece1b6aab65",
+   "src": "2875b18337248847"
   },
   "tests/run/fn_values.bmb": {
-   "out": "6ea8475ddb9483e5",
-   "src": "921693e51149fec6"
+   "out": "43135ecf45589cb5",
+   "src": "82d60969b7607f9f"
   },
   "tests/run/forest.bmb": {
-   "out": "436932d56088aea4",
-   "src": "b922b738febfd809"
+   "out": "d9527c172b60109b",
+   "src": "6f1e80cbc6e75b24"
   },
   "tests/run/generic_moves.bmb": {
-   "out": "296711e86946c038",
-   "src": "845d745d13412713"
+   "out": "f4dfe09ad96f536e",
+   "src": "d91ab4d4b808e4d9"
   },
   "tests/run/generic_stack.bmb": {
-   "out": "96be3c9da12c7dd7",
-   "src": "7cc4407d8520d6a8"
+   "out": "8c700ffd2954e654",
+   "src": "d27fe32b1b3d4ecc"
   },
   "tests/run/generic_vecs.bmb": {
-   "out": "01fb6058b5eea605",
-   "src": "0d8ed80239f27372"
+   "out": "9739f219a67e5b27",
+   "src": "0c464a4cc7e795f6"
   },
   "tests/run/generics.bmb": {
-   "out": "8d0f9110e862d1bd",
-   "src": "acd6be0862324847"
+   "out": "f281e21aad6ba9d3",
+   "src": "153b814bf7c71a39"
   },
   "tests/run/grid.bmb": {
-   "out": "7e72c23f0f482915",
-   "src": "8700bce176f547f0"
+   "out": "993fb8cf37e07e52",
+   "src": "d4384c3fb7405968"
   },
   "tests/run/impl_blocks.bmb": {
-   "out": "ffd9f72c843a3873",
-   "src": "d3bc5bcddd7756ad"
+   "out": "b7af170a2b6efb83",
+   "src": "a3380fbc6ecbee8e"
   },
   "tests/run/int_consts.bmb": {
-   "out": "c5f86a5644381b43",
-   "src": "50078e8b947827a7"
+   "out": "f4effbfed1b179b6",
+   "src": "172a9f3cfe70546d"
   },
   "tests/run/loop_exits.bmb": {
-   "out": "991b4bdd77097be6",
-   "src": "06a1d7f1072a11b4"
+   "out": "959cbfd0a6372bf6",
+   "src": "7a7cad64b9ee0911"
   },
   "tests/run/mandel.bmb": {
-   "out": "800739503e7b10d4",
-   "src": "a6d914b047b9822f"
+   "out": "220b5d806114117b",
+   "src": "d2db03029b730989"
   },
   "tests/run/match_binding_partial_move.bmb": {
    "out": "cdc2c05553942f72",
    "src": "760d21526098c2e3"
   },
   "tests/run/max_list.bmb": {
-   "out": "1d6f150b8158ad06",
-   "src": "d246c300c55bb504"
+   "out": "edf813e64b43bc22",
+   "src": "261b3a44cc07b6e4"
   },
   "tests/run/mem_moves.bmb": {
-   "out": "6dd5ed68f16beebb",
-   "src": "16e282572e2190be"
+   "out": "da3992c42dc3abd3",
+   "src": "ae6a3bc6e52e6699"
   },
   "tests/run/method_order.bmb": {
-   "out": "84f4661b1969117f",
-   "src": "e3bc5e24dd648c46"
+   "out": "b8d377c55c10a64b",
+   "src": "767de306f64d4572"
   },
   "tests/run/methods.bmb": {
-   "out": "8734e8894a79d3c3",
-   "src": "601179c39ac552bf"
+   "out": "2d7defa7b6d67a22",
+   "src": "324f719d0ca9647e"
   },
   "tests/run/move_traits.bmb": {
-   "out": "d74116099b1f07e5",
-   "src": "51320b3dd32ecdc1"
+   "out": "c6c2cb31741a355f",
+   "src": "322d46224e56d934"
   },
   "tests/run/mut_match.bmb": {
-   "out": "3e035492820da8d4",
-   "src": "6bdd352f578251b1"
+   "out": "bface9b4c1ab819e",
+   "src": "be114f2669231e66"
   },
   "tests/run/nested_vecs.bmb": {
-   "out": "a10abb90fa8b8cbb",
-   "src": "c70adbd64b57efd4"
+   "out": "c35f5ff65ec67203",
+   "src": "f710f4d9801f7a64"
   },
   "tests/run/numlist.bmb": {
-   "out": "70a8d3a08b11d104",
-   "src": "f1201cf873c0bd85"
+   "out": "25c7d2b206b70a10",
+   "src": "e1d04cfe4e1f3b5e"
   },
   "tests/run/order.bmb": {
-   "out": "562eac4774261725",
-   "src": "7ae0a0759d67db35"
+   "out": "b5618c10910544da",
+   "src": "7af9ba86e0a146ab"
   },
   "tests/run/owned_arrays.bmb": {
-   "out": "072b623aa656c354",
-   "src": "13a7913cb41145fe"
+   "out": "27027260a3a56c6d",
+   "src": "6a33e2d33ac21d86"
   },
   "tests/run/owned_fields.bmb": {
-   "out": "e9d04aa30464b7eb",
-   "src": "a580c99c486d1505"
+   "out": "03697d4b7979964c",
+   "src": "5ecc78aa0db6b79c"
   },
   "tests/run/points.bmb": {
-   "out": "12eec9f4b7999105",
-   "src": "205416af03651c4b"
+   "out": "2bd1b1acba132bc3",
+   "src": "c5f4be5c22624aea"
   },
   "tests/run/primes.bmb": {
-   "out": "25e6d478baeee51d",
-   "src": "d753b7dc0f5de3d8"
+   "out": "12e1c2f6a91eb442",
+   "src": "7a4c2cec3e752d5f"
   },
   "tests/run/ranges.bmb": {
-   "out": "09d7cd895aeb31d1",
-   "src": "efbfa018d544d3ee"
+   "out": "124b26f759270ec2",
+   "src": "89a9d492a0f1e1ba"
   },
   "tests/run/relaxed.bmb": {
-   "out": "60c7165ff8406b49",
-   "src": "9506ebcda2ad5224"
+   "out": "95bc0f862fdce552",
+   "src": "5236811cf0680d01"
   },
   "tests/run/returns.bmb": {
-   "out": "a3c8198d6a2bf149",
-   "src": "093de8a38c853eea"
+   "out": "e3945f655cbebf5f",
+   "src": "51a183abf16498ea"
   },
   "tests/run/ring.bmb": {
-   "out": "fbc8bb8cfa316762",
-   "src": "d19fb8cf7569e860"
+   "out": "1d60e9231c1ef856",
+   "src": "3edcfb6414a56909"
   },
   "tests/run/rose.bmb": {
-   "out": "5a45affa4d784535",
-   "src": "c587cb086f2b458c"
+   "out": "857ceb99f5ef6f42",
+   "src": "0a87aa95c248ca8f"
   },
   "tests/run/scalar_refs.bmb": {
-   "out": "819a4fbd50cd4fe6",
-   "src": "65630b8551b62df0"
+   "out": "4b3e068229326ba8",
+   "src": "8003841a358f94e8"
   },
   "tests/run/scopes.bmb": {
    "out": "ad3f19632afc3502",
    "src": "ddfc3cd103ced838"
   },
   "tests/run/search.bmb": {
-   "out": "b361905abba58932",
-   "src": "46cf86fb62c20bfe"
+   "out": "9606f5c7971a9801",
+   "src": "1284b57870c49884"
   },
   "tests/run/shapes.bmb": {
-   "out": "3dd3faf9627f0926",
-   "src": "81258d3c6e3f0f30"
+   "out": "2b57725020073ba8",
+   "src": "bbec8a56674c5fba"
   },
   "tests/run/sort_generic.bmb": {
-   "out": "288b963e87dac485",
-   "src": "3bd1175716972839"
+   "out": "c5161a4a6f4d1d3d",
+   "src": "ad8d04b3675522b9"
   },
   "tests/run/sorted_set.bmb": {
-   "out": "62d2dcf91e6a2d93",
-   "src": "1d4f9b674b429c42"
+   "out": "76b07802155668d1",
+   "src": "f6d291a07bea9869"
   },
   "tests/run/stats.bmb": {
-   "out": "b813c5de5a959f59",
-   "src": "da92730f32b457f0"
+   "out": "cbe2e94e09d428aa",
+   "src": "9d001a639e87afcb"
   },
   "tests/run/std_collections.bmb": {
-   "out": "8c3128d94b9cf7d4",
-   "src": "6a3526d7968b7248"
+   "out": "1ec47f6412a516c7",
+   "src": "53d4ecf37411cd0e"
   },
   "tests/run/std_intern.bmb": {
-   "out": "455f5eeee525a383",
-   "src": "2f38d0d38327fa98"
+   "out": "8b3344b02cc3d4d5",
+   "src": "95ba6f81a6925d5c"
   },
   "tests/run/std_json.bmb": {
-   "out": "4c46a203c439dec7",
-   "src": "9efdf05a45930190"
+   "out": "58fc65e8df7b59d0",
+   "src": "c9f0ce07ea273fde"
   },
   "tests/run/std_moved_values.bmb": {
-   "out": "fcde131511ac8977",
-   "src": "1004abd87e43ee26"
+   "out": "3bf47b319030bb9c",
+   "src": "7730bcad8772cc2d"
   },
   "tests/run/std_num.bmb": {
-   "out": "6c262653fc0237a4",
-   "src": "ba3dc0aecf5e4b69"
+   "out": "a3e75479ff947273",
+   "src": "eb128fb3ff93de22"
   },
   "tests/run/std_slice.bmb": {
-   "out": "07160e371da89b4e",
-   "src": "866a1163820c6143"
+   "out": "1d78c8a369f9406a",
+   "src": "2b82eb5ba9bb733f"
   },
   "tests/run/std_str.bmb": {
-   "out": "6619923e9460babc",
-   "src": "c16eb1be7f812e34"
+   "out": "452a78d79af60911",
+   "src": "f685a34c5a94f9b4"
   },
   "tests/run/std_text_keys.bmb": {
-   "out": "c8087fd5dad01727",
-   "src": "2f2da5f9e23faf95"
+   "out": "3ad8a93f70b3aa5c",
+   "src": "e5cbb1e7896e7a98"
   },
   "tests/run/strings.bmb": {
-   "out": "27faa5e766043ed7",
-   "src": "18cb3ebfc1cd7556"
+   "out": "2b0f543cdd5db91c",
+   "src": "8f054165cf7b351f"
   },
   "tests/run/swap.bmb": {
-   "out": "62a6f85b4bbb8164",
-   "src": "5b38f6fae6da8240"
+   "out": "485d3d47d9dd5866",
+   "src": "66e30908e8abe517"
   },
   "tests/run/trait_contracts.bmb": {
-   "out": "445810637718d432",
-   "src": "be3ff7647cb1e8d4"
+   "out": "2abb5aae4379e0f2",
+   "src": "3e75fb3bb0db2674"
   },
   "tests/run/trait_defaults.bmb": {
-   "out": "6f304ed9c6b60d74",
-   "src": "1864df824f44a18a"
+   "out": "7793a091deec213e",
+   "src": "300083d76258d113"
   },
   "tests/run/traits.bmb": {
-   "out": "3150c09c6029edd0",
-   "src": "375816077bde2db0"
+   "out": "ff57e7b38d195df6",
+   "src": "0bdd024d3845ce6a"
   },
   "tests/run/tries.bmb": {
-   "out": "23811436afb7f823",
-   "src": "e7dd1e10fec4c7b9"
+   "out": "67b46787607c5f4b",
+   "src": "70ff12ae828aa1dd"
   },
   "tests/run/unit_locals.bmb": {
-   "out": "258d579d0220304a",
-   "src": "bcbf3abcc2bd6754"
+   "out": "15e7d3456cacf10e",
+   "src": "d9e127b86f83138a"
   },
   "tests/run/values.bmb": {
-   "out": "9006eabfdfb58e97",
-   "src": "36e8f14d7ec15deb"
+   "out": "0b25113f7f4016dc",
+   "src": "263b71b411f59558"
   },
   "tests/run/vec_field_narrow.bmb": {
-   "out": "0a63573161c4507c",
-   "src": "c963c4280260f48a"
+   "out": "a8f728e1080bf086",
+   "src": "b4921f6a1d4a8b6f"
   },
   "tests/run/vec_tree.bmb": {
-   "out": "8e134149eb088549",
-   "src": "16179d6dd633aa06"
+   "out": "cc85138763d8b77d",
+   "src": "1180370bca44b3b7"
   },
   "tests/run/vecs.bmb": {
-   "out": "16573d56cdc8752e",
-   "src": "4fb3ba9de85bf19e"
+   "out": "50bb1d7b5536f3b1",
+   "src": "40198f9dfe7e63dd"
   },
   "tests/run/vm.bmb": {
-   "out": "48d166e1d2b05f4c",
-   "src": "58b174b1c73f2262"
+   "out": "5b4f4863701e40dc",
+   "src": "5167780a5bef6e45"
   },
   "tests/run/widths.bmb": {
-   "out": "36093e266cd0939f",
-   "src": "77e757a70054ef53"
+   "out": "de2a883767b4f0fd",
+   "src": "eef52eb48dfc10a3"
   },
   "tests/verify/fail/arith.bmb": {
-   "out": "3f0bace994ccaa07",
-   "src": "4ac9cddef8e4ea3a"
+   "out": "da4154e4f8a7c2fa",
+   "src": "dffc5e714afa2efe"
   },
   "tests/verify/fail/arith_methods.bmb": {
-   "out": "009e48524d2afdd8",
-   "src": "3381fee1fce79dac"
+   "out": "7815c8bef05348ce",
+   "src": "57dc44dee37a6b75"
   },
   "tests/verify/fail/bit_vector.bmb": {
-   "out": "abea1291ed15291c",
-   "src": "f9e066eb2210b150"
+   "out": "9887492df87313f2",
+   "src": "b41ad8a2a6124f45"
   },
   "tests/verify/fail/bits.bmb": {
-   "out": "6fbfc0f96cc9c218",
-   "src": "ea7fc737d4db9f56"
+   "out": "e0bc491c4a6bebd3",
+   "src": "0bba8d8766411025"
   },
   "tests/verify/fail/bounds.bmb": {
-   "out": "f578aa93f5721c2e",
-   "src": "1f6cb319c015af8b"
+   "out": "4f68662942fb81aa",
+   "src": "b06e69590d9998dd"
   },
   "tests/verify/fail/boxes.bmb": {
-   "out": "b357304bc9f1fc8b",
-   "src": "e2c4ab434875f1f4"
+   "out": "bf5318d29b3af84f",
+   "src": "150f6eea322ff5ac"
   },
   "tests/verify/fail/bytes.bmb": {
-   "out": "f00bd0fe5f338cd1",
-   "src": "f604a5793ab0e92b"
+   "out": "5231618c34ae0139",
+   "src": "4ff731de34839fc5"
   },
   "tests/verify/fail/consts_data.bmb": {
-   "out": "99d0911ed4f27f01",
-   "src": "354cb88ca83a7a29"
+   "out": "a9150edc600cf26d",
+   "src": "ebcc718f74d12414"
   },
   "tests/verify/fail/contracts.bmb": {
-   "out": "02486c88a96a6823",
-   "src": "e8a3cbc8e94388bf"
+   "out": "40cef49143835c89",
+   "src": "6b6922c9a09eb782"
   },
   "tests/verify/fail/conversions.bmb": {
-   "out": "de75386296ca1134",
-   "src": "b31a289737956a1a"
+   "out": "14860f7b4cb8e564",
+   "src": "b36eef01e219d7fb"
   },
   "tests/verify/fail/copy_within.bmb": {
-   "out": "f6fcfe15977c0625",
-   "src": "4fd8dacf4fdb9de3"
+   "out": "e1d3a7a324af2f91",
+   "src": "28b847a20a934993"
   },
   "tests/verify/fail/enums.bmb": {
-   "out": "94d6a68a74c012e4",
-   "src": "3d3409772b525c45"
+   "out": "a3ff164e2a987b5a",
+   "src": "98341cd7df5d10ce"
   },
   "tests/verify/fail/exists.bmb": {
-   "out": "28c47e254c8c2acd",
-   "src": "948e74378af3a5db"
+   "out": "daec1600c241d50f",
+   "src": "84c11ae2e6aa795f"
   },
   "tests/verify/fail/floats.bmb": {
-   "out": "87c1a57f76c6d637",
-   "src": "53334bc754c27fc8"
+   "out": "cddd14b701a07d55",
+   "src": "1572ba248f89e44b"
   },
   "tests/verify/fail/fn_values.bmb": {
-   "out": "b3f82e3d03fa8c89",
-   "src": "d40bf41c7ca41a7e"
+   "out": "ca0d12f095526b6e",
+   "src": "c6130497b092b17f"
   },
   "tests/verify/fail/generics.bmb": {
-   "out": "4ae1aca6daa7ff8c",
-   "src": "c79352dfd4faad0a"
+   "out": "9969daee165a0e9c",
+   "src": "0e8305cb6b0026f5"
   },
   "tests/verify/fail/inline_contracts.bmb": {
    "out": "d193a94835470cb0",
    "src": "afd6fdad4f8e09e4"
   },
   "tests/verify/fail/int_consts.bmb": {
-   "out": "441074bf352d4c18",
-   "src": "d7550fc94ce94176"
+   "out": "4d93db93b51e5d73",
+   "src": "6c99b6238cf48b60"
   },
   "tests/verify/fail/invariants.bmb": {
-   "out": "ad7930ac96c12681",
-   "src": "42844b203b109931"
+   "out": "a0949a03734e7464",
+   "src": "b833e1bba8eb029f"
   },
   "tests/verify/fail/loop_exits.bmb": {
-   "out": "2c379a6ba20cc82d",
-   "src": "1f79b0887689a4a1"
+   "out": "34aa6108555e3c73",
+   "src": "cd3bce6d56d87b25"
   },
   "tests/verify/fail/loops.bmb": {
-   "out": "0380413759ab044b",
-   "src": "75f8a330dfe8f840"
+   "out": "c4bf5bf2e8018a42",
+   "src": "a3cd428187ae9484"
   },
   "tests/verify/fail/mem_moves.bmb": {
-   "out": "108a25460b9bce36",
-   "src": "436d629513ede60c"
+   "out": "59a94e6266e15ae3",
+   "src": "13883d9705960fe6"
   },
   "tests/verify/fail/methods.bmb": {
-   "out": "8bd7a3883fd57c7a",
-   "src": "fba486fae9b069de"
+   "out": "e96c7ccec0298c8f",
+   "src": "d62b01b7bb2b5c8e"
   },
   "tests/verify/fail/mut_match.bmb": {
-   "out": "8141b1d2ffba2e8e",
-   "src": "bdf6c6c0d22a8e38"
+   "out": "55cf363f2629d7a7",
+   "src": "4ec6d5155892359c"
   },
   "tests/verify/fail/nested_vecs.bmb": {
-   "out": "8209134c6897f0a6",
-   "src": "164b730fa56a8890"
+   "out": "f0349bea48c4a284",
+   "src": "dcf17b365f6e841d"
   },
   "tests/verify/fail/nonlinear.bmb": {
-   "out": "f9e86c73c541b132",
-   "src": "fed1c6efc1994a47"
+   "out": "bd9ff1357ad75056",
+   "src": "602888977f9d5d0c"
   },
   "tests/verify/fail/owned_fields.bmb": {
-   "out": "41480e3db8074db0",
-   "src": "26f6f51535518bc2"
+   "out": "ffc834a7f7e0f6e8",
+   "src": "2cbd9b42ff15271d"
   },
   "tests/verify/fail/proofs.bmb": {
-   "out": "eb630074c49c69fe",
-   "src": "296fa99052d91130"
+   "out": "988e69a791b7323e",
+   "src": "2465d97a9d138c60"
   },
   "tests/verify/fail/ranges.bmb": {
-   "out": "2bbfab55d3fc8aae",
-   "src": "6dac3fed99372979"
+   "out": "6857b99625fcd886",
+   "src": "e9f38a2209a4de96"
   },
   "tests/verify/fail/rec_structs.bmb": {
-   "out": "3c874ca67351d6ed",
-   "src": "41790494a778ba58"
+   "out": "e8c231c07d22d537",
+   "src": "58e18a38c6b87005"
   },
   "tests/verify/fail/recursive.bmb": {
-   "out": "53ae26b65ad27249",
-   "src": "ce3aef53b6bdc961"
+   "out": "ca545448dc175594",
+   "src": "0be30d9f53213991"
   },
   "tests/verify/fail/returns.bmb": {
-   "out": "e5cae6ba2ca9e0f2",
-   "src": "8b4f11f72a16bca8"
+   "out": "36552ad0e6c36f22",
+   "src": "273aa475f0e17591"
   },
   "tests/verify/fail/scalar_refs.bmb": {
-   "out": "7c0c5285ab3f64ce",
-   "src": "ec640b47e8fa1770"
+   "out": "eede6ba31c012ff4",
+   "src": "e0df67c75b0207cf"
   },
   "tests/verify/fail/slices.bmb": {
-   "out": "0ed579879edfd303",
-   "src": "ba745be6701e55a4"
+   "out": "7a95ef61dcfac0db",
+   "src": "002f5adf8bc47b36"
   },
   "tests/verify/fail/string_lengths.bmb": {
-   "out": "de4d07af364f4578",
-   "src": "2fb158aa024e4d18"
+   "out": "8e613f8700f3779b",
+   "src": "d688c70569191e50"
   },
   "tests/verify/fail/strings.bmb": {
-   "out": "6165b4cbfb460dab",
-   "src": "9ae8f0875d7af0b5"
+   "out": "b8436ab701bf5486",
+   "src": "350575ea4334432c"
   },
   "tests/verify/fail/structs.bmb": {
-   "out": "7a29c00c8a1498db",
-   "src": "e88996c3ce43a6f2"
+   "out": "db80dd091456f38a",
+   "src": "0ad7b1aed8576be0"
   },
   "tests/verify/fail/subslices.bmb": {
-   "out": "3248633190b27f79",
-   "src": "6d1966a4df9ce95d"
+   "out": "2267b7ee8327ffef",
+   "src": "1d0ec6fb82ddfaa2"
   },
   "tests/verify/fail/text_ord.bmb": {
-   "out": "1c7f70872ff7d529",
-   "src": "65a3c221f6296c4e"
+   "out": "bc79d0b78d8d0159",
+   "src": "e319c8fab5d2efc6"
   },
   "tests/verify/fail/trait_contracts.bmb": {
-   "out": "4dde174e4aa3a243",
-   "src": "53120fae92db8beb"
+   "out": "d01c9b38f4475520",
+   "src": "2cfe188f11c44127"
   },
   "tests/verify/fail/trait_defaults.bmb": {
-   "out": "2706217c42fcf52f",
-   "src": "023cf838e5fac7aa"
+   "out": "c919f04291f7c062",
+   "src": "55bc757cff8440cf"
   },
   "tests/verify/fail/traits.bmb": {
-   "out": "d3c85cb9e7e79787",
-   "src": "3e7c310b281e9250"
+   "out": "595a60cfab0d3695",
+   "src": "11827056336d3b0a"
   },
   "tests/verify/fail/tries.bmb": {
-   "out": "f29fcb1ca9063f23",
-   "src": "2cb342bd021c6de8"
+   "out": "53db026e7f32f33e",
+   "src": "ef59518c8bdcd294"
   },
   "tests/verify/fail/utf8_facts.bmb": {
-   "out": "e23b24764583a42f",
-   "src": "4897bb633021c3af"
+   "out": "063c665e1be73eea",
+   "src": "c31ac972e27306c6"
   },
   "tests/verify/fail/vec_recursion.bmb": {
-   "out": "b4283a2613bf13ef",
-   "src": "300717407fdec787"
+   "out": "eb5717638781b96c",
+   "src": "41651ac880d57de8"
   },
   "tests/verify/fail/vecs.bmb": {
-   "out": "fea51b539f2a22c0",
-   "src": "0cc3f5352423e784"
+   "out": "77b2a28427f72451",
+   "src": "56405956302b89e5"
   },
   "tests/verify/fail/weak_witness.bmb": {
-   "out": "13f7ea101054b622",
-   "src": "fa6345641a78aafe"
+   "out": "63a980e491a1651c",
+   "src": "6a9eb8397b2efcdc"
   },
   "tests/verify/fail/widths.bmb": {
-   "out": "ebefc976bed74e21",
-   "src": "4b64bb092f2c5614"
+   "out": "882ae3d3c3628fc6",
+   "src": "8171b0d291d9c34e"
   },
   "tests/verify/pass/arith.bmb": {
-   "out": "529302d0248635db",
-   "src": "da75516a89858fa0"
+   "out": "4b96686a7ea0a5c9",
+   "src": "409d05c3675408b3"
   },
   "tests/verify/pass/arith_methods.bmb": {
-   "out": "779de80a7d05ad76",
-   "src": "e905855962152408"
+   "out": "80d17750d95a39e1",
+   "src": "92166b79990337f8"
   },
   "tests/verify/pass/arm_name_then_loop.bmb": {
-   "out": "d7da9dfa01a47222",
-   "src": "c614468bf512aa48"
+   "out": "fad29f3c0a77be5c",
+   "src": "3ce4ee0d99082fa7"
   },
   "tests/verify/pass/bit_vector.bmb": {
-   "out": "6a5ad52116266772",
-   "src": "19e6b5450bdacac7"
+   "out": "0c227c0d9668c208",
+   "src": "1b591e11ae33c733"
   },
   "tests/verify/pass/bits.bmb": {
-   "out": "39f235e0a1d07ea1",
-   "src": "9c21e2ccbfa22ba1"
+   "out": "c7be21d07a2d52f9",
+   "src": "9a68aefd5c509d46"
   },
   "tests/verify/pass/boxes.bmb": {
-   "out": "d0a14e3b3a3f91e0",
-   "src": "cef7e98c074fb475"
+   "out": "8266910a2544c705",
+   "src": "ed33f93cea28d044"
   },
   "tests/verify/pass/bytes.bmb": {
-   "out": "eddfc7d86b6fd5bc",
-   "src": "8251dde72a572c8e"
+   "out": "e727a36e6c528ab6",
+   "src": "93905e66e1b67d68"
   },
   "tests/verify/pass/closure_context.bmb": {
-   "out": "ad96f764a8e25498",
-   "src": "fcffd590d5873c4b"
+   "out": "e10e2e43c622d9e9",
+   "src": "b11061fdeab38da4"
   },
   "tests/verify/pass/conditions.bmb": {
-   "out": "1994c2db8c4917e1",
-   "src": "5f715e58ffec92ec"
+   "out": "4a5b7337c4db1676",
+   "src": "6eb890b22c06b11b"
   },
   "tests/verify/pass/const_division.bmb": {
-   "out": "d4a09510b61c8cf1",
-   "src": "d3c88cc73d9060a1"
+   "out": "88b3217249827795",
+   "src": "40fab037294386db"
   },
   "tests/verify/pass/conversions.bmb": {
-   "out": "8814167700def7ba",
-   "src": "ae1bbf7f78f2d939"
+   "out": "0966e9d39d71a9ee",
+   "src": "e67f9c21344dbb36"
   },
   "tests/verify/pass/copy_within.bmb": {
-   "out": "12814dcae704cb34",
-   "src": "098a7eef1dc62a1c"
+   "out": "1ff7e8a58f0cb104",
+   "src": "6e08e55d89543510"
   },
   "tests/verify/pass/default_context.bmb": {
    "out": "775a33e67f486453",
    "src": "e10830d8d6bc94b9"
   },
   "tests/verify/pass/elem_preds.bmb": {
-   "out": "03f09805f5867dd1",
-   "src": "9c55928078dacf6f"
+   "out": "0a9392152bb5b0f7",
+   "src": "d1cd71dcccdedd0f"
   },
   "tests/verify/pass/enums.bmb": {
-   "out": "bdcdf7b44db4f42e",
-   "src": "8780f70751b27b3c"
+   "out": "5a61290ec091e316",
+   "src": "d102036f7977fa98"
   },
   "tests/verify/pass/exists.bmb": {
-   "out": "908bed452fb119cf",
-   "src": "19d4df488f5f9393"
+   "out": "9f4be8866eeed5b9",
+   "src": "5433bc8a28f25ba4"
   },
   "tests/verify/pass/floats.bmb": {
-   "out": "5b3fcfd75a3a4390",
-   "src": "af30647c2bdf48e0"
+   "out": "3855d27cd0205f24",
+   "src": "c2831295efd5c0ec"
   },
   "tests/verify/pass/generics.bmb": {
-   "out": "e8f090ebdfbf8316",
-   "src": "9983f3dd72c0619b"
+   "out": "d2123d86e522e98b",
+   "src": "4e1d0ab8bdb3153a"
   },
   "tests/verify/pass/index_preds.bmb": {
-   "out": "53094be6f191e031",
-   "src": "117770020205bfec"
+   "out": "665fc684880ca143",
+   "src": "fa4d26adfb230d85"
   },
   "tests/verify/pass/inline_contracts.bmb": {
    "out": "de93641a60f23490",
    "src": "ce59e894d21539aa"
   },
   "tests/verify/pass/invariants.bmb": {
-   "out": "729358abb6c09a56",
-   "src": "497cd95f1c9ca043"
+   "out": "434f9a04a805fae7",
+   "src": "f186a783dcc0006e"
   },
   "tests/verify/pass/loop_exits.bmb": {
-   "out": "6849483afbb2dc61",
-   "src": "f4f8bc7f39f37b5e"
+   "out": "104c6ce1fe2c4c48",
+   "src": "4259f225a18baf57"
   },
   "tests/verify/pass/loops.bmb": {
-   "out": "1674f79eee150240",
-   "src": "f41d991762cd1f03"
+   "out": "04d5d205c07d6053",
+   "src": "b3bed2ae8167e76a"
   },
   "tests/verify/pass/mem_moves.bmb": {
-   "out": "fa64663e7c18e7f8",
-   "src": "92e44e4c7e0493c9"
+   "out": "09da25c8d0843728",
+   "src": "cae2ccf8751049f5"
   },
   "tests/verify/pass/methods.bmb": {
-   "out": "015ba0e8c7f2dc38",
-   "src": "2f539002adbeeb81"
+   "out": "a0a0d2760b295e87",
+   "src": "51f69d59d67b6aec"
   },
   "tests/verify/pass/moved_specs.bmb": {
-   "out": "0a371fe941c652e0",
-   "src": "63d3c43b7a93f1a7"
+   "out": "770d05d7b162892e",
+   "src": "57144daaa11074f9"
   },
   "tests/verify/pass/mut_match.bmb": {
-   "out": "1c4e77d85f4161f2",
-   "src": "31fa5cf908920538"
+   "out": "ec48ca2845ca00be",
+   "src": "8f01b52c747fb8da"
   },
   "tests/verify/pass/nested_vecs.bmb": {
-   "out": "67b793a9f00f6ba7",
-   "src": "a62a8e0321579a39"
+   "out": "49b12b157d4a9f8d",
+   "src": "49d0dbaa62d20468"
   },
   "tests/verify/pass/owned_fields.bmb": {
-   "out": "4e88bc51f284ce26",
-   "src": "e057260e5a3e5884"
+   "out": "e0c5d2f8ab07bcb3",
+   "src": "a3ccb52d60e0128b"
   },
   "tests/verify/pass/proof_text_vecs.bmb": {
-   "out": "ad890f74dc14927e",
-   "src": "d0f520e47ad4ace2"
+   "out": "de9b27d4fa6c2435",
+   "src": "5508bb2816f8948d"
   },
   "tests/verify/pass/proofs.bmb": {
-   "out": "0e15e2c3a8441565",
-   "src": "741d359f51886a62"
+   "out": "0c7e42e264f95da8",
+   "src": "618c003288f6b551"
   },
   "tests/verify/pass/ranges.bmb": {
-   "out": "56047cd04861e8f6",
-   "src": "e90b46a66dc615bb"
+   "out": "3d1e8ee3cdaf7227",
+   "src": "121a0127b1a6e7eb"
   },
   "tests/verify/pass/rec_structs.bmb": {
-   "out": "fa77e32b5cabe8ef",
-   "src": "0690a8b2c02ff39c"
+   "out": "67e4351b6dcced9d",
+   "src": "302c0e92dc94147c"
   },
   "tests/verify/pass/recursion.bmb": {
-   "out": "b49994a16d5892c0",
-   "src": "24771611894b6520"
+   "out": "e288e3beec188404",
+   "src": "2f83a075bf347dd9"
   },
   "tests/verify/pass/recursive.bmb": {
-   "out": "b9d84eca749cef80",
-   "src": "aa15321935255020"
+   "out": "0063f6a3fb99083f",
+   "src": "850a4e0089afcaf0"
   },
   "tests/verify/pass/returns.bmb": {
-   "out": "6d08e2ea6662ecf4",
-   "src": "36905a3c7b695dec"
+   "out": "6249e1391cc21e7b",
+   "src": "a0a8ed0176393230"
   },
   "tests/verify/pass/search.bmb": {
-   "out": "b359a7ee0d17359d",
-   "src": "955d162035a5237c"
+   "out": "715d937845eea786",
+   "src": "3e71bbfc9b121618"
   },
   "tests/verify/pass/slices.bmb": {
-   "out": "4c5d62778a1fcef6",
-   "src": "738597582c2a81ce"
+   "out": "7e11adf8e0708364",
+   "src": "84ce304e8f1fdfad"
   },
   "tests/verify/pass/spec_widening.bmb": {
-   "out": "e10a7fadacb87932",
-   "src": "1c40256c8543ea07"
+   "out": "7378fd8fd263a4c2",
+   "src": "b15e1e2761096c1f"
   },
   "tests/verify/pass/strings.bmb": {
-   "out": "76854270affa0906",
-   "src": "0ef4905487b7cf72"
+   "out": "104b2799ee8343c2",
+   "src": "73dea33e0a0a44cb"
   },
   "tests/verify/pass/structs.bmb": {
-   "out": "29dd661131f2b9e6",
-   "src": "aaf10149d21f89d0"
+   "out": "61e8ee4594a0ebe9",
+   "src": "4d553eb7c61497e6"
   },
   "tests/verify/pass/subslices.bmb": {
-   "out": "4ae3c3e46bd27a2f",
-   "src": "559c90a72334f996"
+   "out": "862279bbfe1805e3",
+   "src": "21f2b663e0e87eb5"
   },
   "tests/verify/pass/summaries.bmb": {
-   "out": "b9c54e89e2829586",
-   "src": "96cefaafe6d5f8e9"
+   "out": "8b308a8c33ea77b6",
+   "src": "d085edc075ebcfeb"
   },
   "tests/verify/pass/text_ord.bmb": {
-   "out": "2ea3851c5ff7e279",
-   "src": "b04fad6a1f3e6279"
+   "out": "41aafe8bc5e83dfa",
+   "src": "7d1a67e9c6fb4100"
   },
   "tests/verify/pass/trait_contracts.bmb": {
-   "out": "1b8fb0b9a6c946f9",
-   "src": "a75c0b3e4591ce40"
+   "out": "b9514353e1a1050b",
+   "src": "28f69dc720b1a48e"
   },
   "tests/verify/pass/traits.bmb": {
-   "out": "228d14434cec4df9",
-   "src": "f9de2bda0bfec595"
+   "out": "058f9405531804a8",
+   "src": "78b1c6d80b015c92"
   },
   "tests/verify/pass/tries.bmb": {
-   "out": "409053ddbf5a8cdd",
-   "src": "1574877b4dcd544d"
+   "out": "6701057b15cbdce9",
+   "src": "b7aae5f08fc74ef5"
   },
   "tests/verify/pass/unbounded_push.bmb": {
-   "out": "0c9b328e4b520538",
-   "src": "d25ed389ac0b66ca"
+   "out": "6edbaf8dae6a544a",
+   "src": "6244d9e02dc1b31a"
   },
   "tests/verify/pass/unsigned_elems.bmb": {
-   "out": "3d6dce4cc15c3685",
-   "src": "ff20020d1389c4f5"
+   "out": "1d92996314e1c74f",
+   "src": "a4bcdfbbd37157a2"
   },
   "tests/verify/pass/uses_impl_path.bmb": {
-   "out": "67d323797ec879ff",
-   "src": "5f727c7c4b95e87b"
+   "out": "30e67cb7d2220d1f",
+   "src": "41e377cdf9d919ab"
   },
   "tests/verify/pass/utf8_facts.bmb": {
-   "out": "7ee5b9750824bdee",
-   "src": "824b64b76fd9010d"
+   "out": "871cf0ce0a3295b6",
+   "src": "55862e2040609f9f"
   },
   "tests/verify/pass/vec_recursion.bmb": {
-   "out": "f233d0c0a2a7386b",
-   "src": "f0f615d018ab1030"
+   "out": "544ee0dc76c5de47",
+   "src": "60b6ad8cafb93106"
   },
   "tests/verify/pass/vecs.bmb": {
-   "out": "41ddeb055e7673d6",
-   "src": "80616ff964ec700f"
+   "out": "0e4f6102843c94e4",
+   "src": "72df9c1ecb1d7ee8"
   },
   "tests/verify/pass/widths.bmb": {
-   "out": "f86f37bac40caa02",
-   "src": "c68e956b8d06742a"
+   "out": "a45b91e686725a0d",
+   "src": "c8cd1e0fc624a4cf"
   }
  }
 }

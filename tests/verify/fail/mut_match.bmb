@@ -1,4 +1,4 @@
-#[summary("&mut 참조 match: 따르지 않는 것 (ADR-0055, backlog 2O-04b)")]
+#[summary("match on a &mut reference: what does not follow (ADR-0055)")]
 mod mf {
     enum Slot { Empty, Full(i64, bool) }
 

@@ -1,5 +1,4 @@
-//! The run-time support of the system interface (ADR-0091 §4, backlog
-//! 4C-02): IR functions over libc, put into a module only when it calls them
+//! The run-time support of the system interface (ADR-0091 §4): IR functions over libc, put into a module only when it calls them
 //! (as `print_f64` and the text runtime are).
 
 use super::*;
@@ -85,7 +84,7 @@ fn args_text() -> String {
 }
 
 /// The constant texts of this runtime by name, for `bmb dump runtime`
-/// (the port holds the same bytes, backlog 4D-05h).
+/// (the port holds the same bytes).
 pub(super) fn texts() -> Vec<(&'static str, String)> {
     vec![
         ("sys_args", args_text()),
@@ -834,7 +833,7 @@ pub(super) fn helpers(text: &str) -> String {
 /// An argument with a NUL byte is the `InvalidInput` error, a program
 /// that cannot start is the spawn error (`ENOENT`, ..). Linux x86-64
 /// layouts: a `pollfd` is 8 bytes, the spawn file actions fit in 128.
-/// `metadata` and `symlink_metadata` (backlog 4C-06): `stat` and `lstat`
+/// `metadata` and `symlink_metadata`: `stat` and `lstat`
 /// of the path into a `std::fs::Metadata` (Linux x86-64 `struct stat`:
 /// `st_mode` at byte 24, `st_size` at byte 48, 144 bytes).
 const META: &str = "declare i32 @stat(ptr, ptr)

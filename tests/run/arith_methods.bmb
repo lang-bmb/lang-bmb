@@ -1,4 +1,4 @@
-#[summary("checked, saturating and wrapping arithmetic at the type bounds (ADR-0028 §3, backlog 2C-03)")]
+#[summary("checked, saturating and wrapping arithmetic at the type bounds (ADR-0028 §3)")]
 mod am {
     #[effects(io)]
     fn show(o: Option<i64>) -> () {

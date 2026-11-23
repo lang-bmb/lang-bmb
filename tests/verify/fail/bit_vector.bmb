@@ -1,4 +1,4 @@
-#[summary("`by (bit_vector)` 하위 증명의 실패(E0818, 반례)와 번역할 수 없는 단언, 비트 메서드의 틀린 계약(backlog 2N-03)")]
+#[summary("Failures of `by (bit_vector)` sub-proofs (E0818, counterexample), assertions that cannot be translated, wrong contracts of bit methods")]
 mod bvf {
     // False for odd `x`.
     #[effects(pure)]
@@ -17,7 +17,7 @@ mod bvf {
         x
     }
 
-    // An element is a variable of the sub-proof (backlog 2N-11): what the
+    // An element is a variable of the sub-proof: what the
     // path knows of it (`s[0] < 8`) is not seen, and two reads of the same
     // text are one variable.
     #[effects(pure)]
@@ -131,7 +131,7 @@ mod bvf {
 
     spec fn short_run(x: u8, r: u32) -> bool { r < 8 }
 
-    // `trailing_ones` of 255 is 8 (backlog 2N-09).
+    // `trailing_ones` of 255 is 8.
     #[effects(pure)]
     fn low_ones(x: u8) -> (r: u32)
         ensures short_run(x, r),
@@ -146,7 +146,7 @@ mod bvf {
         }
     }
 
-    // `checked_shr` is `None` from the width on (backlog 2N-09b).
+    // `checked_shr` is `None` from the width on.
     #[effects(pure)]
     fn shift_some(x: u8, k: u32) -> (r: Option<u8>)
         ensures always_some(r),
@@ -156,7 +156,7 @@ mod bvf {
 
     spec fn low_first(x: u32, b: [u8; 4]) -> bool { b[0] == x & 255 }
 
-    // Big-endian bytes start with the top byte (backlog 2N-09c).
+    // Big-endian bytes start with the top byte.
     #[effects(pure)]
     fn first_byte(x: u32) -> (b: [u8; 4])
         ensures low_first(x, b),

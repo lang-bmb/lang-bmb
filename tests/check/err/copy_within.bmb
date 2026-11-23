@@ -1,4 +1,4 @@
-#[summary("copy_within 규칙 (ADR-0083)")]
+#[summary("copy_within rules (ADR-0083)")]
 mod cw {
     #[effects(pure)]
     fn shared(a: &[i64]) -> () {

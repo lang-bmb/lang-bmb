@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::collections: BTreeMap으로 값마다 나온 횟수를 세고 BTreeSet으로 서로 다른 값을 모아, 키 순서대로 찍는다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Standard library std::collections: counts the occurrences of each value with a BTreeMap, collects the distinct values with a BTreeSet, and prints them in key order (ADR-0092 §2)")]
 mod uses_collections {
     #[effects(alloc, io)]
     fn main() -> () {

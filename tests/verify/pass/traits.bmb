@@ -1,4 +1,4 @@
-#[summary("trait: 경계 호출과 구체 `Self` 호출 (ADR-0046 §2·§4)")]
+#[summary("trait: bound calls and concrete `Self` calls (ADR-0046 §2·§4)")]
 mod tr {
     trait Area {
         #[effects(pure)]

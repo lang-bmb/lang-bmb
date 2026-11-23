@@ -1,4 +1,4 @@
-//! Contract weakening between two versions (backlog 2D-19, `bmb weaken`),
+//! Contract weakening between two versions (`bmb weaken`),
 //! through the command line: the corpus `tests/weaken/<case>/{old,new}.bmb`
 //! with its expected output (`out.jsonl`, `BMB_BLESS=1` rewrites it), the
 //! verdict of every definition, determinism, and exit codes.
@@ -356,7 +356,7 @@ fn statuses(files: &[&str]) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// The reader's comparison (ADR-0065 §3, backlog T1-27): a contract change
+/// The reader's comparison (ADR-0065 §3): a contract change
 /// is a refinement for a reader only through the spec fns that reader
 /// reveals. Each reader of `readers/readers.jsonl` is a caller in
 /// `readers/callers.bmb` (or none, `m::gone`); every caller proves against

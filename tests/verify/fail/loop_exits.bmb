@@ -1,4 +1,4 @@
-#[summary("루프 탈출의 틀린 프로그램: break 상태, continue의 불변식·감소, loop의 값 (backlog 2K-01b, 2K-01c)")]
+#[summary("Wrong programs of loop exits: the break state, invariant·decrease on continue, the value of loop")]
 mod lf {
     spec fn few(n: u64) -> bool {
         n < 1000

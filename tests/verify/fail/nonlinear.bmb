@@ -1,4 +1,4 @@
-#[summary("비선형 결정 불가")]
+#[summary("Nonlinear undecidable")]
 mod nl {
     spec fn pos3(x: i64, y: i64, z: i64) -> bool { 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000 }
     spec fn not_fermat(x: i64, y: i64, z: i64) -> bool { x * x * x + y * y * y != z * z * z }

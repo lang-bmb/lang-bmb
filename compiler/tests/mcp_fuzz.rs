@@ -1,4 +1,4 @@
-//! MCP session fuzzing (backlog 1D-23): random sequences of tool calls
+//! MCP session fuzzing: random sequences of tool calls
 //! against `bmb mcp DIR` over stdio, with valid and invalid arguments,
 //! interleaved, stale, closed and unknown transactions, reads and proofs in
 //! between, notifications and malformed lines. Claims:
@@ -7,7 +7,7 @@
 //!   a time limit, notifications get none, and it exits cleanly at the end;
 //! - every response is JSON-RPC 2.0 with the request's id and exactly one of
 //!   `result` / `error`; tool results carry a text item and `isError`;
-//! - the rename and expect operations of `--rename-ops` (backlog T1-20) are
+//! - the rename and expect operations of `--rename-ops` are
 //!   operations of a transaction like the others: valid and invalid names
 //!   and identities, renames of what a transaction just put;
 //! - transaction bookkeeping follows a model: `tx_begin` ids count up, a
@@ -255,7 +255,7 @@ fn check_workspace(snap: &BTreeMap<String, String>, ctx: &str) {
     if snap.is_empty() {
         return;
     }
-    // Through the CLI (backlog 4A-04), on a copy of the snapshot.
+    // Through the CLI, on a copy of the snapshot.
     let dir = std::env::temp_dir().join(format!(
         "bmb-mcp-fuzz-check-{}-{}",
         std::process::id(),
@@ -431,7 +431,7 @@ fn session(seed: u64, calls: u64) -> (usize, usize, usize) {
                             format!("{{\"tx\":{{tx}},\"unit\":{},\"code\":{}}}", q(u), q(&c)),
                         ));
                     }
-                    // A rename of what was just put (backlog T1-20): to a
+                    // A rename of what was just put: to a
                     // free name, or to one that may be taken.
                     if rng.chance(30) {
                         let to = pick(&mut rng, &["r", "renamed", "f", "g"]);

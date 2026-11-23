@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_text_keys.bmb (backlog 4B-04), for its
+// Rust translation of tests/run/std_text_keys.bmb, for its
 // expected output (`rustc --edition 2021`).
 use std::collections::{BTreeMap, BTreeSet};
 

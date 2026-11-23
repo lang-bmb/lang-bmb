@@ -1,4 +1,4 @@
-#[summary("타입 형태, 메서드, 대입 대상")]
+#[summary("Type shapes, methods, assignment targets")]
 mod places {
     spec fn mut_spec(a: &mut [i64]) -> bool { a.len() > 0 }
 

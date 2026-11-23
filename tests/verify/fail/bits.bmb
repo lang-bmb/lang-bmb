@@ -1,4 +1,4 @@
-#[summary("비트 연산의 틀린 프로그램: 폭 이상이거나 음수인 시프트 양, 비트 연산 결과의 넘침, 틀린 결과 명세 (backlog 2N-02)")]
+#[summary("Wrong programs of bit operations: a shift amount at or above the width or negative, overflow of a bit operation's result, a wrong result spec")]
 mod bf {
     // `x << 32` is outside a `u32`'s shift amounts.
     #[effects(pure)]

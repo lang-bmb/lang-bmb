@@ -1,4 +1,4 @@
-#[summary("실행: 배열 반환과 값으로 받는 구조체 배열 (backlog 2V-04a)")]
+#[summary("Run: returning arrays and struct arrays received by value")]
 mod av {
     struct Point { x: i64, y: i64 }
 

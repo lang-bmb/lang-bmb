@@ -1,4 +1,4 @@
-#[summary("실행: base64 라이브러리의 시험(T4-03). RFC 4648 §10 벡터 일곱의 인코드·디코드, 거부해야 할 입력(길이, 채우기 위치, 정규형이 아닌 남는 비트, 알파벳 밖), 의사 난수 바이트열의 길이 0~64 인코딩과 3000까지의 CRC-32 합·왕복 수, 16개 문자로 된 모든 4문자열과 8문자열(앞 그룹 고정)의 디코드 수·합. 기대 출력은 Python base64(정규형 판정은 validate=True 디코드 뒤 다시 인코드해 같은지)로 같은 입력을 계산한 base64_ref.py")]
+#[summary("Run: test of the base64 library. Encode and decode of the seven RFC 4648 §10 vectors, inputs that must be rejected (length, padding position, leftover bits not in normal form, outside the alphabet), encodings of pseudo-random byte strings of length 0~64 and their CRC-32 sum and round-trip count up to 3000, the decode count and sum over every 4-character and 8-character string of 16 characters (first group fixed). The expected output is base64_ref.py, which computes the same inputs with Python base64 (normal form is judged by decoding with validate=True and checking that re-encoding gives the same text)")]
 mod app {
     spec fn short(v: &[u8], n: usize) -> bool { v.len() <= n }
 

@@ -1,4 +1,4 @@
-#[summary("한 갈래에서만 옮긴 값은 다른 갈래 끝에서 해제된다(ADR-0081, 백로그 2O-07)")]
+#[summary("A value moved in only one arm is dropped at the end of the other arm (ADR-0081)")]
 mod bd {
     struct Pt { x: i64, y: i64 }
 

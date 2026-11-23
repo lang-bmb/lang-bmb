@@ -1,4 +1,4 @@
-#[summary("trait 메서드의 분배: 타입마다의 impl, 기본 본문과 그 재정의, 제네릭 함수 안의 trait 호출(인스턴스마다 다른 함수), 제네릭 impl(impl<T> Tr for W<T>), 스칼라 타입의 impl, 경로로 부르기(Tr::f), 힙을 가진 Self, 인스턴스가 부르는 기본 본문의 인스턴스")]
+#[summary("Dispatch of trait methods: an impl per type, default bodies and their overrides, trait calls inside a generic function (a different function per instance), generic impls (impl<T> Tr for W<T>), impls for scalar types, calling by path (Tr::f), a Self that holds heap memory, the instance of a default body called by an instance")]
 mod traits {
     trait Shape {
         #[effects(pure)]

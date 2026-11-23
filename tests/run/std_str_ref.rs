@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_str.bmb (backlog 4B-02), for its
+// Rust translation of tests/run/std_str.bmb, for its
 // expected output (`rustc --edition 2021`). BMB's functions return the
 // positions where Rust's return the slices.
 fn yes(b: bool) {

@@ -1,4 +1,4 @@
-#[summary("메서드 구문의 계약: 이름이 바뀐 spec 메서드와 그 호출 (ADR-0051, 2M-01)")]
+#[summary("Contracts in method syntax: a renamed spec method and its call (ADR-0051)")]
 mod m {
     struct C { n: u64, cap: u64 }
 

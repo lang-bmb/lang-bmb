@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The port's `emit-llvm --all-checks` against its allow-list (backlog 4D-05).
+"""The port's `emit-llvm --all-checks` against its allow-list.
 
 The port's code generator grows construct by construct. On a program with a
 construct it does not lower yet, stage1 writes nothing and exits 2 with the

@@ -1,4 +1,4 @@
-//! Soundness fuzzing of `Vec` (backlog 2G-05, ADR-0031 §8).
+//! Soundness fuzzing of `Vec` (ADR-0031 §8).
 //!
 //! Random functions of `x`, `y` run a sequence of `Vec` operations: `push`,
 //! `pop` into an accumulator, `truncate`, element writes and reads, the
@@ -20,14 +20,14 @@
 //! - the program built with proved checks removed, and with every check
 //!   kept, prints what the interpreter computes;
 //! - a call the interpreter says faults runs as a program of its own
-//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   (`common::trap`): both builds print the line before it
 //!   and end by the trap;
 //! - a third run under an address checker (valgrind memcheck with leak
 //!   checking, else AddressSanitizer) finds no invalid access, double free
 //!   or leak. Without either the test fails: the free points are the point
 //!   of this fuzzer (ADR-0031 adoption note 9).
 //!
-//! Backlog 2S-02 (ADR-0044 §6) adds a byte buffer `w: Vec<u8>` (pushes of
+//! ADR-0044 §6 adds a byte buffer `w: Vec<u8>` (pushes of
 //! byte literals, reads of its elements) and byte strings passed to
 //! `first_or`, whose contract fixes its result (escapes included: quote,
 //! backslash, NUL, newline and bytes above 127 as `\xHH`).
@@ -409,14 +409,14 @@ struct Stats {
     replayed: usize,
     compiled_runs: usize,
     checked_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let funcs: Vec<VFunc> = (0..6).map(|k| gen_vfunc(&mut rng, k)).collect();
-    let mut src = String::from("#[summary(\"Vec 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"Vec soundness fuzzing\")]\nmod m {\n");
     src.push_str(HELPERS);
     for f in &funcs {
         src.push_str(&f.text());
@@ -424,10 +424,10 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
     src.push_str("}\n\n");
     let module = src.clone();
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     src.push_str(main_head);
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    // Calls that fault in the interpreter, as `main` lines.
     let mut faults: Vec<(usize, String)> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         for (x, y) in f.base.inputs(&mut rng) {

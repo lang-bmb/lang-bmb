@@ -1,4 +1,4 @@
-#[summary("조기 반환의 경계: 타입, 명세 (backlog 2K-01a)")]
+#[summary("Edges of early return: types, specs")]
 mod rc {
     spec fn pos(x: i64) -> bool { x > 0 }
 

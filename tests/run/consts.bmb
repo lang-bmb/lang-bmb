@@ -1,4 +1,4 @@
-#[summary("const 항목(ADR-0052, backlog 2V-19): 검사기가 평가한 값, 배열 길이와 반복 개수, 명세와 실행 코드 양쪽, 다른 단위의 전체 경로")]
+#[summary("const items (ADR-0052): values evaluated by the checker, array lengths and repeat counts, in both specs and exec code, the full path into another unit")]
 mod konst {
     const A: char = 'a';
     const BIG: u64 = u64::MAX / 2 + 1;
@@ -39,7 +39,7 @@ mod konst {
     }
 }
 
-#[summary("다른 단위의 const를 전체 경로로")]
+#[summary("A const of another unit by full path")]
 mod other {
     const LIMIT: u64 = konst::BIG - 1;
 

@@ -103,7 +103,7 @@ mod main {
             }
             match ir_path {
                 None => {},
-                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Emitted = lib::emit_llvm(units.as_slice()); print_str(er.diags.as_str()); if !er.ok { std::process::exit(1); } if er.todo.len() > 0 { eprint_str("stage1: emit-llvm: not ported yet (backlog 4D-05), nothing written:\n"); for q in 0..er.todo.len() invariant 0 <= q && q <= er.todo.len(), { eprint_str("  "); eprint_str(er.todo[q].as_str()); eprint_str("\n"); } std::process::exit(2); } match std::fs::write(to.as_str(), er.ir.as_bytes()) { Ok(done) => {}, Err(why) => { eprint_str("bmb: cannot write "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); }, } return; } },
+                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Emitted = lib::emit_llvm(units.as_slice()); print_str(er.diags.as_str()); if !er.ok { std::process::exit(1); } if er.todo.len() > 0 { eprint_str("stage1: emit-llvm: not ported yet, nothing written:\n"); for q in 0..er.todo.len() invariant 0 <= q && q <= er.todo.len(), { eprint_str("  "); eprint_str(er.todo[q].as_str()); eprint_str("\n"); } std::process::exit(2); } match std::fs::write(to.as_str(), er.ir.as_bytes()) { Ok(done) => {}, Err(why) => { eprint_str("bmb: cannot write "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); }, } return; } },
             }
             eprint_str("usage: stage1 emit-llvm --all-checks FILE.. -o OUT.ll\n");
             std::process::exit(2);

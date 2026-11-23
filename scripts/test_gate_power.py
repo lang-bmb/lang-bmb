@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Which gate-power runs count (backlog 1B-59): a mutant is caught by a job
+"""Which gate-power runs count: a mutant is caught by a job
 of the gate, not by a step before the jobs and not by the time limit."""
 import contextlib
 import io

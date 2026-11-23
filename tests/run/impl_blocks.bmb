@@ -1,4 +1,4 @@
-#[summary("경계가 다른 고유 impl 블록(ADR-0097, backlog 2T-11): 모든 T의 블록과 T: Copy의 블록, 옮기는 값의 인스턴스는 앞의 것만 쓴다")]
+#[summary("Inherent impl blocks with different bounds (ADR-0097): a block for every T and a block for T: Copy; an instance of a moving value uses only the former")]
 mod iblocks {
     struct Cell<T> { v: Vec<T>, n: u64 }
 

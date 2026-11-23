@@ -1,4 +1,4 @@
-// Rust translation of tests/run/strings.bmb (backlog 2U-05), for its
+// Rust translation of tests/run/strings.bmb, for its
 // expected output.
 fn word_end(t: &str, i: usize) -> usize {
     let mut j = i;

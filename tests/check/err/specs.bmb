@@ -1,4 +1,4 @@
-#[summary("명세 규칙")]
+#[summary("Spec rules")]
 mod specs {
     spec fn always() -> bool { true }
 
@@ -99,7 +99,7 @@ mod specs {
     }
 }
 
-#[summary("트리거 규칙")]
+#[summary("Trigger rules")]
 mod triggers {
     spec fn no_trigger(a: &[i64]) -> bool {
         forall|i: usize| i < a.len() ==> a[i] > 0

@@ -1,4 +1,4 @@
-#[summary("copy_within의 의무 (ADR-0083)")]
+#[summary("Obligations of copy_within (ADR-0083)")]
 mod cwf {
     #[effects(pure)]
     fn claim(a: &mut [i64]) -> ()

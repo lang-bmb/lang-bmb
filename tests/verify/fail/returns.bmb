@@ -1,4 +1,4 @@
-#[summary("조기 반환의 틀린 프로그램: 반환 지점의 사후 조건, 남은 경로의 조건 (backlog 2K-01a)")]
+#[summary("Wrong programs of early return: the postcondition at the return point, the conditions of the remaining path")]
 mod rf {
     spec fn nonneg(r: i64) -> bool { r >= 0 }
 

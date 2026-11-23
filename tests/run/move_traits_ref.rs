@@ -1,4 +1,4 @@
-// Rust translation of tests/run/move_traits.bmb (backlog 2T-09), for its
+// Rust translation of tests/run/move_traits.bmb, for its
 // expected output (`rustc --edition 2021`).
 trait Weigh: Sized {
     fn weight(&self) -> u64;

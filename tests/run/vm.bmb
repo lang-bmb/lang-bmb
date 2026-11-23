@@ -1,4 +1,4 @@
-#[summary("스택 기계: Vec 필드 둘을 가진 문맥 구조체, 바이트 코드 실행, 결과 Vec을 필드에서 꺼내 반환 (backlog 2O-06)")]
+#[summary("Stack machine: a context struct with two Vec fields, running byte code, taking the result Vec out of a field to return it")]
 mod vm {
     struct Vm { stack: Vec<i64>, out: Vec<i64>, steps: u64 }
 

@@ -1,4 +1,4 @@
-#[summary("메서드 구문 오류: trait 모호성, 연관 함수, 자기 타입 매개변수, 수신자 조정 (ADR-0051, 2M-01)")]
+#[summary("Method syntax errors: trait ambiguity, associated functions, own type parameters, receiver adjustment (ADR-0051)")]
 mod me {
     struct P { x: i64 }
 

@@ -1,4 +1,4 @@
-#[summary("제네릭 (ADR-0046)")]
+#[summary("Generics (ADR-0046)")]
 mod generics {
     struct Pair<A: Copy, B: Copy> { first: A, second: B }
 
@@ -126,7 +126,7 @@ mod generics {
     }
 
     // A generic `spec fn` in a contract without its type arguments: one E0237
-    // per call (backlog 1A-15 saw the same line twice).
+    // per call (the same line was once reported twice).
     spec fn same<T: Eq>(a: T, b: T) -> bool {
         a == b
     }

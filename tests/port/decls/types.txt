@@ -1,4 +1,4 @@
-#[summary("1패스의 가장자리: 필드와 impl 머리에 쓴 타입의 진단 (4D-03d)")]
+#[summary("Edges of the first pass: diagnostics for types written in fields and impl heads")]
 mod ed {
     use std::fs::Metadata;
     use geo::Point;

@@ -27,7 +27,7 @@ pub struct Parser<'a> {
     /// The span of the last type parameter list read, `<` to `>`.
     generics_span: Option<Span>,
     /// The units being read, outermost first (for the fix of a `super::`
-    /// path, backlog 2D-29).
+    /// path).
     units: Vec<String>,
     /// Array lengths and repeat counts written as a name (`Mod::lens`).
     lens: Vec<(Span, Vec<Ident>)>,
@@ -43,7 +43,7 @@ enum ImplItem {
 
 /// Maximum syntactic nesting (parenthesised and unary expressions, blocks,
 /// `else if` chains, `==>` chains, `while` loops, types, units). Deeper input
-/// is rejected with E0107 instead of overflowing the stack (backlog 1A-11).
+/// is rejected with E0107 instead of overflowing the stack.
 pub const MAX_NESTING: usize = 256;
 
 /// Rust constructs recognised only to be rejected with a precise message.
@@ -230,7 +230,7 @@ impl<'a> Parser<'a> {
             self.span(),
             format!("expected {what}, found {found}"),
         );
-        // A single expected token (`;`, `)`, ..) can be inserted (backlog 2D-18).
+        // A single expected token (`;`, `)`, ..) can be inserted.
         if what.starts_with('`') && what.ends_with('`') && !what.contains(' ') {
             d = d.fix(format!("insert {what} before {found}"), None);
         }
@@ -308,7 +308,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Recover inside a mod: stop before the next item start or the closing `}`.
-    /// `use a::b::c;` (backlog 2V-15): a single name is kept for the
+    /// `use a::b::c;`: a single name is kept for the
     /// checker to rewrite; a glob, a group or a rename is E0214 without a
     /// fix (the ledger has one name per definition).
     fn parse_use(&mut self) -> Option<UseItem> {
@@ -516,7 +516,7 @@ impl<'a> Parser<'a> {
                         Tok::P("<") => {
                             // A trait impl's method, `<unit::T as unit::Tr>::name`
                             // (the path diagnostics and the canonical form
-                            // print), kept as one name (backlog 2D-31).
+                            // print), kept as one name.
                             match self.attr_impl_path() {
                                 Some(i) => args.push(AttrArg::Ident(i)),
                                 None => self.err_expected("`<Type as Trait>::name`"),
@@ -599,7 +599,7 @@ impl<'a> Parser<'a> {
     fn parse_mod(&mut self, attrs: Vec<Attr>) -> PResult<Mod> {
         let depth = self.units.len();
         // The lengths written so far are the enclosing unit's: the nested
-        // unit takes only its own (backlog 4D-26).
+        // unit takes only its own.
         let outer = std::mem::take(&mut self.lens);
         let m = self.nested(|p| p.parse_mod_inner(attrs));
         self.lens = outer;
@@ -898,7 +898,7 @@ impl<'a> Parser<'a> {
 
     /// A `where` clause (Rust habit, E0240): its bounds join the type
     /// parameters they name, and the fix writes them there (the normal
-    /// form, backlog 2T-03). `gs` are the parameters read before; the fix
+    /// form). `gs` are the parameters read before; the fix
     /// rewrites the text from their `<` to the clause's end.
     fn parse_where(&mut self, gs: &mut [TypeParam], gspan: Option<Span>) {
         if !self.is_kw("where") {
@@ -1888,7 +1888,7 @@ impl<'a> Parser<'a> {
                     let n = match self.peek().clone() {
                         Tok::Int(v, _) => {
                             let sp = self.bump().span;
-                            // Same limit as `[v; N]` literals (backlog 1A-10).
+                            // Same limit as `[v; N]` literals.
                             if v > u32::MAX as u128 {
                                 self.diags.push(Diag::new(
                                     "E0406",
@@ -2806,7 +2806,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// `t op= e;` (backlog 2N-07): read as `t = t op e;`, an input alias
+    /// `t op= e;`: read as `t = t op e;`, an input alias
     /// (ADR-0095, "the meaning of an input alias"; W0914). The place is
     /// read twice in that form, so it must not call anything (Rust reads
     /// it once): a variable, a field, a dereference, or an index by an
@@ -3727,7 +3727,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Rust habit (backlog 2D-29): `crate::q::g`, `super::q::g`, `self::g`.
+    /// Rust habit: `crate::q::g`, `super::q::g`, `self::g`.
     /// A path names a unit from the root (`q::g`), so the prefix is E0242
     /// with the root path as its replacement; the path is read on as the
     /// replacement would make it (the units it names come first).
@@ -3819,7 +3819,7 @@ impl<'a> Parser<'a> {
             self.bump();
             self.skip_group();
             // `vec![..]` has no mechanical fix: `[..]` is a fixed array, a
-            // `Vec` is built with `push` (ADR-0031 §7, backlog 2G-06).
+            // `Vec` is built with `push` (ADR-0031 §7).
             let fix = match name.as_str() {
                 "println" | "print" | "eprintln" => {
                     "call `print_i64(x)` from an `#[effects(io)]` function"

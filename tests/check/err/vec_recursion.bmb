@@ -1,9 +1,9 @@
-#[summary("Vec을 거친 재귀와 이동 원소 배열의 경계 (ADR-0047, backlog 2O-03c)")]
+#[summary("Edges of recursion through Vec and arrays of move elements (ADR-0047)")]
 mod vr {
     // Through an enum: fine.
     enum Tree { Leaf(i64), Many(Vec<Tree>) }
 
-    // Structs alone: fine too (backlog 2O-03d).
+    // Structs alone: fine too.
     struct Node { v: i64, kids: Vec<Node> }
 
     struct A { bs: Vec<B> }

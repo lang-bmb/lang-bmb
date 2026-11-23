@@ -1,4 +1,4 @@
-#[summary("i64 원소에 쓴 명세 함수가 수량자 안에서 펼쳐진다(백로그 1B-37)")]
+#[summary("A spec function applied to an i64 element unfolds inside a quantifier")]
 mod elem_preds {
     spec fn small(v: i64) -> bool { v < 5 }
 

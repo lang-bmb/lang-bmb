@@ -1,4 +1,4 @@
-#[summary("the Vec surface and the Rust habits around it (ADR-0031 §1, §7, backlog 2G-02)")]
+#[summary("the Vec surface and the Rust habits around it (ADR-0031 §1, §7)")]
 mod vs {
     struct Grid { w: [i64; 2] }
 

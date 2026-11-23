@@ -1,4 +1,4 @@
-#[summary("main이 없는 프로그램: @main을 내지 않는다")]
+#[summary("A program without main: no @main is emitted")]
 mod lib0 {
     #[effects(pure)]
     fn x() -> bool { true }

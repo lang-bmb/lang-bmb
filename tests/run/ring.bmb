@@ -1,4 +1,4 @@
-#[summary("고리 버퍼: 타입 불변식이 지키는 인덱스 (ADR-0060)")]
+#[summary("Ring buffer: indices kept by a type invariant (ADR-0060)")]
 mod ring {
     // Every function that holds a `Ring` may rely on this, and every
     // function that gives one back proves it: none repeats it as a

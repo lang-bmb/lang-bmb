@@ -1,4 +1,4 @@
-#[summary("f64 실행: 산술, 특수값, 변환, 메서드, 구조체·Vec·Option 안의 f64, print_f64 (ADR-0061, backlog T2-03). 기대 출력은 floats_ref.rs(Rust)의 출력")]
+#[summary("Running f64: arithmetic, special values, conversions, methods, f64 inside structs·Vec·Option, print_f64 (ADR-0061). The expected output is the output of floats_ref.rs (Rust)")]
 mod fl {
     struct Point {
         x: f64,

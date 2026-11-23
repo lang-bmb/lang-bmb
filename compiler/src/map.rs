@@ -1,4 +1,4 @@
-//! Standard maps L0-L2 and read queries (ADR-0020, backlog 1D-05, 1D-06).
+//! Standard maps L0-L2 and read queries (ADR-0020).
 
 use std::borrow::Cow;
 use std::cell::OnceCell;
@@ -15,7 +15,7 @@ pub const HEADER: &str = "{\"schema\":\"bmb.map\",\"version\":1}";
 /// `"library":"std"` on a row of the standard library (ADR-0092 §1: the
 /// map shows its units apart from the program's; a key added only where it
 /// applies, ADR-0020 §1).
-/// `display` of a lowered definition (backlog 2V-20h), when it has one.
+/// `display` of a lowered definition, when it has one.
 fn display_key(display: &Option<String>) -> Vec<(&'static str, J)> {
     display
         .iter()
@@ -77,10 +77,10 @@ pub struct Entry {
     pub file: String,
     pub line: u32,
     /// What a reader calls a definition the function-value lowering made
-    /// (`Tables::shown`, backlog 2V-20h), when that differs from `path`.
+    /// (`Tables::shown`), when that differs from `path`.
     pub display: Option<String>,
     /// Identity, body and interface hashes (ADR-0059 §1), computed on
-    /// first use: most queries never read them (backlog 3A-03).
+    /// first use: most queries never read them.
     hashes: OnceCell<crate::identity::Hashes>,
 }
 
@@ -162,7 +162,7 @@ pub struct Edge {
 
 /// Everything the maps need from a checked program except proof results.
 /// It holds no reference into the program, so a long-lived MCP server keeps
-/// it between calls while the program is unchanged (backlog 3A-03) and
+/// it between calls while the program is unchanged and
 /// answers each query through `Model::view`.
 #[derive(Clone)]
 pub struct Index {
@@ -626,7 +626,7 @@ fn exprs_of(f: &FnDef) -> Vec<&Expr> {
     out
 }
 
-/// The scope of a query (backlog 2D-17): the paths its arguments name. A
+/// The scope of a query: the paths its arguments name. A
 /// path selects what it names and everything under it: `u` the unit, its
 /// definitions, types and inner units; `u::f` the definition; `u::T` the
 /// type and its `impl` functions.
@@ -787,7 +787,7 @@ impl Index {
         let mut edges = BTreeSet::new();
         let shown = |path: &str| Some(t.shown(path)).filter(|s| s != path);
         // A generated definition is where the closure, function item or
-        // bound it stands for is written (backlog 2V-20h).
+        // bound it stands for is written.
         let at = |path: &str, sp: Span| t.at.get(path).copied().unwrap_or(sp);
         // Each executable body, for the `passes` edges below.
         let mut bodies: Vec<(String, Span)> = Vec::new();
@@ -961,7 +961,7 @@ impl Index {
                 },
             );
         }
-        // A function value passed (backlog 2V-20h): from the definition
+        // A function value passed: from the definition
         // whose body holds the argument (the innermost, a closure inside a
         // closure is passed by the outer one) to the closure's `call` or the
         // function item.
@@ -1242,7 +1242,7 @@ impl<'p> Model<'p> {
 
     /// The maps of `p` with `outcome` over an index built before from the
     /// same program (`Index::build(p, t, ..)`). Costs one walk over the
-    /// definitions; nothing is recomputed (backlog 3A-03).
+    /// definitions; nothing is recomputed.
     pub fn view(ix: &'p Index, p: &'p Program, t: &'p Tables, outcome: &Outcome) -> Model<'p> {
         Model::with(Cow::Borrowed(ix), p, t, outcome)
     }
@@ -1272,8 +1272,7 @@ impl<'p> Model<'p> {
         }
     }
 
-    /// The escape keys of a definition's L1 and `status` rows (ADR-0029 §5,
-    /// backlog 2E-03): `trust` (`proved`, `assumed`, `external`, `failed`),
+    /// The escape keys of a definition's L1 and `status` rows (ADR-0029 §5): `trust` (`proved`, `assumed`, `external`, `failed`),
     /// `escapes` (its `assume` statements, one more for `#[external_body]`),
     /// `assumed_obligations`, `checked` (compiled with every check),
     /// `rationale` (`none`, `confirmed`, `unconfirmed`: every rationale
@@ -1780,7 +1779,7 @@ impl<'p> Model<'p> {
                     Some(x) => x.parse().map_err(|_| format!("bad depth `{x}`"))?,
                     None => 1,
                 };
-                // The kinds to follow (backlog 2D-17): none is every kind.
+                // The kinds to follow: none is every kind.
                 let mut kinds = Vec::new();
                 for k in args.get(3).iter().flat_map(|ks| ks.split(',')) {
                     let Some(known) = EDGE_KINDS.iter().find(|x| **x == k) else {
@@ -2035,7 +2034,7 @@ impl<'p> Model<'p> {
         ])
     }
 
-    /// `effects DEF` (backlog 2D-11, 2F-03, DESIGN.md §7.2 effect view): one
+    /// `effects DEF` (DESIGN.md §7.2 effect view): one
     /// row `{"def","effect","path"}` per definition DEF reaches that has the
     /// effect (`def` is DEF, `path` a shortest call path from DEF that ends
     /// at it): first each `io` definition (DEF itself and built-ins such as
@@ -2119,7 +2118,7 @@ impl<'p> Model<'p> {
         rows
     }
 
-    /// `effect E` (ADR-0030 §5, backlog 2F-03): the executable definitions
+    /// `effect E` (ADR-0030 §5): the executable definitions
     /// that declare `E` or need it (`E` in `eff*`), by path, as
     /// `{"def","effect","declares","requires","source"}` where `source` is
     /// `own` (the definition's own operations have it: an allocation, a
@@ -2161,7 +2160,7 @@ impl<'p> Model<'p> {
         rows
     }
 
-    /// `tests` (backlog 2D-21, ADR-0003, DESIGN.md principle 4): the
+    /// `tests` (ADR-0003, DESIGN.md principle 4): the
     /// executable definitions that still need tests, with why
     /// (`test_reasons`, ADR-0030 §4): `io` (`io` is in its transitive
     /// effects: the order and content of its interactions are in no
@@ -2223,8 +2222,7 @@ impl<'p> Model<'p> {
         rows
     }
 
-    /// Groups of definitions with the same identity (backlog 2D-06,
-    /// ADR-0059 §6). The identity has no names (ADR-0059 §1), so equal
+    /// Groups of definitions with the same identity (ADR-0059 §6). The identity has no names (ADR-0059 §1), so equal
     /// identities are the same definition under other names, in another
     /// unit, with other parameter or local names, or calling definitions
     /// that are themselves the same. One row `{"hash","defs"}` per group of
@@ -2261,8 +2259,7 @@ impl<'p> Model<'p> {
         rows
     }
 
-    /// Definitions whose proofs must be redone when `d` changes (backlog
-    /// 2D-02). Proofs see callees only through their contracts and spec fns
+    /// Definitions whose proofs must be redone when `d` changes. Proofs see callees only through their contracts and spec fns
     /// only through `#[uses]`, which does not reach further (ADR-0017 §4),
     /// so the set never grows past one step:
     ///
@@ -2450,11 +2447,11 @@ impl<'p> Model<'p> {
         let mut frontier: BTreeSet<String> = [start.to_string()].into();
         let mut visited: BTreeSet<String> = frontier.clone();
         for _ in 0..depth {
-            // Nothing new to expand: further steps add nothing (backlog 1D-14).
+            // Nothing new to expand: further steps add nothing.
             if frontier.is_empty() {
                 break;
             }
-            // Only the edges at the frontier are visited (backlog 3A-03); an
+            // Only the edges at the frontier are visited; an
             // edge with both ends in the frontier counts as outgoing, and its
             // source is visited already either way.
             let mut next = BTreeSet::new();

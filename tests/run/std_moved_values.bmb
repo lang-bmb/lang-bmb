@@ -1,4 +1,4 @@
-#[summary("옮기는 값의 맵(ADR-0097, backlog 2T-11): BTreeMap<u64, Vec<u64>>의 insert·remove·into_values, 값은 위치로 읽지 않고 꺼낸다")]
+#[summary("A map of moving values (ADR-0097): insert·remove·into_values of BTreeMap<u64, Vec<u64>>; values are taken out, not read by position")]
 mod mv {
     #[effects(alloc, io)]
     fn finish(given: std::collections::BTreeMap<u64, Vec<u64>>) -> () {

@@ -1,4 +1,4 @@
-#[summary("Copy 없는 타입 매개변수: 이동하는 T의 인스턴스와 해제 (backlog 2O-04)")]
+#[summary("A type parameter without Copy: instances and drops of a T that moves")]
 mod mg {
     struct Wrap<T> { v: T, n: i64 }
 

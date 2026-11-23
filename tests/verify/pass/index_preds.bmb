@@ -1,4 +1,4 @@
-#[summary("색인 술어 적용을 트리거로 쓴 존재 꼴이 같은 뜻의 원소 꼴과 서로 증명된다(백로그 T0-24, ADR-0075)")]
+#[summary("An existential form that uses an index predicate application as its trigger and the element form with the same meaning prove each other (ADR-0075)")]
 mod index_preds {
     spec fn hit_at(arr: &[i64], k: i64, j: usize) -> bool { j < arr.len() && arr[j] == k }
 

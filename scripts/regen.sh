@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Write every generated document and block from the working tree (backlog
-# INF-34), then check them with scripts/fresh.sh:
+# Write every generated document and block from the working tree, then check them with scripts/fresh.sh:
 #
 #   docs/diagnostics.md, the reference index, the surface fingerprint (while
 #   the surface is not frozen), the conformance table, and the port ledger
@@ -15,8 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 cargo build --quiet
-# The port's proof (the ledger reads it) runs in the optimized build (backlog
-# INF-43): after a change of the compiler every definition is encoded again.
+# The port's proof (the ledger reads it) runs in the optimized build: after a change of the compiler every definition is encoded again.
 cargo build --release --quiet
 export BMB_PROOF_BMB="$PWD/target/release/bmb"
 bmb=target/debug/bmb

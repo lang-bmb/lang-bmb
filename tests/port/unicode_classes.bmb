@@ -1,6 +1,6 @@
-#[summary("차등 시험(백로그 4D-19): selfhost의 유니코드 분류표를 모든 코드 포인트에서 묻고 구간으로 낸다. 기준은 같은 일을 Rust의 char 메서드로 하는 unicode_ref.rs")]
+#[summary("Differential test: asks selfhost's Unicode classification tables about every code point and prints ranges. The reference is unicode_ref.rs, which does the same job with Rust's char methods")]
 mod app {
-    #[summary("kind의 분류에 드는 코드 포인트(ASCII 밖, 서로게이트 제외)의 구간들")]
+    #[summary("The ranges of code points (outside ASCII, surrogates excluded) in the class of kind")]
     #[effects(alloc, io)]
     fn class(name: &str, kind: u8) -> () {
         let mut out: String = String::new();

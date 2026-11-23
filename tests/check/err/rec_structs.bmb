@@ -1,4 +1,4 @@
-#[summary("구조체만으로 된 재귀의 경계: 명세의 값 만들기와 ==, 측도 (backlog 2O-03d)")]
+#[summary("Edges of recursion through structs only: building values and == in specs, measures")]
 mod rc {
     struct Node { v: i64, kids: Vec<Node> }
 

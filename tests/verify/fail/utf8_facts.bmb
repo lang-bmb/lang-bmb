@@ -1,4 +1,4 @@
-#[summary("UTF-8 사용 지점 사실이 주지 않는 것: 첫 바이트 뒤는 경계가 아니고, 사실은 경계를 묻는 곳에만 있다 (backlog 2U-06)")]
+#[summary("What the UTF-8 use-site facts do not give: after the first byte is not a boundary, and the facts exist only where a boundary is asked")]
 mod uf {
     #[effects(pure)]
     fn count(t: &str) -> usize {

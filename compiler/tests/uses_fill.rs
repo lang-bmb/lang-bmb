@@ -1,7 +1,7 @@
-//! `#[uses]` auto-fill (backlog 2D-05): a failing definition gets the
+//! `#[uses]` auto-fill: a failing definition gets the
 //! smallest `#[uses(..)]` list, built from its entries and the hidden
 //! predicates its diagnostics name, that makes it prove; nothing else changes.
-//! Through the CLI (backlog 4A-04): `bmb uses --write`, its report read with
+//! Through the CLI: `bmb uses --write`, its report read with
 //! the tests' JSON reader.
 
 mod common;
@@ -440,7 +440,7 @@ fn cli_reports_and_writes_only_with_write() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// The caches (backlog 2D-15) change nothing: in memory between the runs of
+/// The caches change nothing: in memory between the runs of
 /// one call, and on disk with `--cache DIR`, cold and warm.
 #[test]
 fn caches_do_not_change_the_result() {
@@ -508,8 +508,7 @@ mod l {
     assert!(verified(&out.files, "l::index"));
 }
 
-/// A `by (bit_vector)` sub-proof unfolds the spec fns its assertion calls
-/// (backlog 2N-03): the ones `#[uses]` does not reveal are named in the
+/// A `by (bit_vector)` sub-proof unfolds the spec fns its assertion calls: the ones `#[uses]` does not reveal are named in the
 /// hint (E0818), so the fill finds them, transitively.
 #[test]
 fn a_bit_vector_sub_proof_gets_the_spec_fns_it_unfolds() {

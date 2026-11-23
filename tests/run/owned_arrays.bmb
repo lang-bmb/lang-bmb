@@ -1,4 +1,4 @@
-#[summary("이동 원소의 고정 배열: Box 배열, Box 필드 구조체 배열, 원소 교체 (backlog 2O-03c)")]
+#[summary("Fixed arrays of move elements: an array of Box, an array of structs with a Box field, replacing elements")]
 mod ar {
     struct Cell { b: Box<i64>, n: i64 }
 

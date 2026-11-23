@@ -1,4 +1,4 @@
-#[summary("T::from은 인자 하나를 받는다: 없거나 둘이면 E0405 (백로그 4D-32, 검사기가 멈추던 입력)")]
+#[summary("T::from takes one argument: none or two is E0405 (an input on which the checker used to crash)")]
 mod from_arity {
     #[effects(pure)]
     fn none() -> u32 {

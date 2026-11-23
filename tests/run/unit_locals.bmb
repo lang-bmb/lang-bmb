@@ -1,4 +1,4 @@
-#[summary("`()` 타입의 지역과 매개변수: 자리 없이 묶고, 대입하고, 넘긴다 (backlog 2V-21)")]
+#[summary("Locals and parameters of type `()`: bound, assigned and passed without a slot")]
 mod ul {
     #[effects(io)]
     fn show(n: i64) -> () { print_i64(n); }

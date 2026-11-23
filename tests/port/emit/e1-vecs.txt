@@ -1,4 +1,4 @@
-#[summary("Vec: new와 with_capacity, push (자람), len, 색인 읽기와 쓰기, as_slice와 as_mut_slice, 범위 조각, pop, truncate, clone, copy_within, 구조체의 Vec, Vec의 Vec (원소를 놓는 코드), 값으로 넘기기와 돌려주기, 임시 Vec, 블록 끝의 해제")]
+#[summary("Vec: new and with_capacity, push (growth), len, reading and writing by index, as_slice and as_mut_slice, range pieces, pop, truncate, clone, copy_within, a Vec of structs, a Vec of Vecs (the code that places elements), passing and returning by value, temporary Vecs, drops at the end of a block")]
 mod vecs {
     struct Point { x: i64, y: i64 }
 

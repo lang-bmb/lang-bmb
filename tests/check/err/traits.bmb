@@ -1,4 +1,4 @@
-#[summary("trait (ADR-0046 §1·§2): 거부하는 형태와 impl 규칙")]
+#[summary("trait (ADR-0046 §1·§2): rejected forms and impl rules")]
 mod geo {
     trait Shape {
         #[effects(pure)]
@@ -148,7 +148,7 @@ mod geo {
     }
 }
 
-#[summary("trait도 타입도 아닌 단위의 impl")]
+#[summary("An impl of a unit that is neither a trait nor a type")]
 mod other {
     impl geo::Shape for geo::Wrap<i64> {
         #[effects(pure)]
@@ -158,7 +158,7 @@ mod other {
     }
 }
 
-#[summary("trait impl의 타입 매개변수는 구현하는 타입에 나오는 순서로 (backlog 2V-21)")]
+#[summary("The type parameters of a trait impl come in the order they appear in the implementing type")]
 mod order {
     struct Two<A: Copy, B: Copy> { a: A, b: B }
 

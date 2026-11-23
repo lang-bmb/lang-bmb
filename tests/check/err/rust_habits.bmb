@@ -1,4 +1,4 @@
-#[summary("Rust 습관")]
+#[summary("Rust habits")]
 mod habits {
     fn no_effects(x: i64) -> i64 { x }
 

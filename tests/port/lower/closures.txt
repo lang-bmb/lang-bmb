@@ -1,4 +1,4 @@
-#[summary("함수 값: 낮추는 꼴마다 하나")]
+#[summary("Function values: one for each lowered form")]
 mod cl {
     #[effects(pure)]
     fn ap<F: Fn(i64) -> i64>(f: F, v: i64) -> i64

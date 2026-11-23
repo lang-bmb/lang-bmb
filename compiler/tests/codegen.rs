@@ -1,4 +1,4 @@
-//! Code generation (backlog 1C-05, 1C-06): built programs print what they
+//! Code generation: built programs print what they
 //! should, and runtime checks exist exactly where proofs are missing.
 
 mod common;
@@ -62,8 +62,7 @@ fn run_corpus_prints_expected_output() {
 }
 
 /// Every run program that owns heap memory (`Vec`, `Box`) frees each
-/// allocation exactly once and touches no freed memory (ADR-0047 §4,
-/// backlog 2O-01): built at -O0 (optimization may delete an allocation
+/// allocation exactly once and touches no freed memory (ADR-0047 §4): built at -O0 (optimization may delete an allocation
 /// that does not escape, and with it a missing free) and run under
 /// valgrind memcheck, or AddressSanitizer where valgrind is missing.
 #[test]
@@ -137,7 +136,7 @@ fn run_corpus_frees_every_allocation_once() {
 }
 
 const PROVED: &str = r#"
-#[summary("범위가 증명된 인덱스")]
+#[summary("index proved in range")]
 mod m {
     spec fn idx_ok(a: &[i64], i: usize) -> bool { i < a.len() }
 
@@ -183,7 +182,7 @@ fn proved_index_has_no_check_and_unproved_keeps_one() {
 #[test]
 fn output_before_a_trap_reaches_stdout() {
     // Rust's `stdout` is line-buffered, so the lines printed before a panic
-    // reach a pipe; the trap flushes first to do the same (backlog 1B-52).
+    // reach a pipe; the trap flushes first to do the same.
     let dir = std::env::temp_dir().join(format!("bmb-flush-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let text = "#[summary(\"trap\")]\nmod m {\n    #[effects(pure)]\n    fn get(a: &[i64], i: usize) -> i64 {\n        a[i]\n    }\n\n    #[effects(io)]\n    fn main() -> () {\n        let a: [i64; 3] = [1, 2, 3];\n        print_i64(7);\n        print_bytes(b\"partial\");\n        print_i64(get(&a, 3));\n    }\n}\n";
@@ -200,7 +199,7 @@ fn output_before_a_trap_reaches_stdout() {
 #[test]
 fn an_unproved_index_traps_exactly_from_the_length() {
     // `get` has no precondition: its bounds check stays. Index 2 of three
-    // elements reads; index 3 (the length) must trap (backlog 1B-38).
+    // elements reads; index 3 (the length) must trap.
     let dir = std::env::temp_dir().join(format!("bmb-trap-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     for (i, want) in [(2, Some("3\n")), (3, None)] {
@@ -229,7 +228,7 @@ fn an_unproved_index_traps_exactly_from_the_length() {
 #[test]
 fn an_unproved_conversion_traps_exactly_outside_the_range() {
     // No precondition: the range checks of ADR-0028 §1 stay. Each pair is
-    // the last value in range and the first one outside it (backlog 2C-02).
+    // the last value in range and the first one outside it.
     let dir = std::env::temp_dir().join(format!("bmb-conv-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let cases = [
@@ -273,7 +272,7 @@ fn an_unproved_conversion_traps_exactly_outside_the_range() {
 
 /// An unproved shift amount is checked against the width (ADR-0048 §2, as
 /// Rust's debug build panics): the last amount below it shifts, the width
-/// and a negative amount trap (backlog 2N-02). A literal amount below the
+/// and a negative amount trap. A literal amount below the
 /// width needs no check.
 #[test]
 fn an_unproved_shift_traps_exactly_from_the_width() {
@@ -330,7 +329,7 @@ fn an_unproved_shift_traps_exactly_from_the_width() {
 #[test]
 fn proved_arithmetic_carries_no_wrap_flags() {
     let text = r#"
-#[summary("산술")]
+#[summary("arithmetic")]
 mod m {
     spec fn small(x: i64) -> bool { x < 100 && x > -100 }
 
@@ -360,11 +359,11 @@ mod m {
 
 /// A narrow product is computed in 64 bits before its range check: the
 /// flag must hold for every operand pair, or the check reads a poison
-/// value. `u32` products reach `(2^32 - 1)^2 > i64::MAX` (backlog 2N-04).
+/// value. `u32` products reach `(2^32 - 1)^2 > i64::MAX`.
 #[test]
 fn narrow_products_claim_only_what_holds() {
     let text = r#"
-#[summary("곱")]
+#[summary("product")]
 mod m {
     #[effects(pure)]
     fn a(x: u32, y: u32) -> u32 { x * y }
@@ -391,7 +390,7 @@ mod m {
 #[test]
 fn mut_slices_are_noalias_and_shared_ones_readonly() {
     let text = r#"
-#[summary("별칭")]
+#[summary("aliases")]
 mod m {
     #[effects(pure)]
     fn f(a: &mut [i64], b: &[i64]) -> () {}
@@ -408,9 +407,9 @@ mod m {
 
 #[test]
 fn bool_arrays_are_bytes_in_memory() {
-    // `i1` in memory blocks LLVM's fill and vectorization idioms (backlog 1E-09).
+    // `i1` in memory blocks LLVM's fill and vectorization idioms.
     let text = r#"
-#[summary("bool 배열")]
+#[summary("bool array")]
 mod m {
     #[effects(pure)]
     fn set_all(a: &mut [bool]) -> () {
@@ -453,9 +452,9 @@ fn word_elements_are_eight_byte_aligned() {
 #[test]
 fn proofs_resting_on_failed_ones_keep_their_checks() {
     // `caller` proves its index in bounds only through `pick`'s `ensures`,
-    // which `pick` itself fails to prove: the check must stay (1B-31).
+    // which `pick` itself fails to prove: the check must stay.
     let text = r#"
-#[summary("부분 증명")]
+#[summary("partial proof")]
 mod m {
     spec fn below(r: usize, n: usize) -> bool { r < n }
 
@@ -503,9 +502,9 @@ mod m {
 
 #[test]
 fn only_the_entry_point_is_external() {
-    // Closed world (backlog 2D-07): LLVM may inline and drop every function.
+    // Closed world: LLVM may inline and drop every function.
     let text = r#"
-#[summary("연결")]
+#[summary("linking")]
 mod m {
     #[effects(pure)]
     fn unused(x: i64) -> i64 { x }
@@ -523,7 +522,7 @@ mod m {
     let ir = out.ir.unwrap();
     let defines: Vec<&str> = ir.lines().filter(|l| l.starts_with("define ")).collect();
     // The runtime's print_i64, print_u64, print_bytes, the closed-stdout
-    // check and flush (4C-06) and trap; the unit's main, one and unused;
+    // check and flush and trap; the unit's main, one and unused;
     // and the entry point.
     assert_eq!(defines.len(), 10, "{ir}");
     for d in &defines {
@@ -563,8 +562,7 @@ mod m {
 fn a_push_has_no_length_check_and_a_capacity_keeps_its_own() {
     // ADR-0124: a `push` carries no length obligation (the growth ends the
     // program when the new size does not fit), so no check either way.
-    // `Vec::with_capacity(n)` keeps E0816 like every obligation (backlog
-    // 2G-04, ADR-0031 §4): proved for the literal, checked for the parameter.
+    // `Vec::with_capacity(n)` keeps E0816 like every obligation (ADR-0031 §4): proved for the literal, checked for the parameter.
     let text = "#[summary(\"g\")]\nmod m {\n    #[effects(alloc)]\n    fn grow(v: &mut Vec<i64>) -> () {\n        v.push(2);\n    }\n\n    #[effects(alloc)]\n    fn n() -> usize {\n        let mut v: Vec<i64> = Vec::with_capacity(8);\n        v.push(1);\n        v.len()\n    }\n\n    #[effects(alloc)]\n    fn sized(k: usize) -> usize {\n        let v: Vec<i64> = Vec::with_capacity(k);\n        v.len()\n    }\n}\n";
     let out = emit(&src("g.bmb", text));
     let ir = out.ir.unwrap();
@@ -579,7 +577,7 @@ fn a_push_has_no_length_check_and_a_capacity_keeps_its_own() {
 
 #[test]
 fn an_unproved_vec_index_traps_exactly_from_the_length() {
-    // As for slices (1B-38): index 2 of three elements reads, 3 traps.
+    // As for slices: index 2 of three elements reads, 3 traps.
     let dir = std::env::temp_dir().join(format!("bmb-vtrap-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     for (i, want) in [(2, Some("3\n")), (3, None)] {
@@ -607,7 +605,7 @@ fn an_unproved_vec_index_traps_exactly_from_the_length() {
 
 /// `tests/lib_run`: programs that use the standard library's units moved
 /// from `lib/` (`std::bytes`, ADR-0044 §4; `std::utf8`, `std::crc32`,
-/// `std::sha256`, `std::base64`, T4; ADR-0092, backlog 4B-02), which the
+/// `std::sha256`, `std::base64`, T4; ADR-0092), which the
 /// compiler adds, are built fully proved, without runtime checks, and print
 /// their `.out`.
 #[test]
@@ -718,7 +716,7 @@ fn ghost_code_leaves_no_trace_in_the_ir() {
     assert!(unproved.checks > 0);
 }
 
-/// The bit methods (ADR-0048 §2, backlog 2N-03) compute what Rust's do: for
+/// The bit methods (ADR-0048 §2) compute what Rust's do: for
 /// every integer type, a program applies each method to edge and pattern
 /// values (and amounts below, at and past the width) and its output is
 /// compared with the same methods run by this test (compiled by rustc).
@@ -778,7 +776,7 @@ fn bit_methods_compute_rusts_results() {
                         ] {
                             want.push_str(&format!("{v}\n"));
                         }
-                        // `None` prints 99 (backlog 2N-09b).
+                        // `None` prints 99.
                         for v in [x.checked_shl(k), x.checked_shr(k)] {
                             match v {
                                 Some(v) => want.push_str(&format!("{}\n", v as i128)),
@@ -803,7 +801,7 @@ fn bit_methods_compute_rusts_results() {
                         want.push_str(&format!("{}\n", u32::from(p)));
                     }
                     // The bytes both ways, and the integer back from the
-                    // big-endian bytes read both ways (backlog 2N-09c).
+                    // big-endian bytes read both ways.
                     let be = x.to_be_bytes();
                     for b in be.iter().chain(x.to_le_bytes().iter()) {
                         want.push_str(&format!("{b}\n"));
@@ -1184,7 +1182,7 @@ mod m {
 }
 
 /// The Benchmarks Game programs that have a Rust reference
-/// (`bench/game/ref/*.rs`, backlog T3-04: n-body, spectral-norm) print the
+/// (`bench/game/ref/*.rs`: n-body, spectral-norm) print the
 /// benchmark's check output for its small argument (`bench/game/*.out`),
 /// and so does the Rust reference built by rustc.
 #[test]
@@ -1222,8 +1220,7 @@ fn game_programs_match_their_rust_references() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Escapes (ADR-0029, backlog 2E-02..2E-04).
-/// Escapes (ADR-0029, backlog 2E-02): `assume` and `#[external_body]` with a
+/// Escapes (ADR-0029): `assume` and `#[external_body]` with a
 /// rationale. A definition is proved without trusted facts first, and only
 /// a failure is proved again with them (`assumed`); an `#[external_body]`
 /// function has no obligations (`external`). Code generation keeps every
@@ -1371,7 +1368,7 @@ mod escapes {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// L1 and `status` rows carry the trust keys (ADR-0029 §5, backlog 2E-03).
+    /// L1 and `status` rows carry the trust keys (ADR-0029 §5).
     #[test]
     fn maps_show_trust_and_escapes() {
         let f = src(&program());

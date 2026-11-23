@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build time observation (backlog INF-13, ADR-0041 accepted costs).
+"""Build time observation (ADR-0041 accepted costs).
 
   build_time.py [--defs N] [--out FILE.jsonl]
 

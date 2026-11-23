@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reference for tests/lib_run/sha256.bmb (backlog T4-01).
+"""Reference for tests/lib_run/sha256.bmb.
 
     python3 sha256_ref.py > sha256.out     # the expected output
     python3 sha256_ref.py --emit-bmb       # the `cavp_short` function of sha256.bmb

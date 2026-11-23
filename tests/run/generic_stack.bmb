@@ -1,4 +1,4 @@
-#[summary("제네릭 스택: 고정 용량 배열 위의 Stack<T>와 괄호 검사 (2T-06, 타입 불변식 ADR-0060)")]
+#[summary("Generic stack: Stack<T> over a fixed-capacity array and a bracket check (type invariant ADR-0060)")]
 mod st {
     struct Pt { x: i64, y: i64 }
 

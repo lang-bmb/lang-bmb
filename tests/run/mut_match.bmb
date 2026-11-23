@@ -1,4 +1,4 @@
-#[summary("&mut 참조 match: 제자리 트리 수정 (ADR-0055, backlog 2O-04b)")]
+#[summary("match on a &mut reference: modifying a tree in place (ADR-0055)")]
 mod mr {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
 

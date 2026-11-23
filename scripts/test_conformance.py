@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rules of scripts/conformance.py (5A-02, 5A-05). No compiler needed."""
+"""Rules of scripts/conformance.py. No compiler needed."""
 import json
 import os
 import sys

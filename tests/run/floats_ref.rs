@@ -1,4 +1,4 @@
-// Rust translation of tests/run/floats.bmb (backlog T2-03), for its expected
+// Rust translation of tests/run/floats.bmb, for its expected
 // output: `rustc -O floats_ref.rs && ./floats_ref > floats.out`.
 #![allow(clippy::all)]
 use std::hint::black_box;

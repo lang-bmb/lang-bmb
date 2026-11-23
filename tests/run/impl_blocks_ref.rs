@@ -1,4 +1,4 @@
-// Rust translation of tests/run/impl_blocks.bmb (backlog 2T-11), for its
+// Rust translation of tests/run/impl_blocks.bmb, for its
 // expected output (`rustc --edition 2021`).
 struct Cell<T> {
     v: Vec<T>,

@@ -1,4 +1,4 @@
-//! Contract-firewall incremental build (backlog 2D-10, DESIGN.md §8.1).
+//! Contract-firewall incremental build (DESIGN.md §8.1).
 //!
 //! The proof cache (`cache.rs`) skips the solver, but every run would still
 //! encode every definition and lower all of it to IR. This cache keeps, per
@@ -12,9 +12,8 @@
 //! - the query header: solver options (seed, `rlimit`: the gate's, or an
 //!   advisory query's own, `smt::query_rlimit`, ADR-0131) and the prelude
 //!   (`verify::query_header`), and the solver's memory limit
-//!   (`smt::query_memory_mb`, backlog T2-17);
-//! - the declarations of the `spec fn`s its queries mention (backlog 2D-14:
-//!   a query declares only those). The key takes the declaration of every
+//!   (`smt::query_memory_mb`);
+//! - the declarations of the `spec fn`s its queries mention (a query declares only those). The key takes the declaration of every
 //!   `spec fn` reachable from `D`'s qualified text through executable
 //!   callees' contracts and `spec fn` texts, which covers every symbol a
 //!   query of `D` can contain: its assumptions and goals come from `D`, the
@@ -27,7 +26,7 @@
 //!   tree order) and relocated to the current text on a hit, so layout and
 //!   comments change no proof key (ADR-0059 §4);
 //!
-//! **No names in the proof key (ADR-0063 §4, backlog T1-49).** The key
+//! **No names in the proof key (ADR-0063 §4).** The key
 //! does not hold the rows above as named text: it holds `D`'s nameless
 //! text and, for each item that text reaches, a number of the key's own
 //! (`@k`, in order of first reference) and the nameless text of what `D`'s
@@ -50,7 +49,7 @@
 //! - each definition `D`'s qualified text names: an executable callee through
 //!   its contract, signature and effects (`fmt::caller_text`: the iface
 //!   without `#[uses]`, which reveals bodies only in the callee's own
-//!   queries, backlog 2D-22), a `spec fn` revealed by
+//!   queries), a `spec fn` revealed by
 //!   `#[uses]` or in `D`'s recursive component through its whole text (body
 //!   hash), any other `spec fn` only through its declaration (above);
 //! - `D`'s recursive component (`decreases` obligations at calls inside it);
@@ -66,14 +65,14 @@
 //!
 //! Only fully proved definitions are stored: a failure always runs again,
 //! with its diagnostics. A component with a failed definition keeps its
-//! runtime checks (backlog 1B-31); the IR key therefore includes the proved
+//! runtime checks; the IR key therefore includes the proved
 //! obligations that code generation may use for `D` (relative spans), so the
 //! IR follows any change of verification state elsewhere in the component.
 //!
 //! **IR key.** `D`'s source text and qualified text, the signature and
 //! contract of each executable callee (call types and return types), the
 //! usable proved obligations inside `D`, and the compiler identity.
-//! An instance of a generic definition (backlog 2T-04) is stored under its
+//! An instance of a generic definition is stored under its
 //! own key: the definition's IR key, the instance's text and the data types
 //! its type arguments name. A stored fragment carries the instances it calls
 //! and the instance types it uses, so a hit still lowers those.
@@ -155,7 +154,7 @@ pub struct Stats {
 }
 
 /// One row of a definition's proof key that is not the same for every
-/// definition (backlog T1-27, ADR-0065 §2): what it is (`self` the
+/// definition (ADR-0065 §2): what it is (`self` the
 /// definition's qualified text, `component` its recursive component,
 /// `callee` an executable callee's contract, `spec` a revealed `spec fn`'s
 /// text, `names` a `spec fn` named only, `decl` a `spec fn`'s SMT
@@ -173,7 +172,7 @@ pub struct KeyRead {
 /// Two versions of a program with the same rows give a definition the same
 /// proof key (the other rows of the key, compiler, solver and query header,
 /// are the same for every definition); the key itself names nothing, so a
-/// rename keeps it (backlog T1-49).
+/// rename keeps it.
 #[derive(Clone, Debug)]
 pub struct DefReads {
     pub kind: FnKind,
@@ -190,7 +189,7 @@ pub struct DefReads {
 }
 
 /// The read set of every definition's proof, from the incremental proof
-/// keys (`bmb reads`, backlog T1-27), and each data type's digest (the row
+/// keys (`bmb reads`), and each data type's digest (the row
 /// a reader's key takes of it).
 pub fn proof_reads(
     p: &Program,
@@ -270,7 +269,7 @@ impl Store {
         s
     }
 
-    /// Loads the lines without checking their digests (backlog 3A-04): a
+    /// Loads the lines without checking their digests: a
     /// session that proves a few definitions checks only the lines it
     /// reads, and the rest when it saves.
     fn load_lazy(dir: &Path, id: &str) -> Store {
@@ -334,7 +333,7 @@ impl Store {
     }
 
     /// Any entry of `kind` stored under `key`, whatever its path: proof
-    /// keys name nothing (backlog T1-49), so a renamed definition finds the
+    /// keys name nothing, so a renamed definition finds the
     /// entry its old name stored.
     fn find(&self, kind: &str, key: &str) -> Option<String> {
         if let Some((_, (_, p))) = self
@@ -717,12 +716,12 @@ pub struct Session {
     proof_keys: BTreeMap<String, String>,
     ir_keys: BTreeMap<String, String>,
     /// Each data type's key line and the types it names, for the keys of
-    /// instances (backlog 2T-04).
+    /// instances.
     adts: BTreeMap<String, (String, Vec<String>)>,
     pub stats: Stats,
 }
 
-/// What a lowered fragment needs besides its text (backlog 2T-04): the
+/// What a lowered fragment needs besides its text: the
 /// instances it calls (key, generic definition, substitution of its type
 /// parameters) and the instance types it uses (their LLVM declarations).
 #[derive(Default, Clone)]
@@ -853,17 +852,16 @@ impl Resolve for Erased {
     }
 }
 
-/// What the queries of definition `path` read, without names (ADR-0063 §4,
-/// backlog T1-49): `@0` is the definition's whole nameless text
+/// What the queries of definition `path` read, without names (ADR-0063 §4): `@0` is the definition's whole nameless text
 /// (`identity::Ids`: binders by position, fields and variants by
 /// declaration position, built-ins by name), and each item it reaches gets
 /// the next number at its first reference and, once, the text its queries
 /// read of it, the same reads as the named rows (`proof_reads`):
 ///
-/// - an executable or proof function: its caller surface (2D-22);
+/// - an executable or proof function: its caller surface;
 /// - a `spec fn` revealed by `#[uses]`, in the recursive component, or a
 ///   type's invariant: its whole text; any other `spec fn`: its
-///   declaration (2D-14);
+///   declaration;
 /// - a data type: its declaration (fields and payloads, ADR-0027);
 /// - a trait method: its declaration and the functions that define it.
 ///
@@ -951,8 +949,7 @@ impl Session {
         Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm, None)
     }
 
-    /// As `new`, computing the keys of the definitions in `only` alone
-    /// (backlog 3A-04): a session that proves just those. Each key is the
+    /// As `new`, computing the keys of the definitions in `only` alone: a session that proves just those. Each key is the
     /// one `new` computes; the work follows what the definitions can read,
     /// not the size of the program.
     pub fn new_for(
@@ -967,8 +964,7 @@ impl Session {
         Session::with_store(Some(dir.to_path_buf()), id, store, p, t, sm, Some(only))
     }
 
-    /// A session that starts empty and keeps its entries in memory only
-    /// (backlog 2D-15): tools that verify a program several times with
+    /// A session that starts empty and keeps its entries in memory only: tools that verify a program several times with
     /// small edits (`bmb uses`, `bmb lint`) reuse the unchanged definitions
     /// between their own runs through `rekey`.
     pub fn in_memory(p: &Program, t: &Tables, sm: &SourceMap) -> Session {
@@ -1162,7 +1158,7 @@ impl Session {
             section(&mut own, "path", path);
             section(&mut own, "unit", unit);
             section(&mut own, "qualified", &qual);
-            // The proof key names nothing (ADR-0063 §4, backlog T1-49): the
+            // The proof key names nothing (ADR-0063 §4): the
             // definition's nameless text and what its queries read of each
             // item it reaches, references numbered inside the key.
             let mut pk = String::from("proof\n");
@@ -1224,7 +1220,7 @@ impl Session {
                     row("spec", r, hash_of(r).0.clone());
                 }
             }
-            // Declarations the queries can contain (backlog 2D-14): a query
+            // Declarations the queries can contain: a query
             // declares only the spec fns it mentions, and every symbol it
             // mentions comes from `D`'s text, a callee's contract or a spec
             // fn's text (a revealed body, a measure in the component), so
@@ -1362,8 +1358,7 @@ impl Session {
 
     /// Stores the result of a fully proved definition.
     pub fn proof_record(&mut self, status: &FnStatus, f: &FnDef, proved: &[ObKey], script: &str) {
-        // A result the backstop shaped is the machine's, not the program's
-        // (backlog INF-26): proved again next time.
+        // A result the backstop shaped is the machine's, not the program's: proved again next time.
         if status.failed != 0 || status.backstop != 0 {
             return;
         }

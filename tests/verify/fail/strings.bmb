@@ -1,4 +1,4 @@
-#[summary("문자열: 따르지 않는 것 (ADR-0050 §3, backlog 2U-02)")]
+#[summary("Strings: what does not follow (ADR-0050 §3)")]
 mod sf {
     #[effects(pure)]
     fn take(t: &str) -> usize {

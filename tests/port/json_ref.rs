@@ -1,4 +1,4 @@
-// The stage0 side of the JSON round trip (port map P0, backlog 4D-15):
+// The stage0 side of the JSON round trip (port map P0):
 // stage0's own `json` and `diag` modules, compiled as they are
 // (`rustc --edition 2021`). Each line of standard input is parsed and
 // written back; a line stage0 does not accept prints `error`.

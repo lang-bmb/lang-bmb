@@ -1,4 +1,4 @@
-#[summary("f64 증명 실패: IEEE로 확인된 반례, 불투명 모델이 거짓인 경우의 미결정(G1), f64::from 정확성, print_f64 정밀도, by (bit_vector) 반례 (ADR-0061 §4·§5, backlog T2-03)")]
+#[summary("f64 proof failures: counterexamples confirmed by IEEE, undecided where the opaque model is false (G1), f64::from exactness, print_f64 precision, by (bit_vector) counterexamples (ADR-0061 §4·§5)")]
 mod ff {
     // NaN is not below 1.0: a counterexample IEEE arithmetic confirms.
     #[effects(pure)]

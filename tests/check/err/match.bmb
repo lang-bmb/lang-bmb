@@ -1,4 +1,4 @@
-#[summary("`match` arms and exhaustiveness (ADR-0026, backlog 2B-04c)")]
+#[summary("`match` arms and exhaustiveness (ADR-0026)")]
 mod shapes {
     struct Point { x: i64, y: i64 }
 

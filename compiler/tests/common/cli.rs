@@ -1,4 +1,4 @@
-//! The fuzzers' builds through the `bmb` command line (backlog 4A-04): the
+//! The fuzzers' builds through the `bmb` command line: the
 //! same tests then test whichever compiler is built, and no test depends on
 //! the library API for it (HEALTH.md S5).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Second-solver cross-check (backlog 1B-39, HEALTH.md §3).
+"""Second-solver cross-check (HEALTH.md §3).
 
   scripts/cross_solver.py [--jobs N] [--groups a,b,..] [--write FILE]
 
@@ -265,7 +265,7 @@ def main():
 
     lines = cell_table(table)
     report = [
-        f"# 두 번째 해법기 교차 확인 (1B-39)",
+        f"# 두 번째 해법기 교차 확인",
         "",
         f"- 커밋 `{at}`, Z3 {pins()['Z3_VERSION']}, cvc5 {want} (`rlimit-per` {CVC5_RLIMIT:,})",
         f"- 프로그램: " + ", ".join(f"{g} {progs[g]}" for g in groups),

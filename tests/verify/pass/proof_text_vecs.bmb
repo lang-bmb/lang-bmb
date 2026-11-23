@@ -1,4 +1,4 @@
-#[summary("proof fn의 매개변수가 Vec<String>을 담은 구조체여도 매개변수 사실(E0819)이 안쪽 길이의 배열을 쓴다: 바깥 길이를 배열로 써서 질의가 잘못된 정렬(E0812)이던 결함의 회귀 시험 (backlog 4B-02 (g))")]
+#[summary("Even when a proof fn's parameter is a struct holding Vec<String>, the parameter facts (E0819) use the array of inner lengths: regression test for the defect where the outer length was used as an array and the query was ill-sorted (E0812)")]
 mod proof_text_vecs {
     struct Bag { keys: Vec<String> }
 

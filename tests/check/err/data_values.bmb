@@ -1,4 +1,4 @@
-#[summary("data type values, fields and variants (ADR-0026, backlog 2B-04b)")]
+#[summary("data type values, fields and variants (ADR-0026)")]
 mod shapes {
     struct Point { x: i64, y: i64 }
 

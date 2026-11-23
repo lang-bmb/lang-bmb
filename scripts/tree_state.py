@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What a gate run left in the tree (backlog INF-36).
+"""What a gate run left in the tree.
 
   tree_state.py snapshot > FILE   the tree's state before the run
   tree_state.py left FILE         fail when files appeared or changed since

@@ -1,4 +1,4 @@
-#[summary("Rust habits around data types (ADR-0026 §5, backlog 2B-04d)")]
+#[summary("Rust habits around data types (ADR-0026 §5)")]
 mod shapes {
     #[derive(Clone, Copy, PartialEq)]
     struct Point { x: i64, y: i64 }

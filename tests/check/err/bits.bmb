@@ -1,4 +1,4 @@
-#[summary("비트 연산과 리터럴 진법의 경계: 진법 밖의 숫자, 숫자 없는 접두, 접미사, 섞인 폭, 정수가 아닌 피연산자, 정수가 아닌 시프트 양 (backlog 2N-02)")]
+#[summary("Edges of bit operations and literal radixes: a digit outside the radix, a prefix without digits, suffixes, mixed widths, a non-integer operand, a non-integer shift amount")]
 mod bc {
     struct Flags {
         bits: u8,

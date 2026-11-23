@@ -1,4 +1,4 @@
-#[summary("std::slice 차등 시험: 표준 입력의 줄마다 공백으로 나뉜 키를 읽어 안정 정렬 순서와, 정렬된 키에서 0..=10의 이진 탐색 결과를 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+#[summary("std::slice differential test: reads the space-separated keys on each line of standard input and prints their stable sort order and the binary search results for 0..=10 in the sorted keys (tests/stdlib.rs)")]
 mod diff {
     spec fn short(v: &[u64]) -> bool {
         v.len() <= 1000

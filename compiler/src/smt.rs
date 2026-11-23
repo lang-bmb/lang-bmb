@@ -1,4 +1,4 @@
-//! Z3 process connection (ADR-0017 §5, backlog 1B-09).
+//! Z3 process connection (ADR-0017 §5).
 //!
 //! The solver runs as a child process speaking SMT-LIB on stdin/stdout. Every
 //! answer other than `unsat` is a failure for the proof gate.
@@ -39,7 +39,7 @@ pub struct Solver {
     /// (ADR-0063): what the solver sees names nothing of the program.
     canon: Canon,
     /// Queries since the last `take_timeouts` that the per-query backstop
-    /// ended (`reason-unknown` "timeout", backlog INF-26).
+    /// ended (`reason-unknown` "timeout").
     timeouts: usize,
 }
 
@@ -57,7 +57,7 @@ struct Proc {
     alone: bool,
 }
 
-/// Canonical symbols of a query (ADR-0063, backlog T1-10e). Every quoted
+/// Canonical symbols of a query (ADR-0063). Every quoted
 /// symbol `|..|` (definitions, locals, callee results, selectors,
 /// constructors, datatypes: everything the encoder names after the program)
 /// becomes `|$k|`, numbered in order of first occurrence. Renaming the
@@ -256,7 +256,7 @@ fn legend_of(out: &mut String, query: usize, canon: &Canon) {
 /// query whose rlimit ticks slowly. Reaching it is reported as its own reason
 /// (`unknown_reason`), as the verdict then depends on the machine: a ground
 /// retry that spent its 5,000,000 in 194 s on one machine was cut off on a
-/// slower one, and the two runs' rlimit totals differed (backlog INF-26).
+/// slower one, and the two runs' rlimit totals differed.
 /// Per query, so a query's share no longer depends on how long its process
 /// had been running (with the process limit alone it was 300 to 360 s).
 const BACKSTOP_SECS: u64 = 300;
@@ -271,7 +271,7 @@ pub fn backstop_ms() -> u64 {
 }
 
 /// A process may be reused for a new definition only this long after it
-/// started (backlog 1D-18).
+/// started.
 const REUSE_SECS: u64 = 60;
 
 /// The process's hard limit (`-T`): only for a process that does not stop
@@ -317,7 +317,7 @@ pub fn rlimit() -> u64 {
 /// re-verifications of changed definitions (`Advisory::Refutations`). Every
 /// report needs an `unsat`, and a query that is neither `unsat` nor `sat`
 /// ran to the gate's limit without a word: on `lib/std` 403 of the lint's
-/// 6,003 queries, 89% of the solver's time (backlog T2-17 (e)). The largest
+/// 6,003 queries, 89% of the solver's time. The largest
 /// advisory `unsat` there used 256,942 and the largest proof of the gate
 /// 485,775. The shares that are fixed numbers stay what they are: the
 /// probe's and the bounded search's are shares of the gate's limit
@@ -345,7 +345,7 @@ pub fn query_rlimit() -> u64 {
 /// counts a process: see `working_memory_mb` for how a query gets a count of
 /// its own). A query that reaches it is undecided, as one that reaches the
 /// `rlimit` is: without it such a query grew until the system killed the
-/// process (backlog T2-16). `BMB_Z3_MEMORY_MB` may lower it (for tests); it
+/// process. `BMB_Z3_MEMORY_MB` may lower it (for tests); it
 /// can never raise it.
 pub fn memory_mb() -> u64 {
     let pinned: u64 = toolchain::pinned("Z3_MEMORY_MB")
@@ -359,13 +359,13 @@ pub fn memory_mb() -> u64 {
 
 /// The pinned memory limit in megabytes of an advisory query (`advisory`):
 /// the lint's satisfiability checks and its re-verifications of changed
-/// definitions (backlog T2-16). A query that is
+/// definitions. A query that is
 /// false, or satisfiable, under a recursive predicate with a quantifier in
 /// it makes Z3 grow without reaching its `rlimit`, and the time to the
 /// limit grows with the limit: the port-shape experiment's `tree.bmb` has
 /// 44 such queries, 248 s of lint at the gate's limit and 21 s at this one
 /// (as measured then; the queries after one that ended at the limit are
-/// asked since backlog T2-17, which about doubles the solver's time there).
+/// asked since then, which about doubles the solver's time there).
 /// Measured on `lib/std` and that experiment (13 files, 5,575 advisory
 /// queries): no proof raised its process's peak above 21 MB, one model
 /// raised it to 72 MB, and the lint's output is the same bytes at half
@@ -1032,14 +1032,14 @@ mod tests {
 
     #[test]
     fn advisory_queries_run_under_their_own_memory_limit() {
-        // Backlog T2-16: inside `advisory` a solver process starts with the
+        // Inside `advisory` a solver process starts with the
         // advisory limit, outside (and after it, nested or not) with the
         // gate's; the advisory limit is the smaller.
         let pinned = |k: &str| toolchain::pinned(k).parse::<u64>().unwrap();
         assert!(pinned("Z3_ADVISORY_MEMORY_MB") < pinned("Z3_MEMORY_MB"));
         assert!(advisory_memory_mb() <= memory_mb());
         assert_eq!(query_memory_mb(), memory_mb());
-        // The resource limit likewise (backlog T2-18, ADR-0131).
+        // The resource limit likewise (ADR-0131).
         assert!(pinned("Z3_ADVISORY_RLIMIT") < pinned("Z3_RLIMIT"));
         assert!(advisory_rlimit() <= rlimit());
         assert_eq!(query_rlimit(), rlimit());

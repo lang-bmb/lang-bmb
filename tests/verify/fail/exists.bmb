@@ -1,4 +1,4 @@
-#[summary("`exists` 계약의 반례(백로그 T0-25, ADR-0079)")]
+#[summary("Counterexamples of `exists` contracts (ADR-0079)")]
 mod exists_fail {
     #[effects(pure)]
     fn first(a: &[i64]) -> i64

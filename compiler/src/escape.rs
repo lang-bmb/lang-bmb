@@ -1,5 +1,4 @@
-//! Escapes and their rationales in a checked program (ADR-0029 §1, §3,
-//! backlog 2E-03, 2E-04): where they are, the hash a rationale is bound to,
+//! Escapes and their rationales in a checked program (ADR-0029 §1, §3): where they are, the hash a rationale is bound to,
 //! and whether the hash it carries is still that one.
 
 use std::collections::{BTreeMap, BTreeSet};

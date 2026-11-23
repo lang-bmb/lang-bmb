@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_num.bmb (backlog 4B-02), for its
+// Rust translation of tests/run/std_num.bmb, for its
 // expected output (`rustc --edition 2021`).
 use std::fmt::Write as _;
 

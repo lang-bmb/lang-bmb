@@ -1,4 +1,4 @@
-#[summary("비트 연산의 증명: 결과 범위 사실, 선형으로 펼친 상수 시프트와 낮은 비트 마스크, 시프트 양 의무, 명세의 비트 연산 (ADR-0048 §2·§4, backlog 2N-02)")]
+#[summary("Proofs of bit operations: result range facts, constant shifts and low-bit masks unfolded linearly, shift amount obligations, bit operations in specs (ADR-0048 §2·§4)")]
 mod bp {
     spec fn byte(r: u32) -> bool {
         r <= 0xff
@@ -145,8 +145,7 @@ mod bp {
         (a | b) & !(a & b)
     }
 
-    // A specification and the code computing the same bit operations
-    // (backlog 1B-49): the abstracted query relates them by congruence,
+    // A specification and the code computing the same bit operations: the abstracted query relates them by congruence,
     // also through a nested operation and in two's complement.
     spec fn mixed(x: u32, k: u32, r: u32) -> bool {
         r == ((x >> 1) ^ k) | 0x80000000

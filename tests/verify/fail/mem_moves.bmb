@@ -1,4 +1,4 @@
-#[summary("mem::replace·swap: 따르지 않는 것 (ADR-0047 §2, backlog 2O-04)")]
+#[summary("mem::replace·swap: what does not follow (ADR-0047 §2)")]
 mod mf {
     struct Buf { data: Vec<i64>, n: i64 }
 

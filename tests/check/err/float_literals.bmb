@@ -1,4 +1,4 @@
-#[summary("부동소수 리터럴의 꼴: 점 양쪽의 숫자, 지수 숫자, 접미사, 범위, f32와 as (ADR-0061 §1·§2, backlog T2-03)")]
+#[summary("Forms of float literals: digits on both sides of the point, exponent digits, suffixes, range, f32 and as (ADR-0061 §1·§2)")]
 mod fl {
     #[effects(pure)]
     fn shapes() -> f64 {

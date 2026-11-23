@@ -1,7 +1,6 @@
 //! The pinned toolchain must be present in every development and CI environment
 //! (run scripts/setup.sh). These tests fail rather than skip when it is not.
-//! Through the CLI (`bmb doctor`), so they test whichever compiler is built
-//! (backlog 4A-04).
+//! Through the CLI (`bmb doctor`), so they test whichever compiler is built.
 
 use std::process::Command;
 

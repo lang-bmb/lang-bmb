@@ -1,4 +1,4 @@
-#[summary("식 트리 평가기와 연결 리스트: 재귀 타입의 실행 (ADR-0047, backlog 2O-02)")]
+#[summary("An expression tree evaluator and a linked list: running recursive types (ADR-0047)")]
 mod et {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Mul(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
 

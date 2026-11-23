@@ -1,4 +1,4 @@
-#[summary("Box<T>와 소유 타입의 경계 (ADR-0047, backlog 2O-01)")]
+#[summary("Edges of Box<T> and owned types (ADR-0047)")]
 mod bx {
     struct Pt { x: i64, y: i64 }
 
@@ -9,10 +9,10 @@ mod bx {
     // A `Copy` parameter cannot take a type that moves.
     struct Wrapped { c: Cell2<Holder> }
 
-    // No arrays of owned values yet (backlog 2O-03).
+    // No arrays of owned values yet.
     struct Many { ps: [Box<i64>; 2] }
 
-    // Recursion through `Box` (backlog 2O-02).
+    // Recursion through `Box`.
     enum List { Nil, Cons(i64, Box<List>) }
 
     // Shared ownership is not used.

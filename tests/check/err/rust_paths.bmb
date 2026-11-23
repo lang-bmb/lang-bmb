@@ -1,9 +1,9 @@
-#[summary("Rust 경로 접두사와 클로저: 고칠 길이 붙는 Rust 습관 진단(백로그 2D-29)")]
+#[summary("Rust path prefixes and closures: Rust-habit diagnostics that come with a fix")]
 mod outer {
     #[effects(pure)]
     fn g(x: i64) -> i64 { x }
 
-    #[summary("하위 단위")]
+    #[summary("A sub-unit")]
     mod inner {
         #[effects(pure)]
         fn from_super(x: i64) -> i64 { super::g(x) }

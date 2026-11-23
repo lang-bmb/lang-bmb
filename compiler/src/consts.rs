@@ -1,4 +1,4 @@
-//! `const` items (ADR-0052, backlog 2V-19): collection, evaluation and
+//! `const` items (ADR-0052): collection, evaluation and
 //! the rewrite of array lengths and repeat counts written as a name.
 //!
 //! The initializer is a constant expression: literals, other `const`s,
@@ -11,7 +11,7 @@
 //! itself is E0318, another expression E0259.
 //!
 //! A `const` holds a value type (ADR-0052 §2): an integer, `bool`, `char`,
-//! or an array, struct or enum of them (backlog 2V-19b). The initializer
+//! or an array, struct or enum of them. The initializer
 //! also builds arrays (`[a, b]`, `[e; N]`), structs and variants, and reads
 //! fields, elements (`T[i]`, out of range is E0260) and `match`es a
 //! variant. The evaluator types its literals from the declared type; the

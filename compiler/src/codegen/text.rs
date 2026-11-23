@@ -1,4 +1,4 @@
-//! Text in the code generator (ADR-0050 §4, backlog 2U-03).
+//! Text in the code generator (ADR-0050 §4).
 //!
 //! A `String` is a `Vec<u8>` header and a `&str` a (pointer, length) pair
 //! (`Tables::lowered`); a `char` is its scalar value in an `i64` register.
@@ -236,7 +236,7 @@ impl Gen<'_> {
 
     /// Whether `e` has a type parameter's type that this instance gives a
     /// text type argument (`String`, lowered, as the only text type that is
-    /// `Ord`, backlog 4B-04): its comparisons are text's.
+    /// `Ord`): its comparisons are text's.
     fn text_targ(&self, e: &Expr) -> bool {
         if self.tsub.is_empty() {
             return false;
@@ -339,8 +339,7 @@ impl Gen<'_> {
         CVal::Arr { ptr, len }
     }
 
-    /// `&v[lo..hi]` of an array, `Vec` or slice of integers (backlog
-    /// 4C-05): the elements from `lo`, after the bounds check the proof
+    /// `&v[lo..hi]` of an array, `Vec` or slice of integers: the elements from `lo`, after the bounds check the proof
     /// did not discharge (E0805).
     pub(super) fn elem_slice(&mut self, idx: &Expr, base: &Expr, lo: &Expr, hi: &Expr) -> CVal {
         let bt = self.ty(base);

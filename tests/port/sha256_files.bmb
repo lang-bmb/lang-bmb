@@ -1,4 +1,4 @@
-#[summary("차등 시험(포팅 지도 P0, 백로그 4D-15): 인자로 받은 파일마다 std::sha256의 값을 sha256sum의 줄 모양으로 낸다. 읽지 못한 파일은 표준 오류에 적고 종료 코드 1")]
+#[summary("Differential test (port map P0): prints the std::sha256 value of each file given as an argument, in the line format of sha256sum. A file that cannot be read is reported on standard error, with exit code 1")]
 mod app {
     // The digest in lowercase hexadecimal, then two spaces: the start of a
     // `sha256sum` line.

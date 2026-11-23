@@ -1,4 +1,4 @@
-#[summary("산술 의무 위반")]
+#[summary("Arithmetic obligation violations")]
 mod arith {
     #[effects(pure)]
     fn add_overflow(x: i64) -> i64 { x + 1 }

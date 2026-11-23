@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JSONTestSuite against std::json (backlog 4B-02 (h), T4-05).
+"""JSONTestSuite against std::json.
 
   scripts/json_suite.py [--write FILE]
 

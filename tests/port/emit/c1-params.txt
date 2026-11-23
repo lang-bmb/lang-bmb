@@ -1,4 +1,4 @@
-#[summary("스칼라 매개변수: 자리를 받고, 읽어 돌려주거나 쓰지 않는다. 단위 값의 매개변수는 넘기지 않는다")]
+#[summary("Scalar parameters: each gets a slot and is read and returned, or left unused. A parameter of the unit value is not passed")]
 mod params {
     #[effects(pure)]
     fn id(x: i64) -> i64 { x }

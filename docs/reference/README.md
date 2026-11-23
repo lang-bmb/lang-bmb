@@ -1,6 +1,6 @@
 # BMB language reference (draft)
 
-> Status: draft (backlog 5A-01). What it describes is the accepted language pinned by the frozen fingerprint (`tests/surface.json`).
+> Status: draft. What it describes is the accepted language pinned by the frozen fingerprint (`tests/surface.json`).
 > Order of authority: the compiler's verdicts (pinned by the corpus) → this document. If the two differ, this document is wrong, and it is fixed.
 > The reasons for the design are in `docs/DESIGN.md` and the decision records (`docs/adr/`). This document only states what is a program and what is not.
 
@@ -31,7 +31,7 @@
 
 ## Limits of the draft
 
-The text of the chapters was carried over from the rule tables of `compiler/README.md`, the compiler source and the corpus, and the examples and doubtful rules were confirmed by running the compiler. Statements that had been written on the basis of documents and source alone were confirmed by execution (backlog `5A-03`, 2026-11-11): operator precedence, short-circuit evaluation, evaluation order and the end value of `for` (`tests/run/order.bmb`), method lookup order (`tests/run/method_order.bmb`), the checks that `emit-llvm` leaves (chapter 07), the input of the rationale hash (chapter 08), the places of a type invariant (chapter 06), the types that have `Eq` and `Ord` (chapter 03). What remains is the full list of builtin methods (chapter 03 gives only examples) and section-by-section tests of deallocation points, and the conformance tests (5A-02) attach tests to each section.
+The text of the chapters was carried over from the rule tables of `compiler/README.md`, the compiler source and the corpus, and the examples and doubtful rules were confirmed by running the compiler. Statements that had been written on the basis of documents and source alone were confirmed by execution (2026-11-11): operator precedence, short-circuit evaluation, evaluation order and the end value of `for` (`tests/run/order.bmb`), method lookup order (`tests/run/method_order.bmb`), the checks that `emit-llvm` leaves (chapter 07), the input of the rationale hash (chapter 08), the places of a type invariant (chapter 06), the types that have `Eq` and `Ord` (chapter 03). What remains is the full list of builtin methods (chapter 03 gives only examples) and section-by-section tests of deallocation points, and the conformance tests attach tests to each section.
 
 ## Diagnostic code index
 

@@ -1,4 +1,4 @@
-#[summary("구조체만으로 된 재귀: 자식 Vec을 가진 노드 (backlog 2O-03d)")]
+#[summary("Recursion through structs only: a node with a Vec of children")]
 mod rose {
     struct Node { v: i64, kids: Vec<Node> }
 

@@ -1,4 +1,4 @@
-#[summary("정수 폭의 증명: 좁은 타입의 범위 사실과 넘침 의무, 변환, MIN % -1, 되감기·포화 결과의 범위 (ADR-0048 §1, backlog 2N-01b)")]
+#[summary("Proofs of integer widths: range facts and overflow obligations of narrow types, conversions, MIN % -1, the range of wrapping·saturating results (ADR-0048 §1)")]
 mod wp {
     spec fn byte_range(x: i32) -> bool {
         -128 <= x && x <= 127

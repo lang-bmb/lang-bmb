@@ -1,10 +1,9 @@
-//! Soundness fuzzing of the proof gate over traits and generics (backlog
-//! 2T-05, ADR-0046).
+//! Soundness fuzzing of the proof gate over traits and generics (ADR-0046).
 //!
 //! Each batch declares a trait `Val` (a spec method `val` and an exact
 //! method `get` whose contract is `r == val(self)`), three fixed impls (`B`,
 //! the generic wrapper `N<T>`, which delegates through the bound, and `M`,
-//! a move type that owns a `Vec`, backlog 2T-09) and one random impl `R`
+//! a move type that owns a `Vec`) and one random impl `R`
 //! whose body and own postcondition are random, so its refinement
 //! obligations (E0817) may fail. Every random scalar function of
 //! `common::scalar` is written twice: `h` calls `get` on a `B` and an
@@ -24,11 +23,11 @@
 //!   `f::<N<B>>`, `f::<M>` (its arguments move in and are dropped there)
 //!   and `R::get`;
 //! - a call the interpreter says faults runs as a program of its own
-//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   (`common::trap`): both builds print the line before it
 //!   and end by the trap.
 //!
 //! Odd seeds write the trait calls as method calls (`a.get()`,
-//! `self.inner.val()`, ADR-0051, backlog 2M-02), even seeds by path. `R`
+//! `self.inner.val()`, ADR-0051), even seeds by path. `R`
 //! also has an inherent `get` (`v` plus `INHERENT_SHIFT`) that a method call on an `R`
 //! names before the trait's: the run prints `r.get()` (the inherent one)
 //! next to `Val::get(&r)` (the trait's random body).
@@ -287,7 +286,7 @@ struct Stats {
     cexes: usize,
     generic_cexes: usize,
     compiled_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
     /// Batches written with method calls (ADR-0051).
     method_batches: usize,
@@ -315,7 +314,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             _ => Some(gen_p(&mut rng, &["v", "r"], 1)),
         },
     };
-    let mut src = String::from("#[summary(\"trait 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"trait soundness fuzzing\")]\nmod m {\n");
     src.push_str(PRELUDE);
     src.push_str(&r.text());
     for f in &funcs {
@@ -344,13 +343,13 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("}\n\n");
     let module = src.clone();
     let main_head = format!(
-        "#[summary(\"실행\")]\nmod app {{\n    #[effects(alloc, io)]\n    #[uses({})]\n    fn main() -> () {{\n",
+        "#[summary(\"run\")]\nmod app {{\n    #[effects(alloc, io)]\n    #[uses({})]\n    fn main() -> () {{\n",
         uses.join(", ")
     );
     src.push_str(&main_head);
     let mut expected = String::new();
     let mut n = 0;
-    // Calls that fault in the interpreter (backlog 1B-54): `main` lines for
+    // Calls that fault in the interpreter: `main` lines for
     // `h`, `f::<B>`, `f::<N<B>>` and `f::<M>` (the kind), one form each.
     let mut faults: Vec<(usize, (usize, String))> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {

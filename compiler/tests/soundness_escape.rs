@@ -1,4 +1,4 @@
-//! Soundness fuzzing of escapes (ADR-0029 §8, backlog 2E-05).
+//! Soundness fuzzing of escapes (ADR-0029 §8).
 //!
 //! Random integer functions (`common::scalar`) are mixed with escapes whose
 //! trusted facts may be false:
@@ -231,7 +231,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         defs.push(d);
     }
     let module = |assumes: bool| {
-        let mut m = String::from("#[summary(\"탈출구 건전성 퍼징\")]\nmod m {\n");
+        let mut m = String::from("#[summary(\"escape hatch soundness fuzzing\")]\nmod m {\n");
         for d in &defs {
             m.push_str(&d.text(&defs, assumes));
         }
@@ -239,7 +239,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
         m
     };
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(io, panic)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(io, panic)]\n    fn main() -> () {\n";
     let mut src = format!("{}{main_head}", module(true));
     let mut expected = String::new();
     let mut faults: Vec<(usize, (i64, i64))> = Vec::new();
@@ -328,8 +328,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
 
     // 4. Checked definitions keep every check: trusted ones and their callees.
     // Without `main`, which calls every definition: one call-connected
-    // component with a failed definition keeps all its checks (backlog
-    // 1B-31), so in the batch program that would hide a removed check.
+    // component with a failed definition keeps all its checks, so in the batch program that would hide a removed check.
     let lib = vec![("s.bmb".to_string(), module(true))];
     let lib_out = cli::emit_llvm(&lib, &dir.join(format!("lib{seed}")), Some(&cache), false);
     let lib_ir = lib_out

@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_moved_values.bmb (backlog 2T-11), for
+// Rust translation of tests/run/std_moved_values.bmb, for
 // its expected output (`rustc --edition 2021`).
 use std::collections::BTreeMap;
 

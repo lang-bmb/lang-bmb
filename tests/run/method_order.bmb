@@ -1,4 +1,4 @@
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {
@@ -12,7 +12,7 @@ mod app {
     }
 }
 
-#[summary("메서드 찾기 순서")]
+#[summary("Method lookup order")]
 mod m {
     trait T {
         #[effects(pure)]

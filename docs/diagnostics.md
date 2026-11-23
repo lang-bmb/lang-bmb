@@ -218,7 +218,7 @@
 | W0909 | an executable function declares an effect its body does not need (callers must declare it too) |
 | W0912 | a clause keyword repeated (`invariant a, invariant b,`): the canonical form lists the clauses after one keyword (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
 | W0913 | loop clauses at the start of the body (`while c { invariant a, .. }`): the canonical form puts them before the body (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
-| W0914 | a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
+| W0914 | a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it) |
 | W0915 | an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it) |
 | W0916 | a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it) |
 | W0917 | a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it) |
@@ -247,9 +247,9 @@
 
 | Code | Meaning |
 | --- | --- |
-| E0814 | construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded) |
-| E0203 | `return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049) |
-| E0204 | `for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049) |
-| E0206 | the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049) |
-| E0234 | a string literal: text is bytes, write `b"..."` (retired by backlog 2U-01: `"..."` is a `&str`, ADR-0050) |
-| E0227 | method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051) |
+| E0814 | construct not supported by the proof gate (retired: every construct is encoded) |
+| E0203 | `return` is not allowed (retired: `return` is part of the language, ADR-0049) |
+| E0204 | `for` is not allowed (retired: the range `for` is part of the language, ADR-0049) |
+| E0206 | the `?` operator is not allowed (retired: `?` is part of the language, ADR-0049) |
+| E0234 | a string literal: text is bytes, write `b"..."` (retired: `"..."` is a `&str`, ADR-0050) |
+| E0227 | method calls are not allowed; call by path (retired: `x.f(..)` calls a method, ADR-0051) |

@@ -1,5 +1,5 @@
 //! Shared generator and reference interpreter for the soundness fuzzers:
-//! straight-line i64 functions with random contracts (backlog 1B-17).
+//! straight-line i64 functions with random contracts.
 
 use std::fmt::Write as _;
 
@@ -359,7 +359,7 @@ pub struct Func {
     pub lets: Vec<(String, E)>,
     /// Whole-array assignments to a local `t: [i64; 3]` (starts `[x, y, 0]`),
     /// optionally under a condition: `t = [..]` or `t = if c { [..] } else { t }`.
-    /// The right side reads the old `t` (backlog 1B-34).
+    /// The right side reads the old `t`.
     pub arr: Vec<(Option<C>, Vec<E>)>,
     pub body: E,
     pub post: P,
@@ -373,7 +373,7 @@ pub fn bounds(rng: &mut Rng) -> (i64, i64) {
 /// Kinds of `gen_edge` functions.
 pub const EDGES: usize = 3;
 
-/// A function at an operation's one faulting edge (backlog 1B-43): `-x`,
+/// A function at an operation's one faulting edge: `-x`,
 /// `x % y` or `x / y` (`shape`) at `x` in `MIN..=MIN + 1` and `y` in
 /// `-2..=-1` (four inputs, all run), so no other obligation fails. The value
 /// is only compared (`if e == 0 { 0 } else { 1 }`): returned, an

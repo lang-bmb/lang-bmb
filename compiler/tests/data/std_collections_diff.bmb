@@ -1,4 +1,4 @@
-#[summary("std::collections 차등 시험: 표준 입력의 줄마다 연산(`i k v` 넣기, `r k` 빼기, `g k` 찾기)을 BTreeMap<u64, u64>와 BTreeSet<u64>에 하고 결과와 끝의 내용을 순서대로 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+#[summary("std::collections differential test: applies the operation on each line of standard input (`i k v` insert, `r k` remove, `g k` look up) to a BTreeMap<u64, u64> and a BTreeSet<u64>, and prints each result and the final contents in order (tests/stdlib.rs)")]
 mod diff {
     // The numbers of a line after its first byte, between spaces.
     #[effects(alloc)]

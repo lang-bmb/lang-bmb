@@ -1,4 +1,4 @@
-// Rust translation of tests/run/fn_nested.bmb (backlog 2V-20e), for its
+// Rust translation of tests/run/fn_nested.bmb, for its
 // expected output (`rustc --edition 2021`).
 mod nest {
     fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 {

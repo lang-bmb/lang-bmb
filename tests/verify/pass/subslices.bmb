@@ -1,4 +1,4 @@
-#[summary("부분 슬라이스 인자: 배열·Vec·슬라이스의 &v[lo..hi] (백로그 4C-05)")]
+#[summary("Subslice arguments: &v[lo..hi] of arrays·Vec·slices")]
 mod ss {
     spec fn within(lo: usize, hi: usize, n: usize) -> bool { lo <= hi && hi <= n }
 

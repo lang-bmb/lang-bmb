@@ -1,4 +1,4 @@
-#[summary("재귀 타입: 따르지 않는 것 (ADR-0047 §3, backlog 2O-02)")]
+#[summary("Recursive types: what does not follow (ADR-0047 §3)")]
 mod rf {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>) }
 

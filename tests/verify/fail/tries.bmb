@@ -1,4 +1,4 @@
-#[summary("? 연산자의 틀린 프로그램: None 갈래의 사후조건, 넘겨진 오류 값, 페이로드의 범위 (backlog 2K-01e)")]
+#[summary("Wrong programs of the ? operator: the postcondition of the None arm, the error value passed on, the range of the payload")]
 mod tf {
     spec fn some(r: Option<u64>) -> bool {
         match r {

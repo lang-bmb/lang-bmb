@@ -1,4 +1,4 @@
-#[summary("메서드 구문 증명 실패: 수신자의 사전조건, 경계 trait의 사후조건 (ADR-0051, 2M-01)")]
+#[summary("Method syntax proof failures: the receiver's precondition, the postcondition of a bound trait (ADR-0051)")]
 mod mf {
     struct Counter { n: u64, cap: u64 }
 

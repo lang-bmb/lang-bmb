@@ -4,7 +4,7 @@
 stage0 holds the module's head and its runtime parts as string constants in
 `compiler/src/codegen.rs` (`bmb dump runtime` lists them by name). The port
 holds the same bytes in this generated file, `selfhost/codegen_text.bmb`:
-one function per text (backlog 4D-05c1).
+one function per text.
 
     codegen_text.py write     regenerate the file (in normal form: `bmb fmt`)
     codegen_text.py check     fail if the file is stale (the gate)

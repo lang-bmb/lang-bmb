@@ -1,11 +1,9 @@
-//! Deterministic mutation fuzzing of the front end (backlog 1A-09): mutated
+//! Deterministic mutation fuzzing of the front end: mutated
 //! corpus programs must never make the lexer, parser or checker panic.
 //! `BMB_FUZZ_ITERS` raises the iteration count for longer runs and
-//! `BMB_FUZZ_SEED` picks another mutant sequence. Through the CLI (backlog
-//! 4A-04): a mutant fails when `bmb` ends other than with status 0 or 1 (a
+//! `BMB_FUZZ_SEED` picks another mutant sequence. Through the CLI: a mutant fails when `bmb` ends other than with status 0 or 1 (a
 //! panic is 101, a stack overflow a signal), on the stack the CLI uses.
-//! `BMB_FUZZ_EXPORT=DIR` also writes every mutant to `DIR/NNNNN.bmb` (backlog
-//! 4A-03): the inputs on which another front end is compared with this one
+//! `BMB_FUZZ_EXPORT=DIR` also writes every mutant to `DIR/NNNNN.bmb`: the inputs on which another front end is compared with this one
 //! (`bmb dump tokens`, `bmb dump parse`, `bmb check`).
 
 use std::fs;
@@ -203,7 +201,7 @@ fn front_end_never_panics_on_mutated_programs() {
         }
         // Mutants that type-check also go through proof and code generation,
         // whose internal invariants assume a checked program.
-        // The stage dumps (backlog 4A-03) see every mutant too.
+        // The stage dumps see every mutant too.
         let result = run(&dir, &["dump", "tokens"])
             .and_then(|_| run(&dir, &["dump", "parse"]))
             .and_then(|_| run(&dir, &["dump", "std"]))

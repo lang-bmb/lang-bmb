@@ -1,4 +1,4 @@
-// Rust translation of tests/run/methods.bmb (backlog 2M-01), for its
+// Rust translation of tests/run/methods.bmb, for its
 // expected output (`rustc --edition 2021`).
 #[derive(Clone, Copy)]
 struct Account {

@@ -1,5 +1,5 @@
 // `lo..=hi` outside a `for` loop is reported once (E0438) and what holds it
-// is checked as with `lo..hi` (2V-23).
+// is checked as with `lo..hi`.
 #[summary("t")]
 mod t {
     #[effects(pure)]

@@ -1,4 +1,4 @@
-#[summary("명세의 정수 넓힘이 아닌 것(ADR-0099, backlog 2N-08): 좁힘과 범위가 겹치지 않는 갈래는 E0401, 좁히는 변환은 E0513")]
+#[summary("What is not integer widening in specs (ADR-0099): narrowing and arms whose ranges do not overlap are E0401, a narrowing conversion is E0513")]
 mod swe {
     spec fn small(x: u64) -> u8 { x }
 

@@ -1,4 +1,4 @@
-#[summary("진입점: 네 비교의 진리표")]
+#[summary("Entry point: the truth table of the four comparisons")]
 mod app {
     #[effects(io)]
     fn main() -> () {
@@ -30,7 +30,7 @@ mod app {
     }
 }
 
-#[summary("실행 예제: bool의 순서 비교는 false < true (ADR-0046 §1, 백로그 5A-04)")]
+#[summary("Run example: the ordering of bool is false < true (ADR-0046 §1)")]
 mod order {
     #[effects(pure)]
     fn agrees(a: bool, b: bool) -> (r: bool)

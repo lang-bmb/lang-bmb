@@ -1,4 +1,4 @@
-#[summary("시스템 인터페이스: 명령줄 인자(std::env::args), 환경 변수(없는 이름과 NUL이 든 이름), 단조 시계, 표준 오류(eprint_str), 파일 읽기의 실패(std::io::Error의 code와 message), 프로세스 돌리기와 그 출력, 가운데의 종료(std::process::exit: 그 뒤의 코드는 돌지 않는다)")]
+#[summary("System interface: command-line arguments (std::env::args), environment variables (a missing name and a name containing NUL), the monotonic clock, standard error (eprint_str), failure to read a file (code and message of std::io::Error), running a process and its output, exiting in the middle (std::process::exit: the code after it does not run)")]
 mod sys {
     #[effects(alloc, io, nondet)]
     fn report(path: &str) -> () {

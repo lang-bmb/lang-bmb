@@ -1,4 +1,4 @@
-#[summary("부호 없는 원소의 범위: 명세에서만 읽어도 0 이상")]
+#[summary("The range of unsigned elements: at least 0 even when read only in specs")]
 mod unsigned_elems {
     spec fn all_nonneg(a: &[u64]) -> bool { forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0 }
 

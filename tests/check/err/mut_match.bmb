@@ -1,4 +1,4 @@
-#[summary("&mut 참조 match의 경계 (ADR-0055, backlog 2O-04b)")]
+#[summary("Edges of match on a &mut reference (ADR-0055)")]
 mod mc {
     enum Slot { Empty, Full(i64, bool) }
 

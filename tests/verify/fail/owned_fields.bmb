@@ -1,4 +1,4 @@
-#[summary("소유 필드: 따르지 않는 것 (ADR-0047 §3, backlog 2O-03)")]
+#[summary("Owned fields: what does not follow (ADR-0047 §3)")]
 mod of {
     struct Buf { data: Vec<i64>, cap: usize }
 

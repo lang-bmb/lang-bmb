@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of scripts/surface.py (backlog 4D-01): what counts as a change of
+"""Tests of scripts/surface.py: what counts as a change of
 the language surface."""
 import sys
 from pathlib import Path

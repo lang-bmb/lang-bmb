@@ -1,4 +1,4 @@
-#[summary("push의 길이는 의무가 아니라 사실이다(ADR-0124, 백로그 4D-13): 길이를 모르는 Vec과 String에 넣는다")]
+#[summary("The length on push is a fact, not an obligation (ADR-0124): pushes into a Vec and a String of unknown length")]
 mod up {
     #[effects(alloc)]
     fn add(v: &mut Vec<i64>, x: i64) -> ()

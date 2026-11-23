@@ -1,8 +1,7 @@
-//! Compiler identity for the incremental cache (backlog 2D-10): a SHA-256
+//! Compiler identity for the incremental cache: a SHA-256
 //! over every file under `src/`, the pinned toolchain file and the standard
 //! library, so any change to the compiler invalidates every cached
-//! definition. Also the standard library's units, embedded (ADR-0092 §1,
-//! backlog 4B-02): `$OUT_DIR/std_units.rs` lists every `lib/std/*.bmb` by
+//! definition. Also the standard library's units, embedded (ADR-0092 §1): `$OUT_DIR/std_units.rs` lists every `lib/std/*.bmb` by
 //! its stem.
 
 #[allow(dead_code)]

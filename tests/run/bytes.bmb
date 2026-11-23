@@ -1,4 +1,4 @@
-#[summary("실행: u8 산술·변환, 바이트 리터럴, 바이트 출력 (ADR-0044, backlog 2S-02)")]
+#[summary("Run: u8 arithmetic·conversion, byte literals, byte output (ADR-0044)")]
 mod by {
     spec fn starts_h(s: &[u8]) -> bool { s.len() > 0 && s[0] == 104 }
 

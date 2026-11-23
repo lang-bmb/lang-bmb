@@ -1,4 +1,4 @@
-#[summary("정렬된 배열에서 값 찾기")]
+#[summary("Finding a value in a sorted array")]
 mod search {
     spec fn is_sorted(a: &[i64]) -> bool {
         forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
@@ -32,7 +32,7 @@ mod search {
     }
 }
 
-#[summary("수열 계산")]
+#[summary("Sequence computations")]
 mod series {
     spec fn bounded(n: u64) -> bool {
         n <= 1000
@@ -89,7 +89,7 @@ mod series {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {
@@ -101,7 +101,7 @@ mod app {
     }
 }
 
-#[summary("별칭 검사: 다른 변수만 쓰는 블록 인자는 허용")]
+#[summary("Alias check: a block argument that uses only other variables is allowed")]
 mod alias_ok {
     #[effects(pure)]
     fn put(a: &mut [i64], v: i64) -> () {}

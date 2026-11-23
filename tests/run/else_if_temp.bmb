@@ -1,4 +1,4 @@
-#[summary("else if의 조건이 만든 임시값은 조건을 계산한 뒤 바로 죽는다: 그 갈래에 들지 않은 반복에서 다시 해제되지 않는다 (코드 생성이 조건의 임시값을 if 전체가 끝난 자리에서 해제하던 결함의 회귀 시험)")]
+#[summary("A temporary made by an else if condition dies right after the condition is evaluated: it is not dropped again in an iteration that does not enter that arm (regression test for the defect where code generation dropped the condition's temporary where the whole if ended)")]
 mod eit {
     #[effects(pure)]
     fn long(s: &str) -> bool {

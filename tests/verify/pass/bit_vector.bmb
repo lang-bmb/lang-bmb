@@ -1,4 +1,4 @@
-#[summary("`assert(e) by (bit_vector)` 하위 증명과 비트 메서드(ADR-0048 §2·§4, backlog 2N-03): 실행 코드·proof 블록·proof fn의 하위 증명, 펼치는 spec fn, 회전·개수·바이트 뒤집기·감싸는 시프트의 계약")]
+#[summary("`assert(e) by (bit_vector)` sub-proofs and bit methods (ADR-0048 §2·§4): sub-proofs in exec code·proof blocks·proof fn, spec fns that unfold, contracts of rotate·count·byte swap·wrapping shift")]
 mod bvp {
     spec fn low_byte(x: u32) -> u32 { x & 0xff }
 
@@ -131,7 +131,7 @@ mod bvp {
         x.wrapping_shl(k) ^ x.wrapping_shr(k)
     }
 
-    // The ones counts (backlog 2N-09): every bit set is the width, at 255
+    // The ones counts: every bit set is the width, at 255
     // unsigned and at -1 signed.
     spec fn all_ones(x: u8, r: u32) -> bool { r <= 8 && (r == 8) == (x == 255) }
 
@@ -185,7 +185,7 @@ mod bvp {
     }
 
     // `checked_shl` is `Some` exactly when the amount is below the width, of
-    // the wrapping shift; a power of two has one bit set (backlog 2N-09b).
+    // the wrapping shift; a power of two has one bit set.
     spec fn shifted(x: u16, k: u32, r: Option<u16>) -> bool {
         match r {
             None => k >= 16,
@@ -209,7 +209,7 @@ mod bvp {
         x.is_power_of_two()
     }
 
-    // An integer's bytes and back (backlog 2N-09c): the big-endian bytes
+    // An integer's bytes and back: the big-endian bytes
     // read back are the value, the first is the top byte, and a value read
     // from little-endian bytes gives them back.
     spec fn same_value(x: u32, r: u32) -> bool { r == x }
@@ -241,7 +241,7 @@ mod bvp {
         i16::from_le_bytes(b)
     }
 
-    // Signed division and division by a variable (backlog 2N-11): Rust's
+    // Signed division and division by a variable: Rust's
     // truncating `/` and `%`; a divisor that may be zero is an antecedent of
     // the assumed fact. A variable divisor is a divider circuit for the
     // solver: cheap at 8 bits, undecided within the limit from 32.
@@ -257,7 +257,7 @@ mod bvp {
     struct P { x: u32 }
 
     // An element, a field, a value behind a reference and a length are
-    // variables of the sub-proof (backlog 2N-11).
+    // variables of the sub-proof.
     #[effects(pure)]
     fn element(s: &[u32]) -> u32 {
         if s.len() > 0 {

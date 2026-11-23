@@ -1,4 +1,4 @@
-#[summary("비트 연산과 리터럴 진법: &·|·^·!·<<·>>(부호 있는 타입의 산술 시프트), 0x·0o·0b·_, bool의 &·|·^ (ADR-0048 §2·§3, backlog 2N-02)")]
+#[summary("Bit operations and literal radixes: &·|·^·!·<<·>> (arithmetic shift for signed types), 0x·0o·0b·_, &·|·^ on bool (ADR-0048 §2·§3)")]
 mod bits {
     spec fn amount(k: u32) -> bool {
         0 < k && k < 32

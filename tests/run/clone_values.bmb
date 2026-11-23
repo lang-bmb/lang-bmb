@@ -1,4 +1,4 @@
-#[summary("메모리를 가진 값의 clone: 구조체, 열거형, Box, 재귀 트리, 이동 원소의 Vec, Option, 참조 너머 (ADR-0141)")]
+#[summary("clone of values that hold memory: structs, enums, Box, recursive trees, a Vec of move elements, Option, through a reference (ADR-0141)")]
 mod cv {
     struct Bag<T> { items: Vec<T>, n: i64 }
 

@@ -1,4 +1,4 @@
-#[summary("메서드 구문: 계좌와 거래 기록, 순위 trait, 수신자 조정 (ADR-0051, 2M-01)")]
+#[summary("Method syntax: an account and its transaction log, a ranking trait, receiver adjustment (ADR-0051)")]
 mod ledger {
     spec fn small(x: i64) -> bool {
         -1000000 <= x && x <= 1000000

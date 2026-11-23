@@ -1,4 +1,4 @@
-#[summary("문자열과 그 주변의 Rust 습관 (ADR-0050, backlog 2U-01)")]
+#[summary("Strings and the Rust habits around them (ADR-0050)")]
 mod st {
     #[effects(pure)]
     fn take(t: &str) -> usize {

@@ -1,4 +1,4 @@
-#[summary("f64의 메서드와 상수, print_f64(자릿수 검사와 런타임 조각)")]
+#[summary("f64 methods and constants, print_f64 (the digit check and the runtime piece)")]
 mod floats {
     #[effects(pure)]
     fn root(x: f64) -> f64 { x.sqrt() }

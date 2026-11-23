@@ -1,4 +1,4 @@
-#[summary("이동 타입의 trait `Self`: 이동 뒤 사용, 참조에서 꺼내기 (2T-09)")]
+#[summary("Trait `Self` of a move type: use after move, moving out of a reference")]
 mod n {
     trait Use {
         #[effects(pure)]

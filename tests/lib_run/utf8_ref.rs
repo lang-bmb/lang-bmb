@@ -1,4 +1,4 @@
-// Reference for tests/lib_run/utf8.bmb (backlog T4-02): the same inputs judged by
+// Reference for tests/lib_run/utf8.bmb: the same inputs judged by
 // Rust's `std::str::from_utf8`. `rustc -O utf8_ref.rs && ./utf8_ref > utf8.out`.
 fn up_to(s: &[u8]) -> usize {
     match std::str::from_utf8(s) {

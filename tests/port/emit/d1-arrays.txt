@@ -1,4 +1,4 @@
-#[summary("스칼라 원소의 배열: 상수 리터럴과 셈하는 리터럴, 반복, 원소 읽기와 쓰기 (좁은 정수, bool, f64), 배열 전체의 대입, 값으로 넘기는 배열과 배열 결과, 배열 값의 if, len")]
+#[summary("Arrays of scalar elements: constant literals and computed literals, repetition, reading and writing elements (narrow integers, bool, f64), assigning a whole array, arrays passed by value and array results, if with array values, len")]
 mod arrays {
     #[effects(pure)]
     fn table() -> [i64; 5] { [3, -1, 4, 1, -5] }

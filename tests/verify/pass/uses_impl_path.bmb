@@ -1,4 +1,4 @@
-#[summary("trait impl의 메서드를 `#[uses(<T as Tr>::name)]`로 적는다(backlog 2D-31): 진단이 내는 전체 경로 꼴과 단위 안 이름 꼴")]
+#[summary("A method of a trait impl is written as `#[uses(<T as Tr>::name)]`: the full path form the diagnostic prints and the name form inside the unit")]
 mod uip {
     trait Area {
         #[effects(pure)]

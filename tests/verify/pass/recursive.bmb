@@ -1,4 +1,4 @@
-#[summary("재귀 타입: 데이터타입과 구조적 decreases (ADR-0047 §3, backlog 2O-02)")]
+#[summary("Recursive types: datatypes and structural decreases (ADR-0047 §3)")]
 mod rv {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Neg(Box<Expr>) }
 

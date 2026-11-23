@@ -1,4 +1,4 @@
-#[summary("중첩 Vec: 안쪽 길이는 원소마다의 길이 배열 (ADR-0047 §3, backlog 2O-03b)")]
+#[summary("Nested Vecs: the inner lengths are an array of per-element lengths (ADR-0047 §3)")]
 mod np {
     struct Row { cells: Vec<i64>, tag: u8 }
 

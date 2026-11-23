@@ -1,4 +1,4 @@
-#[summary("trait 계약 실패: 더 강한 전제, 더 약한 결과, 경계 호출의 전제 (E0817·E0801)")]
+#[summary("trait contract failures: a stronger premise, a weaker result, the premise of a bound call (E0817·E0801)")]
 mod tr {
     trait Area {
         #[effects(pure)]

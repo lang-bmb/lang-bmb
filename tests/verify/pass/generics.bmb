@@ -1,4 +1,4 @@
-#[summary("제네릭: 정의마다 한 번, 매개변수는 정렬 (ADR-0046 §4)")]
+#[summary("Generics: once per definition, parameters are sorts (ADR-0046 §4)")]
 mod gen {
     struct Pair<A: Copy, B: Copy> { first: A, second: B }
 

@@ -1,4 +1,4 @@
-#[summary("mem::replace·swap, E0239, Copy 없는 타입 매개변수 (ADR-0047 §2, backlog 2O-04)")]
+#[summary("mem::replace·swap, E0239, a type parameter without Copy (ADR-0047 §2)")]
 mod mv {
     struct Buf { data: Vec<i64>, name: Option<Box<i64>>, b: Box<i64> }
 
@@ -60,7 +60,7 @@ mod mv {
         a[0]
     }
 
-    // No arrays of it yet (backlog 2O-03c).
+    // No arrays of it yet.
     struct Pair<T> { items: [T; 2] }
 
     // A `Copy` bound still copies.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reference for tests/lib_run/crc32.bmb (backlog T4-04): the same inputs
+"""Reference for tests/lib_run/crc32.bmb: the same inputs
 checksummed by Python's `zlib.crc32`. `python3 crc32_ref.py > crc32.out`."""
 import zlib
 

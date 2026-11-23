@@ -1,4 +1,4 @@
-#[summary("trait 계약: spec 메서드, 경계 호출, `&mut` 수신자의 정제 (ADR-0046 §4)")]
+#[summary("trait contracts: spec methods, bound calls, refinement of a `&mut` receiver (ADR-0046 §4)")]
 mod tr {
     trait Area {
         #[effects(pure)]

@@ -1,4 +1,4 @@
-#[summary("clone 오류: Copy 없는 타입 매개변수, 자식 프로세스, 명세 안, 인자, 복사 타입 (ADR-0141 §2)")]
+#[summary("clone errors: a type parameter without Copy, a child process, inside a spec, arguments, copy types (ADR-0141 §2)")]
 mod cl {
     struct Pair<T> { a: T, b: Vec<T> }
 

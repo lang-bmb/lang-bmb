@@ -1,5 +1,5 @@
-//! Normal form and definition hashes (ADR-0019, backlog 1D-02, 1D-03).
-//! Through the CLI (backlog 4A-04): `bmb fmt`, `bmb verify`, `bmb hash`.
+//! Normal form and definition hashes (ADR-0019).
+//! Through the CLI: `bmb fmt`, `bmb verify`, `bmb hash`.
 
 mod common;
 
@@ -72,7 +72,7 @@ fn hashes(files: &[(String, String)]) -> Vec<String> {
 }
 
 const PROG: &str = r#"
-#[summary("해시 예제")]
+#[summary("hash example")]
 mod h {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -85,7 +85,7 @@ mod h {
     }
 }
 
-#[summary("다른 단위")]
+#[summary("another unit")]
 mod g {
     #[effects(pure)]
     fn id(x: i64) -> i64 { x }
@@ -100,7 +100,7 @@ fn hashes_ignore_layout_comments_and_order() {
     let commented = PROG.replace("x - 1", "// note\n        x   -   1 // trailing");
     assert_eq!(hashes(&one("a.bmb", &commented)), base);
     // Item order inside a unit and unit order.
-    let (h_part, g_part) = PROG.split_at(PROG.find("#[summary(\"다른").unwrap());
+    let (h_part, g_part) = PROG.split_at(PROG.find("#[summary(\"another").unwrap());
     let reordered = format!("{g_part}\n{h_part}");
     assert_eq!(hashes(&one("a.bmb", &reordered)), base);
     // Split across files.
@@ -163,11 +163,11 @@ fn renamed_definition_keeps_its_body_hash() {
     assert_eq!(field(&a, "body"), field(&b, "body"));
 }
 
-/// The data type surface (ADR-0026, backlog 2B-03) parses and prints in
+/// The data type surface (ADR-0026) parses and prints in
 /// normal form before the checker accepts it: types by name, each followed by
 /// its `impl` (functions by name), then functions; multi-line `match`; a
 /// condition holding a struct literal in parentheses (as Rust requires).
-/// A definition's summary (ADR-0117, backlog 3P-08): `///` is its input
+/// A definition's summary (ADR-0117): `///` is its input
 /// form, the normal form writes the attribute first, and no hash reads it.
 #[test]
 fn summaries_are_kept_by_the_normal_form_and_read_by_no_hash() {
@@ -255,7 +255,7 @@ mod geo {
     }
 }
 "#;
-    // `bmb dump parse`: the parsed program in normal form (backlog 4A-03).
+    // `bmb dump parse`: the parsed program in normal form.
     let parse = |name: &str, text: &str| bmb(&["dump", "parse"], &one(name, text));
     assert_eq!(parse("x.bmb", SRC), (true, NORMAL.to_string()));
     assert_eq!(parse("x.bmb", NORMAL), (true, NORMAL.to_string()));
@@ -272,7 +272,7 @@ mod geo {
     );
 }
 
-/// `bmb dump types|moves` (backlog 4D-03e1): what the checker's bodies
+/// `bmb dump types|moves`: what the checker's bodies
 /// compute, the same text on every run.
 #[test]
 fn table_dumps_show_what_the_bodies_compute() {
@@ -334,7 +334,7 @@ mod d {
     );
 }
 
-/// `bmb dump texts` (backlog 4D-03f4): the qualified texts the incremental
+/// `bmb dump texts`: the qualified texts the incremental
 /// keys read. Another definition is written by its full path, the
 /// definition's own name `_`; a caller's surface leaves `#[uses]` out.
 #[test]
@@ -368,7 +368,7 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
-/// `bmb dump lowered` (backlog 4D-05a): the tables the code generator
+/// `bmb dump lowered`: the tables the code generator
 /// reads, text as bytes and a `char` as a `u32`.
 #[test]
 fn lowered_dump_shows_text_as_bytes() {
@@ -407,7 +407,7 @@ mod d {
     assert!(!ok && out.contains(r#"{"fn":"d::f""#), "{out}");
 }
 
-/// `bmb dump layout` (backlog 4D-05b): the LLVM types, sizes and type
+/// `bmb dump layout`: the LLVM types, sizes and type
 /// definitions the code generator gives the program's types. `layout`
 /// sizes an enum's payload area: a scalar counts as a word there, whatever
 /// its width in memory.
@@ -447,7 +447,7 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
-/// `bmb dump runtime` (backlog 4D-05c1): the code generator's constant IR
+/// `bmb dump runtime`: the code generator's constant IR
 /// texts by name (the port's module is made of them, and its IR is compared
 /// with this compiler's: `tests/port/cases.json`, case `emit`).
 #[test]
@@ -491,7 +491,7 @@ fn runtime_dump_lists_the_constant_texts() {
     );
 }
 
-/// `bmb dump std|lower|decls` (backlog 4D-03a): the stages between the
+/// `bmb dump std|lower|decls`: the stages between the
 /// parser and the checker's bodies, each the same text on every run.
 #[test]
 fn stage_dumps_show_the_lowering_and_the_declarations() {
@@ -565,7 +565,7 @@ mod d {
 /// A literal keeps its base; separators, leading zeros and the case of hex
 /// digits are not part of the normal form (ADR-0048 §3, ADR-0019 §1).
 /// Bit operators print with Rust's precedence: only the parentheses it
-/// needs (backlog 2N-02).
+/// needs.
 #[test]
 fn literal_bases_and_bit_operators_have_one_normal_form() {
     let text = "#[summary(\"b\")]\nmod b {\n    #[effects(pure)]\n    fn f(x: u32, k: u32) -> bool {\n        let m: u32 = 0xFF_00 | 0o0_17 | 0b0000_0101 | 1_000;\n        let n: u32 = (x & m) ^ ((x << 2) | (x >> (k + 1)));\n        let p: u32 = ((x | m) & !m) << (k - 1);\n        (m & n) == p & (n | 1 ^ 2)\n    }\n}\n";
@@ -589,7 +589,7 @@ fn literal_bases_and_bit_operators_have_one_normal_form() {
     assert_eq!(statuses(&before.1), statuses(&after.1));
 }
 
-/// `assert(e) by (bit_vector);` has one normal form (backlog 2N-03), and a
+/// `assert(e) by (bit_vector);` has one normal form, and a
 /// change of the prover clause changes the definition's hash.
 #[test]
 fn bit_vector_assertions_have_one_normal_form() {
@@ -683,7 +683,7 @@ fn float_literals_have_one_normal_form() {
 }
 
 const BY_PATH: &str = r#"
-#[summary("경로 호출")]
+#[summary("path calls")]
 mod k {
     struct P { x: i64 }
 
@@ -747,7 +747,7 @@ mod k {
 "#;
 
 /// The normal form writes a method called by path as a method call where
-/// that names the same function (ADR-0051, backlog 2M-02): not a trait
+/// that names the same function (ADR-0051): not a trait
 /// method the type's own one shadows, not a name of two traits, not a
 /// function with type parameters of its own or without a receiver. The
 /// identities and the proof results are those of the program as written.

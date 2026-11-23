@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The language reference's links to the diagnostics and the corpus (5A-01).
+"""The language reference's links to the diagnostics and the corpus.
 
   reference.py check            the rules below, and the index is current
   reference.py index [--write]  the generated code index of docs/reference/README.md

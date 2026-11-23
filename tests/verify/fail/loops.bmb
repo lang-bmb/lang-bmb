@@ -1,4 +1,4 @@
-#[summary("루프 의무 위반")]
+#[summary("Loop obligation violations")]
 mod loops {
     #[effects(pure)]
     fn entry(n: u64) -> u64 {
@@ -59,7 +59,7 @@ mod loops {
     }
 
     // A `&mut` parameter passed on inside a loop is havocked at the loop
-    // head: what was written before the loop is gone (backlog 1B-38).
+    // head: what was written before the loop is gone.
     #[effects(pure)]
     fn passed_on_in_loop(a: &mut [i64]) -> ()
         requires first_len(a),
@@ -86,7 +86,7 @@ mod loops {
     }
 
     // An assignment in a `match` arm in the body is havocked at the loop
-    // head (it was not: the assertion was proved, found in 2K-01a).
+    // head (it once was not: the assertion was proved).
     #[effects(pure)]
     fn arm_assigns(o: Option<i64>) -> i64 {
         let mut x: i64 = 0;

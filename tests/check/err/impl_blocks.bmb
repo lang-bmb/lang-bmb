@@ -1,4 +1,4 @@
-#[summary("고유 impl 블록은 경계 목록마다 하나(ADR-0097, backlog 2T-11): 같은 경계의 두 블록 E0308, 블록들 사이의 같은 이름 E0302, 블록의 경계를 만족하지 않는 인스턴스 E0428")]
+#[summary("One inherent impl block per list of bounds (ADR-0097): two blocks with the same bounds E0308, the same name across blocks E0302, an instance that does not satisfy the block's bounds E0428")]
 mod ibe {
     struct Cell<T> { v: Vec<T> }
 

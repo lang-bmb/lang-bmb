@@ -1,4 +1,4 @@
-#[summary("증명 함수: 재귀로 쓴 귀납 (ADR-0062 §2, backlog T1-18)")]
+#[summary("Proof functions: induction written as recursion (ADR-0062 §2)")]
 mod pf {
     // ---- a recursive predicate and a quantifier say the same thing ----
 
@@ -208,7 +208,7 @@ mod pf {
     }
 }
 
-#[summary("증명 함수: 제네릭 보조 정리와 다른 단위의 보조 정리 (ADR-0062, backlog T1-18)")]
+#[summary("Proof functions: generic lemmas and lemmas of another unit (ADR-0062)")]
 mod pg {
     spec fn same<T: Copy>(a: T, b: T) -> bool {
         a == b

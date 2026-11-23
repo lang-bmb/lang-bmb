@@ -1,4 +1,4 @@
-#[summary("정수 변환 T::try_from(x).unwrap()을 원천과 대상의 쌍마다(100가지): 넓어지는 변환은 검사가 없고 나머지는 범위를 잰다")]
+#[summary("The integer conversion T::try_from(x).unwrap() for each pair of source and target (100 of them): widening conversions have no check and the rest test the range")]
 mod convs {
     #[effects(pure)]
     fn i8_to_i8(x: i8) -> i8 { i8::try_from(x).unwrap() }

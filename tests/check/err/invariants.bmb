@@ -1,4 +1,4 @@
-#[summary("타입 불변식 속성의 오류 (ADR-0060 §4)")]
+#[summary("Errors of the type invariant attribute (ADR-0060 §4)")]
 mod ie {
     // E0254: no such spec fn.
     #[invariant(missing)]

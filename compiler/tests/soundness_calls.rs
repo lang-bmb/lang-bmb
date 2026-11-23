@@ -1,4 +1,4 @@
-//! Soundness fuzzing of calls (backlog 1B-32): callers rely on their callees'
+//! Soundness fuzzing of calls: callers rely on their callees'
 //! contracts. Random callees come from the straight-line generator; random
 //! callers call them with computed arguments, sometimes under a condition.
 //!
@@ -11,8 +11,7 @@
 //! postcondition allows). Both builds must print what the interpreter
 //! computes.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -304,7 +303,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let callers: Vec<Caller> = (0..5)
         .map(|n| gen_caller(&mut rng, n, callees.len()))
         .collect();
-    let mut module = String::from("#[summary(\"호출 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"call soundness fuzzing\")]\nmod m {\n");
     for f in &callees {
         module.push_str(&f.text());
     }
@@ -313,10 +312,10 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     }
     module.push_str("}\n\n");
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-51). A call that breaks
+    // Calls that fault in the interpreter. A call that breaks
     // a callee's precondition is not run: preconditions are not checked at
     // run time.
     let mut faults: Vec<(usize, (i64, i64))> = Vec::new();

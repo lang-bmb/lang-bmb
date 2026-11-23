@@ -1,4 +1,4 @@
-//! Soundness fuzzing of recursion and termination (backlog 1B-32).
+//! Soundness fuzzing of recursion and termination.
 //!
 //! `fn r(n: u64, x: i64) -> (out: i64) decreases n` with a random base case,
 //! a random step `n - c` (c may be 0, which never terminates), a random
@@ -7,11 +7,10 @@
 //! admits: termination, no fault (overflow, u64 underflow), and the
 //! postcondition. Counterexamples must satisfy the precondition. Both builds
 //! must print what the interpreter computes. Some functions recurse on the
-//! same `n` with a contract that holds by induction (backlog 1B-43), so only
+//! same `n` with a contract that holds by induction, so only
 //! the measure obligation stands between them and a proof.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -199,7 +198,7 @@ fn gen_rec(rng: &mut Rng, k: usize) -> Rec {
         _ => gen_p(rng, &["n", "x", "r"], 1),
     };
     // Sometimes a step that never decreases with a result that keeps the
-    // contract (backlog 1B-43): `r(n, x)` returns `r(n, x)`, so `r == x`
+    // contract: `r(n, x)` returns `r(n, x)`, so `r == x`
     // follows by induction whatever the measure, and only the measure
     // obligation (E0809) rejects it. From a stream of its own: the other
     // draws stay as they were.
@@ -243,16 +242,16 @@ struct Stats {
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let recs: Vec<Rec> = (0..6).map(|k| gen_rec(&mut rng, k)).collect();
-    let mut module = String::from("#[summary(\"재귀 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"recursion soundness fuzzing\")]\nmod m {\n");
     for r in &recs {
         module.push_str(&r.text());
     }
     module.push_str("}\n\n");
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-54); a diverging one
+    // Calls that fault in the interpreter; a diverging one
     // is not run.
     let mut faults: Vec<(usize, (u64, i64))> = Vec::new();
     for (i, r) in recs.iter().enumerate() {

@@ -1,4 +1,4 @@
-#[summary("Vec의 원소인 타입 매개변수: 인스턴스마다 타입 인자가 Vec의 원소여야 한다 (backlog 2T-10)")]
+#[summary("A type parameter as a Vec element: in every instance the type argument must be a Vec element")]
 mod ve {
     struct Bag<T: Copy> { items: Vec<T> }
 

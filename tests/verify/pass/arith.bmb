@@ -1,4 +1,4 @@
-#[summary("산술 의무 충족")]
+#[summary("Arithmetic obligations met")]
 mod arith_ok {
     spec fn below_max(x: i64) -> bool { x < 9223372036854775807 }
 
@@ -95,7 +95,7 @@ mod arith_ok {
     }
 }
 
-#[summary("명세의 정수 타입 혼합(ADR-0022)")]
+#[summary("Mixing integer types in specs (ADR-0022)")]
 mod mixed {
     spec fn counted(c: i64, k: usize) -> bool { 0 <= c && c <= k }
 

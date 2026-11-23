@@ -1,4 +1,4 @@
-#[summary("명세 문맥과 실행 문맥")]
+#[summary("Spec context and exec context")]
 mod spec_mode {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -35,7 +35,7 @@ mod spec_mode {
     fn string_uses() -> () {}
 }
 
-#[summary("명세 함수 본문의 assert")]
+#[summary("assert in the body of a spec function")]
 mod spec_assert {
     spec fn asserts(x: i64) -> bool {
         assert(x > 0);

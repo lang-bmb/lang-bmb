@@ -1,4 +1,4 @@
-#[summary("상수의 값: 식의 꼴마다 하나")]
+#[summary("Values of constants: one for each form of expression")]
 mod cv {
     const A: i64 = 3;
     const B: i64 = A * 2 + 1 - 4 / 2 % 3;
@@ -59,7 +59,7 @@ mod cv {
     fn f() -> [u8; K] { [0; K] }
     #[effects(pure)]
     fn g(a: [i64; K]) -> usize { let b: [u8; K] = [1; K]; K }
-    #[summary("안 단위: 바깥 단위의 이름으로 쓴 길이들 뒤에 쓴다 (백로그 4D-26)")]
+    #[summary("An inner unit: written after the lengths that use names of the outer unit")]
     mod inner {
         const K2: usize = 2;
         const R2: [u8; K2] = [0; K2];

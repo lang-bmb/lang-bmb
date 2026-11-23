@@ -1,4 +1,4 @@
-//! `bmb examples` (backlog T1-44c, ADR-0078 H-INTENT): examples of a
+//! `bmb examples` (ADR-0078 H-INTENT): examples of a
 //! contract from its `requires` and `ensures` alone. Through the command
 //! line only.
 //!
@@ -82,8 +82,7 @@ mod d {
         after[0] == before[1] && after[1] == before[0]
     }
 
-    // A recursive definition and a quantifier over the slice (backlog
-    // T1-44g): the solver decides this contract at a written input.
+    // A recursive definition and a quantifier over the slice: the solver decides this contract at a written input.
     spec fn tally(a: &[i64], n: usize) -> i64
         decreases n,
     {
@@ -605,7 +604,7 @@ fn the_gate_refuses_an_exchanged_claim() {
 /// A query the solver does not decide shows no row and is counted; no
 /// value is printed that was not a model. Nonlinear integer arithmetic is
 /// such a contract (a recursive spec fn was, until the generator wrote it
-/// as a recursive function and tried written inputs, backlog T1-44g): no
+/// as a recursive function and tried written inputs): no
 /// written input is a solution, and the solver finds none.
 #[test]
 fn an_undecided_query_shows_nothing_and_is_counted() {
@@ -642,7 +641,7 @@ mod c {
 /// reason, no example, no query. A contract through a spec fn the
 /// function's proof does not read (not in `#[uses]`) has the examples of
 /// the same contract with it revealed: the contract means what its spec
-/// fns are defined to be (backlog T1-44g).
+/// fns are defined to be.
 #[test]
 fn a_definition_without_examples_says_why() {
     let text = r#"#[summary("t")]

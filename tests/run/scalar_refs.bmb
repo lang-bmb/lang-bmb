@@ -1,4 +1,4 @@
-#[summary("스칼라 참조 매개변수: 지역·필드·원소·제네릭 인스턴스 (ADR-0054)")]
+#[summary("Scalar reference parameters: locals·fields·elements·generic instances (ADR-0054)")]
 mod g {
     struct Acc { total: i64, flag: bool, b: u8 }
 
@@ -75,7 +75,7 @@ mod g {
     }
 }
 
-#[summary("정수 타입과 bool의 trait impl: `self: &i64` 수신자 (ADR-0054)")]
+#[summary("Trait impls for integer types and bool: the receiver `self: &i64` (ADR-0054)")]
 mod sz {
     trait Size {
         #[effects(pure)]

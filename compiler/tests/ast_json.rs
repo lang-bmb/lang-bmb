@@ -1,5 +1,4 @@
-//! The JSON syntax tree of the JSON AST edit surface (backlog T1-06,
-//! ADR-0073), through the CLI and the MCP server: every program of the
+//! The JSON syntax tree of the JSON AST edit surface (ADR-0073), through the CLI and the MCP server: every program of the
 //! corpus, written as its tree by `edit_ast` into an empty workspace, is the
 //! same normal form, and `bmb ast` of the result is the same tree.
 
@@ -80,7 +79,7 @@ fn edit_ast(ws: &Path, patch: &str) -> String {
 }
 
 /// A repeat count written as a name belongs to the unit that writes it,
-/// whatever units come after it or beside it (backlog 4D-26): the document
+/// whatever units come after it or beside it: the document
 /// of a program with such counts in a unit, its nested unit and another
 /// unit commits and gives the same sources.
 #[test]

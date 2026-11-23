@@ -1,4 +1,4 @@
-#[summary("Box<T>: 증명은 값 그대로 (ADR-0047 §3, backlog 2O-01)")]
+#[summary("Box<T>: the proof sees the value as is (ADR-0047 §3)")]
 mod bx {
     struct Pt { x: i64, y: i64 }
 

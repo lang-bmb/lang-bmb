@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::intern: 낱말마다 번호를 매기고(처음 오면 다음 번호, 다시 오면 같은 번호) 번호로 이름을 되찾는다 (ADR-0092 §2, backlog 4B-02 (g))")]
+#[summary("Standard library std::intern: numbers each word (the next number when it first comes, the same number when it comes again) and gets the name back by number (ADR-0092 §2)")]
 mod uses_intern {
     spec fn short(s: &str) -> bool {
         s.len() < 1000

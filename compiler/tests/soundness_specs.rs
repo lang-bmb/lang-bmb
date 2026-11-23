@@ -1,4 +1,4 @@
-//! Soundness fuzzing of specifications (backlog 1B-36): named spec fns with
+//! Soundness fuzzing of specifications: named spec fns with
 //! `forall` (explicit `#[trigger]`, one or two bound variables), `==>`,
 //! recursive spec fns with `decreases` (sum and count over a prefix), and
 //! `#[uses]` lists that sometimes leave out a needed spec fn, so opaque
@@ -28,9 +28,9 @@
 //! - both builds (proved checks removed, every check kept) print what the
 //!   interpreter computes, array contents included;
 //! - a call the interpreter says faults runs as a program of its own
-//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   (`common::trap`): both builds print the line before it
 //!   and end by the trap;
-//! - lemmas (ADR-0062, backlog T1-18): two more functions per batch rest on a
+//! - lemmas (ADR-0062): two more functions per batch rest on a
 //!   `proof fn` from templates (an induction on `i` over a recursive spec fn,
 //!   or a plain proof) called in a `proof` block, with near-miss mutations of
 //!   the lemma's or the caller's precondition, the conclusion, the recursive
@@ -39,8 +39,7 @@
 //!   lemma counterexample meets the precondition and breaks the conclusion,
 //!   and a verified caller (of a verified lemma) meets its postcondition.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -1898,7 +1897,7 @@ struct Stats {
     lemma_replayed: usize,
     partial_cexes: usize,
     compiled_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
     by_template: std::collections::BTreeMap<&'static str, (usize, usize)>,
     codes: std::collections::BTreeMap<String, usize>,
@@ -1909,17 +1908,17 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     // Six functions as before, then two that rest on a lemma.
     let mut funcs: Vec<Func> = (0..6).map(|n| gen_func(&mut rng, n)).collect();
     funcs.extend((6..8).map(|n| gen_lemma_func(&mut rng, n)));
-    let mut src = String::from("#[summary(\"명세 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"spec soundness fuzzing\")]\nmod m {\n");
     for f in &funcs {
         src.push_str(&f.text());
     }
     // One runner per function keeps each runner's proof context small.
     src.push_str("}\n\n");
     let module = src.clone();
-    src.push_str("#[summary(\"실행\")]\nmod app {\n");
+    src.push_str("#[summary(\"run\")]\nmod app {\n");
     let mut expected = String::new();
     let mut n = 0;
-    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    // Calls that fault in the interpreter, as `main` lines.
     let mut faults: Vec<(usize, String)> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         let _ = writeln!(src, "    #[effects(io)]\n    fn run_{}() -> () {{", f.name);
@@ -2227,7 +2226,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     // Calls that fault in the interpreter trap in both builds.
     for (j, (fi, call)) in trap::choose(&faults, |_| ()).into_iter().enumerate() {
         let src = format!(
-            "{module}#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    fn main() -> () {{\n{}    }}\n}}\n",
+            "{module}#[summary(\"run\")]\nmod app {{\n    #[effects(io)]\n    fn main() -> () {{\n{}    }}\n}}\n",
             trap::body(&call)
         );
         let files = vec![("s.bmb".to_string(), src.clone())];

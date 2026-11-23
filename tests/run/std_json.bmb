@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::json: 설정 문서를 노드 배열로 읽어 멤버·원소·정수·문자열(이스케이프 해독)을 꺼내고, 이름표를 JSON 문자열로 다시 쓴다 (ADR-0092 §2, backlog 4B-02 (h))")]
+#[summary("Standard library std::json: reads a configuration document into a node array, takes out members·elements·integers·strings (decoding escapes), and writes a label back as a JSON string (ADR-0092 §2)")]
 mod uses_json {
     #[effects(alloc, io)]
     #[uses(std::json::doc_sound, std::json::nodes_in)]

@@ -1,4 +1,4 @@
-//! Contract lint (DESIGN.md §8.2 "계약 조정", backlog 2D-08): unsatisfiable
+//! Contract lint (DESIGN.md §8.2 "Contract adjustment"): unsatisfiable
 //! preconditions (W0901), preconditions the proof does not need (W0902) and
 //! postconditions no caller uses (W0903). Opt-in: `check`/`verify` are
 //! unchanged.
@@ -217,7 +217,7 @@ fn each_report_and_nothing_else() {
     assert_eq!(out.reports, 3);
     let report = out.report();
     let last = rows(&report).pop().unwrap();
-    // The satisfiability checks' cost follows (backlog T2-12): `rlimit`
+    // The satisfiability checks' cost follows: `rlimit`
     // depends on the pinned solver, nothing is undecided here.
     let line = report.lines().last().unwrap();
     assert!(
@@ -244,8 +244,7 @@ fn clean_file_has_no_reports() {
 }
 
 /// An `#[external_body]` body is not proved: no clause it "does not need",
-/// no mutant it "does not distinguish", no point it "cannot reach" (backlog
-/// 2E-05, found writing `tests/run/collatz.bmb`).
+/// no mutant it "does not distinguish", no point it "cannot reach" (found writing `tests/run/collatz.bmb`).
 #[test]
 fn external_bodies_are_not_judged_by_their_proof() {
     let src = "#[summary(\"ext\")]\nmod x {\n    spec fn small(n: i64) -> bool { 1 <= n && n <= 10 }\n\n    spec fn low(r: i64) -> bool { 0 <= r && r <= 5 }\n\n    #[rationale(kind = boundary, hash = \"0000000000000000\", \"outside\")]\n    #[external_body]\n    #[effects(panic)]\n    fn f(n: i64) -> (r: i64)\n        requires small(n),\n        ensures low(r),\n    {\n        n + 1\n    }\n}\n";
@@ -333,7 +332,7 @@ fn cli_reports_and_exit_codes() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-// Backlog 2D-09: body mutations the specification does not distinguish.
+// Body mutations the specification does not distinguish.
 const MUT: &str = r#"#[summary("weak and exact specifications")]
 mod w {
     spec fn above_min(x: i64) -> bool { x > 0 - 9223372036854775807 }
@@ -456,7 +455,7 @@ fn mutants_are_capped() {
     );
 }
 
-/// Backlog 2A-10: `bmb mutate` makes the W0904 mutants as programs.
+/// `bmb mutate` makes the W0904 mutants as programs.
 #[test]
 fn mutate_makes_every_lint_mutant_as_a_program() {
     let input = one("w.bmb", MUT);
@@ -571,7 +570,7 @@ fn codes_are_warnings_on_the_reference_page() {
     assert_eq!(severity("E0801"), "error");
 }
 
-/// With `--cache DIR` (backlog 2D-15) the report is the same, cold and warm.
+/// With `--cache DIR` the report is the same, cold and warm.
 #[test]
 fn cache_does_not_change_the_report() {
     let dir = std::env::temp_dir().join(format!("bmb-lint-cache-{}", std::process::id()));
@@ -589,7 +588,7 @@ fn cache_does_not_change_the_report() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// Backlog 2D-16: `*` -> `+`, `/` <-> `%`, `&&` <-> `||`, and an index shifted
+// `*` -> `+`, `/` <-> `%`, `&&` <-> `||`, and an index shifted
 // by one either way.
 const OPS: &str = r#"#[summary("new mutation operators")]
 mod o {
@@ -680,7 +679,7 @@ fn operator_and_index_mutants() {
     );
 }
 
-/// Backlog 1B-45: a `forall` whose only trigger matches another term of its
+/// A `forall` whose only trigger matches another term of its
 /// body at other arguments (a matching loop) is W0906; a multi-pattern, a
 /// term without bound variables or another array is not.
 #[test]
@@ -745,7 +744,7 @@ mod t {
     assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
 }
 
-/// The prefix-sum specification of bench m1b `w22` (the loop 1B-42 met) is
+/// The prefix-sum specification of bench m1b `w22` is
 /// reported in each spec function that states the step; with both reads as
 /// triggers the program still verifies.
 #[test]
@@ -819,7 +818,7 @@ fn index_predicates_leave_no_satisfiability_check_undecided() {
     assert_eq!(n(&summary, "reach_undecided"), 0, "{text}");
 }
 
-/// Backlog T2-13: a satisfiability check that the probe leaves undecided
+/// A satisfiability check that the probe leaves undecided
 /// writes the definitions its query reaches as recursive functions, which
 /// the solver unfolds where a quantified recursive definition left its
 /// model search `unknown`. `reach` needs a model of `count(n) == 3`;
@@ -894,7 +893,7 @@ fn pinned(key: &str) -> String {
         .unwrap()
 }
 
-/// Backlog T2-16: the queries after the first verification are advisory and
+/// The queries after the first verification are advisory and
 /// their solver processes have the advisory memory limit. In the owned-tree
 /// arm of the port-shape experiment a changed body or a dropped clause makes
 /// an obligation false under the recursive predicate `spans_in` (a
@@ -1024,7 +1023,7 @@ fn advisory_queries_end_at_their_own_memory_limit() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// Backlog T2-17 (d): a proof in `--cache DIR` answers an advisory query
+/// A proof in `--cache DIR` answers an advisory query
 /// only when it was found under the advisory memory limit (the cache's key
 /// covers the limit, ADR-0129), so the lint's output is the same with and
 /// without a cache. Before, a proof the gate had stored for the same text
@@ -1041,7 +1040,7 @@ fn a_cached_gate_proof_does_not_answer_an_advisory_query() {
     std::fs::create_dir_all(&bin).unwrap();
     let with = "        requires x < 100, x < 1000,\n";
     let text = format!(
-        "#[summary(\"더하기\")]\nmod m {{\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n{with}        ensures r == x + 1,\n    {{\n        x + 1\n    }}\n}}\n"
+        "#[summary(\"add\")]\nmod m {{\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n{with}        ensures r == x + 1,\n    {{\n        x + 1\n    }}\n}}\n"
     );
     let file = tmp.join("p.bmb");
     std::fs::write(&file, &text).unwrap();
@@ -1111,7 +1110,7 @@ fn a_cached_gate_proof_does_not_answer_an_advisory_query() {
 
 /// The program of the two tests below: either `requires` clause can go
 /// (the other keeps `x + 1` in range), so the lint re-verifies it twice.
-const TWO_CLAUSES: &str = "#[summary(\"더하기\")]\nmod m {\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n        requires x < 100, x < 1000,\n        ensures r == x + 1,\n    {\n        x + 1\n    }\n}\n";
+const TWO_CLAUSES: &str = "#[summary(\"add\")]\nmod m {\n    #[effects(pure)]\n    fn add1(x: u64) -> (r: u64)\n        requires x < 100, x < 1000,\n        ensures r == x + 1,\n    {\n        x + 1\n    }\n}\n";
 
 /// The pinned solver on `PATH`.
 fn pinned_z3() -> (String, std::path::PathBuf) {
@@ -1196,7 +1195,7 @@ fn sent_limits(tmp: &Path, args: &[&str]) -> (String, Limits) {
     (String::from_utf8(out.stdout).unwrap(), limits)
 }
 
-/// Backlog T2-18 (ADR-0131): the full queries after the lint's first
+/// ADR-0131: the full queries after the lint's first
 /// verification carry the advisory `rlimit` in their header, the first
 /// verification's the gate's; a probe has the same number in both (a share
 /// of the gate's limit). Read from what each solver process was sent. The
@@ -1279,7 +1278,7 @@ fn examples_queries_keep_the_gates_rlimit() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-/// Backlog T2-18 (ADR-0131): an advisory query that reaches the advisory
+/// ADR-0131: an advisory query that reaches the advisory
 /// `rlimit` is undecided and nothing is reported for it, while the first
 /// verification, under the gate's `rlimit`, proves the program; and a proof
 /// the gate stored in `--cache DIR` does not answer the advisory query of
@@ -1366,7 +1365,7 @@ fn a_query_at_the_advisory_rlimit_is_undecided_with_and_without_a_cache() {
 /// `unreachable!`). Its bounds are sites of their own.
 #[test]
 fn a_subslice_has_no_index_shift() {
-    const SUB: &str = "#[summary(\"부분 슬라이스\")]\nmod m {\n    #[effects(pure)]\n    fn len(b: &[u8]) -> (r: usize)\n        ensures r == b.len(),\n    {\n        b.len()\n    }\n\n    #[effects(pure)]\n    fn part(b: &[u8], lo: usize) -> (r: usize)\n        requires lo + 2 <= b.len(),\n        ensures r <= b.len(),\n    {\n        len(&b[lo..lo + 2])\n    }\n}\n";
+    const SUB: &str = "#[summary(\"subslice\")]\nmod m {\n    #[effects(pure)]\n    fn len(b: &[u8]) -> (r: usize)\n        ensures r == b.len(),\n    {\n        b.len()\n    }\n\n    #[effects(pure)]\n    fn part(b: &[u8], lo: usize) -> (r: usize)\n        requires lo + 2 <= b.len(),\n        ensures r <= b.len(),\n    {\n        len(&b[lo..lo + 2])\n    }\n}\n";
     let tmp = std::env::temp_dir().join(format!("bmb-lint-subslice-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -1470,7 +1469,7 @@ fn lint_ends_with_a_report_over_the_corpora() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// W0909 (ADR-0030 §3, backlog 2F-02): a declared effect the body does not
+/// W0909 (ADR-0030 §3): a declared effect the body does not
 /// need, from its own operations or its callees' declared effects. Not for
 /// `main`'s `io`, a trait's method or an `impl`'s function of a trait. The
 /// fix writes what the body needs.
@@ -1533,8 +1532,8 @@ mod w {
     );
 }
 
-/// W0910 (backlog 2D-30, from T0-34): a printing loop of an `io` function
-/// that decides and computes its state itself (the agents of T0-30 wrote
+/// W0910: a printing loop of an `io` function
+/// that decides and computes its state itself (the agents of an earlier measurement wrote
 /// the ledger this way) gets the suggestion to move the update into a pure
 /// function: the state, the loop's own inputs and the value it prints. The
 /// same loop over an extracted step, with a counter and a sentinel test,
@@ -1619,7 +1618,7 @@ mod w {
     );
 }
 
-/// W0918 (backlog T1-44a): asked by `--select`, a contract that fixes its
+/// W0918: asked by `--select`, a contract that fixes its
 /// result says nothing; one that bounds it shows an input and two results
 /// its postconditions both allow; a clause through a spec fn seen by name
 /// only (`huge`, which `big`'s body names, ADR-0096) is not judged (counted
@@ -1691,7 +1690,7 @@ mod d {
     );
 }
 
-/// W0918 over the corpora (backlog T1-44a): every program of `check/ok`,
+/// W0918 over the corpora: every program of `check/ok`,
 /// `verify/pass` and `run` lints with `--select W0918` to its summary line
 /// and exit status 0 (no panic, no failure hidden by a report count).
 #[test]

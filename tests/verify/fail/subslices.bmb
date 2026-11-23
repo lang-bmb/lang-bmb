@@ -1,4 +1,4 @@
-#[summary("부분 슬라이스의 경계 실패: 끝이 길이를 넘음, 시작이 끝보다 큼 (백로그 4C-05)")]
+#[summary("Bounds failures of subslices: the end past the length, the start greater than the end")]
 mod sf {
     #[effects(pure)]
     fn count(b: &[u8]) -> usize {

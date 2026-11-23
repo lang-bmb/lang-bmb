@@ -1,4 +1,4 @@
-// Rust translation of tests/run/fn_values.bmb (backlog 2V-20a), for its
+// Rust translation of tests/run/fn_values.bmb, for its
 // expected output (`rustc --edition 2021`).
 fn apply<F: Fn(i64) -> i64>(f: F, x: i64) -> i64 {
     f(x)

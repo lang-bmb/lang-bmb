@@ -1,6 +1,6 @@
 name: nightly
 
-# Long fuzzing runs (backlog INF-07). Each run uses new seeds (the run number),
+# Long fuzzing runs. Each run uses new seeds (the run number),
 # so the nightly runs together cover far more inputs than the per-push gate.
 on:
   schedule:
@@ -53,9 +53,9 @@ jobs:
           path: /tmp/bmb-fuzz-crash.bmb
           if-no-files-found: ignore
 
-  # Performance regression (backlog INF-12): BMB against safe Rust on the
+  # Performance regression: BMB against safe Rust on the
   # baseline benches; fails when a ratio exceeds G6's +5%. Build times
-  # (INF-13, ADR-0041 accepted costs) are only recorded. Both results are kept
+  # (ADR-0041 accepted costs) are only recorded. Both results are kept
   # as artifacts.
   perf:
     runs-on: ubuntu-24.04

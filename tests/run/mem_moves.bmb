@@ -1,4 +1,4 @@
-#[summary("mem::replace·swap 실행: 필드·스칼라·Box·&mut 매개변수 (backlog 2O-04)")]
+#[summary("Running mem::replace·swap: fields·scalars·Box·&mut parameters")]
 mod mr {
     struct Buf { data: Vec<i64>, n: i64 }
 

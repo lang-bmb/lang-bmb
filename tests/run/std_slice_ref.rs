@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_slice.bmb (backlog 4B-02), for its
+// Rust translation of tests/run/std_slice.bmb, for its
 // expected output (`rustc --edition 2021`).
 struct Rec {
     key: u64,

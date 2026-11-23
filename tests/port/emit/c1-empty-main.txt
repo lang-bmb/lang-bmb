@@ -1,4 +1,4 @@
-#[summary("몸이 빈 main")]
+#[summary("main with an empty body")]
 mod m {
     #[effects(io)]
     fn main() -> () {

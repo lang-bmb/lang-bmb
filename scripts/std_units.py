@@ -48,16 +48,16 @@ def raw(root: Path) -> str:
         )
 
     return (
-        '#[summary("표준 라이브러리 단위의 글: scripts/std_units.py가 lib/std/*.bmb에서 만든다(손으로 고치지 않는다). '
-        'stage0의 build.rs가 만드는 STD_UNITS의 자리 (ADR-0092 §1, 백로그 4D-03b)")]\n'
+        '#[summary("The text of the standard library units: made by scripts/std_units.py from lib/std/*.bmb (not edited by hand). '
+        'Stands in the place of STD_UNITS, which stage0\'s build.rs makes (ADR-0092 §1)")]\n'
         "mod std_units {\n"
-        '    #[summary("단위의 수")]\n'
+        '    #[summary("The number of units")]\n'
         "    #[effects(pure)]\n"
         f"    fn count() -> usize {{ {len(rows)} }}\n\n"
-        '    #[summary("i번째 단위의 이름(이름의 바이트 순서). 범위 밖이면 빈 글")]\n'
+        '    #[summary("The name of the i-th unit (in byte order of the names). Empty text when out of range")]\n'
         "    #[effects(alloc)]\n"
         "    fn name(i: usize) -> String {\n" + arms(lambda r: r[0]) + "        String::new()\n    }\n\n"
-        '    #[summary("i번째 단위의 소스. 범위 밖이면 빈 글")]\n'
+        '    #[summary("The source of the i-th unit. Empty text when out of range")]\n'
         "    #[effects(alloc)]\n"
         "    fn text(i: usize) -> String {\n" + arms(lambda r: r[1]) + "        String::new()\n    }\n"
         "}\n"

@@ -1,4 +1,4 @@
-#[summary("제네릭 정렬: `T: Ord`의 전순서 (ADR-0046 §4)")]
+#[summary("Generic sort: the total order of `T: Ord` (ADR-0046 §4)")]
 mod s {
     spec fn sorted_to<T: Ord + Copy>(a: &[T], n: usize) -> bool {
         n <= a.len() && (forall|i: usize, j: usize| i < j && j < n ==> #[trigger] a[i] <= #[trigger] a[j])

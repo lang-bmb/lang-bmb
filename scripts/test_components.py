@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rules of scripts/components.py (4D-08, 4D-10, ADR-0113)."""
+"""Rules of scripts/components.py (ADR-0113)."""
 import json
 import sys
 import tempfile
@@ -34,6 +34,8 @@ def expect_exit(f):
 
 
 def main():
+    # A change of whole-line comments alone is nothing to port.
+    assert components.code_lines("// a\nfn f() {}\n    /// d\n") == ["fn f() {}"]
     with tempfile.TemporaryDirectory() as t:
         root = setup(t, [comp("C0", ["a.rs"])])
         # a file in a subdirectory that no component lists
@@ -74,7 +76,7 @@ def main():
         doc = components.load(root)
         assert json.dumps(doc["components"][0]["pin"]) != json.dumps(components.state(comp("C0", ["sub/b.rs"], ["selfhost/a.bmb"]), root))
 
-    # gate B0 reads the repository's port (4D-02): C0's ported files so far
+    # gate B0 reads the repository's port: C0's ported files so far
     assert "C0" in components.b0()["ported"]
     real = components.port_facts
     try:

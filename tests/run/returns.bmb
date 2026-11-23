@@ -1,4 +1,4 @@
-#[summary("조기 반환: 가드, match 갈래, 루프 안, 소유 값 해제 (backlog 2K-01a)")]
+#[summary("Early return: guards, match arms, inside loops, drops of owned values")]
 mod rt {
     spec fn at(a: &[i64], x: i64, r: Option<usize>) -> bool {
         match r {

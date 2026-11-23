@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The conformance suite: cases that pin the language reference (5A-02, 5A-05).
+"""The conformance suite: cases that pin the language reference.
 
   conformance.py run [--bmb PATH] [--jobs N] [NN ...]
                                  run every case (or those of the chapters

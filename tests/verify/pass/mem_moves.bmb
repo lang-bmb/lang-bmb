@@ -1,4 +1,4 @@
-#[summary("mem::replace·swap과 이동하는 T: 증명 (ADR-0047 §2, backlog 2O-04)")]
+#[summary("mem::replace·swap and a T that moves: proofs (ADR-0047 §2)")]
 mod mp {
     struct Buf { data: Vec<i64>, n: i64 }
 

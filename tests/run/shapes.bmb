@@ -1,4 +1,4 @@
-#[summary("실행 예제: 구조체, 열거형, match, 슬라이스 (backlog 2B-06)")]
+#[summary("Run example: structs, enums, match, slices")]
 mod shapes {
     struct Point { x: i64, y: i64 }
 

@@ -1,4 +1,4 @@
-#[summary("이분 탐색과 재귀")]
+#[summary("Binary search and recursion")]
 mod bsearch {
     spec fn is_sorted(a: &[i64]) -> bool {
         forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]

@@ -1,4 +1,4 @@
-#[summary("열거형과 match: 데이터타입 인코딩 (ADR-0027 §3~6, backlog 2B-05b)")]
+#[summary("Enums and match: the datatype encoding (ADR-0027 §3~6)")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -105,7 +105,7 @@ mod geo {
     }
 }
 
-#[summary("배열 페이로드의 `==`: 길이 안의 원소만 비교 (backlog 2V-05)")]
+#[summary("`==` on array payloads: only the elements within the length are compared")]
 mod cells {
     enum Cell { Empty, Full([i64; 2]) }
 

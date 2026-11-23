@@ -1,4 +1,4 @@
-#[summary("상수의 진단: 실패마다 하나")]
+#[summary("Diagnostics for constants: one for each failure")]
 mod ce {
     const A: i8 = 128;
     const B: i8 = -129;

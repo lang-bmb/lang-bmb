@@ -1,4 +1,4 @@
-#[summary("루프 탈출의 증명: break 상태의 합류, continue의 의무, loop의 값 (ADR-0049 §3, backlog 2K-01b, 2K-01c)")]
+#[summary("Proofs of loop exits: the join of break states, the obligations of continue, the value of loop (ADR-0049 §3)")]
 mod lx {
     spec fn below(n: u64) -> bool {
         n < 1000000

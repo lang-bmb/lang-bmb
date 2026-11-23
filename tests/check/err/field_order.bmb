@@ -1,4 +1,4 @@
-#[summary("구조체 생성 식의 필드는 선언 순서로 쓴다(평가 순서, ADR-0080)")]
+#[summary("The fields of a struct expression are written in declaration order (evaluation order, ADR-0080)")]
 mod field_order {
     struct Pair { a: i64, b: i64 }
 

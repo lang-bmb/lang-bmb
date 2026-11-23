@@ -1,4 +1,4 @@
-#[summary("정렬 집합: 고정 용량 배열 위의 엄격한 정렬 불변식 (ADR-0060)")]
+#[summary("Sorted set: a strict sortedness invariant over a fixed-capacity array (ADR-0060)")]
 mod sset {
     // Strictly increasing values below `len`: no function repeats it.
     #[invariant(sorted)]

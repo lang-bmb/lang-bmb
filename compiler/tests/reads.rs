@@ -1,4 +1,4 @@
-//! `bmb reads` (backlog T1-27, ADR-0065 §2): each definition's proof key as
+//! `bmb reads` (ADR-0065 §2): each definition's proof key as
 //! rows, the read set of its proof. Through the command line: the rows are
 //! the key the incremental cache uses (a warm `verify --stats` re-encodes
 //! exactly the definitions whose rows changed), and they follow the contract
@@ -140,8 +140,7 @@ fn reads_follow_the_contract_firewall() {
 }
 
 /// The rows are what the cache's key reads, by name: two versions that give
-/// a definition the same rows give it the same key. The key names nothing
-/// (backlog T1-49), so rows that differ only by a renaming keep it:
+/// a definition the same rows give it the same key. The key names nothing, so rows that differ only by a renaming keep it:
 /// `m::quarter`'s precondition goes from `pos(x)` to `gt0(x)`, two opaque
 /// spec fns of the same signature, which its queries read as declarations
 /// only. A warm `verify` encodes exactly the definitions whose key changed

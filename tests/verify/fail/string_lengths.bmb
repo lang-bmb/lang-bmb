@@ -1,4 +1,4 @@
-#[summary("String의 길이는 바뀐다: 키우는 피호출자와 루프 뒤의 길이를 옛 길이로 보지 않는다 (backlog 4B-02에서 발견한 건전성 결함), `push_str` 루프의 길이 불변식은 루프 뒤 길이를 옛 길이로 두지 않는다 (1B-56)")]
+#[summary("The length of a String changes: the length after a growing callee or a loop is not taken to be the old length (a soundness defect that was found), and the length invariant of a `push_str` loop does not leave the length after the loop at the old length")]
 mod strlen {
     #[effects(alloc)]
     fn add(s: &mut String) -> ()

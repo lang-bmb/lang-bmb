@@ -1,4 +1,4 @@
-// Rust translation of tests/run/consts.bmb (backlog 2V-19), for its
+// Rust translation of tests/run/consts.bmb, for its
 // expected output (`rustc --edition 2021`).
 mod konst {
     pub const A: char = 'a';

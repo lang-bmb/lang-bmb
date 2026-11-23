@@ -69,7 +69,7 @@ mod crc32 {
     }
 
     // The table step is the bitwise one: a fact of the bits of `c` and `b`
-    // alone, proved over bit-vectors (backlog 2N-03; the mixed encoding did
+    // alone, proved over bit-vectors (the mixed encoding did
     // not decide it within rlimit 5,000,000).
     #[uses(bit)]
     proof fn table_lemma(c: u32, b: u8)

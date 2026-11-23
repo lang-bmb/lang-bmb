@@ -1,4 +1,4 @@
-//! The syntax tree as a JSON document (backlog T1-06, ADR-0073): what the
+//! The syntax tree as a JSON document (ADR-0073): what the
 //! JSON AST edit surface reads (`read_ast`) and patches (`edit_ast`).
 //!
 //! The document is an object keyed by top-level unit name. A unit is
@@ -1240,7 +1240,7 @@ impl Im {
     }
 
     fn unit(&mut self, name: &str, v: &Value) -> Result<Mod, String> {
-        // The counts read so far are the enclosing unit's (backlog 4D-26).
+        // The counts read so far are the enclosing unit's.
         let outer = std::mem::take(&mut self.lens);
         let o = self.obj(
             v,
@@ -1567,7 +1567,7 @@ impl Im {
             let args = self.list(&o, field, |m, x| match x {
                 Value::Str(t) => {
                     // A trait impl's method, `<a::T as b::Tr>::name`, as the
-                    // parser keeps it (backlog 2D-31).
+                    // parser keeps it.
                     let impl_path = attr == "uses"
                         && t.strip_prefix('<')
                             .and_then(|r| r.split_once(">::"))
@@ -2045,8 +2045,7 @@ impl Im {
                 let o = fields(self, "an array repeat", &["value", "count_const"])?;
                 let n = self.string(&o, "count_const")?;
                 // A span of its own in the whole document (`Mod::lens`
-                // names it; the counts of every unit are looked up by span,
-                // backlog 4D-26).
+                // names it; the counts of every unit are looked up by span).
                 let at = Span {
                     file: u32::MAX,
                     lo: self.counts,

@@ -1,4 +1,4 @@
-#[summary("범위 for의 틀린 프로그램: 끝을 포함하는 범위의 색인, 불변식, 탈출 뒤의 사실 (backlog 2K-01d)")]
+#[summary("Wrong programs of range for: indexing over an inclusive range, invariants, facts after an exit")]
 mod rf {
     // `..=` reaches `a.len()`.
     #[effects(pure)]

@@ -1,4 +1,4 @@
-#[summary("`exists`는 `forall`과 같은 규칙을 따른다(ADR-0079)")]
+#[summary("`exists` follows the same rules as `forall` (ADR-0079)")]
 mod exists_rules {
     spec fn untriggered(a: &[i64]) -> bool { exists|i: usize| i < a.len() && a[i] == 0 }
 

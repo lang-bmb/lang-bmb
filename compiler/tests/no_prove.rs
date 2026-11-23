@@ -1,5 +1,4 @@
-//! Requests that do not report proof results do not run the solver (backlog
-//! 1D-17), and answer the same. Through the CLI (backlog 4A-04): with a fake
+//! Requests that do not report proof results do not run the solver, and answer the same. Through the CLI: with a fake
 //! `z3` first on `PATH` that records every start, a request without proof
 //! status leaves the record empty and answers as with the real solver.
 
@@ -52,7 +51,7 @@ fn only_proof_status_requests_start_the_solver() {
         req(&["query", "effects", "app::main"]),
         req(&["query", "effects"]),
         req(&["query", "nosuch"]),
-        // Scopes and edge kinds (backlog 2D-17).
+        // Scopes and edge kinds.
         req(&["query", "units", "alg"]),
         req(&["query", "overview"]),
         req(&["query", "edges", "app::main", "both", "2", "calls"]),

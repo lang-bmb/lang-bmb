@@ -1,9 +1,8 @@
-//! Normal form and definition hash fuzzing (backlog 1D-22, ADR-0019).
+//! Normal form and definition hash fuzzing (ADR-0019).
 //!
 //! Programs come from the soundness generator (`common::scalar`: random i64
 //! functions with contracts, spread over several units that call each other),
-//! with data types and functions over them in most units (`gen_data`,
-//! backlog 4D-38), and from the corpus. For each one, layout variants are made: definitions
+//! with data types and functions over them in most units (`gen_data`), and from the corpus. For each one, layout variants are made: definitions
 //! and units reordered, units moved across files, comments, blank lines,
 //! indentation and line breaks between tokens added. Claims:
 //!
@@ -15,12 +14,12 @@
 //! - the normal form proves with the same status lines and lowers to the same
 //!   IR as the original text.
 //!
-//! Through the CLI (backlog 4A-04): `bmb fmt`, `hash`, `check`, `emit-llvm`.
+//! Through the CLI: `bmb fmt`, `hash`, `check`, `emit-llvm`.
 //!
 //! `BMB_FMT_FUZZ_ITERS` raises the number of generated programs (the first
 //! `BMB_FMT_FUZZ_PROVE` of them, default 2, are also proved and lowered) and
 //! `BMB_FMT_FUZZ_SEED` picks another sequence. `BMB_FMT_FUZZ_EXPORT=DIR` also
-//! writes every generated program to `DIR/NNNNN.bmb` (backlog 4D-03f): inputs
+//! writes every generated program to `DIR/NNNNN.bmb`: inputs
 //! that check, on which another implementation's `fmt`, `hash` and `dump
 //! texts` are compared with this one's.
 
@@ -134,7 +133,7 @@ fn gen_program(rng: &mut Rng) -> Vec<Unit> {
     units
 }
 
-/// Data types and functions over them (backlog 4D-38): a struct of 1..=4
+/// Data types and functions over them: a struct of 1..=4
 /// scalar fields of several widths (sometimes with a `Vec`), an enum whose
 /// variants carry nothing, a scalar or the struct, and functions that
 /// build, match and read them. What the generated functions of
@@ -580,7 +579,7 @@ fn check_proof_and_ir(what: &str, base: &Files) {
     });
     let _ = fs::remove_dir_all(&dir);
     // A query the wall-clock backstop ended makes the line machine-dependent
-    // and says so (`"backstop"`, backlog INF-26).
+    // and says so (`"backstop"`).
     assert_eq!(
         statuses(&a.output),
         statuses(&b.output),

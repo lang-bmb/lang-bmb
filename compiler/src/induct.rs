@@ -1,4 +1,4 @@
-//! Induction lemma drafts (ADR-0062 §5, ADR-0135, backlog T1-24): for an
+//! Induction lemma drafts (ADR-0062 §5, ADR-0135): for an
 //! executable function whose postcondition the gate does not prove, the
 //! `proof fn` that takes a recursive predicate to a predicate of the same
 //! parameters, and where to call it.

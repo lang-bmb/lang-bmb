@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The language surface fingerprint (backlog 4D-01, ADR-0100 draft).
+"""The language surface fingerprint (ADR-0100 draft).
 
 Under the stage0 freeze (ADR-0037 §3) the compiler may change only for bug
 fixes and changes the bootstrap needs. This script makes a change of the
@@ -21,12 +21,12 @@ moves the exceptions to "history".
 Corpora: tests/check, tests/verify, tests/run (one program per file) and
 lib/std (one program). An entry whose source was edited cannot be compared,
 so the record must follow every edit: `check` fails while an entry's source
-digest differs from the recorded one (INF-42: a stale record compares
+digest differs from the recorded one (a stale record compares
 nothing), and `record` refuses under a freeze while a comparable entry
 changed without an exception. A program's source digest is its own files:
 an edit of the standard library leaves the other entries comparable, and a
 result it changes is a change like any other. The JSON's "frozen" is false
-until the freeze is declared (4D-01, human approval); until then a change
+until the freeze is declared (human approval); until then a change
 needs no reason but `check` still fails until it is recorded.
 """
 import argparse

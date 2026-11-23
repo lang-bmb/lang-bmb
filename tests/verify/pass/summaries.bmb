@@ -1,4 +1,4 @@
-#[summary("정의 요약(ADR-0117, backlog 3P-08): 상수·타입·trait·함수의 `#[summary]`, 증명과 해시는 읽지 않는다")]
+#[summary("Definition summaries (ADR-0117): `#[summary]` on constants·types·traits·functions; proofs and hashes do not read them")]
 mod doc {
     #[summary("The most values the stack holds.")]
     const LIMIT: usize = 4096;

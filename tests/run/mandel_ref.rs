@@ -1,4 +1,4 @@
-// Rust translation of tests/run/mandel.bmb (backlog T2-03), for its expected
+// Rust translation of tests/run/mandel.bmb, for its expected
 // output: `rustc -O mandel_ref.rs && ./mandel_ref > mandel.out`.
 use std::io::Write;
 

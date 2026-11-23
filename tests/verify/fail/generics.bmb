@@ -1,4 +1,4 @@
-#[summary("제네릭 실패: 정렬 값의 반례 (ADR-0046 §4)")]
+#[summary("Generic failures: counterexamples of sort values (ADR-0046 §4)")]
 mod gen {
     enum Maybe<T: Copy> { Nothing, Just(T) }
 

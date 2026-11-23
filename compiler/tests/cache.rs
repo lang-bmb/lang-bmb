@@ -1,6 +1,6 @@
-//! Proof cache (backlog 2D-01): the same output with or without it, warm runs
+//! Proof cache: the same output with or without it, warm runs
 //! skip the solver for proved obligations, and a change to anything a proof
-//! read invalidates that proof. Through the CLI (backlog 4A-04): the cache's
+//! read invalidates that proof. Through the CLI: the cache's
 //! hits and misses come from `--stats`.
 
 use std::fs;
@@ -242,7 +242,7 @@ fn builds_and_maps_through_the_cache_match_the_uncached_ones() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `bmb query --cache DIR` and `bmb map --cache DIR` (backlog INF-08: the
+/// `bmb query --cache DIR` and `bmb map --cache DIR` (the
 /// bench harness judges through the session's cache) print the uncached bytes
 /// and fill the cache, so a warm `verify` skips the solver.
 #[test]

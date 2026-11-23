@@ -1,4 +1,4 @@
-#[summary("표준 라이브러리 std::collections의 텍스트 키: 낱말마다 나온 횟수를 BTreeMap<String, u64>로 세고 BTreeSet<String>으로 모아, 바이트 사전순(\"B\" < \"a\" < \"ab\" < \"é\")으로 찍는다. 낱말은 공백 사이를 실행 검사 없이 조각낸다 (ADR-0092 §2, backlog 4B-04)")]
+#[summary("Text keys of standard library std::collections: counts the occurrences of each word with BTreeMap<String, u64>, collects them with BTreeSet<String>, and prints them in byte-lexicographic order (\"B\" < \"a\" < \"ab\" < \"é\"). Words are sliced between whitespace without run-time checks (ADR-0092 §2)")]
 mod text_keys {
     // `a` begins or ends the text, or follows a space.
     spec fn after_space(s: &str, a: usize) -> bool {

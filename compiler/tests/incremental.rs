@@ -1,4 +1,4 @@
-//! Contract-firewall incremental build (backlog 2D-10): with the cache,
+//! Contract-firewall incremental build: with the cache,
 //! outputs are byte-identical to an uncached run, cold or warm; an unchanged
 //! definition is neither encoded nor lowered again; a body change touches only
 //! that definition; a contract change re-encodes exactly the `impact` set;
@@ -250,7 +250,7 @@ fn cached_with(
     let (output, ir, stats) = emit_cached(f, dir, audit);
     let (_, map) = cli::run(&["map", "--cache", dir.to_str().unwrap(), "all"], f);
     let v = verify_cached(f, dir);
-    // `emit-llvm` adds only that it cannot lower data types yet (2B-06).
+    // `emit-llvm` adds only that it cannot lower data types yet.
     let emitted: String = output
         .lines()
         .filter(|x| !x.contains("not compiled yet"))
@@ -266,7 +266,7 @@ fn set(v: &[String]) -> BTreeSet<String> {
 }
 
 /// The definitions of `generate(units)` that a run with an empty cache
-/// encodes. Proof keys name nothing (ADR-0063 §4, backlog T1-49), so a
+/// encodes. Proof keys name nothing (ADR-0063 §4), so a
 /// definition whose read set is another's up to names reuses its result:
 /// units 2.. repeat unit 1 except `f0`'s constant, and unit 1 repeats unit 0
 /// except `f0` and `g` (the call into the previous unit).
@@ -363,7 +363,7 @@ fn a_body_change_relowers_only_that_definition() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A rename re-encodes nothing (ADR-0063 §4, backlog T1-49): a spec fn, an
+/// A rename re-encodes nothing (ADR-0063 §4): a spec fn, an
 /// executable function and its callers' calls, a parameter and a local, in
 /// one unit. Every stored result is reused, the audit (which proves each
 /// definition again and compares the script as the solver receives it, the
@@ -553,7 +553,7 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
         // Recursion measure changes.
         base.replacen("        decreases n,\n", "        decreases n + 1,\n", 1),
         // A callee's `#[uses]` loses an entry it does not need, then the ones
-        // its proof needs: its callers keep their keys (backlog 2D-22).
+        // its proof needs: its callers keep their keys.
         base.replacen("#[uses(small, pos, pos2)]", "#[uses(small, pos)]", 1),
         base.replacen("#[uses(small, pos, pos2)]", "#[uses(pos2)]", 1),
         // Layout and comments inside a definition: its proof is reused,
@@ -564,7 +564,7 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
             1,
         ),
         // Renames: a definition (and its callers' references), a
-        // parameter, a local (backlog T1-10).
+        // parameter, a local.
         base.replace("f0(", "first("),
         base.replacen("fn f2(n: i64) -> i64\n        requires small(n),", "fn f2(count: i64) -> i64\n        requires small(count),", 1)
             .replacen("        while i < n\n            invariant i <= n, c == i,\n            decreases n - i,", "        while i < count\n            invariant i <= count, c == i,\n            decreases count - i,", 1),
@@ -585,8 +585,7 @@ fn edits_that_shift_spans_or_change_context_keep_outputs_exact() {
 
 /// Layout and comments inside a definition do not encode it again: the
 /// proof key holds its qualified normal form, and the stored obligations
-/// are node positions relocated to the new text (ADR-0059 §4, backlog
-/// T1-10). Its IR is lowered again (the IR key keeps the source).
+/// are node positions relocated to the new text (ADR-0059 §4). Its IR is lowered again (the IR key keeps the source).
 #[test]
 fn layout_inside_a_definition_reencodes_nothing() {
     let dir = tmp("layout");
@@ -614,7 +613,7 @@ fn layout_inside_a_definition_reencodes_nothing() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A query declares only the spec fns it mentions (backlog 2D-14), so an
+/// A query declares only the spec fns it mentions, so an
 /// unrelated spec fn changes no query: nothing is encoded or lowered again,
 /// and every definition's script is byte-identical.
 #[test]
@@ -640,7 +639,7 @@ fn adding_an_unrelated_spec_fn_reencodes_nothing() {
     assert!(!before.is_empty());
     assert_eq!(before, after);
     // The definitions that mention a spec fn declare it (and define it,
-    // when they reveal it: a macro, backlog T2-04); the others do not. The
+    // when they reveal it: a macro); the others do not. The
     // scripts name nothing (canonical symbols, ADR-0063): `m1::f0` mentions
     // `small` and `pos`, so no query of it declares a third predicate
     // (`pos2`, which it reveals but does not mention, or `m0::small`), and
@@ -730,7 +729,7 @@ fn another_compiler_identity_invalidates_everything() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Measurement (backlog 2D-10): `cargo test --release --test incremental
+/// Measurement: `cargo test --release --test incremental
 /// -- --ignored --nocapture`. `BMB_INCR_UNITS` sets the size (7 definitions
 /// per unit).
 #[test]
@@ -811,7 +810,7 @@ fn measure_large_program() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `bmb verify --stats FILE` (backlog 2A-14, BCB) names the definitions that
+/// `bmb verify --stats FILE` (BCB) names the definitions that
 /// were encoded and reused; stdout is the same as without it.
 #[test]
 fn verify_stats_name_the_reencoded_definitions() {
@@ -853,7 +852,7 @@ fn verify_stats_name_the_reencoded_definitions() {
 
     // `#[uses]` reveals bodies only in the function's own queries, so
     // dropping an entry it does not need re-encodes it alone, not its
-    // callers (backlog 2D-22; before, `#[uses]` was in the callers' keys).
+    // callers (before, `#[uses]` was in the callers' keys).
     let f0 = "    #[effects(pure)]\n    #[uses(small, pos, pos2)]\n    fn f0(x: i64) -> (r: i64)\n        requires small(x),\n        ensures pos(r),\n    {\n        x + 4\n";
     assert!(body.contains(f0));
     fs::write(
@@ -887,7 +886,7 @@ fn verify_stats_name_the_reencoded_definitions() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// What a proof reads of data types (backlog 2B-05a): the contract of a
+/// What a proof reads of data types: the contract of a
 /// `T::f` callee and the field types of the structs it names. Changing
 /// either re-encodes the reader; an unrelated type does not.
 #[test]
@@ -931,7 +930,7 @@ mod geo {
     }
 }
 "#;
-    // `Point::reset` is a call edge of `caller` (map and impact, 2B-07).
+    // `Point::reset` is a call edge of `caller` (map and impact).
     assert!(impact(&files(BASE), "geo::Point::reset", "iface").contains("geo::caller"));
     let dir = tmp("types");
     let run = |text: &str| verify_cached(&files(text), &dir);
@@ -968,7 +967,7 @@ mod geo {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A definition proved only by the ground-instance retry (backlog 2V-03):
+/// A definition proved only by the ground-instance retry:
 /// its stored verdict must match the recomputed one.
 #[test]
 fn retried_proofs_are_reused_exactly() {
@@ -983,7 +982,7 @@ fn retried_proofs_are_reused_exactly() {
     assert!(stats.audit_mismatches.is_empty(), "{stats:?}");
 }
 
-/// Instances are stored under their own keys (backlog 2T-04): a warm build
+/// Instances are stored under their own keys: a warm build
 /// lowers none of them, a hit still brings the instances it calls, and a
 /// change to a type argument's declaration relowers only the instances it
 /// names.
@@ -1090,7 +1089,7 @@ fn lemma_edits_follow_the_contract_firewall() {
     }
 }
 
-/// A type invariant (ADR-0060 §3, backlog T1-11) is assumed and proved
+/// A type invariant (ADR-0060 §3) is assumed and proved
 /// wherever a value of the type passes, also where no text names the type
 /// (`relay` sees it only through its callees' signatures). Changing the
 /// predicate or the attribute re-encodes inside the type's `impact` set,
@@ -1192,7 +1191,7 @@ fn proof_key(src: &str, def: &str) -> String {
     line.split("\"key\":\"").nth(1).unwrap()[..64].to_string()
 }
 
-/// Nameless proof keys (ADR-0063 §4, backlog T1-49) keep apart what the
+/// Nameless proof keys (ADR-0063 §4) keep apart what the
 /// queries read: a key names nothing, but a renaming is the only change
 /// that keeps it. Each pair below has the same shape up to names; the first
 /// differs only by names (same key), the others in what a query reads

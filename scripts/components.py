@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Compiler components: sizes, the port ledger and the pin (4D-08, 4D-10).
+"""Compiler components: sizes, the port ledger and the pin.
 
   components.py check            every stage0 file is in one component, port
                                  files exist, no pinned component drifted,
                                  the ledger file is current
   components.py quick            the same without proving the port: the
                                  ledger's proof columns are not compared
-                                 (what scripts/fresh.sh runs, INF-37)
+                                 (what scripts/fresh.sh runs)
   components.py table            component sizes (port map §7.1)
   components.py ledger [--write] the generated block of the port ledger
   components.py b0               gate B0: the whole port estimated from the
@@ -20,7 +20,8 @@ its pin. A component is pinned once its port passes the differential test
 (ADR-0113): from then on a change to its stage0 files must come with a change
 to the port. `check` fails when a pinned component's stage0 files differ from
 the pin; `repin` records the new state and refuses when the port did not
-change too. The differential test itself is a gate job of its own.
+change too (a change of whole-line comments alone has nothing to port and is
+accepted). The differential test itself is a gate job of its own.
 
 The ledger is a Markdown file outside this repository, named by the
 environment variable BMB_PORT_LEDGER (without it `check` and `quick` do not
@@ -111,6 +112,31 @@ def problems(root=ROOT):
     return out
 
 
+def code_lines(text):
+    """The lines of a Rust file without its whole-line comments."""
+    return [ln for ln in text.splitlines() if not ln.lstrip().startswith("//")]
+
+
+def only_comments(c, root):
+    """Whether the stage0 files differ from the pinned commit (HEAD) only in
+    whole-line comments. There is nothing to port in such a change, so `repin`
+    accepts it without a change to the port. The pin must be HEAD's state:
+    otherwise what the files are compared with is not what was pinned."""
+    old = {}
+    for f in c["stage0"]:
+        r = subprocess.run(["git", "show", f"HEAD:compiler/src/{f}"], cwd=root, capture_output=True)
+        if r.returncode != 0:
+            return False
+        old[f] = r.stdout
+    h = hashlib.sha256()
+    for f in sorted(old):
+        h.update(f.encode() + b"\0" + hashlib.sha256(old[f]).digest())
+    if h.hexdigest() != c["pin"]["stage0"]:
+        return False
+    return all(code_lines(old[f].decode("utf-8")) == code_lines(p.read_text(encoding="utf-8"))
+               for f, p in stage0_files(c, root))
+
+
 def pin(cid, again, root=ROOT):
     doc = load(root)
     c = next((x for x in doc["components"] if x["id"] == cid), None)
@@ -122,7 +148,7 @@ def pin(cid, again, root=ROOT):
     if again:
         if not c["pin"]:
             raise SystemExit(f"{cid} is not pinned: use `pin`")
-        if now["stage0"] != c["pin"]["stage0"] and now["port"] == c["pin"]["port"]:
+        if now["stage0"] != c["pin"]["stage0"] and now["port"] == c["pin"]["port"] and not only_comments(c, root):
             raise SystemExit(f"{cid}: the stage0 files changed and the port did not (ADR-0113 decision 2)")
     elif c["pin"]:
         raise SystemExit(f"{cid} is already pinned: use `repin`")
@@ -184,10 +210,10 @@ def port_rows(root):
     key = str(root)
     if key not in _PORT_ROWS:
         files = sorted(str(p) for p in (Path(root) / "selfhost").glob("*.bmb"))
-        # The gate proves the port once (check.sh "port proof", INF-40); the
+        # The gate proves the port once (check.sh "port proof"); the
         # jobs that read the proof find it in this cache and get the same rows.
         # The compiler that proves: the optimized build when the caller built
-        # one (`BMB_PROOF_BMB`, check.sh and regen.sh, backlog INF-43).
+        # one (`BMB_PROOF_BMB`, check.sh and regen.sh).
         prover = os.environ.get("BMB_PROOF_BMB") or bmb_bin(root)
         cmd = [prover, "verify", "--cache", str(Path(root) / PORT_PROOF), *files]
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=root)
@@ -248,7 +274,7 @@ def without_proof(text):
 def stale(root=ROOT, proof=True):
     """Whether the ledger file differs from what the files give. Without
     `proof` the port is not proved and the proof's columns are not compared
-    (INF-37: what runs before the gate needs no solver)."""
+    (what runs before the gate needs no solver)."""
     if LEDGER is None:
         return False
     text = LEDGER.read_text(encoding="utf-8")

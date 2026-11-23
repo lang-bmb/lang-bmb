@@ -1,4 +1,4 @@
-//! Soundness fuzzing of the proof gate (backlog 1B-17, 1B-18).
+//! Soundness fuzzing of the proof gate.
 //!
 //! Random integer functions with random contracts are proved, and the claims
 //! are checked against an independent reference interpreter written here:
@@ -11,16 +11,14 @@
 //! - the compiled program, built twice (proved checks removed, and every check
 //!   kept), prints what the interpreter computes;
 //! - a call the interpreter says faults (in a function that was not proved)
-//!   traps in both builds, as a program of its own (`common::trap`, backlog
-//!   1B-51): a check that a wrong proof erased or code generation forgot
+//!   traps in both builds, as a program of its own (`common::trap`): a check that a wrong proof erased or code generation forgot
 //!   shows as a missing trap.
 //!
 //! Each batch adds one function at an operation's faulting edge
-//! (`gen_edge`, backlog 1B-43): `-x`, `x % y` or `x / y` at `i64::MIN`
+//! (`gen_edge`): `-x`, `x % y` or `x / y` at `i64::MIN`
 //! and `-1`, where random contracts rarely reach.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` raises the number of batches for longer runs.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` raises the number of batches for longer runs.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -47,12 +45,12 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut funcs: Vec<Func> = (0..8).map(|k| gen_func(&mut rng, k)).collect();
     // One function at a faulting edge per batch, each kind in turn.
     funcs.push(gen_edge(8, seed as usize % EDGES));
-    let mut module = String::from("#[summary(\"건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"soundness fuzzing\")]\nmod m {\n");
     for f in &funcs {
         module.push_str(&f.text());
     }
     module.push_str("}\n\n");
-    let main_head = "#[summary(\"실행\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
+    let main_head = "#[summary(\"run\")]\nmod app {\n    #[effects(io)]\n    fn main() -> () {\n";
     let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
     let mut faults: Vec<(usize, (i64, i64))> = Vec::new();

@@ -1,4 +1,4 @@
-#[summary("인덱스 의무 위반")]
+#[summary("Index obligation violations")]
 mod bounds {
     #[effects(pure)]
     fn read_any(a: &[i64], i: usize) -> i64 { a[i] }

@@ -1,4 +1,4 @@
-#[summary("단위 속성")]
+#[summary("Unit attributes")]
 #[deprecated]
 mod unit_attr {
     #[effects(pure)]

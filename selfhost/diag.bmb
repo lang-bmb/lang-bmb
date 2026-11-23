@@ -251,7 +251,7 @@ mod diag {
         v.push(Code { code: String::from("W0909"), text: String::from("an executable function declares an effect its body does not need (callers must declare it too)") });
         v.push(Code { code: String::from("W0912"), text: String::from("a clause keyword repeated (`invariant a, invariant b,`): the canonical form lists the clauses after one keyword (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
         v.push(Code { code: String::from("W0913"), text: String::from("loop clauses at the start of the body (`while c { invariant a, .. }`): the canonical form puts them before the body (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
-        v.push(Code { code: String::from("W0914"), text: String::from("a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
+        v.push(Code { code: String::from("W0914"), text: String::from("a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)") });
         v.push(Code { code: String::from("W0915"), text: String::from("an integer conversion written `T::try_from(x).unwrap()`: the canonical form is `x as T` (an input alias, ADR-0095 A4; `bmb fmt` and `bmb fix` rewrite it)") });
         v.push(Code { code: String::from("W0916"), text: String::from("a `#[uses(..)]` entry the default proof context reveals already (the spec fns the definition's own clauses, invariants, assertions and proof code and its callees' contracts name, ADR-0095 A1; `bmb fix` removes it)") });
         v.push(Code { code: String::from("W0917"), text: String::from("a widening integer conversion `x as T` in a specification: every value of `x` is one of `T`, so it is `x` (an input alias, ADR-0099; `bmb fix` removes it)") });
@@ -454,12 +454,12 @@ mod diag {
     #[effects(alloc)]
     fn retired() -> Vec<Code> {
         let mut v: Vec<Code> = Vec::new();
-        v.push(Code { code: String::from("E0814"), text: String::from("construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded)") });
-        v.push(Code { code: String::from("E0203"), text: String::from("`return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049)") });
-        v.push(Code { code: String::from("E0204"), text: String::from("`for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049)") });
-        v.push(Code { code: String::from("E0206"), text: String::from("the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049)") });
-        v.push(Code { code: String::from("E0234"), text: String::from("a string literal: text is bytes, write `b\"...\"` (retired by backlog 2U-01: `\"...\"` is a `&str`, ADR-0050)") });
-        v.push(Code { code: String::from("E0227"), text: String::from("method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051)") });
+        v.push(Code { code: String::from("E0814"), text: String::from("construct not supported by the proof gate (retired: every construct is encoded)") });
+        v.push(Code { code: String::from("E0203"), text: String::from("`return` is not allowed (retired: `return` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0204"), text: String::from("`for` is not allowed (retired: the range `for` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0206"), text: String::from("the `?` operator is not allowed (retired: `?` is part of the language, ADR-0049)") });
+        v.push(Code { code: String::from("E0234"), text: String::from("a string literal: text is bytes, write `b\"...\"` (retired: `\"...\"` is a `&str`, ADR-0050)") });
+        v.push(Code { code: String::from("E0227"), text: String::from("method calls are not allowed; call by path (retired: `x.f(..)` calls a method, ADR-0051)") });
         v
     }
 

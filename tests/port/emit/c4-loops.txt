@@ -1,4 +1,4 @@
-#[summary("제어 흐름: while, for(닫힌 구간과 열린 구간, 부호와 폭), loop와 break의 값, 레이블로 떠나는 break와 continue, 가운데의 return")]
+#[summary("Control flow: while, for (closed and open ranges, signs and widths), loop and the value of break, break and continue leaving by label, return in the middle")]
 mod loops {
     #[effects(pure)]
     fn sum_to(n: i64) -> i64

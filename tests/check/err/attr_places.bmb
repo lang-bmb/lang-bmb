@@ -1,5 +1,5 @@
-#[summary("속성과 타입 인자의 자리(백로그 2V-20l): 단위 요약의 중복, impl 블록 앞의 속성, 내장 Option·Result의 참조 인자, 탈출구 없는 함수의 근거")]
-#[summary("둘째 요약")]
+#[summary("Places of attributes and type arguments: a duplicate unit summary, attributes before an impl block, reference arguments of the built-in Option and Result, a rationale on a function without an escape hatch")]
+#[summary("extra")]
 mod attr_places {
     struct P {
         x: i64,
@@ -13,7 +13,7 @@ mod attr_places {
         }
     }
 
-    /// 문서는 정의에 단다.
+    /// A doc line.
     impl P {
         #[effects(pure)]
         fn twice(self: &P) -> i64
@@ -33,7 +33,7 @@ mod attr_places {
         0
     }
 
-    #[rationale(kind = boundary, "탈출구가 없다")]
+    #[rationale(kind = boundary, "nothing")]
     #[effects(pure)]
     fn lone() -> i64 {
         0

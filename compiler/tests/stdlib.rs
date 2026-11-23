@@ -1,4 +1,4 @@
-//! The standard library as the tools see it (ADR-0092 §1, backlog 4B-02):
+//! The standard library as the tools see it (ADR-0092 §1):
 //! added to a program that names it and only then, proved and run with it,
 //! shown apart in the map, and never written by a tool. Each unit is proved
 //! on its own by `tests/verify.rs` `libraries_are_proved`.
@@ -14,7 +14,7 @@ fn files(text: &str) -> Vec<(String, String)> {
     vec![("app.bmb".to_string(), text.to_string())]
 }
 
-const USES: &str = r#"#[summary("std 사용")]
+const USES: &str = r#"#[summary("uses std")]
 mod app {
     #[effects(pure)]
     fn begins(s: &str) -> bool {
@@ -23,7 +23,7 @@ mod app {
 }
 "#;
 
-const PLAIN: &str = r#"#[summary("std 없음")]
+const PLAIN: &str = r#"#[summary("no std")]
 mod app {
     #[effects(pure)]
     fn one() -> i64 {
@@ -509,7 +509,7 @@ fn std_collections_agree_with_rust() {
     collections_diff("std_collections_diff.bmb", &keys, 0x5DEE_CE66_D1B5_4A32);
 }
 
-/// The same with text keys (`BTreeMap<String, u64>`, backlog 4B-04): the
+/// The same with text keys (`BTreeMap<String, u64>`): the
 /// keys are prefixes of each other, differ in case, hold characters of two
 /// to four bytes and include the empty text, so the order is Rust's
 /// byte-lexicographic one (`"B" < "a" < "ab" < "é"`), not a numeric or

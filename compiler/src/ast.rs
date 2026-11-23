@@ -44,8 +44,7 @@ pub struct Mod {
     /// `impl Trait for T { .. }` blocks (ADR-0046 §2).
     pub trait_impls: Vec<TraitImpl>,
     /// `use a::b::c;` items. Not part of the language: the checker rewrites
-    /// each name they import to its full path and deletes them (E0214,
-    /// backlog 2V-15).
+    /// each name they import to its full path and deletes them (E0214).
     pub uses: Vec<UseItem>,
     /// `const NAME: T = e;` items (ADR-0052).
     pub consts: Vec<ConstDef>,

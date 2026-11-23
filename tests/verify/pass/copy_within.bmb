@@ -1,4 +1,4 @@
-#[summary("copy_within: 제자리 이동 (ADR-0083)")]
+#[summary("copy_within: moving in place (ADR-0083)")]
 mod cw {
     struct P { x: i64, y: bool }
 

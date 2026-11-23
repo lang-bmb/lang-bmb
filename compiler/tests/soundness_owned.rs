@@ -1,4 +1,4 @@
-//! Soundness fuzzing of owned data (backlog 2O-05, ADR-0047).
+//! Soundness fuzzing of owned data (ADR-0047).
 //!
 //! Random functions of `x`, `y` run a sequence of operations on an owned
 //! linked list `l: Option<Box<Node>>` (`struct Node { v: i64, next:
@@ -9,10 +9,10 @@
 //! shared reference `match`, swap the two lists, replace the box, a
 //! partial move of the bag's `Vec` and its reassignment, and the sum of a
 //! list by structural recursion. A rose tree `t: Rose` (`struct Rose { v:
-//! i64, kids: Vec<Rose> }`, a struct holding itself, backlog 2O-03d) gets
+//! i64, kids: Vec<Rose> }`, a struct holding itself) gets
 //! children and grandchildren, a write two levels down and reads of its
 //! first child; a tree `tr: Tree` (`enum Tree { Leaf(i64), Many(Vec<Tree>)
-//! }`, backlog 2O-03c) is wrapped in a new node with a leaf beside it; both
+//! }`) is wrapped in a new node with a leaf beside it; both
 //! are summed by structural recursion through their `Vec`s. The generator
 //! knows every list's length,
 //! so the head reads it writes are those an interpreter (a Rust `VecDeque`)
@@ -26,7 +26,7 @@
 //! - the program built with proved checks removed, and with every check
 //!   kept, prints what the interpreter computes;
 //! - a call the interpreter says faults runs as a program of its own
-//!   (`common::trap`, backlog 1B-54): both builds print the line before it
+//!   (`common::trap`): both builds print the line before it
 //!   and end by the trap;
 //! - a third run under an address checker (valgrind memcheck with leak
 //!   checking, else AddressSanitizer) finds no invalid access, double free
@@ -467,14 +467,14 @@ struct Stats {
     replayed: usize,
     compiled_runs: usize,
     checked_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
 }
 
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let funcs: Vec<OFunc> = (0..6).map(|k| gen_ofunc(&mut rng, k)).collect();
-    let mut src = String::from("#[summary(\"소유 자료 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"owned data soundness fuzzing\")]\nmod m {\n");
     src.push_str(HELPERS);
     for f in &funcs {
         src.push_str(&f.text());
@@ -482,10 +482,10 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path, checker: AddrCheck
     src.push_str("}\n\n");
     let module = src.clone();
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     src.push_str(main_head);
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-54), as `main` lines.
+    // Calls that fault in the interpreter, as `main` lines.
     let mut faults: Vec<(usize, String)> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         for (x, y) in f.base.inputs(&mut rng) {

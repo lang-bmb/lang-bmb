@@ -2,8 +2,7 @@
 //! types, struct literals, variants, patterns, trait bounds, `impl` heads,
 //! `#[uses]` and `#[invariant]` targets) and every declaration name, with
 //! a hook that may rewrite each one. The transaction `rename` (ADR-0059 §5,
-//! `workspace.rs`) and the version alignment of `bmb weaken` (backlog
-//! 2D-19, `weaken.rs`) are its two rewrites.
+//! `workspace.rs`) and the version alignment of `bmb weaken` (`weaken.rs`) are its two rewrites.
 
 use crate::ast::*;
 use crate::source::Span;

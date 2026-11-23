@@ -1,4 +1,4 @@
-#[summary("범위 for의 증명: 머리 불변식, 자동 감소, 끝을 포함하는 범위, 탈출 (ADR-0049 §2, backlog 2K-01d)")]
+#[summary("Proofs of range for: the head invariant, automatic decrease, inclusive ranges, exits (ADR-0049 §2)")]
 mod rg {
     spec fn bounded(s: i64, i: usize) -> bool {
         0 <= s && s <= 1000 * i

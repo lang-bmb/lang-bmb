@@ -1,4 +1,4 @@
-#[summary("재귀와 상호 재귀")]
+#[summary("Recursion and mutual recursion")]
 mod rec {
     spec fn parity(n: u64) -> u64 { n % 2 }
 
@@ -29,7 +29,7 @@ mod rec {
     }
 }
 
-#[summary("forall 안의 재귀 호출: 묶인 변수마다 측도가 준다 (backlog 2V-05)")]
+#[summary("A recursive call inside forall: the measure decreases for every bound variable")]
 mod frec {
     spec fn below(n: usize) -> bool
         decreases n,
@@ -45,7 +45,7 @@ mod frec {
     }
 }
 
-#[summary("forall 안의 재귀 호출과 다른 항 (backlog 2V-05, 이전 fail/unsupported)")]
+#[summary("A recursive call inside forall next to other terms (formerly fail/unsupported)")]
 mod allpos {
     spec fn all_pos(a: &[i64], n: usize) -> bool
         decreases n,

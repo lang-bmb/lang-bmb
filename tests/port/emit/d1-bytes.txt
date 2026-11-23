@@ -1,4 +1,4 @@
-#[summary("정수와 바이트들: to_be_bytes와 to_le_bytes, from_be_bytes와 from_le_bytes (부호와 폭)")]
+#[summary("Integers and bytes: to_be_bytes and to_le_bytes, from_be_bytes and from_le_bytes (signs and widths)")]
 mod bytes {
     #[effects(pure)]
     fn round_be(x: u32) -> u32 { u32::from_be_bytes(x.to_be_bytes()) }

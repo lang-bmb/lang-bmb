@@ -1,4 +1,4 @@
-#[summary("차등 시험(포팅 지도 P0, 백로그 4D-15): 표준 입력의 줄마다 std::json으로 읽어 공백 없이 다시 쓴다(stage0 json의 parse·to_json과 같은 텍스트). 읽지 못한 줄은 error")]
+#[summary("Differential test (port map P0): reads each line of standard input with std::json and writes it back without whitespace (the same text as parse·to_json of stage0's json). A line that cannot be read is error")]
 mod app {
     // An open array (kind 5) or object (kind 6): the node after it, and
     // what came last inside it (0 nothing, 1 an element or key, 2 a value

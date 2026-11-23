@@ -1,4 +1,4 @@
-#[summary("integer conversions at run time (ADR-0028, backlog 2C-02)")]
+#[summary("integer conversions at run time (ADR-0028)")]
 mod conv {
     #[effects(pure)]
     fn index_or_max(k: i64) -> usize {

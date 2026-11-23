@@ -1,4 +1,4 @@
-#[summary("const 항목의 검사 오류(ADR-0052, backlog 2V-19·2V-19b): 평가 실패 E0260(넘침, 범위 밖 원소), 순환 E0318, 상수 식이 아닌 것 E0259, 값 타입이 아닌 것 E0437, 초기화 식의 타입 오류, static E0261, const 이름의 지역 E0303, 모르는 길이 E0301")]
+#[summary("Check errors of const items (ADR-0052): evaluation failure E0260 (overflow, element out of range), cycle E0318, not a constant expression E0259, not a value type E0437, type errors in the initializer, static E0261, a local with a const's name E0303, unknown length E0301")]
 mod ke {
     struct Pair { a: u8, b: u8 }
 

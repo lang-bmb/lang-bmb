@@ -1,4 +1,4 @@
-#[summary("명세의 정수 넓힘(ADR-0099, backlog 2N-08): 갈래와 결과는 범위가 담기면 같은 타입이다")]
+#[summary("Integer widening in specs (ADR-0099): arms and results have the same type when the range fits")]
 mod sw {
     // A byte as a `u64` result, and a branch of the wider type.
     spec fn byte_at(msg: &[u8], i: usize) -> u64 {

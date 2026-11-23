@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The bootstrap chain of the port, in all-checks mode (backlog 4E-02, E1).
+"""The bootstrap chain of the port, in all-checks mode (E1).
 
 stage1 is the compiler written in BMB (`selfhost/*.bmb`) built by stage0
 (`bmb emit-llvm --all-checks` and clang), stage2 the same source built by

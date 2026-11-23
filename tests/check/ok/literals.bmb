@@ -1,4 +1,4 @@
-#[summary("리터럴만으로 된 식은 다른 쪽에서 타입을 받는다(Rust와 같음)")]
+#[summary("An expression made only of literals takes its type from the other side (as in Rust)")]
 mod lits {
     #[effects(pure)]
     fn pick(x: u64, y: u64) -> u64 {
@@ -9,7 +9,7 @@ mod lits {
     }
 
     // Only a literal shift amount is a `u32`: one with a type of its own
-    // keeps it, as Rust infers it (backlog 2N-04).
+    // keeps it, as Rust infers it.
     #[effects(pure)]
     fn amount(x: u32, b: Option<u8>) -> u32 {
         x >> ((match b { None => 1, Some(v) => v }) & 7)

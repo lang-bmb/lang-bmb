@@ -1,4 +1,4 @@
-#[summary("? 연산자의 증명: None·Err 갈래의 반환 지점 사후조건, 이어지는 갈래의 페이로드 사실 (ADR-0049 §3, backlog 2K-01e)")]
+#[summary("Proofs of the ? operator: the return-point postcondition of the None·Err arms, the payload facts of the continuing arm (ADR-0049 §3)")]
 mod tp {
     spec fn below(r: Option<u64>, n: u64) -> bool {
         match r {

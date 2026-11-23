@@ -1,4 +1,4 @@
-#[summary("? 연산자의 경계: 다른 오류 타입, Option과 Result의 혼용, 반환 타입, 피연산자 타입, 명세 (backlog 2K-01e)")]
+#[summary("Edges of the ? operator: a different error type, mixing Option and Result, the return type, the operand type, specs")]
 mod tc {
     #[effects(pure)]
     fn parse(x: u64) -> Result<u64, bool> {

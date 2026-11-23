@@ -1,4 +1,4 @@
-#[summary("bytes and the text habits around them (ADR-0044, backlog 2S-02)")]
+#[summary("bytes and the text habits around them (ADR-0044)")]
 mod by {
     #[effects(pure)]
     fn read(s: &[u8]) -> usize { s.len() }

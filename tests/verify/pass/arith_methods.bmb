@@ -1,4 +1,4 @@
-#[summary("checked and saturating arithmetic proved (ADR-0028 §3, §5, backlog 2C-03)")]
+#[summary("checked and saturating arithmetic proved (ADR-0028 §3, §5)")]
 mod am {
     spec fn in_bounds(r: i64, x: i64, y: i64) -> bool { x + y > 9223372036854775807 || x + y < -9223372036854775808 || r == x + y }
 

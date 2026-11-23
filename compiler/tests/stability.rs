@@ -1,6 +1,6 @@
-//! Proof stability (backlog 1B-19): the verdict of every definition in the
+//! Proof stability: the verdict of every definition in the
 //! corpora must not depend on the solver seed. Through the CLI (`bmb
-//! stability`), so the test runs whichever compiler is built (backlog 4A-04).
+//! stability`), so the test runs whichever compiler is built.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-#[summary("실행 예제: 정수, 나눗셈, 재귀, 배열")]
+#[summary("Run example: integers, division, recursion, arrays")]
 mod basics {
     spec fn small(n: i64) -> bool { 0 <= n && n <= 1000 }
 
@@ -53,7 +53,7 @@ mod basics {
     }
 }
 
-#[summary("진입점: 결과를 한 줄씩 출력")]
+#[summary("Entry point: prints the results one per line")]
 mod app {
     #[effects(io)]
     fn main() -> () {

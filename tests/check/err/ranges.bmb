@@ -1,4 +1,4 @@
-#[summary("범위 for의 경계: 반복자, decreases, 변수 대입, 정수가 아닌 범위, 루프 밖의 변수, 명세 (backlog 2K-01d)")]
+#[summary("Edges of range for: iterators, decreases, assigning the variable, a non-integer range, the variable outside the loop, specs")]
 mod rc {
     #[effects(pure)]
     fn iterator(v: &[i64]) -> i64 {

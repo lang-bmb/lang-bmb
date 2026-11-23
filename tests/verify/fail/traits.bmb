@@ -1,4 +1,4 @@
-#[summary("trait 실패: 경계 호출은 서명만, 구체 호출은 impl 계약만 (ADR-0046 §4)")]
+#[summary("trait failures: a bound call has only the signature, a concrete call only the impl contract (ADR-0046 §4)")]
 mod tr {
     trait Area {
         #[effects(pure)]

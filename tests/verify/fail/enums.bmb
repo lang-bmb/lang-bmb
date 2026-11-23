@@ -1,4 +1,4 @@
-#[summary("열거형: 거짓 주장은 증명되지 않는다 (backlog 2B-05b)")]
+#[summary("Enums: false claims are not proved")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -79,7 +79,7 @@ mod geo {
     }
 }
 
-#[summary("배열 페이로드의 `==`: 바뀐 원소는 같지 않다 (backlog 2V-05)")]
+#[summary("`==` on array payloads: a changed element is not equal")]
 mod cells {
     enum Cell { Empty, Full([i64; 2]) }
 

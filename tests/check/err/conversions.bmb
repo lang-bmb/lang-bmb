@@ -1,4 +1,4 @@
-#[summary("integer conversions and the Rust habits around them (ADR-0028, backlog 2C-02)")]
+#[summary("integer conversions and the Rust habits around them (ADR-0028)")]
 mod conv {
     #[effects(pure)]
     fn cast(x: u64) -> i64 { x as i64 }

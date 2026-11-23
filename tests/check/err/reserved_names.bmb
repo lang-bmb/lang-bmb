@@ -1,4 +1,4 @@
-#[summary("내장 이름과 튜플 타입(백로그 5A-03): 타입·trait·상수는 내장 이름과 기본 타입 이름을 쓰지 못하고, 튜플 타입은 튜플 값과 같은 진단을 받는다")]
+#[summary("Built-in names and tuple types: types, traits and constants cannot use built-in names or primitive type names, and a tuple type gets the same diagnostic as a tuple value")]
 mod t {
     const Box: i64 = 1;
 

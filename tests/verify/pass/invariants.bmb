@@ -1,4 +1,4 @@
-#[summary("타입 불변식: 새 값은 가정하고 잊는 값은 증명한다 (ADR-0060)")]
+#[summary("Type invariants: assumed for a new value and proved for a value that is let go (ADR-0060)")]
 mod inv {
     // A scalar invariant: assumed at entry, proved where a value leaves.
     #[invariant(within)]

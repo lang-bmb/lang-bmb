@@ -1,6 +1,6 @@
-//! Nesting limits (backlog 1A-11): deep input is a diagnostic, not a crash, and
+//! Nesting limits: deep input is a diagnostic, not a crash, and
 //! programs just inside the limit go through the whole pipeline on the stack
-//! the CLI uses. Through the CLI (backlog 4A-04).
+//! the CLI uses. Through the CLI.
 
 use std::fs;
 use std::path::PathBuf;
@@ -55,7 +55,7 @@ fn program(body: &str) -> Vec<(String, String)> {
     vec![(
         "deep.bmb".to_string(),
         format!(
-            "#[summary(\"깊은 중첩\")]\nmod deep {{\n    #[effects(io)]\n    fn main() -> () {{\n        let x: i64 = {body};\n        print_i64(x)\n    }}\n}}\n"
+            "#[summary(\"deep nesting\")]\nmod deep {{\n    #[effects(io)]\n    fn main() -> () {{\n        let x: i64 = {body};\n        print_i64(x)\n    }}\n}}\n"
         ),
     )]
 }

@@ -1,4 +1,4 @@
-#[summary("타입과 소유권")]
+#[summary("Types and ownership")]
 mod types {
     #[effects(pure)]
     fn mismatch(x: u64) -> i64 { x }
@@ -97,7 +97,7 @@ mod types {
     }
 }
 
-#[summary("별칭 검사: 블록 안에서 같은 변수를 쓰면 거부")]
+#[summary("Alias check: using the same variable inside the block is rejected")]
 mod alias_err {
     #[effects(pure)]
     fn put(a: &mut [i64], v: i64) -> () {}
@@ -110,7 +110,7 @@ mod alias_err {
     }
 }
 
-#[summary("배열 길이 상한과 중첩 배열 리터럴")]
+#[summary("The array length limit and nested array literals")]
 mod array_limits {
     #[effects(pure)]
     fn nested() -> i64 {
@@ -121,7 +121,7 @@ mod array_limits {
     #[effects(pure)]
     fn huge(a: [i64; 18446744073709551617]) -> () {}
 
-    // Integer constants are `MIN` and `MAX` (backlog 2N-06).
+    // Integer constants are `MIN` and `MAX`.
     #[effects(pure)]
     fn no_mid() -> i64 {
         i64::MID

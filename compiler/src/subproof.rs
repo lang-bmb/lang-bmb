@@ -1,4 +1,4 @@
-//! Sub-proofs in an exact theory (ADR-0048 §4, backlog 2N-03).
+//! Sub-proofs in an exact theory (ADR-0048 §4).
 //!
 //! `assert(e) by (bit_vector);` proves `e` in a query of its own and the
 //! enclosing proof then assumes it. The sub-proof sees only `e`'s free
@@ -204,7 +204,7 @@ pub struct SatQuery {
 }
 
 /// The conjunction of the `Bool` terms `asserts` over `consts` as one
-/// bit-vector query with the same models (backlog T2-13): every integer
+/// bit-vector query with the same models: every integer
 /// subterm a two's complement bit-vector wide enough for its values, as for
 /// a sub-proof, which the query's range assertions bound. A query that mixes
 /// linear integer arithmetic with `bv2nat` (rotations and `^` of the SHA-256
@@ -350,7 +350,7 @@ pub fn helper_def(name: &str) -> Option<(String, u32)> {
         "ctz" => (0..w)
             .rev()
             .fold(n(w), |t, k| format!("(ite {} {} {t})", bit(k), n(k))),
-        // Bit k of the result is bit w - 1 - k of `x` (backlog 2N-09).
+        // Bit k of the result is bit w - 1 - k of `x`.
         "brev" => format!(
             "(concat {})",
             (0..w)
@@ -727,8 +727,7 @@ impl Tr<'_, '_> {
         int(r, ww, niv)
     }
 
-    /// A division by a term `b` that may be zero or negative (backlog
-    /// 2N-11): SMT-LIB's Euclidean `div`/`mod` (`0 <= r < |b|`, the code's
+    /// A division by a term `b` that may be zero or negative: SMT-LIB's Euclidean `div`/`mod` (`0 <= r < |b|`, the code's
     /// unsigned `/`·`%`), or the encoder's truncating `bmb_tdiv`/`bmb_trem`
     /// (the code's signed ones, LLVM's `sdiv`/`srem` and SMT-LIB's
     /// `bvsdiv`/`bvsrem`), each exact at a width that holds the operands,

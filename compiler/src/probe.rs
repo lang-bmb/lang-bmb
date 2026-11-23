@@ -1,5 +1,4 @@
-//! Candidate loop invariants, tried without a commit (ADR-0109, backlog
-//! 2D-35, AI-user feedback P2).
+//! Candidate loop invariants, tried without a commit (ADR-0109, AI-user feedback P2).
 //!
 //! An agent proposes several candidate invariants for one loop of one
 //! definition; the deterministic part filters them. Each candidate is parsed

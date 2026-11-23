@@ -1,4 +1,4 @@
-#[summary("힙을 가진 값의 해제: Box (새로 만들기, *b, 필드를 지나기, 재귀 자료), 힙을 가진 구조체와 열거형, 갈래마다 다른 해제, 가운데의 return과 break와 ?, match가 옮기는 페이로드와 묶지 않는 페이로드, 대입이 갈아치우는 값, 버리는 식의 값, 읽기만 하는 임시값, 힙을 가진 값의 clone (구조체, 재귀 열거형, Vec의 Vec)")]
+#[summary("Drops of values that hold heap memory: Box (creating, *b, going through fields, recursive data), structs and enums that hold heap memory, drops that differ per arm, return, break and ? in the middle, payloads that match moves and payloads it does not bind, a value replaced by assignment, the value of a discarded expression, temporaries that are only read, clone of values that hold heap memory (structs, recursive enums, a Vec of Vecs)")]
 mod owned {
     struct Bag { items: Vec<i64>, name: u8 }
     enum Tree { Leaf(i64), Node(Box<Tree>, Box<Tree>) }

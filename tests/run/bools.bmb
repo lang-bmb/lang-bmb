@@ -1,4 +1,4 @@
-#[summary("실행 예제: bool 배열(원소 대입 회귀 테스트)")]
+#[summary("Run example: bool arrays (regression test for element assignment)")]
 mod primes {
     spec fn len_ok(a: &[bool]) -> bool { 2 <= a.len() && a.len() <= 1000 }
 
@@ -40,7 +40,7 @@ mod primes {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {

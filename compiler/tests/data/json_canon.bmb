@@ -1,4 +1,4 @@
-#[summary("std::json 정규화: 표준 입력의 JSON 텍스트를 한 줄에 토큰 하나로 찍는다(키 `k\"..\"`, 문자열 `s\"..\"`는 해독해 std::json::push_string으로 다시 씀, 숫자 `n`과 쓴 그대로). JSONTestSuite 대조(scripts/json_suite.py)와 차등 시험(tests/stdlib.rs)이 쓴다 (backlog 4B-02 (h))")]
+#[summary("std::json canonical form: prints the JSON text on standard input one token per line (a key as `k\"..\"`, a string as `s\"..\"`, both decoded and written again with std::json::push_string, a number as `n` and its text as written). Used by the JSONTestSuite comparison (scripts/json_suite.py) and the differential test (tests/stdlib.rs)")]
 mod canon {
     spec fn walk_inv(d: &std::json::Doc, ends: &[usize], kinds: &[u8], counts: &[usize], k: usize, n: usize) -> bool {
         ends.len() == kinds.len() && kinds.len() == counts.len() && k <= n && n == d.nodes.len()

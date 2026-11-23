@@ -1,4 +1,4 @@
-// Differential test (backlog 4D-19): the ranges of the code points outside
+// Differential test: the ranges of the code points outside
 // ASCII in each of the classes the lexer asks of Rust's `char`. The port's
 // tables (`selfhost/unicode.bmb`) print the same through
 // `unicode_classes.bmb`.

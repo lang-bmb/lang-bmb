@@ -1,4 +1,4 @@
-#[summary("실행: Vec 성장·축소·복제·이동·반환·슬라이스·핸들 (ADR-0031, backlog 2G-04)")]
+#[summary("Run: Vec growth·shrink·clone·move·return·slices·handles (ADR-0031)")]
 mod vr {
     spec fn small(n: usize) -> bool { n <= 1000 }
 

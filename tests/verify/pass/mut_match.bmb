@@ -1,4 +1,4 @@
-#[summary("&mut 참조 match: 바인딩의 쓰기가 피검사 자리로 (ADR-0055, backlog 2O-04b)")]
+#[summary("match on a &mut reference: writes to a binding go to the scrutinee's place (ADR-0055)")]
 mod mm {
     enum Slot { Empty, Full(i64, bool) }
 

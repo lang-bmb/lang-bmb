@@ -1,23 +1,22 @@
-//! Soundness fuzzing of unsigned arithmetic (backlog 1B-33): `u64` values up
+//! Soundness fuzzing of unsigned arithmetic: `u64` values up
 //! to 2^64 - 1, subtraction underflow, unsigned `/` and `%`, `wrapping_*`
 //! and unsigned comparisons, checked like `soundness.rs`: verified functions
 //! never fault and meet their postcondition on admitted inputs, definite
 //! counterexamples break the function, both builds print what the
 //! interpreter computes.
 //!
-//! Backlog 2C-04 (ADR-0028 §9) adds `saturating_*`, `checked_*` (a `match`
+//! ADR-0028 §9 adds `saturating_*`, `checked_*` (a `match`
 //! with a default for `None`) and conversions through `i64` and `usize`: a
 //! value converted to `i64` (out of range above `i64::MAX`), a signed
 //! difference converted back to `u64` (out of range when negative) and the
 //! same through `.ok()`. The interpreter computes them with Rust's own
 //! methods; an out-of-range `.unwrap()` is a fault.
 //!
-//! Backlog 2S-02 (ADR-0044 §6) adds `u8`: a value through `u8` (out of
+//! ADR-0044 §6 adds `u8`: a value through `u8` (out of
 //! range above 255), the sum of two low bytes in `u8` (overflows above
 //! 255), and their wrapping and saturating products.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -156,7 +155,7 @@ fn typed(rng: &mut Rng, depth: usize) -> U {
     }
 }
 
-/// The ADR-0028 forms (backlog 2C-04).
+/// The ADR-0028 forms.
 fn gen_adr28(rng: &mut Rng, depth: usize) -> U {
     let b = |rng: &mut Rng| Box::new(gen_u(rng, depth - 1));
     let t = |rng: &mut Rng| Box::new(typed(rng, depth - 1));
@@ -523,17 +522,17 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     funcs[0].body = U::Byte(op, Box::new(U::Var("x")), Box::new(U::Var("y")));
     // Its verdict rests on the obligations alone.
     funcs[0].post = vec![Post::In(0, u64::MAX)];
-    let mut module = String::from("#[summary(\"부호 없는 산술 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"unsigned soundness fuzzing\")]\nmod m {\n");
     for f in &funcs {
         module.push_str(&f.text());
     }
     module.push_str("}\n\n");
     // `main` prints each result (`print_u64`, ADR-0028 §4).
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     let mut src = format!("{module}{main_head}");
     let mut expected = String::new();
-    // Calls that fault in the interpreter (backlog 1B-51).
+    // Calls that fault in the interpreter.
     let mut faults: Vec<(usize, (u64, u64))> = Vec::new();
     for (i, f) in funcs.iter().enumerate() {
         for (x, y) in f.inputs(&mut rng) {

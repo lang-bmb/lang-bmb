@@ -1,4 +1,4 @@
-#[summary("경로 호출")]
+#[summary("Calls by path")]
 mod k {
     struct P { x: i64 }
 

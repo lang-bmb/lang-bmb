@@ -1,4 +1,4 @@
-#[summary("정의의 몸에 수량자가 남아도 모든 적용이 인스턴스를 가지면 반례가 확정된다(백로그 T0-24, ADR-0075)")]
+#[summary("Even when a quantifier remains in a definition's body, the counterexample is confirmed if every application has an instance (ADR-0075)")]
 mod weak_witness {
     spec fn holds_below(text: &[u64], n: usize) -> bool { forall|i: usize| i < n && i < text.len() ==> !(#[trigger] text[i] == 122) }
 

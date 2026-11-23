@@ -1,10 +1,10 @@
-//! Soundness fuzzing of loops, arrays and `&mut` (backlog 1B-21).
+//! Soundness fuzzing of loops, arrays and `&mut`.
 //!
 //! Random functions `g(a: &mut [i64], k: usize, x: i64) -> i64` with one
 //! loop (`while`, or the range `for` when the loop counts), random
 //! invariants and random contracts are proved, and the claims are checked
 //! against an independent interpreter written here. The body may leave
-//! early (backlog 2K-05): `break`, `continue`, `return e`, and `?` on a
+//! early: `break`, `continue`, `return e`, and `?` on a
 //! callee's `Option` (the function then returns `Option<i64>`).
 //!
 //! - a verified function, on any input its precondition admits, never faults
@@ -18,11 +18,10 @@
 //!   interpreter computes, array contents included.
 //!
 //! A loop body may also write through a callee, `put(a, j, v)` with an exact
-//! contract (backlog 1B-43), so the loop head must forget what the `&mut`
+//! contract, so the loop head must forget what the `&mut`
 //! parameter held.
 //!
-//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5, backlog
-//! 4A-04). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
+//! It drives the `bmb` command line (`common::cli`, HEALTH.md S5). `BMB_SOUND_ITERS` / `BMB_SOUND_SEED` as in `soundness.rs`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -109,7 +108,7 @@ enum S {
     /// `acc = lim(e, c)?;`: `None` when `e > c`.
     Try(E, i64),
     /// `put(a, idx, e);`: a callee writes through the `&mut` parameter
-    /// (backlog 1B-43: the loop head must forget what `a` held).
+    /// (the loop head must forget what `a` held).
     Put(Idx, E),
 }
 
@@ -388,8 +387,7 @@ fn bounds_pair(rng: &mut Rng) -> (i64, i64) {
 /// Correct-by-construction loops (most prove), sometimes with one mutation
 /// that may or may not break them: near misses are where a verifier errs.
 fn gen_template(rng: &mut Rng, n: usize) -> Func {
-    // Fill through `put` from 0, claiming the first element is kept
-    // (backlog 1B-43): false, and only the loop head's havoc of the `&mut`
+    // Fill through `put` from 0, claiming the first element is kept: false, and only the loop head's havoc of the `&mut`
     // parameter passed to `put` shows it. From a stream of its own.
     if Rng(rng.0 ^ 0x9e37_79b9_7f4a_7c15).chance(20) {
         return Func {
@@ -1095,7 +1093,7 @@ fn post_holds(f: &Func, a: &[i64], old: &[i64], k: u64, x: i64, out: Out) -> boo
 }
 
 /// `put`, a callee that writes one element through `&mut` (an exact
-/// contract, backlog 1B-43).
+/// contract).
 const PUT: &str = "    spec fn put_pre(a: &[i64], j: usize) -> bool { j < a.len() }\n\n    spec fn put_post(a: &[i64], b: &[i64], j: usize, v: i64) -> bool {\n        a.len() == b.len() && j < a.len() && a[j] == v && (forall|t: usize| t < a.len() && t != j ==> #[trigger] a[t] == b[t])\n    }\n\n    #[effects(pure)]\n    #[uses(put_pre, put_post)]\n    fn put(a: &mut [i64], j: usize, v: i64) -> ()\n        requires put_pre(a, j),\n        ensures put_post(a, old(a), j, v),\n    {\n        a[j] = v;\n    }\n\n";
 
 /// `lim`, the callee of every `?`, and `show`, which prints an `Option`.
@@ -1168,13 +1166,13 @@ struct Stats {
     cexes: usize,
     entry_replays: usize,
     compiled_runs: usize,
-    /// Calls that fault in the interpreter, run as trap programs (1B-54).
+    /// Calls that fault in the interpreter, run as trap programs.
     traps: usize,
     /// Verified functions with a range `for`, an early exit, a `?`.
     verified_for: usize,
     verified_exit: usize,
     verified_try: usize,
-    /// Verified functions whose loop writes through `put` (1B-43).
+    /// Verified functions whose loop writes through `put`.
     verified_put: usize,
     /// Interpreted runs of verified functions that left early.
     early_runs: usize,
@@ -1189,20 +1187,20 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let mut funcs: Vec<Func> = vec![kicked_sum(&mut rng, seed)];
     funcs.extend((1..6).map(|n| gen_func(&mut rng, n)));
-    let mut src = String::from("#[summary(\"루프 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"loop soundness fuzzing\")]\nmod m {\n");
     src.push_str(LIM);
     src.push_str(PUT);
     for f in &funcs {
         src.push_str(&f.text());
     }
-    src.push_str("}\n\n#[summary(\"실행\")]\nmod app {\n");
+    src.push_str("}\n\n#[summary(\"run\")]\nmod app {\n");
     src.push_str(SHOW);
     let module = src.clone();
     let main_head = "    #[effects(io)]\n    fn main() -> () {\n";
     src.push_str(main_head);
     let mut expected = String::new();
     let mut n = 0;
-    // Calls that fault in the interpreter (backlog 1B-54).
+    // Calls that fault in the interpreter.
     let mut faults: Vec<(usize, Call)> = Vec::new();
     for (fi, f) in funcs.iter().enumerate() {
         for (a, k, x) in inputs(f, &mut rng) {
@@ -1428,7 +1426,7 @@ fn loop_proofs_counterexamples_and_builds_agree_with_the_interpreter() {
         stats.traps
     );
     eprintln!(
-        "early exits (2K-05): verified {} with `for`, {} with an exit, {} with `?`, {} writing through `put`; {} verified runs left early",
+        "early exits: verified {} with `for`, {} with an exit, {} with `?`, {} writing through `put`; {} verified runs left early",
         stats.verified_for,
         stats.verified_exit,
         stats.verified_try,

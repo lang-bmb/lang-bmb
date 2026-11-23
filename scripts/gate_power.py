@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Detection power of the gate against prover and code-generator defects
-(backlog 1B-38, HEALTH.md §7).
+(HEALTH.md §7).
 
   gate_power.py check                  every mutant applies to the current sources
   gate_power.py check --compile --work DIR [--only ID,..]
@@ -18,7 +18,7 @@ the whole gate there (`scripts/check.sh`) after `cargo fmt` (formatting
 must not be what catches a defect); the gate catches a mutant when it exits
 non-zero in its jobs, and `detected_by` names the jobs that failed. A run that
 ended before the jobs (formatting, clippy, the build: `stage` names the step)
-or at the time limit is `invalid`, not a catch (backlog 1B-59: seven mutants
+or at the time limit is `invalid`, not a catch (seven mutants
 were once counted as caught by an unused-variable warning): the mutant is
 rewritten to compile cleanly, which `check --compile` tells without a gate
 run. The row's `commit` is the commit of the mutated tree. A run takes the
@@ -98,7 +98,7 @@ MUTANTS = [
     ("v-spec-lt-as-le", "unsound", V,
      '''                BinOp::Lt => format!("(and ({le} {a} {b}) (not (= {a} {b})))"),''',
      '''                BinOp::Lt => format!("({le} {a} {b})"),''',
-     "for a type parameter bounded by Ord, a < b means a <= b (contracts and code share `ord_term` since 2T-02)"),
+     "for a type parameter bounded by Ord, a < b means a <= b (contracts and code share `ord_term`)"),
     ("v-lt-as-le", "unsound", V,
      '''                BinOp::Lt => "<",
                 BinOp::Le => "<=",''',
@@ -257,7 +257,7 @@ MUTANTS = [
                 target = t;
             }''',
      "a trait call with a known `Self` is not lowered to its impl's function"),
-    # Owned types (ADR-0047, phase 2O, backlog 2O-05).
+    # Owned types (ADR-0047, phase 2O).
     ("c-box-free-dropped", "miscompile", C,
      r'''                body.push_str("  call void @free(ptr %h)\n");''',
      r'''                body.push_str("");''',
@@ -395,24 +395,24 @@ MUTANTS = [
     ("v-shift-amount-at-width", "unsound", V,
      '''            None if !self.ty(amount).is_signed() => format!("(< {s} {w})"),''',
      '''            None if !self.ty(amount).is_signed() => format!("(<= {s} {w})"),''',
-     "a shift by the full width is allowed (backlog 2N-02)"),
+     "a shift by the full width is allowed"),
     ("v-bit-and-fact-strict", "unsound", V,
      '''        BinOp::BitAnd => {
             fs.push(format!("(<= {r} {a})"));''',
      '''        BinOp::BitAnd => {
             fs.push(format!("(< {r} {a})"));''',
-     "the range fact of an unsigned `&` is off by one (backlog 2N-02)"),
+     "the range fact of an unsigned `&` is off by one"),
     ("c-shr-signedness-swapped", "miscompile", C,
      '''                let inst = if i.signed() { "ashr" } else { "lshr" };''',
      '''                let inst = if !i.signed() { "ashr" } else { "lshr" };''',
-     "`>>` shifts signed values logically and unsigned ones arithmetically (backlog 2N-02)"),
+     "`>>` shifts signed values logically and unsigned ones arithmetically"),
     ("v-narrow-range-widened", "unsound", V,
      '''        num(i.min_value()),
         num(i.max_value())''',
      '''        num(i.min_value()),
         num(i.max_value().max(i64::MAX as i128))''',
      "the range fact of a type narrower than 64 bits reaches i64::MAX (its overflow obligations hold too often)"),
-    # Proof functions (ADR-0062, backlog T1-18).
+    # Proof functions (ADR-0062).
     ("v-lemma-requires-dropped", "unsound", V,
      '''        for r in &f.requires {
             let g = self.in_def(&unit, csub.clone(), |s| {''',
@@ -442,7 +442,7 @@ MUTANTS = [
      '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Ghost);''',
      '''                let t = self.block(cx, body, Some(&TypeKind::Unit), Mode::Exec);''',
      "a `proof` block is checked as executable code: it may assign, call executable functions and loop (E0257 never sent)"),
-    # `by (bit_vector)` sub-proofs and bit methods (ADR-0048 §2, §4, backlog 2N-03).
+    # `by (bit_vector)` sub-proofs and bit methods (ADR-0048 §2, §4).
     ("v-subproof-unproved", "unsound", V,
      '''            sub: Some(query),
             shown: None,
@@ -457,7 +457,7 @@ MUTANTS = [
      '''                crate::subproof::Sort::Int(i) => {
                     // No fact, written so that the mutant compiles without a
                     // warning: a first form (`.filter(|_| false)`) was stopped
-                    // by clippy, which is not a test catching it (1B-57).
+                    // by clippy, which is not a test catching it.
                     let _ = range_int(*i, &env.get(n)?.s());
                     None
                 }''',
@@ -491,7 +491,7 @@ MUTANTS = [
      '''                let f = if m == "rotate_left" { "fshl" } else { "fshr" };''',
      '''                let f = if m == "rotate_left" { "fshr" } else { "fshl" };''',
      "the generated code rotates the wrong way"),
-    # Type invariants (ADR-0060 §2, backlog T1-11): a boundary whose
+    # Type invariants (ADR-0060 §2): a boundary whose
     # obligation is never sent lets a broken value out while every receiver
     # assumes it valid.
     ("v-inv-mut-exit-dropped", "unsound", VI,
@@ -506,7 +506,7 @@ MUTANTS = [
      '''            self.oblige_valid(a.span, Boundary::Arg(a, &target), v, t);''',
      '''            let _ = (Boundary::Arg(a, &target), v, t);''',
      "a call argument is not proved valid, while the callee assumes its parameter is (E0823)"),
-    # `f64` (ADR-0061 §7, backlog T2-03).
+    # `f64` (ADR-0061 §7).
     ("c-fadd-as-fsub", "miscompile", C,
      '''                    BinOp::Add => ("fadd", None),''',
      '''                    BinOp::Add => ("fsub", None),''',
@@ -521,14 +521,14 @@ MUTANTS = [
      '''        if interpreted || name == "f64.lt" {
             let params''',
      "`<` on `f64` is interpreted (`fp.lt`) in ordinary queries, outside `by (bit_vector)` (ADR-0061 §5)"),
-    # Contract weakening between versions (backlog 2D-19): a missed weakening
+    # Contract weakening between versions: a missed weakening
     # passes the audit.
     ("w-requires-direction-dropped", "unsound", W,
      '''row.verdict = if fr == Dir::Refuted
                             || fe == Dir::Refuted''',
      '''row.verdict = if fe == Dir::Refuted''',
      "`bmb weaken` ignores the `requires` direction: a stronger precondition is judged the same"),
-    # Checks of unproved code that differ by width (backlog 2N-04): only a
+    # Checks of unproved code that differ by width: only a
     # build that runs a panicking call, `tests/soundness_widths.rs`, sees them.
     ("c-shift-literal-at-width", "miscompile", C,
      '''        let literal = matches!(r.kind, ExprKind::Int(k, _) if k < w as u128);''',
@@ -540,7 +540,7 @@ MUTANTS = [
      '''                            let ok = self.t();
                             self.emit(format!("{m} = icmp eq i64 {a}, {}", i64::MIN));''',
      "an unproved `T::MIN / -1` of a signed type narrower than 64 bits is not checked (it gives `-T::MIN`)"),
-    # Text (ADR-0050, backlog 2U-02/2U-03): a slice off the character
+    # Text (ADR-0050): a slice off the character
     # boundaries is proved, or not checked where unproved. Only
     # `tests/soundness_text.rs` builds and runs such slices.
     ("v-str-boundary-dropped", "soundness", VT,
@@ -555,7 +555,7 @@ MUTANTS = [
      '''            self.emit(format!("{c} = and i1 {ab}, {ord}"));''',
      '''            self.emit(format!("{c} = or i1 {ab}, true"));''',
      "an unproved `&s[a..b]` is not checked: the slice may cut a character"),
-    # The effect check (ADR-0030, backlog 2F-02): a missed effect makes a
+    # The effect check (ADR-0030): a missed effect makes a
     # definition look free of what it does (no test reason, wrong `impact`).
     ("k-push-not-alloc", "effects", K,
      '''if mode == Mode::Exec && matches!(m, "push" | "clone") {''',
@@ -565,14 +565,14 @@ MUTANTS = [
      '''cx.need(sig.effect, || format!("a call of `{name}`"));''',
      '''cx.need(Effects::PURE, || format!("a call of `{name}`"));''',
      "a call does not carry the callee's declared effects to the caller"),
-    # Found by the effect property test (backlog 2F-05, `tests/effects_props.rs`).
+    # Found by the effect property test (`tests/effects_props.rs`).
     ("m-effects-declared-not-required", "effects", M,
      '''                    Some(d) => d.all,
                     None => declared(c),''',
      '''                    Some(d) => d.declared,
                     None => declared(c),''',
      "`eff*` takes a callee's declaration for what it needs: a wide declaration makes its callers look `io`, which inflates the test-needed area"),
-    # Escapes (ADR-0029, backlog 2E-02): a trusted fact used where the
+    # Escapes (ADR-0029): a trusted fact used where the
     # definition must be proved without it, or a check dropped below one.
     ("v-assume-trusted-first", "unsound", V,
      '''    TRUST.with(|t| t.borrow().as_ref().is_none_or(|t| t.trusted))''',
@@ -584,7 +584,7 @@ MUTANTS = [
         }''',
      '''        out.proven.extend(r.proven);''',
      "a definition proved with trusted facts drops its checks: a false `assume` is undefined behavior, not a trap"),
-    # Found by the escape fuzzer (backlog 2E-05, `tests/soundness_escape.rs`).
+    # Found by the escape fuzzer (`tests/soundness_escape.rs`).
     ("v-escape-no-downward", "miscompile", V,
      '''    while let Some(f) = todo.pop() {''',
      '''    while let Some(f) = todo.pop().filter(|_| false) {''',
@@ -593,7 +593,7 @@ MUTANTS = [
      '''        .filter(|(_, r)| r.status.trust != Trust::Proved || r.status.failed > 0)''',
      '''        .filter(|(_, r)| r.status.failed > 0)''',
      "an assumed or external definition that verifies is compiled as proved: checks resting on a trusted fact are dropped"),
-    # `copy_within` (ADR-0083, backlog T1-26a): the destination bound
+    # `copy_within` (ADR-0083): the destination bound
     # forgets the copied length, or the new array keeps the old elements.
     ("v-copy-within-dest-bound", "unsound", V,
      '''            format!("(<= (+ {dest} (- {hi} {lo})) {len})"),''',
@@ -603,19 +603,18 @@ MUTANTS = [
      '''(ite {inside} (select {o} (+ (- k {dest}) {lo})) (select {o} k))''',
      '''(ite {inside} (select {o} k) (select {o} k))''',
      "the prover sees the array unchanged after a copy: claims about the old values are proved"),
-    # Method calls (ADR-0051, backlog 2M-02): the type's own function comes
+    # Method calls (ADR-0051): the type's own function comes
     # before a trait's of the same name, as in Rust.
     ("k-method-trait-before-inherent", "miscompile", K,
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none()).cloned() {''',
      '''            if let Some(sig) = self.fns.get(&fp).filter(|s| s.trait_of.is_none() && !self.trait_impls.iter().any(|i| i.matches(value).is_some() && self.traits.get(&i.trait_path).is_some_and(|t| t.methods.contains(&name.name)))).cloned() {''',
      "a method call names a trait's function where the type has its own of that name: the program runs another function than Rust's"),
-    # A `String` changes its length like a `Vec` (found in backlog 4B-02).
+    # A `String` changes its length like a `Vec` (the prover once missed it).
     ("v-string-length-kept", "unsound", V,
      '''            path.len() == 1 && (path[0] == "Vec" || path[0] == "String")''',
      '''            path.len() == 1 && path[0] == "Vec"''',
      "a callee or a loop that grows a `String` leaves its old length to the proof: anything after it is proved"),
-    # A loop's `push_str` changes the receiver (found by the text fuzzer,
-    # backlog 1B-56).
+    # A loop's `push_str` changes the receiver (found by the text fuzzer).
     ("k-push-str-keeps-receiver", "unsound", K,
      '''    "copy_within",
     "push_str",
@@ -623,12 +622,12 @@ MUTANTS = [
      '''    "copy_within",
 ];''',
      "a loop that `push_str`s to a `String` keeps the length before it: an invariant of the length makes the code after the loop unreachable"),
-    # A `String` type argument compares as text (backlog 4B-04).
+    # A `String` type argument compares as text.
     ("v-text-targ-not-text", "unsound", VT,
      '''            || (!self.tsub.is_empty() && self.is_lowered_text(&self.ty(e)))''',
      '''            || {
                 // Asked and ignored, so that the mutant compiles without a
-                // dead-code warning (1B-57).
+                // dead-code warning.
                 let _ = self.is_lowered_text(&self.ty(e));
                 false
             }''',
@@ -641,22 +640,22 @@ MUTANTS = [
             false
         }''',
      "a generic comparison instantiated with `String` compares the header words instead of the bytes: a text-keyed map is out of order"),
-    # What UTF-8 holds before a boundary (backlog 2U-06).
+    # What UTF-8 holds before a boundary.
     ("v-utf8-char-ends-before-ascii", "unsound", VT,
      '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (not {}))", cont(&at(m)));''',
      '''    let ends = |m: i64| format!("(or (= (+ {k} {m}) {n}) (< {} 128))", at(m));''',
      "a character is taken to end before an ASCII byte: a slice two bytes after an ASCII byte is proved where a character of two bytes begins between"),
-    # A trait's `Self` moves like any parameter without `Copy` (backlog 2T-09).
+    # A trait's `Self` moves like any parameter without `Copy`.
     ("k-trait-self-copied", "miscompile", K,
      '''        .filter(|p| !p.bounds.iter().any(|b| b == "Copy"))''',
      '''        .filter(|p| p.name != "Self" && !p.bounds.iter().any(|b| b == "Copy"))''',
      "a trait's `Self` value is copied in a default body: a `Vec` it holds is freed twice"),
-    # Sub-slice arguments (backlog 4C-05): the end bound of `&v[lo..hi]`.
+    # Sub-slice arguments: the end bound of `&v[lo..hi]`.
     ("v-subslice-end-unbounded", "unsound", VT,
      '''            format!("(and (<= {lo} {hi}) (<= {hi} {n}))"),''',
      '''            {
                 // The length is read and not used, so that the mutant
-                // compiles without an unused-variable warning (1B-57).
+                // compiles without an unused-variable warning.
                 let _ = &n;
                 format!("(<= {lo} {hi})")
             },''',
@@ -776,7 +775,7 @@ def run(args):
             git("checkout", "--", "compiler/src", cwd=args.work)
             apply(args.work, m)
             subprocess.run(["cargo", "fmt"], cwd=args.work, capture_output=True)
-            # One gate at a time (INF-35); the wait is not the mutant's time.
+            # One gate at a time; the wait is not the mutant's time.
             with open(lock, "w") as held:
                 fcntl.flock(held, fcntl.LOCK_EX)
                 t0 = time.monotonic()

@@ -1,4 +1,4 @@
-#[summary("증명 함수와 유령 문맥: 거부되는 것 (ADR-0062 §1·§4, backlog T1-18)")]
+#[summary("Proof functions and ghost context: what is rejected (ADR-0062 §1·§4)")]
 mod pe {
     spec fn small(x: i64) -> bool {
         x < 100

@@ -1,4 +1,4 @@
-#[summary("조건과 배열: &&·|| 오른쪽의 사실, 배열 값 if, 지역 배열을 술어에")]
+#[summary("Conditions and arrays: facts on the right of &&·||, if with array values, local arrays in predicates")]
 mod cond {
     spec fn first_is_one(a: &[i64]) -> bool { a.len() > 0 && a[0] == 1 }
 

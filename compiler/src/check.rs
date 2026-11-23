@@ -135,7 +135,7 @@ fn receiver_adjust(
 /// The built-in methods that change their receiver: `Vec`'s `push`,
 /// `pop`, `truncate`, `as_mut_slice` and `copy_within`, and `String`'s
 /// `push` and `push_str`. The verifier havocs a receiver of one of them in a
-/// loop (backlog 1B-56: `push_str` was missing, so a loop's invariant over
+/// loop (`push_str` was missing, so a loop's invariant over
 /// the length it grew was assumed of the length before the loop).
 pub const RECEIVER_MUT_METHODS: &[&str] = &[
     "push",
@@ -300,8 +300,7 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
             // through the items made for it.
             diags.items.retain(|x| !quiet.contains(&x.span.file));
             // One finding once: a closure's clause is checked where the
-            // lowering put it, its spec method and its `call` (backlog
-            // 2V-20f), at the span written.
+            // lowering put it, its spec method and its `call`, at the span written.
             let mut seen = BTreeSet::new();
             diags.items.retain(|x| {
                 seen.insert((x.code, x.span.file, x.span.lo, x.span.hi, x.message.clone()))
@@ -349,8 +348,7 @@ pub fn check_resolved(mut p: Program, diags: &mut Diags) -> (Program, crate::ver
     }
 }
 
-/// The declarations the checker reads before any body (`bmb dump decls`,
-/// backlog 4D-03a): the lowering, the constants and pass 1 of
+/// The declarations the checker reads before any body (`bmb dump decls`): the lowering, the constants and pass 1 of
 /// `check_program`, then one JSONL row per data type, function signature,
 /// trait and accepted trait `impl`, each kind by path. Types are written by
 /// `ty_str`. A row's keys are fixed, so another implementation's rows
@@ -452,8 +450,8 @@ pub fn dump_decls(mut p: Program, diags: &mut Diags) -> String {
     out
 }
 
-/// What the checker's bodies compute (`bmb dump types|moves`, backlog
-/// 4D-03e1): `p` checked and resolved (`check_resolved`), then JSONL rows
+/// What the checker's bodies compute (`bmb dump types|moves`):
+/// `p` checked and resolved (`check_resolved`), then JSONL rows
 /// another implementation's rows compare with byte for byte. `file` names a
 /// file of the source map. A program with an error has rows too: the
 /// checker goes on after a finding, and what it went on with is compared.
@@ -566,7 +564,7 @@ pub fn dump_tables(
     out
 }
 
-/// The normal form's method calls (ADR-0051, backlog 2M-02): `src` with
+/// The normal form's method calls (ADR-0051): `src` with
 /// each call by path `T::f(a, ..)` of a method written `x.f(..)`, where
 /// that names the same function the same way. `resolved` and `tables` are
 /// `src` checked (`check_resolved`). The rewrite is checked again: a
@@ -907,7 +905,7 @@ pub fn adt_subst(adt: &Adt, t: &TypeKind) -> BTreeMap<String, TypeKind> {
 /// Whether the struct instance `t` contains itself through structs alone
 /// (fields, `Vec`s, arrays, `Box`es, no enum in between): the prover
 /// declares it as a datatype of one constructor instead of a tuple of
-/// leaves (ADR-0047 §3, backlog 2O-03d).
+/// leaves (ADR-0047 §3).
 pub fn struct_cycle(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
     fn parts(t: &TypeKind, adts: &BTreeMap<String, Adt>, out: &mut Vec<TypeKind>) {
         match t {
@@ -982,7 +980,7 @@ pub struct FnSig {
     /// A method of a trait declaration (`unit::Trait::f`): its first type
     /// parameter is `Self` (ADR-0046 §2).
     pub trait_of: Option<String>,
-    /// A trait method with a default body (ADR-0046 §2, backlog 2T-07c):
+    /// A trait method with a default body (ADR-0046 §2):
     /// an impl that does not define it runs this one.
     pub default: bool,
     /// The definition's span (`defs` finds trait `impl` functions by it).
@@ -1045,7 +1043,7 @@ pub fn dispatch(
     let path = i.fn_path(name);
     if !fns.contains_key(&path) {
         // The impl leaves it out: the trait's default body runs, for the
-        // impl's type (backlog 2T-07c).
+        // impl's type.
         return fns[target]
             .default
             .then(|| (target.to_string(), args.to_vec()));
@@ -1102,7 +1100,7 @@ pub fn defs_of<'p>(
                 }
             }
         }
-        // Default method bodies (backlog 2T-07c), generic in `Self`.
+        // Default method bodies, generic in `Self`.
         for t in &m.traits {
             for tf in t.fns.iter().filter(|tf| tf.has_body) {
                 out.push((
@@ -1131,7 +1129,7 @@ pub fn uses_target(name: &str, mp: &str, fns: &BTreeMap<String, FnSig>) -> Optio
     if fns.get(name).is_some_and(|s| !s.builtin) {
         return Some(name.to_string());
     }
-    // `<T as Tr>::m` with names of this unit (backlog 2D-31): each side is
+    // `<T as Tr>::m` with names of this unit: each side is
     // unit-relative when it is one segment, as a plain name is.
     let (head, m) = name.strip_prefix('<')?.split_once(">::")?;
     let (ty, tr) = head.split_once(" as ")?;
@@ -1212,10 +1210,10 @@ fn reserved_name(n: &str) -> bool {
 pub struct Checker<'a> {
     diags: &'a mut Diags,
     pub fns: BTreeMap<String, FnSig>,
-    /// Declared structs and enums by full path (backlog 2B-04).
+    /// Declared structs and enums by full path.
     pub adts: BTreeMap<String, Adt>,
     /// Per unit, the names its `use` items import and their full paths
-    /// (backlog 2V-15: rewritten by E0214).
+    /// (rewritten by E0214).
     imports: BTreeMap<String, BTreeMap<String, String>>,
     /// Exec-to-exec and spec-to-spec call edges, by path.
     calls: BTreeMap<String, BTreeSet<String>>,
@@ -1262,7 +1260,7 @@ pub struct Checker<'a> {
     pub trait_impls: Vec<TraitImplInfo>,
     /// The `impl Trait for T` blocks of one type reported for their head
     /// (E0420, E0311, E0312): method calls still find their trait, so the one
-    /// fault is not reported again as E0404 at every call (backlog 2V-22).
+    /// fault is not reported again as E0404 at every call.
     rejected_impls: Vec<TraitImplInfo>,
     /// The rejected impls that overlap an earlier one (E0311): a second
     /// impl of the type, so what it lacks of the trait is not reported.
@@ -1273,7 +1271,7 @@ pub struct Checker<'a> {
     /// The type parameters in scope where types are resolved.
     tparams: Vec<TParam>,
     /// The type parameters (by their span) that their definition uses as a
-    /// `Vec` element: bound `elem` (backlog 2T-10, `elem_params`).
+    /// `Vec` element: bound `elem` (`elem_params`).
     elem_params: BTreeSet<(u32, u32, u32)>,
     /// Calls of generic functions: caller, callee, span, type arguments
     /// (E0430 needs the recursive ones).
@@ -1416,8 +1414,7 @@ pub fn ty_str(t: &TypeKind) -> String {
 }
 
 /// The type `ty_str` printed (`ty_str(&parse_ty(&ty_str(t))?) ==
-/// ty_str(t)`), for stored results (the incremental IR cache, backlog
-/// 2T-04). A one-segment name other than `Option` and `Result` is a type
+/// ty_str(t)`), for stored results (the incremental IR cache). A one-segment name other than `Option` and `Result` is a type
 /// parameter.
 pub fn parse_ty(s: &str) -> Option<TypeKind> {
     fn ty(s: &str) -> Option<TypeKind> {
@@ -1510,7 +1507,7 @@ fn is_int(t: &TypeKind) -> bool {
 }
 
 /// The number of arguments of a bit method of the integer types (ADR-0048
-/// §2, backlogs 2N-03 and 2N-09), as in Rust: a rotation or wrapping shift
+/// §2), as in Rust: a rotation or wrapping shift
 /// takes its `u32` amount; the counts, `swap_bytes` and `reverse_bits` take
 /// none.
 pub fn bit_method_arity(m: &str) -> Option<usize> {
@@ -1564,7 +1561,7 @@ pub fn is_move(t: &TypeKind, adts: &BTreeMap<String, Adt>) -> bool {
 }
 
 /// `is_move` where the type parameters `moving` (those without a `Copy`
-/// bound, backlog 2O-04) move too.
+/// bound) move too.
 pub fn is_move_in(t: &TypeKind, adts: &BTreeMap<String, Adt>, moving: &BTreeSet<String>) -> bool {
     fn go(
         t: &TypeKind,
@@ -1634,7 +1631,7 @@ fn mk(kind: TypeKind) -> Box<Type> {
     })
 }
 
-/// The system built-ins (ADR-0091 §2, backlog 4C-02): path, parameters,
+/// The system built-ins (ADR-0091 §2): path, parameters,
 /// result and effects. Slice (a): the process's exit, standard error and
 /// arguments.
 fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
@@ -1742,7 +1739,7 @@ fn system_builtins() -> Vec<(&'static str, Vec<TypeKind>, TypeKind, Effects)> {
             io_result(TypeKind::Vec(mk(TypeKind::String))),
             Effects::ALLOC.union(Effects::IO).union(Effects::NONDET),
         ),
-        // Backlog 4C-06: `metadata(path)` follows a symbolic link (`stat`),
+        // `metadata(path)` follows a symbolic link (`stat`),
         // `symlink_metadata(path)` does not (`lstat`); `write_new(path,
         // data)` writes a file that must not exist yet (Rust's
         // `File::create_new(path)?.write_all(data)`: a planted link is not
@@ -2023,11 +2020,11 @@ pub fn is_child(t: &TypeKind) -> bool {
     *v == child_ty()
 }
 
-/// The help of E0402 for an array inside an array element (backlog 2B-14).
+/// The help of E0402 for an array inside an array element.
 const ARRAY_ELEMENT_HELP: &str = "an array element is a scalar, a struct or enum, a `Box` or a fixed-size array; for growable elements use `Vec<Vec<T>>`";
 
 /// The message of E0402 for a value or a written type that is no array
-/// element (backlog 2V-23): one wording for both.
+/// element: one wording for both.
 fn array_elem_message(found: &TypeKind) -> String {
     format!(
         "array elements are scalars, structs, enums, `Box`es or arrays, found `{}`",
@@ -2035,8 +2032,7 @@ fn array_elem_message(found: &TypeKind) -> String {
     )
 }
 
-/// Whether `e` may be the element of a fixed-size array (backlog 2V-04b,
-/// 2V-22): a scalar, a struct or enum, a `Box`, or such an array again; not
+/// Whether `e` may be the element of a fixed-size array: a scalar, a struct or enum, a `Box`, or such an array again; not
 /// a `Vec` or a `String`. The one rule of written array types and of the
 /// values in `[a, b]` and `[v; N]`, so it reads a type as written and as
 /// resolved.
@@ -2114,7 +2110,7 @@ impl<'a> Checker<'a> {
                 impl_generics: 0,
             },
         );
-        // The system interface (ADR-0091, backlog 4C-02): a closed list of
+        // The system interface (ADR-0091): a closed list of
         // built-ins under Rust's paths, implemented by the IR runtime.
         for (path, params, ret, effect) in system_builtins() {
             fns.insert(
@@ -3067,7 +3063,7 @@ impl<'a> Checker<'a> {
 
     /// The type parameters `gs` (ADR-0046). With `report`, their problems
     /// are diagnosed (once per definition): an unknown bound, a duplicate
-    /// name. A parameter without `Copy` moves (backlog 2O-04).
+    /// name. A parameter without `Copy` moves.
     fn tparams_of(&mut self, gs: &[TypeParam], report: bool, mp: &str) -> Vec<TParam> {
         let mut out: Vec<TParam> = Vec::new();
         for g in gs {
@@ -3180,14 +3176,13 @@ impl<'a> Checker<'a> {
     }
 
     /// The type parameters in scope without a `Copy` bound: their values
-    /// move (backlog 2O-04).
+    /// move.
     fn moving_params(&self) -> BTreeSet<String> {
         moving_of(&self.tparams)
     }
 
     /// Whether `t` has the built-in trait `b` (`Eq` or `Ord`): the integer
-    /// types, `bool`, `char`, `String` (Rust's byte-lexicographic order,
-    /// backlog 4B-04), and a type parameter in scope bounded by it (`Ord`
+    /// types, `bool`, `char`, `String` (Rust's byte-lexicographic order), and a type parameter in scope bounded by it (`Ord`
     /// includes `Eq`). Not `f64`: NaN is not equal to itself (ADR-0061 §1).
     fn has_builtin(&self, t: &TypeKind, b: &str) -> bool {
         match t {
@@ -3302,7 +3297,7 @@ impl<'a> Checker<'a> {
                             ),
                         )
                         .fix(
-                            "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)",
+                            "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them",
                             None,
                         ),
                     );
@@ -3358,7 +3353,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Recursive types (ADR-0047 §1, backlog 2O-02). A type that contains
+    /// Recursive types (ADR-0047 §1). A type that contains
     /// itself by value has no finite size (E0421: put the recursion in a
     /// `Box`); one whose every value would be infinite has no value at all
     /// (E0421: end the recursion in a variant). A generic type may contain
@@ -3980,7 +3975,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Whether `e` may be a `Vec` element: a scalar, a struct or enum
-    /// without arrays, another `Vec` or a `Box` of one (backlog 2O-03b).
+    /// without arrays, another `Vec` or a `Box` of one.
     fn vec_elem_ok(&self, e: &TypeKind) -> bool {
         match e {
             TypeKind::Named { .. } => !self.holds_array(e, &mut BTreeSet::new()),
@@ -3988,7 +3983,7 @@ impl<'a> Checker<'a> {
             // A `String` is a `Vec<u8>` (ADR-0050 §4).
             TypeKind::String => true,
             // Its definition gives it the bound `elem`, which every
-            // instantiation checks (backlog 2T-10).
+            // instantiation checks.
             TypeKind::Param(_) => true,
             other => is_scalar(other),
         }
@@ -4023,7 +4018,7 @@ impl<'a> Checker<'a> {
     fn collect_mod(&mut self, m: &Mod, prefix: &str) {
         let mp = format!("{prefix}{}", m.name.name);
         // `use` is not part of the language: the item goes, and every name
-        // it imports is written in full where it is used (backlog 2V-15).
+        // it imports is written in full where it is used.
         for u in &m.uses {
             let full = u
                 .path
@@ -4284,7 +4279,7 @@ impl<'a> Checker<'a> {
 
     /// The `impl Trait for T` block at `span` and whether its head was
     /// rejected (E0235, E0420, E0312, E0311). A rejected impl's functions
-    /// are still collected and checked (backlog 2V-23): their faults are
+    /// are still collected and checked: their faults are
     /// the program's whatever the head becomes. `None`: the head names no
     /// trait or no type.
     fn impl_info(&self, span: Span) -> Option<(TraitImplInfo, bool)> {
@@ -4695,8 +4690,7 @@ impl<'a> Checker<'a> {
         self.fns.contains_key(&p).then_some(p)
     }
 
-    /// The E0201 fixes of `let x = 0;` and `let v = Vec::new();` (backlog
-    /// 2N-12): the type comes from the local's first use after it, as
+    /// The E0201 fixes of `let x = 0;` and `let v = Vec::new();`: the type comes from the local's first use after it, as
     /// Rust's inference would take it: the other operand of an arithmetic
     /// or comparison operator (not a literal), an index (`usize`), an
     /// argument of a function (its parameter's type), and for a `Vec` its
@@ -5022,12 +5016,11 @@ impl<'a> Checker<'a> {
 
     /// The shapes a parameter's type may have. `resolved` is false when the
     /// type is already reported (a type inside it is the fault): the shape
-    /// of the reference around it is not a second one (backlog 2V-22).
+    /// of the reference around it is not a second one.
     fn check_param_type(&mut self, t: &Type, kind: FnKind, resolved: bool) {
         match &t.kind {
             TypeKind::Ref { mutable, inner } => match &inner.kind {
-                // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2), `&[Vec<T>]`
-                // (backlog 2O-03b).
+                // `&[T]`, `&Point`, `&[Point]` (ADR-0026 §2), `&[Vec<T>]`.
                 TypeKind::Slice(e)
                     if array_elem_ok(&e.kind)
                         || matches!(&e.kind, TypeKind::Named { path, .. } if path.len() == 1 && (path[0] == "Vec" || path[0] == "String")) =>
@@ -5051,7 +5044,7 @@ impl<'a> Checker<'a> {
                         self.ghost_mut_param(t.span, kind);
                     }
                 }
-                // `&i64`, `&mut bool` (backlog 2T-08): a receiver of a
+                // `&i64`, `&mut bool`: a receiver of a
                 // trait impl for a scalar, an out-parameter.
                 k if is_scalar(k) => {
                     if *mutable && kind != FnKind::Exec {
@@ -5171,7 +5164,7 @@ impl<'a> Checker<'a> {
     }
 
     /// An element of an array literal or repeat: the element rule of the
-    /// array type (backlog 1B-35, 2B-14, 2V-04b, 2V-22), then `Copy` for a
+    /// array type, then `Copy` for a
     /// repeat. False when the value is no element: the literal then has
     /// the reported type, so an enclosing literal does not report it again.
     fn literal_elem(&mut self, t: &TypeKind, span: Span, repeat: bool) -> bool {
@@ -5338,8 +5331,7 @@ impl<'a> Checker<'a> {
     fn check_contract(&mut self, cx: &mut FnCtx, e: &Expr, ensures: bool) {
         let mode = Mode::Spec { allow_old: ensures };
         let t = self.expr(cx, e, Some(&TypeKind::Bool), mode);
-        // A clause is a `bool` (found by the conformance suite, backlog
-        // 5A-02: an integer clause reached the solver).
+        // A clause is a `bool` (found by the conformance suite: an integer clause reached the solver).
         self.expect_ty(&t, &TypeKind::Bool, e.span);
         let named = match &e.kind {
             ExprKind::Call { path, .. } => self
@@ -5445,7 +5437,7 @@ impl<'a> Checker<'a> {
     }
 
     /// E0301 for a local that is not in scope, with the one visible local
-    /// closest to it (edit distance at most 2) as the fix (backlog 2D-18).
+    /// closest to it (edit distance at most 2) as the fix.
     /// A reference to a `const` (ADR-0052): its type, the value kept for
     /// the resolved program. A `const` that did not evaluate is an error
     /// already: its references are too.
@@ -5532,7 +5524,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A `const` (ADR-0052, backlog 2V-19b): its type holds only values
+    /// A `const` (ADR-0052): its type holds only values
     /// (E0437) and its initializer has that type. The evaluator
     /// (`consts::resolve`) has reported what only evaluation finds.
     fn check_const(&mut self, c: &ConstDef, mp: &str) {
@@ -5604,7 +5596,7 @@ impl<'a> Checker<'a> {
     }
 
     /// E0401 with the fix `*e` when `e` is a `&T` / `&mut T` given where a
-    /// struct or enum `T` is expected (backlog 2B-16: `moved(old(self), ..)`).
+    /// struct or enum `T` is expected (`moved(old(self), ..)`).
     /// Whether it reported.
     fn deref_fix(&mut self, found: &TypeKind, want: &TypeKind, e: &Expr) -> bool {
         let TypeKind::Ref { inner, .. } = found else {
@@ -5754,8 +5746,7 @@ impl<'a> Checker<'a> {
                 // Rust habit: infer the type only to offer it as the fix.
                 let t = self.expr(cx, init, None, mode);
                 // A bare integer literal or `Vec::new()` says little: the
-                // fix takes the type from the local's first use (backlog
-                // 2N-12, `settle_lets`).
+                // fix takes the type from the local's first use (`settle_lets`).
                 let literal = match &init.kind {
                     ExprKind::Int(..) => true,
                     ExprKind::Unary(UnOp::Neg, x) => matches!(x.kind, ExprKind::Int(..)),
@@ -5805,7 +5796,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 let lty = self.canon(ty, &cx.mod_path.clone(), true);
-                // `let w: T = v;` types an untyped `v` (2N-12, `settle_lets`).
+                // `let w: T = v;` types an untyped `v` (`settle_lets`).
                 if let ExprKind::Var(v) = &init.kind {
                     self.typed_uses
                         .push((v.name.clone(), init.span.lo, lty.clone()));
@@ -6258,8 +6249,7 @@ impl<'a> Checker<'a> {
                 }
             },
             // An element of an array field or of an inner array: `s.w[i] = v`,
-            // `p.q.w[i] = v` (backlog 2B-15), `g[i][j] = v`, `b.r[i].c[j] = v`
-            // (2V-04b), or of a boxed array: `(*b)[i] = v` (2O-01). The base's type is recorded for the back ends
+            // `p.q.w[i] = v`, `g[i][j] = v`, `b.r[i].c[j] = v`, or of a boxed array: `(*b)[i] = v`. The base's type is recorded for the back ends
             // (assignment targets have none otherwise).
             ExprKind::Index { base, index }
                 if matches!(
@@ -6478,7 +6468,7 @@ impl<'a> Checker<'a> {
     }
 
     /// `base.name` for a struct (or a reference to one).
-    /// `&v[lo..hi]` for a `&[T]` parameter (backlog 4C-05): `v` an array,
+    /// `&v[lo..hi]` for a `&[T]` parameter: `v` an array,
     /// `Vec` or slice of the integer type `T` (read-only), `lo` and `hi`
     /// `usize`. The bounds are an obligation (E0805); the slice is the
     /// elements from `lo` to `hi`.
@@ -7563,7 +7553,7 @@ impl<'a> Checker<'a> {
             let name = path.last().unwrap().name.clone();
             self.instance(&tp, &tm, &format!("`{name} {{ .. }}`"), span)
         };
-        // The fields in declaration order (ADR-0080, backlog 2B-13): the
+        // The fields in declaration order (ADR-0080): the
         // order is the order of evaluation, so the normal form does not sort
         // them and a literal that gives them in another order is fixed by
         // writing them in declaration order.
@@ -7668,7 +7658,7 @@ impl<'a> Checker<'a> {
         }
         // An untyped local where a type is expected takes that type: the
         // argument of a generic call with type arguments, a field of a
-        // generic struct expression (2N-13, `settle_lets`).
+        // generic struct expression (`settle_lets`).
         if mode == Mode::Exec
             && let ExprKind::Var(v) = &e.kind
             && let Some(x) = expected
@@ -7945,7 +7935,7 @@ impl<'a> Checker<'a> {
                 }
                 // The prover holds a recursive struct as an uninterpreted
                 // value whose fields are facts of the function's query
-                // (ADR-0047 §3, backlog 2O-03d): there is no term for one in
+                // (ADR-0047 §3): there is no term for one in
                 // a definition's axiom.
                 if mode != Mode::Exec && struct_cycle(&t, &self.adts) {
                     self.diags.push(
@@ -8135,8 +8125,7 @@ impl<'a> Checker<'a> {
             // `!` is logical on `bool` and bitwise on integers (ADR-0048 §2).
             ExprKind::Unary(UnOp::Not, inner) => {
                 // Without an expected type (a method receiver) the operand
-                // decides: `(!(a ^ 9)).rotate_left(1)` is bitwise (backlog
-                // 2N-04).
+                // decides: `(!(a ^ 9)).rotate_left(1)` is bitwise.
                 let hint = expected.filter(|t| is_int(t) || **t == TypeKind::Bool);
                 let t = self.expr(cx, inner, hint, mode);
                 match t {
@@ -8210,7 +8199,7 @@ impl<'a> Checker<'a> {
             ExprKind::Method { recv, name, args } => {
                 self.method(cx, recv, name, args, e.span, mode)
             }
-            // An integer from its bytes (backlog 2N-09c).
+            // An integer from its bytes.
             ExprKind::Call { path, args, .. } if from_bytes_call(path).is_some() => {
                 let (i, _) = from_bytes_call(path).expect("a byte conversion");
                 let bt = bytes_ty(i);
@@ -8271,7 +8260,7 @@ impl<'a> Checker<'a> {
                 let x = args.first().map(crate::fmt::expr_text).unwrap_or_default();
                 if let Some(t) = from_call(path) {
                     // `u32::from()`, `u32::from(a, b)`: there is no operand
-                    // to write the conversion of (backlog 4D-32).
+                    // to write the conversion of.
                     if args.len() != 1 {
                         self.diags.push(
                             Diag::new(
@@ -8529,8 +8518,7 @@ impl<'a> Checker<'a> {
                 collect_triggers(body, &mut triggers);
                 if triggers.is_empty() {
                     // One bound variable: its first `name[var]` term is the
-                    // trigger the written corpora chose every time (2R-02,
-                    // 36 of 36), so the fix marks it (backlog 2R-04g).
+                    // trigger the written corpora chose every time (36 of 36), so the fix marks it.
                     let first = match binders.as_slice() {
                         [b] => first_index_on(body, &b.name.name),
                         _ => None,
@@ -8897,7 +8885,7 @@ impl<'a> Checker<'a> {
                 }
                 // Structural `==` on data types, arrays and slices is a
                 // specification term only (ADR-0026 §2; elements below the
-                // length, backlog 2V-05).
+                // length).
                 let slice = matches!(&lt, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)));
                 // A type parameter: equality in specifications (ADR-0046 §4);
                 // in code it needs the bound `Eq` (traits, backlog 2T).
@@ -8998,7 +8986,7 @@ impl<'a> Checker<'a> {
                     // is not in the first range (ADR-0061 §3).
                     BinOp::Rem => is_int(&lt),
                     // A `char` compares by its scalar value and `false < true`
-                    // (Rust's `Ord`, ADR-0046 §1; backlog 5A-04).
+                    // (Rust's `Ord`, ADR-0046 §1).
                     _ if op.is_cmp() && matches!(lt, TypeKind::Char | TypeKind::Bool) => true,
                     _ => is_int(&lt) || lt == TypeKind::F64,
                 };
@@ -9045,8 +9033,7 @@ impl<'a> Checker<'a> {
     /// and spec fn calls (whose bodies the prover unfolds, E0818 when it
     /// cannot). A scalar read of another value (an element, a field, a
     /// value behind a reference, a method of a non-scalar receiver such as
-    /// `v.len()`) is a variable of the sub-proof (backlog 2N-11,
-    /// `verify::abstract_reads`) unless it names a `let` of the assertion.
+    /// `v.len()`) is a variable of the sub-proof (`verify::abstract_reads`) unless it names a `let` of the assertion.
     /// Anything else (a quantifier, `old`, a data value) is E0515.
     fn bit_vector_terms(&mut self, e: &Expr, bound: &mut Vec<String>) {
         let ty = self
@@ -9171,7 +9158,7 @@ impl<'a> Checker<'a> {
         let lt = self.expr(cx, l, expected.filter(|t| is_int(t)), mode);
         // Only a literal amount is a `u32`: an amount with a type of its own
         // keeps it (`x >> (match b { None => 1, Some(v) => v })` with
-        // `v: u8`, backlog 2N-04), as Rust infers it.
+        // `v: u8`), as Rust infers it.
         let hint = untyped_literal(r).then_some(&TypeKind::Int(IntTy::U32));
         let rt = self.expr(cx, r, hint, mode);
         if lt == TypeKind::Error || rt == TypeKind::Error {
@@ -9341,7 +9328,7 @@ impl<'a> Checker<'a> {
                 }
                 rt
             }
-            // The bytes of an integer (ADR-0048 §2, backlog 2N-09c): a
+            // The bytes of an integer (ADR-0048 §2): a
             // `[u8; w / 8]`, most or least significant first.
             m @ ("to_be_bytes" | "to_le_bytes") => {
                 if !args.is_empty() {
@@ -9367,7 +9354,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            // Bit methods (ADR-0048 §2, backlog 2N-03), Rust's signatures:
+            // Bit methods (ADR-0048 §2), Rust's signatures:
             // the amount is a `u32` and the counts are `u32`s.
             m if bit_method_arity(m).is_some() => {
                 let arity = bit_method_arity(m).expect("a bit method");
@@ -9406,7 +9393,7 @@ impl<'a> Checker<'a> {
                 }
                 // `is_power_of_two` is a method of the unsigned types only
                 // (Rust's); `checked_shl`/`checked_shr` are `Some` exactly
-                // when the amount is below the width (backlog 2N-09b).
+                // when the amount is below the width.
                 if m == "is_power_of_two" {
                     if rt.is_signed() {
                         self.diags.push(
@@ -10640,7 +10627,7 @@ impl<'a> Checker<'a> {
                 .map(|p| {
                     // A function value's type is one the compiler made
                     // (`closures::lower`): its name cannot be written, and
-                    // its argument is written `_` (ADR-0053, backlog 2V-20j).
+                    // its argument is written `_` (ADR-0053).
                     let s = ty_str_in(&m[&p.name], mp);
                     if s.contains('$') { "_".to_string() } else { s }
                 })
@@ -11203,7 +11190,7 @@ impl<'a> Checker<'a> {
             return None;
         }
         // A part of an array, `Vec` or slice of integers, `&v[lo..hi]`
-        // (backlog 4C-05, as `&s[a..b]` of text).
+        // (as `&s[a..b]` of text).
         if let Some((base, lo, hi)) = str_slice_of(a) {
             self.sub_slice_arg(cx, a, base, lo, hi, pm, &pe.kind, &want, mode);
             return None;
@@ -12222,8 +12209,7 @@ fn from_call(path: &[Ident]) -> Option<TypeKind> {
     }
 }
 
-/// `T::MIN` / `T::MAX` of an integer type (Rust's associated constants,
-/// backlog 2N-06): its type and value.
+/// `T::MIN` / `T::MAX` of an integer type (Rust's associated constants): its type and value.
 pub fn int_const(path: &[Ident]) -> Option<(TypeKind, i128)> {
     let [ty, c] = path else { return None };
     let t = int_type(&ty.name)?;
@@ -12273,7 +12259,7 @@ pub fn f64_method_sig(m: &str) -> Option<(usize, TypeKind)> {
 }
 
 /// `T::from_be_bytes(..)` / `T::from_le_bytes(..)` with `T` an integer type
-/// (ADR-0048 §2, backlog 2N-09c): `T` and whether the first byte is the
+/// (ADR-0048 §2): `T` and whether the first byte is the
 /// least significant.
 pub fn from_bytes_call(path: &[Ident]) -> Option<(IntTy, bool)> {
     let [ty, f] = path else { return None };
@@ -12344,8 +12330,7 @@ fn option_of(t: TypeKind) -> TypeKind {
 /// The implicit bound of a type parameter used as a `Vec` element.
 const ELEM: &str = "elem";
 
-/// The type parameters `p`'s definitions use as a `Vec` element, by span
-/// (backlog 2T-10): a struct's or enum's in its fields, a function's in its
+/// The type parameters `p`'s definitions use as a `Vec` element, by span: a struct's or enum's in its fields, a function's in its
 /// signature, `let`s and type arguments, an `impl`'s in any of its
 /// functions or its head.
 fn elem_params(p: &Program) -> BTreeSet<(u32, u32, u32)> {

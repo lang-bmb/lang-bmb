@@ -1,4 +1,4 @@
-#[summary("integer conversions that may be out of range (ADR-0028, backlog 2C-02)")]
+#[summary("integer conversions that may be out of range (ADR-0028)")]
 mod conv {
     #[effects(pure)]
     fn negative(x: i64) -> u64 { x as u64 }

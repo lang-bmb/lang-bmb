@@ -1,4 +1,4 @@
-#[summary("타입 매개변수의 Vec: Vec<T>를 담는 제네릭 구조체와 함수, 복사 T와 이동 T(String)의 인스턴스와 해제 (backlog 2T-10)")]
+#[summary("A Vec of a type parameter: generic structs and functions that hold Vec<T>, instances and drops for a copy T and a move T (String)")]
 mod gv {
     struct Bag<T> { items: Vec<T>, name: u64 }
 

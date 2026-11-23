@@ -1,4 +1,4 @@
-#[summary("정의 요약의 오류(ADR-0117): 문자열 하나, 한 번, 정의 앞에만")]
+#[summary("Errors of definition summaries (ADR-0117): one string, once, only before a definition")]
 mod sm {
     #[summary(one, two)]
     const A: i64 = 1;

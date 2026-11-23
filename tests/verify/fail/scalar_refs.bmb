@@ -1,4 +1,4 @@
-#[summary("스칼라 참조 실패: 호출 뒤 바뀐 자리 (ADR-0054)")]
+#[summary("Scalar reference failures: a place changed after the call (ADR-0054)")]
 mod g {
     struct Acc { total: i64, other: i64 }
 

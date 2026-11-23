@@ -1,4 +1,4 @@
-#[summary("Box 자리: 임시값 참조, 상자 속 배열, 제네릭 Box<T>, &mut *b, 루프 속 교체 (backlog 2O-01)")]
+#[summary("Box places: a reference to a temporary, an array in a box, generic Box<T>, &mut *b, replacement inside a loop")]
 mod bp {
     struct Pt { x: i64, y: i64 }
 

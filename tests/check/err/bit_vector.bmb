@@ -1,4 +1,4 @@
-#[summary("`assert(..) by (..)`와 비트 메서드의 검사 오류(backlog 2N-03): 비트 벡터 항이 아닌 것(E0515), 모르는 증명기(E0516), 메서드의 인자·타입")]
+#[summary("Check errors of `assert(..) by (..)` and the bit methods: what is not a bit-vector term (E0515), an unknown prover (E0516), method arguments and types")]
 mod bve {
     struct P { x: u32 }
 
@@ -61,13 +61,13 @@ mod bve {
         a
     }
 
-    // `is_power_of_two` is a method of the unsigned types (backlog 2N-09b).
+    // `is_power_of_two` is a method of the unsigned types.
     #[effects(pure)]
     fn signed_power(x: i32) -> bool {
         x.is_power_of_two()
     }
 
-    // The bytes of a `u32` are a `[u8; 4]` (backlog 2N-09c).
+    // The bytes of a `u32` are a `[u8; 4]`.
     #[effects(pure)]
     fn short_bytes(b: [u8; 2]) -> u32 {
         u32::from_be_bytes(b)

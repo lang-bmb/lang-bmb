@@ -1,4 +1,4 @@
-#[summary("checked and saturating arithmetic: wrong claims fail (ADR-0028 §3, backlog 2C-03)")]
+#[summary("checked and saturating arithmetic: wrong claims fail (ADR-0028 §3)")]
 mod am {
     spec fn exact(r: u64, x: u64, y: u64) -> bool { r == x + y }
 

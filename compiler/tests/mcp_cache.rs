@@ -1,6 +1,5 @@
-//! The MCP server's front-end cache (backlog 3A-03) and single-definition
-//! proof for `surface` (backlog 3A-04) change no answer. Through the CLI
-//! (backlog 4A-04): a long-lived `bmb mcp --stats` process, a new process
+//! The MCP server's front-end cache and single-definition
+//! proof for `surface` change no answer. Through the CLI: a long-lived `bmb mcp --stats` process, a new process
 //! per call, and `bmb map`/`bmb query`.
 
 mod common;
@@ -191,7 +190,7 @@ fn reads(defs: &[&str]) -> Vec<(&'static str, String)> {
             "{\"name\":\"surface\",\"args\":[\"no::such\"]}".into(),
         ),
         ("query", "{\"name\":\"nonsense\"}".into()),
-        // Scopes and edge kinds (backlog 2D-17).
+        // Scopes and edge kinds.
         ("query", "{\"name\":\"units\",\"args\":[\"lib\"]}".into()),
         ("query", "{\"name\":\"status\",\"args\":[\"lib\"]}".into()),
         (
@@ -265,13 +264,13 @@ fn long_lived_server_answers_like_a_fresh_one() {
     commit(
         &mut long,
         &[
-            unit("lib", "도구"),
+            unit("lib", "tools"),
             put("lib", SPECS),
             put("lib", DEC),
             put("lib", BAD),
             put("lib", REC),
             put("lib", ZERO),
-            unit("app", "진입점"),
+            unit("app", "entry point"),
             put("app", MAIN),
         ],
     );
@@ -300,7 +299,7 @@ fn long_lived_server_answers_like_a_fresh_one() {
     commit(
         &mut other,
         &[
-            unit("aaa", "앞"),
+            unit("aaa", "first"),
             put("aaa", "#[effects(pure)]\nfn one() -> i64 { 1 }"),
         ],
     );
@@ -336,7 +335,7 @@ fn run(args: &[&str]) -> String {
     text
 }
 
-/// `surface DEF` proves DEF alone (backlog 3A-04), with the row the
+/// `surface DEF` proves DEF alone, with the row the
 /// whole-program proof gives: without a cache, with a cold cache and with
 /// a warm one. A failing definition keeps its full count of failed
 /// obligations.
@@ -347,13 +346,13 @@ fn surface_proves_one_definition_with_the_same_row() {
     commit(
         &mut s,
         &[
-            unit("lib", "도구"),
+            unit("lib", "tools"),
             put("lib", SPECS),
             put("lib", DEC),
             put("lib", BAD),
             put("lib", REC),
             put("lib", ZERO),
-            unit("app", "진입점"),
+            unit("app", "entry point"),
             put("app", MAIN),
         ],
     );
@@ -397,7 +396,7 @@ fn surface_proves_one_definition_with_the_same_row() {
 }
 
 /// `status PATH..` and `tests PATH..` prove the definitions in the scope
-/// alone (backlog 2D-17), with the rows the whole-program proof gives:
+/// alone, with the rows the whole-program proof gives:
 /// without a cache, with a cold cache and with a warm one, through the CLI
 /// and through the MCP `query` tool (the same text).
 #[test]
@@ -407,13 +406,13 @@ fn status_of_a_scope_proves_its_definitions_with_the_same_rows() {
     commit(
         &mut s,
         &[
-            unit("lib", "도구"),
+            unit("lib", "tools"),
             put("lib", SPECS),
             put("lib", DEC),
             put("lib", BAD),
             put("lib", REC),
             put("lib", ZERO),
-            unit("app", "진입점"),
+            unit("app", "entry point"),
             put("app", MAIN),
         ],
     );

@@ -1,4 +1,4 @@
-#[summary("정수 폭의 틀린 프로그램: 좁은 타입의 넘침, 변환의 범위, MIN % -1 (backlog 2N-01b)")]
+#[summary("Wrong programs of integer widths: overflow of narrow types, the range of conversions, MIN % -1")]
 mod wf {
     // `127 + 1` leaves `i8`.
     #[effects(pure)]

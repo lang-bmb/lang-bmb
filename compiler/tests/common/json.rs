@@ -1,5 +1,4 @@
-//! A JSON reader and compact writer for tests that talk to the CLI (backlog
-//! 4A-04), independent of the compiler's own: RFC 8259 values, object keys
+//! A JSON reader and compact writer for tests that talk to the CLI, independent of the compiler's own: RFC 8259 values, object keys
 //! in source order, numbers as their text. The writer escapes `"`, `\`,
 //! `\n`, `\r`, `\t` and other control characters and nothing else, so a
 //! value read from the server's output writes back to the same bytes.

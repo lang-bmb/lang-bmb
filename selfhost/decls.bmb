@@ -1570,7 +1570,7 @@ mod decls {
             }
             if types::has(p.bounds.as_slice(), "elem") && !self.vec_elem_ok(t, 100000) {
                 if report {
-                    self.help("E0428", span, types::cat7("`", tt.as_str(), "` cannot be a `Vec` element, which `", p.name.as_str(), "` is in `", of, "`").as_str(), "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them (backlog 2O-03b)");
+                    self.help("E0428", span, types::cat7("`", tt.as_str(), "` cannot be a `Vec` element, which `", p.name.as_str(), "` is in `", of, "`").as_str(), "pass a scalar, a struct or enum without arrays, a `String`, or a `Vec` or `Box` of them");
                 }
                 return false;
             }

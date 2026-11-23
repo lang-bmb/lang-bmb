@@ -1,4 +1,4 @@
-#[summary("함수 값의 생성 이름은 소스 이름과 겹치지 않는다(backlog 2V-20j): 낮춤이 만드는 항목 이름에는 소스에 쓸 수 없는 `$`가 들어 있어, 예전 생성 이름과 같은 사용자 정의가 함께 선다")]
+#[summary("Generated names of function values do not collide with source names: the item names made by lowering contain `$`, which cannot be written in source, so a user definition with a former generated name stands alongside")]
 mod names {
     trait __fn_0_0 {
         #[effects(pure)]

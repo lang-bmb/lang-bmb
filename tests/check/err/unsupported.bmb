@@ -1,4 +1,4 @@
-#[summary("지원하지 않는 구문")]
+#[summary("Unsupported syntax")]
 mod unsupported {
     static COUNT: i64 = 0;
 

@@ -1,4 +1,4 @@
-#[summary("이동 타입의 trait `Self`: Vec·Box를 담은 타입의 impl, 값 수신자의 이동과 해제 (2T-09)")]
+#[summary("Trait `Self` of a move type: impls for types that hold Vec·Box, move and drop of a by-value receiver")]
 mod mt {
     trait Weigh {
         #[effects(pure)]

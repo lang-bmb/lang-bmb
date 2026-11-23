@@ -1,4 +1,4 @@
-// Alpha-equivalent duplicates (ADR-0059 §6, backlog T1-10): definitions
+// Alpha-equivalent duplicates (ADR-0059 §6): definitions
 // that differ only in names group together under `query duplicates`; the
 // lines below list every expected group (`compiler/tests/map.rs`).
 //
@@ -12,7 +12,7 @@
 // group: dupa::loop_sum dupb::acc
 // group: dupa::in_range dupb::within
 
-#[summary("원본")]
+#[summary("The original")]
 mod dupa {
     struct P { x: i64, y: i64 }
 
@@ -106,7 +106,7 @@ mod dupa {
     }
 }
 
-#[summary("이름만 다른 복제")]
+#[summary("A copy that differs only in names")]
 mod dupb {
     // Fields renamed and reordered in name, not in position.
     struct Q { b: i64, a: i64 }

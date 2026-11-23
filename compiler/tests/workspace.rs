@@ -1,4 +1,4 @@
-//! Workspaces and write transactions (ADR-0009, ADR-0019 §3, backlog 1D-08, 1D-09).
+//! Workspaces and write transactions (ADR-0009, ADR-0019 §3).
 
 mod common;
 
@@ -144,7 +144,7 @@ fn commit(root: &Path, ops: &[Op]) -> Result<Commit, String> {
 }
 
 const BASE: &str = r#"
-#[summary("기반")]
+#[summary("base")]
 mod core {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -157,7 +157,7 @@ mod core {
     }
 }
 
-#[summary("사용처")]
+#[summary("user")]
 mod app {
     #[effects(pure)]
     #[uses(core::pos)]
@@ -188,7 +188,7 @@ fn import_places_one_normal_form_file_per_unit() {
     assert_eq!(names, ["app.bmb", "core.bmb"]);
     // The layout is a function of the program, not of how it was split before.
     let other = temp("import2");
-    let (a, b) = BASE.split_at(BASE.find("#[summary(\"사용처").unwrap());
+    let (a, b) = BASE.split_at(BASE.find("#[summary(\"user").unwrap());
     import(
         &other,
         &[("x.bmb".into(), b.into()), ("y.bmb".into(), a.into())],
@@ -203,7 +203,7 @@ fn good_transaction_commits_and_reports_changes() {
     let c = commit(
         &root,
         &[
-            Op::Unit { path: "extra".into(), summary: "추가".into() },
+            Op::Unit { path: "extra".into(), summary: "extra".into() },
             put("extra", "#[effects(pure)]\nfn one() -> i64 { 1 }"),
             put("core", "#[effects(pure)]\n#[uses(pos)]\nfn dec(x: i64) -> i64\n    requires pos(x),\n{\n    x - 1 + 0\n}"),
         ],
@@ -316,7 +316,7 @@ fn malformed_transactions_are_refused() {
 }
 
 /// Unit and definition paths become file names: anything but `::`-separated
-/// identifiers is rejected and nothing is written (backlog 1D-15).
+/// identifiers is rejected and nothing is written.
 #[test]
 fn invalid_paths_are_rejected_and_write_nothing() {
     let outer = temp("traversal");
@@ -401,7 +401,7 @@ fn invalid_paths_are_rejected_and_write_nothing() {
 }
 
 /// `put` takes items only: nested units, code that closes the wrapper, and
-/// code without an item are errors, not silently dropped (1D-19).
+/// code without an item are errors, not silently dropped.
 #[test]
 fn put_rejects_units_and_empty_code() {
     let root = init("putshape");
@@ -634,7 +634,7 @@ fn commit_leaves_no_temporary_files() {
         &[
             Op::Unit {
                 path: "extra".into(),
-                summary: "추가".into(),
+                summary: "extra".into(),
             },
             put("extra", "#[effects(pure)]\nfn one() -> i64 { 1 }"),
             Op::RemoveUnit { path: "app".into() },
@@ -650,13 +650,13 @@ fn commit_leaves_no_temporary_files() {
     assert_eq!(names, ["core.bmb", "extra.bmb"]);
 }
 
-// ---------- rename and expect (ADR-0059 §5, backlog T1-10) ----------
+// ---------- rename and expect (ADR-0059 §5) ----------
 
 /// Functions, a spec fn, a type with an `impl` and a trait impl, a trait
 /// with a bound and a default body, referred to from another unit by full
 /// path and from their own by short name.
 const RICH: &str = r#"
-#[summary("기반")]
+#[summary("base")]
 mod geo {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -710,7 +710,7 @@ mod geo {
     }
 }
 
-#[summary("사용처")]
+#[summary("user")]
 mod app {
     #[effects(pure)]
     #[uses(geo::pos)]
@@ -798,7 +798,7 @@ fn rename_rewrites_references_and_keeps_every_identity() {
                 ("geo::Area::twice", "geo::Surface::twice"),
             ],
         ),
-        // A trait's method (backlog T1-23): the declaration, the function
+        // A trait's method: the declaration, the function
         // of every `impl` and the calls.
         (
             "geo::Area::area",
@@ -836,7 +836,7 @@ fn rename_rewrites_references_and_keeps_every_identity() {
     }
 }
 
-/// Backlog T1-23: `rename` of a unit renames the `mod`, the file and every
+/// `rename` of a unit renames the `mod`, the file and every
 /// path written through it, and keeps every identity.
 #[test]
 fn rename_of_a_unit_rewrites_every_path_through_it() {
@@ -884,13 +884,13 @@ fn rename_of_a_unit_rewrites_every_path_through_it() {
     }
 }
 
-/// Backlog T1-23: a trait method is renamed in its declaration, in the
+/// A trait method is renamed in its declaration, in the
 /// `impl` of every unit (written by the trait's full path there), and at
 /// calls by path and by method syntax.
 #[test]
 fn rename_of_a_trait_method_reaches_every_impl_and_call() {
     let text = r#"
-#[summary("도형")]
+#[summary("shapes")]
 mod shape {
     trait Sized2 {
         #[effects(pure)]
@@ -912,7 +912,7 @@ mod shape {
     }
 }
 
-#[summary("쓰는 쪽")]
+#[summary("user side")]
 mod user {
     struct Bar { n: i64 }
 
@@ -959,7 +959,7 @@ mod user {
     assert_eq!(snapshot(&root), before);
 }
 
-/// Backlog T1-23: `move` takes a function of one unit into another. Its
+/// `move` takes a function of one unit into another. Its
 /// references are written by the new path, what it names of its old unit by
 /// full path, and every identity stays as it was.
 #[test]
@@ -1191,7 +1191,7 @@ fn rename_follows_an_invariant_predicate() {
     // `#[invariant(p)]` names its predicate as `#[uses]` does (ADR-0060 §1):
     // renaming the predicate rewrites the attribute and keeps every identity.
     const SRC: &str = r#"
-#[summary("불변식")]
+#[summary("invariant")]
 mod iv {
     #[invariant(ordered)]
     struct Span { lo: i64, hi: i64 }
@@ -1300,7 +1300,7 @@ fn every_corpus_program_round_trips_through_put() {
 }
 
 /// Two types with the same fields have one identity (ADR-0059 §1: a type's
-/// text is its structure and its trait `impl`s; backlog T1-28, ADR-0082).
+/// text is its structure and its trait `impl`s, ADR-0082).
 /// The tools that read identities still tell them apart: `expect` names a
 /// path, so a change to one type leaves an expectation on the other true;
 /// `rename` compares the identities as a multiset, so renaming one of two

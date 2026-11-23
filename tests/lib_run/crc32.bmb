@@ -1,4 +1,4 @@
-#[summary("실행: CRC-32 라이브러리의 차등 시험(T4-04). 표준 검사값 \"123456789\", 의사 난수 바이트열의 길이 0~64와 4096까지의 합, 한 바이트·두 바이트 입력 전부의 합, 이어 계산(update)의 분할. 기대 출력은 Python zlib.crc32로 같은 입력을 계산한 crc32_ref.py")]
+#[summary("Run: differential test of the CRC-32 library. The standard check value \"123456789\", sums over pseudo-random byte strings of length 0~64 and up to 4096, sums over every one-byte and two-byte input, splits of the continued computation (update). The expected output is crc32_ref.py, which computes the same inputs with Python zlib.crc32")]
 mod app {
     spec fn short(v: &[u8], n: usize) -> bool { v.len() <= n }
 
@@ -94,7 +94,7 @@ mod app {
             sum = sum.wrapping_add(wide(std::crc32::checksum(q.as_slice())));
         }
         show(b"sum4096", sum);
-        // One table serves every checksum (`update_with`, backlog 2N-03).
+        // One table serves every checksum (`update_with`).
         let t: [u32; 256] = std::crc32::table();
         let mut tsum: u64 = 0;
         for j in 0..total + 1 {

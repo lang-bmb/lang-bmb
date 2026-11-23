@@ -1,4 +1,4 @@
-#[summary("제네릭 아닌 함수의 호출: 스칼라 인자와 결과, 단위 값의 인자와 결과, 다른 단위와 안 단위의 함수, impl의 함수, print_i64와 print_u64, u32::from")]
+#[summary("Calls of non-generic functions: scalar arguments and results, arguments and results of the unit value, functions of another unit and of an inner unit, functions of an impl, print_i64 and print_u64, u32::from")]
 mod calls {
     struct P { x: i64 }
     impl P {
@@ -31,11 +31,11 @@ mod calls {
     }
 }
 
-#[summary("부르는 쪽보다 뒤의 단위")]
+#[summary("A unit after the caller")]
 mod other {
     #[effects(pure)]
     fn triple(x: i64) -> i64 { x * 3 }
-    #[summary("안 단위")]
+    #[summary("An inner unit")]
     mod deep {
         #[effects(pure)]
         fn four() -> i64 { 4 }

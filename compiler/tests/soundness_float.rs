@@ -1,4 +1,4 @@
-//! Soundness fuzzing of `f64` (backlog T2-03, ADR-0061 §7): random
+//! Soundness fuzzing of `f64` (ADR-0061 §7): random
 //! expressions over two `f64` variables and an `i32` (through `f64::from`)
 //! with `+ - * /`, unary `-`, `sqrt`, `abs`, `min`, `max`, comparisons,
 //! `is_nan`, `is_finite` and `if`, on inputs drawn from finite values,
@@ -386,7 +386,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             (c, k % 2 == 1)
         })
         .collect();
-    let mut src = String::from("#[summary(\"f64 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"f64 fuzzing\")]\nmod m {\n");
     for (k, b) in bodies.iter().enumerate() {
         let _ = write!(
             src,

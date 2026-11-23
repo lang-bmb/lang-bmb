@@ -1,5 +1,5 @@
 // A rejected trait impl (E0235, E0420, E0311) is still an impl of its type for
-// the calls that name its methods, and its functions are checked (2V-23).
+// the calls that name its methods, and its functions are checked.
 #[summary("t")]
 mod t {
     trait Tr {

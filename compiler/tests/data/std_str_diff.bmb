@@ -1,4 +1,4 @@
-#[summary("std::str 차등 시험: 표준 입력의 줄마다 `s\tp`를 읽어 모든 함수의 결과를 찍는다 (tests/stdlib.rs, backlog 4B-02)")]
+#[summary("std::str differential test: reads `s\tp` from each line of standard input and prints the result of every function (tests/stdlib.rs)")]
 mod diff {
     #[effects(io)]
     fn opt(r: Option<usize>) -> () {

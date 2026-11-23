@@ -1,4 +1,4 @@
-#[summary("trait 계약: 경계로 증명한 최댓값을 두 타입으로 실행 (ADR-0046 §4)")]
+#[summary("trait contracts: a maximum proved through the bound, run with two types (ADR-0046 §4)")]
 mod sc {
     trait Score {
         #[effects(pure)]

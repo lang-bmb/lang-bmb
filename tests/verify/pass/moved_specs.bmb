@@ -1,4 +1,4 @@
-#[summary("명세는 옮긴 값을 읽는다(ADR-0098, backlog 2T-12): assert, 루프 불변식, proof 블록이 옮긴 때의 값을 말한다")]
+#[summary("Specs read moved values (ADR-0098): assert, loop invariants and proof blocks speak of the value at the time of the move")]
 mod mvs {
     spec fn last_is<T>(v: &[T], k: &T) -> bool {
         v.len() > 0 && v[v.len() - 1] == *k

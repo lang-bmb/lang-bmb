@@ -1,4 +1,4 @@
-#[summary("소유 필드와 부분 이동 (ADR-0047 §2, backlog 2O-03)")]
+#[summary("Owned fields and partial moves (ADR-0047 §2)")]
 mod ow {
     struct Buf { data: Vec<i64>, n: i64 }
 

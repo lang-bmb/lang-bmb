@@ -1,4 +1,4 @@
-//! Workspace and write transactions (ADR-0009, ADR-0019 §3, backlog 1D-08, 1D-09).
+//! Workspace and write transactions (ADR-0009, ADR-0019 §3).
 //!
 //! A workspace is a directory whose `src/` holds one normal-form file per
 //! top-level unit. Agents never edit those files; they submit transactions.
@@ -36,7 +36,7 @@ pub enum Op {
     /// optimistic concurrency).
     Expect { def: String, id: String },
     /// Move a function or `spec fn` of a unit (full path) into the unit
-    /// `to` (backlog T1-23): references to it are written by its new path,
+    /// `to`: references to it are written by its new path,
     /// and what it names of its old unit by full path. No identity changes.
     Move { def: String, to: String },
 }
@@ -55,7 +55,7 @@ pub fn src_dir(root: &Path) -> PathBuf {
     root.join("src")
 }
 
-/// Fails when `p` exists and is a symbolic link (backlog 2D-20). A workspace's
+/// Fails when `p` exists and is a symbolic link. A workspace's
 /// files are laid out by the tools (ADR-0011), and its contents may come from
 /// someone else: a link would make reads and writes reach outside it.
 pub fn refuse_symlink(p: &Path) -> Result<(), String> {
@@ -69,7 +69,7 @@ pub fn refuse_symlink(p: &Path) -> Result<(), String> {
 }
 
 /// Writes `text` to a new file at `path`, removing whatever was there first
-/// (a planted link is removed, not followed; backlog 2D-20).
+/// (a planted link is removed, not followed).
 pub fn write_new(path: &Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
     match std::fs::remove_file(path) {
@@ -158,8 +158,7 @@ fn new_mod(name: &str, summary: &str) -> Mod {
     }
 }
 
-/// Splits a `::` path whose segments must all be identifiers (backlog 1D-15:
-/// unit names become file names, so `../x` must never get through).
+/// Splits a `::` path whose segments must all be identifiers (unit names become file names, so `../x` must never get through).
 fn segments<'p>(k: usize, what: &str, path: &'p str) -> Result<Vec<&'p str>, String> {
     let segs: Vec<&str> = path.split("::").collect();
     if segs.iter().all(|s| parser::is_ident(s)) {
@@ -490,7 +489,7 @@ fn rename(p: &mut Program, def: &str, to: &str) -> Result<(), String> {
         checked(p).ok_or("`rename` needs a program that checks; this one does not")?;
     let fn_sig = t.fns.get(def).filter(|s| !s.builtin);
     let segs: Vec<String> = def.split("::").map(String::from).collect();
-    // A unit (backlog T1-23): its declaration and every path through it.
+    // A unit: its declaration and every path through it.
     let as_strs: Vec<&str> = segs.iter().map(String::as_str).collect();
     if find_mod(&mut p.mods, &as_strs).is_some() && !t.adts.contains_key(def) && fn_sig.is_none() {
         return rename_unit(p, &resolved, &t, &segs, to);
@@ -659,7 +658,7 @@ impl Rewrite for Qualifier<'_> {
     }
 }
 
-/// Moves the function at `def` into unit `to` (backlog T1-23). The moved
+/// Moves the function at `def` into unit `to`. The moved
 /// function then names the functions, types and traits of its old unit by
 /// full path, and every reference to it is written by its new full path.
 /// As for a rename, every identity must stay as it was: otherwise (a short
@@ -1002,7 +1001,7 @@ fn finish(
         return (commit, None);
     }
     // The normal form writes method calls by path as method calls
-    // (ADR-0051, backlog 2M-02); what changed is read from it.
+    // (ADR-0051); what changed is read from it.
     let normal = check::methodize(&program, &resolved, &tables);
     let after = program_hashes(&normal, &tables.fns);
     let changed = after
@@ -1140,7 +1139,7 @@ pub fn commit(root: &Path, ops: &[Op]) -> Result<Commit, String> {
 /// Every unit name must be an identifier (it becomes a file name). New contents
 /// go to temporary files first and are renamed into place only when all of them
 /// were written, so a failed write leaves the old files untouched; stale files
-/// are removed last (backlog 1D-19).
+/// are removed last.
 pub fn write_units(root: &Path, units: &BTreeMap<String, String>) -> Result<(), String> {
     if let Some(bad) = units.keys().find(|u| !parser::is_ident(u)) {
         return Err(format!("unit name `{bad}` is not an identifier"));
@@ -1232,7 +1231,7 @@ pub fn parse_ops(json: &str) -> Result<Vec<Op>, String> {
 mod tests {
     use super::*;
 
-    // Moved from tests/workspace.rs (backlog 4A-04): what `bmb apply` reads,
+    // Moved from tests/workspace.rs: what `bmb apply` reads,
     // below the command line.
     #[test]
     fn ops_parse_from_json() {
@@ -1257,8 +1256,7 @@ mod tests {
         assert!(parse_ops(r#"[{"op":"rename","def":"a::f"}]"#).is_err());
     }
 
-    /// `write_units` itself refuses a unit name that is not an identifier
-    /// (backlog 1D-15), and writes nothing.
+    /// `write_units` itself refuses a unit name that is not an identifier, and writes nothing.
     #[test]
     fn write_units_refuses_a_name_that_is_not_an_identifier() {
         let outer = std::env::temp_dir().join(format!("bmb-ws-unit-{}", std::process::id()));

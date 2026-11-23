@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The gate's own scripts (INF-34, INF-35, INF-36): scripts/fresh.sh fails on
+"""The gate's own scripts: scripts/fresh.sh fails on
 a stale generated document within seconds and names it, the gate lock lets
 one holder run at a time, and scripts/tree_state.py sees what a run left."""
 import fcntl

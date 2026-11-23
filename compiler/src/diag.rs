@@ -506,7 +506,7 @@ pub const CODES: &[(&str, &str)] = &[
     ),
     (
         "W0914",
-        "a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, backlog 2N-07, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)",
+        "a compound assignment `t op= e`: the canonical form is `t = t op e` (an input alias, ADR-0095; `bmb fmt` and `bmb fix` rewrite it)",
     ),
     (
         "W0915",
@@ -571,7 +571,7 @@ pub struct Diag {
     pub fix: Option<Fix>,
     /// For E0811 (undecided): the code of the obligation the solver could
     /// not decide (`E0802` a postcondition, `E0807` an invariant kept, ..),
-    /// as a field of its own (backlog 2D-32).
+    /// as a field of its own.
     pub obligation: Option<&'static str>,
     /// For E0811: the inputs' bounds under which a search found no
     /// counterexample (`|integer| <= b`, unbounded lengths `<= l`, ADR-0108
@@ -692,27 +692,27 @@ pub fn json_str(s: &str) -> String {
 pub const RETIRED: &[(&str, &str)] = &[
     (
         "E0814",
-        "construct not supported by the proof gate (retired by backlog 2V-05: every construct is encoded)",
+        "construct not supported by the proof gate (retired: every construct is encoded)",
     ),
     (
         "E0203",
-        "`return` is not allowed (retired by backlog 2K-01a: `return` is part of the language, ADR-0049)",
+        "`return` is not allowed (retired: `return` is part of the language, ADR-0049)",
     ),
     (
         "E0204",
-        "`for` is not allowed (retired by backlog 2K-01d: the range `for` is part of the language, ADR-0049)",
+        "`for` is not allowed (retired: the range `for` is part of the language, ADR-0049)",
     ),
     (
         "E0206",
-        "the `?` operator is not allowed (retired by backlog 2K-01e: `?` is part of the language, ADR-0049)",
+        "the `?` operator is not allowed (retired: `?` is part of the language, ADR-0049)",
     ),
     (
         "E0234",
-        "a string literal: text is bytes, write `b\"...\"` (retired by backlog 2U-01: `\"...\"` is a `&str`, ADR-0050)",
+        "a string literal: text is bytes, write `b\"...\"` (retired: `\"...\"` is a `&str`, ADR-0050)",
     ),
     (
         "E0227",
-        "method calls are not allowed; call by path (retired by backlog 2M-01: `x.f(..)` calls a method, ADR-0051)",
+        "method calls are not allowed; call by path (retired: `x.f(..)` calls a method, ADR-0051)",
     ),
 ];
 
@@ -730,7 +730,7 @@ pub fn codes_jsonl() -> String {
 }
 
 /// The diagnostics reference page (`docs/diagnostics.md`), generated from
-/// `CODES` so it cannot drift (backlog 1A-08).
+/// `CODES` so it cannot drift.
 pub fn codes_markdown() -> String {
     let groups = [
         ("E01", "Lexical and syntax"),

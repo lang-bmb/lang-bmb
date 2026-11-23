@@ -1,10 +1,10 @@
-//! Proof gate corpus (backlog 1B-12).
+//! Proof gate corpus.
 //! - `tests/check/ok` and `tests/verify/pass`: every definition is proved.
 //! - `tests/verify/fail`: output matches the sibling `.jsonl`
 //!   (`BMB_BLESS=1` rewrites it), and every non-helper definition fails.
 
 //!
-//! Through the command line (backlog 4A-04): `bmb verify` (its stdout and
+//! Through the command line: `bmb verify` (its stdout and
 //! exit status), `--emit-smt` for the scripts and `bmb lint` for the
 //! vacuity points.
 
@@ -115,8 +115,7 @@ fn pass_corpus_is_proved() {
 }
 
 /// No reach point of the proved corpora, the run programs or the bench
-/// seed and baseline programs is refuted by its own proof (backlog 1B-44:
-/// a loop that kept a `Vec`'s length made two corpus proofs vacuous and
+/// seed and baseline programs is refuted by its own proof (a loop that kept a `Vec`'s length made two corpus proofs vacuous and
 /// nothing said so). One program per file; a bench `seed/src` directory is
 /// one program.
 #[test]
@@ -136,7 +135,7 @@ fn proofs_are_not_vacuous() {
             .collect();
         programs.push((format!("{set}/seed"), files));
     }
-    // BRB-ENCAP (backlog T0-09): one seed unit per task directory.
+    // BRB-ENCAP: one seed unit per task directory.
     let mut encap: Vec<PathBuf> = fs::read_dir(bench.join("brb-encap").join("seed"))
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -159,7 +158,7 @@ fn proofs_are_not_vacuous() {
     }
 }
 
-/// The Benchmarks Game programs (`bench/game`, backlog T3-01) are proved with
+/// The Benchmarks Game programs (`bench/game`) are proved with
 /// the standard library units they use. Running them takes tens of seconds,
 /// so the gate proves them and `bench/game/README.md` runs them.
 #[test]
@@ -213,14 +212,14 @@ fn fail_corpus_matches_expected() {
 
 /// An obligation that reveals a scalar leaf `spec fn` is first probed with
 /// the definition as a macro under 1% of the solver limit, then, undecided,
-/// solved with the quantified definition (backlog T2-05, ADR-0067). The
+/// solved with the quantified definition (ADR-0067). The
 /// counterexample comes from the probe, far below the limit (with the
 /// quantified definition alone the query reached it, `contracts::wrong_post`
 /// in the fail corpus).
 #[test]
 fn scalar_leaf_definitions_are_probed_as_macros() {
     let src = r#"
-#[summary("탐침")]
+#[summary("probe")]
 mod m {
     spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
 
@@ -333,7 +332,7 @@ fn benchmark_programs_are_proved() {
 #[test]
 fn hidden_predicate_hint_leads_to_a_proof() {
     let src = r#"
-#[summary("힌트")]
+#[summary("hint")]
 mod h {
     spec fn small(x: i64) -> bool { x < 100 }
 
@@ -374,8 +373,7 @@ mod h {
     assert!(run("bigger, small").ok);
 }
 
-/// A range `for` is encoded as its `while` expansion (ADR-0049 §2, backlog
-/// 2K-01d and 2R-04f): `let mut i = lo; while i < hi invariant lo <= i &&
+/// A range `for` is encoded as its `while` expansion (ADR-0049 §2): `let mut i = lo; while i < hi invariant lo <= i &&
 /// (i <= hi || i == lo), P decreases hi - i { body; i = i + 1; }`, with
 /// `if i == hi { break; }` before the step of `lo..=hi` and the step before
 /// each `continue`. The proof scripts are byte for byte the same.
@@ -412,7 +410,7 @@ fn for_queries_are_the_while_expansion() {
 }
 
 /// `x?` is encoded as `match x { None => return None, Some(v) => v }` (and
-/// `Ok(v) => v, Err(e) => return Err(e)`, ADR-0049 §3, backlog 2K-01e): the
+/// `Ok(v) => v, Err(e) => return Err(e)`, ADR-0049 §3): the
 /// proof scripts are byte for byte the same.
 #[test]
 fn try_queries_are_the_match_expansion() {
@@ -442,10 +440,10 @@ fn try_queries_are_the_match_expansion() {
     }
 }
 
-/// An agent's answer to BVB `vc-vv0039-max-of-list` (backlog T1-14): the
+/// An agent's answer to BVB `vc-vv0039-max-of-list`: the
 /// contract states membership with a recursive predicate, the hidden one
 /// with a quantifier. `{ENSURES}` and `{PROOF}` are filled per case.
-const VV0039: &str = r#"#[summary("과제 구현")]
+const VV0039: &str = r#"#[summary("task implementation")]
 mod tasks {
     spec fn non_empty(a: &[i64]) -> bool {
         a.len() > 0
@@ -537,7 +535,7 @@ fn vv0039_judge(body: &str) -> String {
 }
 
 /// ADR-0062 P5: the same-meaning contract the judge could not decide
-/// (T1-14) is proved with a lemma, both where the agent states the
+/// is proved with a lemma, both where the agent states the
 /// recursive form and where it proves the quantifier form itself.
 #[test]
 fn the_vv0039_equivalent_contract_is_proved_with_a_lemma() {
@@ -604,7 +602,7 @@ fn f64_cex(msg: &str, names: &[&str]) -> Vec<f64> {
         .collect()
 }
 
-/// G1 for `f64` (ADR-0061 §5, backlog T2-03): outside `by (bit_vector)`
+/// G1 for `f64` (ADR-0061 §5): outside `by (bit_vector)`
 /// the operations are uninterpreted, so the solver's model may be no IEEE
 /// arithmetic at all (`1.0 + 1.0 == 2.0` is satisfiable with `f64.add`
 /// free; `x + y == y + x` first gets both zeros with `f64.eq` false). Such
@@ -678,7 +676,7 @@ mod g {
     );
 }
 
-/// `--bounded-search` (ADR-0108 §1, backlog 2D-33): an obligation the solver
+/// `--bounded-search` (ADR-0108 §1): an obligation the solver
 /// cannot decide is asked once more with the inputs bounded. A model there
 /// is a counterexample of the obligation itself (E0802 with the values);
 /// none is the E0811 field `bounded`, but only when some input within the
@@ -742,7 +740,7 @@ fn bounded_search_turns_undecided_into_a_verdict() {
     );
 }
 
-/// `bmb probe` (ADR-0109, backlog 2D-35): candidate invariants for one loop,
+/// `bmb probe` (ADR-0109): candidate invariants for one loop,
 /// tried without writing. A candidate false on entry or not kept by the body
 /// leaves with its counterexample; one that does not check leaves with its
 /// error; the rest are the largest set that holds together, with which the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run a command while holding the gate lock (backlog INF-35). One gate at a
+# Run a command while holding the gate lock. One gate at a
 # time per repository, over all its worktrees: a gate under a second gate or
 # a gate-power run went past the health job's time limit (load 17), and the
 # verdict was the machine's, not the commit's. A second holder waits.

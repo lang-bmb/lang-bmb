@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The differential harness against stand-ins (backlog 4D-15): a program
+"""The differential harness against stand-ins: a program
 compared with itself is the same on every channel, and a stand-in that
 differs in one byte of one channel is caught on that channel."""
 import json

@@ -1,11 +1,11 @@
-//! Maps and read queries (ADR-0020, backlog 1D-05, 1D-06, 1D-12). Through
-//! the CLI (backlog 4A-04): `bmb map` and `bmb query`.
+//! Maps and read queries (ADR-0020). Through
+//! the CLI: `bmb map` and `bmb query`.
 
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const A: &str = r#"
-#[summary("탐색 대상")]
+#[summary("search target")]
 mod lib {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -35,7 +35,7 @@ mod lib {
 "#;
 
 const B: &str = r#"
-#[summary("호출자")]
+#[summary("caller")]
 mod app {
     #[effects(io)]
     #[uses(lib::pos)]
@@ -54,7 +54,7 @@ fn files(parts: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `bmb map LEVEL NAMES..` or `bmb query ARGS -- NAMES..` (backlog 4A-04)
+/// `bmb map LEVEL NAMES..` or `bmb query ARGS -- NAMES..`
 /// in a new directory holding `f`: stdout on success, else the output.
 fn request(f: &[(String, String)], req: &[&str]) -> Result<String, String> {
     static N: AtomicUsize = AtomicUsize::new(0);
@@ -112,7 +112,7 @@ fn maps_are_deterministic_and_layout_independent() {
 fn every_map_row_level_is_present() {
     let m = run(&files(&[("a.bmb", A), ("b.bmb", B)]), &["map", "all"]);
     for needle in [
-        "\"level\":\"L0\",\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"호출자\"",
+        "\"level\":\"L0\",\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"caller\"",
         "\"level\":\"L0\",\"kind\":\"def\",\"path\":\"lib::dec\",\"def_kind\":\"fn\"",
         "\"level\":\"L1\",\"path\":\"lib::dec\",\"def_kind\":\"fn\",\"signature\":\"fn dec(x: i64) -> (r: i64)\",\"requires\":[\"pos(x)\"],\"ensures\":[\"is_dec(x, r)\"],\"decreases\":null,\"effects\":\"pure\",\"uses\":[\"lib::is_dec\",\"lib::pos\"],\"status\":\"verified\"",
         "{\"level\":\"L2\",\"from\":\"app::main\",\"to\":\"lib::zero\",\"kind\":\"writes\",\"arg\":0}",
@@ -182,7 +182,7 @@ fn bad_queries_are_errors() {
 // `lib2::dec2` is `lib::dec` under another name and unit; the spec fns
 // repeat too. `lib2::other` has no twin.
 const DUP: &str = r#"
-#[summary("복제")]
+#[summary("duplicates")]
 mod lib2 {
     spec fn pos(x: i64) -> bool { x > 0 }
 
@@ -301,7 +301,7 @@ fn duplicates_groups_alpha_equivalent_definitions() {
     }
 }
 
-/// A huge depth stops once nothing new is reachable (backlog 1D-14).
+/// A huge depth stops once nothing new is reachable.
 #[test]
 fn edges_with_a_huge_depth_terminate() {
     let f = files(&[("a.bmb", A), ("b.bmb", B)]);
@@ -326,9 +326,9 @@ fn edges_with_a_huge_depth_terminate() {
     );
 }
 
-// Backlog 2D-11: call paths to `io` (DESIGN.md §7.2 effect view).
+// Call paths to `io` (DESIGN.md §7.2 effect view).
 const IO: &str = r#"
-#[summary("효과 경로")]
+#[summary("effect paths")]
 mod app {
     #[effects(io)]
     fn emit(x: i64) -> () {
@@ -364,7 +364,7 @@ mod app {
 }
 "#;
 
-/// The remaining test surface (backlog 2D-21): definitions whose calls reach
+/// The remaining test surface: definitions whose calls reach
 /// a built-in `io` operation, and definitions with a failed obligation
 /// (`twice` can overflow); `quiet` is declared `io` but reaches none, and
 /// spec fns never count.
@@ -493,7 +493,7 @@ mod geo {
 }
 "#;
 
-/// Data types in the maps (ADR-0026 §6, backlog 2B-07): types are L0 `def`
+/// Data types in the maps (ADR-0026 §6): types are L0 `def`
 /// rows with `def_kind` `struct`/`enum`, `impl` functions are `unit::T::f`,
 /// L2 `types` edges, type impact, and variant constructors are no calls.
 #[test]
@@ -608,7 +608,7 @@ mod iv {
     );
 }
 
-/// Effect sets in the maps (ADR-0030 §5, backlog 2F-03): `effects` adds
+/// Effect sets in the maps (ADR-0030 §5): `effects` adds
 /// `alloc` rows after the `io` ones, `effect E` lists who declares and who
 /// needs `E` and why, and L1 and `status` carry `effects_required` (`eff*`)
 /// and `test_reasons` (`alloc` is no reason).
@@ -713,7 +713,7 @@ mod q {
     );
 }
 
-/// Function values in the maps (backlog 2V-20h, ADR-0107): a `passes` edge
+/// Function values in the maps (ADR-0107): a `passes` edge
 /// from the definition whose body passes a closure or a function item to
 /// what it passes, the generated definitions at the place they stand for
 /// (the closure, the function, the bound), and `display` as diagnostics
@@ -773,7 +773,7 @@ mod u {
     assert_eq!(at("u::__closure$0"), (true, 22));
     assert_eq!(at("<u::__fnitem$0 as u::__fn$0_0>::call"), (true, 12));
     assert_eq!(at("u::__fn$0_0"), (true, 4));
-    // The generated definitions are in their unit's scope (backlog 2D-17),
+    // The generated definitions are in their unit's scope,
     // though their paths do not start with it.
     let f = files(&[("u.bmb", src)]);
     assert_eq!(
@@ -808,7 +808,7 @@ fn under(path: &str, prefix: &str) -> bool {
     path == prefix || path.starts_with(&format!("{prefix}::"))
 }
 
-/// Scope arguments (backlog 2D-17): `units`, `status`, `effects`, `effect E`
+/// Scope arguments: `units`, `status`, `effects`, `effect E`
 /// and `tests` take paths and answer with the rows of the whole-program
 /// answer that are about a definition in the scope (a path names a unit, a
 /// definition or a type and everything under it), then a summary row over
@@ -941,7 +941,7 @@ fn a_type_scope_holds_its_impl_functions() {
     assert_eq!(paths, ["geo::Point", "geo::Point::norm"], "{out}");
 }
 
-/// `duplicates PATH..` (backlog 2D-17): the groups that hold a definition
+/// `duplicates PATH..`: the groups that hold a definition
 /// in the scope, each whole (the twins outside the scope are the answer),
 /// as the unscoped rows.
 #[test]
@@ -974,7 +974,7 @@ fn duplicates_of_a_scope_are_the_groups_that_touch_it() {
     );
 }
 
-/// `edges DEF DIR DEPTH KINDS` (backlog 2D-17) follows only the edges of
+/// `edges DEF DIR DEPTH KINDS` follows only the edges of
 /// the named kinds: at depth 1 the rows of those kinds, deeper the closure
 /// over them (a callee's contract edges are not reached through `calls`).
 #[test]
@@ -1038,7 +1038,7 @@ fn edges_follow_only_the_named_kinds() {
     assert!(e.contains("unknown edge kind `jumps`"), "{e}");
 }
 
-/// A response window (ADR-0127, backlog 2D-38): whole rows from the offset
+/// A response window (ADR-0127): whole rows from the offset
 /// within the budget, the first always; a response shown whole is the
 /// response; otherwise a last row carries the counts, and walking the
 /// offsets it names gives every row once, in order.
@@ -1142,13 +1142,13 @@ fn overview_lists_units_with_counts() {
     assert_eq!(
         request(&f, &["query", "overview"]).unwrap(),
         "{\"schema\":\"bmb.map\",\"version\":1}\n\
-         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"호출자\",\"units\":0,\"defs\":1,\"types\":0}\n\
-         {\"kind\":\"unit\",\"path\":\"lib\",\"summary\":\"탐색 대상\",\"units\":0,\"defs\":4,\"types\":0}\n"
+         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"caller\",\"units\":0,\"defs\":1,\"types\":0}\n\
+         {\"kind\":\"unit\",\"path\":\"lib\",\"summary\":\"search target\",\"units\":0,\"defs\":4,\"types\":0}\n"
     );
     assert_eq!(
         request(&f, &["query", "overview", "app"]).unwrap(),
         "{\"schema\":\"bmb.map\",\"version\":1}\n\
-         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"호출자\",\"units\":0,\"defs\":1,\"types\":0}\n"
+         {\"kind\":\"unit\",\"path\":\"app\",\"summary\":\"caller\",\"units\":0,\"defs\":1,\"types\":0}\n"
     );
     assert!(request(&f, &["query", "overview", "nosuch"]).is_err());
 }

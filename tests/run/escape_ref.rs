@@ -1,4 +1,4 @@
-// Rust translation of tests/run/escape.bmb (backlog 2U-05), for its
+// Rust translation of tests/run/escape.bmb, for its
 // expected output.
 fn hex(d: u32) -> char {
     char::from_digit(d, 16).unwrap()

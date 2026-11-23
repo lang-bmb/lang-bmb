@@ -1,7 +1,6 @@
-//! Soundness fuzzing of `assert(e) by (bit_vector)` sub-proofs (backlog
-//! 2N-03, ADR-0048 §4): random assertions over two variables of `u8` or
+//! Soundness fuzzing of `assert(e) by (bit_vector)` sub-proofs (ADR-0048 §4): random assertions over two variables of `u8` or
 //! `i8` with arithmetic (unbounded in specifications), `/` and `%` by
-//! terms (backlog 2N-11), bit operations, shifts, `!`, the bit methods,
+//! terms, bit operations, shifts, `!`, the bit methods,
 //! `if`, and a spec fn whose argument may leave its type. An independent
 //! interpreter evaluates the assertion at every one of the 65,536 points: a
 //! verified assertion holds wherever every divisor is nonzero and the spec
@@ -57,7 +56,7 @@ enum Bin {
     Add,
     Sub,
     Mul,
-    /// `/` and `%` (backlog 2N-11): truncating on `i8` (Rust's), SMT-LIB's
+    /// `/` and `%`: truncating on `i8` (Rust's), SMT-LIB's
     /// Euclidean on `u8` (specification arithmetic may leave the type); a
     /// zero divisor is outside the guard.
     Div,
@@ -522,7 +521,7 @@ fn batch(seed: u64, stats: &mut Stats) {
     let h = H { body: hb };
     let h_text = e_text(&h.body);
     let mut src = format!(
-        "#[summary(\"비트 벡터 하위 증명 건전성 퍼징\")]\nmod m {{\n    struct P {{ x: {tn}, y: {tn} }}\n\n    spec fn h(v: {tn}) -> {tn} {{ {h_text} }}\n\n"
+        "#[summary(\"bit-vector sub-proof soundness fuzzing\")]\nmod m {{\n    struct P {{ x: {tn}, y: {tn} }}\n\n    spec fn h(v: {tn}) -> {tn} {{ {h_text} }}\n\n"
     );
     let mut cases = Vec::new();
     for k in 0..8 {
@@ -533,8 +532,7 @@ fn batch(seed: u64, stats: &mut Stats) {
         } else {
             c
         };
-        // Every odd case reads the fields of `p` instead (backlog 2N-11:
-        // a field is a variable of the sub-proof).
+        // Every odd case reads the fields of `p` instead (a field is a variable of the sub-proof).
         if k % 2 == 1 {
             src.push_str(&format!(
                 "    #[effects(pure)]\n    #[uses(h)]\n    fn f{k}(p: &P) -> () {{\n        assert({}) by (bit_vector);\n    }}\n\n",

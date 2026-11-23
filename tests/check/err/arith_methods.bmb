@@ -1,4 +1,4 @@
-#[summary("checked and saturating arithmetic misused (ADR-0028 §3, backlog 2C-03)")]
+#[summary("checked and saturating arithmetic misused (ADR-0028 §3)")]
 mod am {
     #[effects(pure)]
     fn on_bool(b: bool) -> bool { b.saturating_add(true) }

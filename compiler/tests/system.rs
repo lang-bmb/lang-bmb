@@ -1,4 +1,4 @@
-//! The system interface (ADR-0091, backlog 4C-02), through the `bmb` command
+//! The system interface (ADR-0091), through the `bmb` command
 //! line: what each built-in checks, proves and does when the program runs.
 //! Slice (a): `std::process::exit` and `eprint_str`.
 
@@ -759,7 +759,7 @@ mod app {
 }
 "#;
 
-/// The compiler's own outside processes (ADR-0091, 4C-02's criterion): a BMB
+/// The compiler's own outside processes (ADR-0091): a BMB
 /// program starts the pinned Z3, sends it a script and reads its answers,
 /// and runs `clang --version`.
 #[test]

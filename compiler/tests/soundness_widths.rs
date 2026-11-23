@@ -1,5 +1,4 @@
-//! Soundness fuzzing of every integer width and the bit operations (backlog
-//! 2N-04, ADR-0048 §1, §2, §5): random functions of three parameters whose
+//! Soundness fuzzing of every integer width and the bit operations (ADR-0048 §1, §2, §5): random functions of three parameters whose
 //! types range over `i8`..`i64`, `isize`, `u8`..`u64` and `usize` (the
 //! shift amount `k` of any of them, so widths mix where Rust lets them:
 //! shift amounts, conversions, comparisons and `if` arms of a converted
@@ -25,8 +24,7 @@
 //!   `MIN / -1`, an out-of-range conversion) traps in both (`SIGILL`, a
 //!   program of its own per call through `common::trap`, as a trap ends
 //!   the run), after the line
-//!   printed before the call, as Rust prints the lines before a panic
-//!   (backlog 1B-52). A trap in the first build is a check the prover did
+//!   printed before the call, as Rust prints the lines before a panic. A trap in the first build is a check the prover did
 //!   not erase, so a wrongly proved obligation shows as a missing trap.
 //!
 //! Registers hold 64-bit extended values (ADR-0048 §5), so the generator
@@ -1130,7 +1128,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
             }
         })
         .collect();
-    let mut module = String::from("#[summary(\"정수 폭과 비트 연산 건전성 퍼징\")]\nmod m {\n");
+    let mut module = String::from("#[summary(\"width and bit soundness fuzzing\")]\nmod m {\n");
     for f in &funcs {
         module.push_str(&f.text());
     }
@@ -1141,7 +1139,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &Path) {
         .collect::<Vec<_>>()
         .join(", ");
     let main_head = format!(
-        "#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    #[uses({uses})]\n    fn main() -> () {{\n"
+        "#[summary(\"run\")]\nmod app {{\n    #[effects(io)]\n    #[uses({uses})]\n    fn main() -> () {{\n"
     );
     // Printed calls (the interpreter's value) and trapping ones.
     let mut calls = String::new();

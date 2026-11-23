@@ -1,4 +1,4 @@
-#[summary("기저 인스턴스 재시도로만 증명되는 정의 (backlog 2V-03)")]
+#[summary("definitions proved only by the ground-instance retry")]
 mod rt {
     spec fn bounded_elems(a: &[i64]) -> bool {
         a.len() <= 1000000 && (forall|k: usize| k < a.len() ==> -1000 <= #[trigger] a[k] && a[k] <= 1000)
@@ -11,7 +11,7 @@ mod rt {
     spec fn sums_small(out: &[i64], n: usize) -> bool { forall|k: usize| k < n ==> -1000 * (k + 1) <= #[trigger] out[k] && out[k] <= 1000 * (k + 1) }
 
     // The trigger `out[k + 1]` matches the body's `out[k]` again (a matching
-    // loop, backlog 1B-45): callers' proofs need the ground-instance retry.
+    // loop): callers' proofs need the ground-instance retry.
     spec fn prefix_ok(a: &[i64], out: &[i64]) -> bool { out.len() == a.len() && (a.len() > 0 ==> out[0] == a[0]) && (forall|k: usize| k + 1 < a.len() ==> #[trigger] out[k + 1] == out[k] + a[k + 1]) }
 
     #[effects(pure)]

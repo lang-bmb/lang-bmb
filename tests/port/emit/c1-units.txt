@@ -1,8 +1,8 @@
-#[summary("여러 단위와 안 단위: 정의는 경로 순서로 나온다. main은 뒤 단위에 있다")]
+#[summary("Several units and an inner unit: definitions come out in path order. main is in the later unit")]
 mod zeta {
     #[effects(pure)]
     fn one() -> i64 { 1 }
-    #[summary("안 단위")]
+    #[summary("An inner unit")]
     mod inner {
         #[effects(pure)]
         fn two() -> i64 { 2 }
@@ -11,7 +11,7 @@ mod zeta {
     fn main() -> () { }
 }
 
-#[summary("앞 단위: 명세 함수와 증명 함수는 내지 않는다")]
+#[summary("The earlier unit: spec functions and proof functions are not emitted")]
 mod alpha {
     spec fn pos(x: i64) -> bool { x > 0 }
     proof fn lemma(x: i64)

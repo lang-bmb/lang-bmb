@@ -1,4 +1,4 @@
-#[summary("bytes proved: u8 arithmetic and conversions, byte strings as known arrays (ADR-0044, backlog 2S-02)")]
+#[summary("bytes proved: u8 arithmetic and conversions, byte strings as known arrays (ADR-0044)")]
 mod bp {
     spec fn digit(c: u8) -> bool { 48 <= c && c <= 57 }
 

@@ -29,7 +29,7 @@ jobs:
       - name: Gate
         run: ./scripts/check.sh
 
-  # BVB original-Verus side (backlog 2A-09): the pinned Verus release must
+  # BVB original-Verus side: the pinned Verus release must
   # verify every task's Verus reference against the hidden original spec, and
   # reject every weak control (reference with the target's `ensures` removed).
   bvb-verus:

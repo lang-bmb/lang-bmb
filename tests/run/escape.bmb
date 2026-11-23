@@ -1,4 +1,4 @@
-#[summary("JSON 문자열 이스케이프: 따옴표·역슬래시·제어 문자를 바꾸고 나머지 글자는 조각으로 옮긴다. 조각의 글자 경계(UTF-8 불변식에서, 2U-06)와 길이 의무를 증명한다 (backlog 2U-05)")]
+#[summary("JSON string escaping: replaces quotes·backslashes·control characters and copies the other characters as pieces. Proves the character boundaries of the pieces (from the UTF-8 invariant) and the length obligations")]
 mod esc {
     // `t` as a JSON string literal: `"`, `\` and the control characters
     // escaped, everything else as it is, copied a run at a time.
@@ -16,8 +16,7 @@ mod esc {
             let b: u8 = t.as_bytes()[i];
             if b == b'"' || b == b'\\' || b < 32 {
                 // The run before the byte: it starts after an ASCII byte and
-                // ends before one, both character boundaries in UTF-8
-                // (backlog 2U-06).
+                // ends before one, both character boundaries in UTF-8.
                 out.push_str(&t[a..i]);
                 if b == b'"' {
                     out.push_str("\\\"");

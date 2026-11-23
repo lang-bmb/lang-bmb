@@ -1,4 +1,4 @@
-//! Examples of a contract (backlog T1-44c, ADR-0078 H-INTENT): from a
+//! Examples of a contract (ADR-0078 H-INTENT): from a
 //! function's `requires` and `ensures` alone, never its body, inputs with a
 //! result the specification allows, results it rejects for the same
 //! inputs, and inputs the `requires` exclude. For a reader of the
@@ -32,7 +32,7 @@
 //! in full (`SHOW`): a value printed with `..` is not an example.
 //!
 //! A query the solver leaves undecided with its input free is asked again
-//! at written inputs (`written`, backlog T1-44g, ADR-0134): the solver then
+//! at written inputs (`written`, ADR-0134): the solver then
 //! finds only the outputs, and decides a quantifier over a given array and
 //! a recursive predicate of given arguments. The spec fns a contract names
 //! are read by their definitions whether or not the function's `#[uses]`
@@ -487,7 +487,7 @@ impl Gen<'_, '_, '_> {
             }
         }
         // Undecided with the input left to the solver: written inputs, one
-        // after another (backlog T1-44g). The solver then decides a contract
+        // after another. The solver then decides a contract
         // at given values (a quantifier over a given array, a recursive
         // predicate of given arguments) and finds only the outputs.
         if free {
@@ -744,8 +744,7 @@ pub fn examples(
         // The contract means what its spec fns are defined to be, whether
         // or not this function's proof reads the definitions (`#[uses]` is
         // the proof's context, not the contract's meaning): each one named
-        // is defined for the queries, and those its definition names
-        // (backlog T1-44g). One with no definition to give stays hidden.
+        // is defined for the queries, and those its definition names. One with no definition to give stays hidden.
         loop {
             let more: Vec<&String> = spec_syms
                 .iter()

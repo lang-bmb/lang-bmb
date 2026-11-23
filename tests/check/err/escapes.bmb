@@ -1,4 +1,4 @@
-#[summary("탈출구와 근거(ADR-0029)")]
+#[summary("Escape hatches and rationales (ADR-0029)")]
 mod esc {
     spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
 

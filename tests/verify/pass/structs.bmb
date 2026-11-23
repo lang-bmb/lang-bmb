@@ -1,4 +1,4 @@
-#[summary("구조체: 필드 분해 인코딩 (ADR-0027 §1, backlog 2B-05a)")]
+#[summary("Structs: the field-decomposition encoding (ADR-0027 §1)")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -16,7 +16,7 @@ mod geo {
 
     spec fn ends(s: Seg, p: Point, q: Point) -> bool { s.a == p && s.b == q }
 
-    // A struct result is one SMT function per field (backlog 2B-05d).
+    // A struct result is one SMT function per field.
     spec fn diag(a: i64) -> Point { Point { x: a, y: a } }
 
     spec fn on_diag(p: Point) -> bool { p == diag(p.x) }
@@ -110,7 +110,7 @@ mod geo {
     }
 }
 
-#[summary("다른 단위에서 전체 경로로")]
+#[summary("From another unit by full path")]
 mod user {
     #[effects(pure)]
     fn far(p: geo::Point) -> i64
@@ -120,7 +120,7 @@ mod user {
     }
 }
 
-#[summary("구조체와 열거형의 배열: 지역, 필드, 반복, 복사 (backlog 2B-14)")]
+#[summary("Arrays of structs and enums: locals, fields, repetition, copies")]
 mod arrs {
     struct Point { x: i64, y: i64 }
 
@@ -185,7 +185,7 @@ mod arrs {
     }
 }
 
-#[summary("명세의 배열 값과 배열 `==` (backlog 2V-05)")]
+#[summary("Array values and array `==` in specs")]
 mod speclit {
     struct P { x: i64, y: i64 }
 

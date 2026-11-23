@@ -1,4 +1,4 @@
-#[summary("배열 원소의 경계: `Vec`은 원소가 될 수 없다 (backlog 2B-14, 2V-04b, ADR-0047 제안)")]
+#[summary("Edges of array elements: a `Vec` cannot be an element (ADR-0047 proposal)")]
 mod da {
     struct Bufs { v: [Vec<i64>; 2] }
 
@@ -15,7 +15,7 @@ mod da {
     }
 }
 
-#[summary("배열 타입을 적는 모든 자리의 원소 규칙: 매개변수, 결과, 타입 인자 (backlog 2V-21)")]
+#[summary("The element rule in every place an array type is written: parameters, results, type arguments")]
 mod dp {
     #[effects(pure)]
     fn param(a: [Vec<i64>; 2], b: [String; 2]) -> usize {
@@ -28,7 +28,7 @@ mod dp {
     }
 }
 
-#[summary("배열 값의 원소 규칙은 배열 타입의 원소 규칙과 같다: `String`, `()`, 참조 (backlog 2V-22)")]
+#[summary("The element rule of array values is that of array types: `String`, `()`, references")]
 mod dl {
     struct P { x: i64 }
 

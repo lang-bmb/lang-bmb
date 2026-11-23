@@ -1,5 +1,5 @@
-//! Ownership of values that move (ADR-0031 §2, ADR-0047 §2, backlogs
-//! 2G-02 and 2O-01): a `Vec`, a `Box`, and the data types that hold one
+//! Ownership of values that move (ADR-0031 §2, ADR-0047 §2):
+//! a `Vec`, a `Box`, and the data types that hold one
 //! (`check::is_move`).
 //!
 //! Such a local is moved by a value use: a `let` initializer, the right
@@ -8,8 +8,7 @@
 //! `v[i]`, `&v`, `*b`, `b.f`) is not a move. A use of a moved local is
 //! E0413; assigning it again makes it owned again.
 //!
-//! A field of a local struct can be moved out on its own (a partial move,
-//! backlog 2O-03): the state is kept per field path (`s.buf`), the moved
+//! A field of a local struct can be moved out on its own (a partial move): the state is kept per field path (`s.buf`), the moved
 //! field cannot be used until it is assigned again, the whole local cannot
 //! be used meanwhile (E0433), and at the end of the block only the fields
 //! still owned are dropped. Moving out of a place behind a reference or in
@@ -79,8 +78,7 @@ pub struct MoveInfo {
     /// Per branch of an `if` or `match` (by the span of the then block, the
     /// `else` expression or the arm's body): the paths that branch still
     /// owns at its end but another branch moved, dropped at its end so that
-    /// they are moved after the join on every path (ADR-0081, backlog
-    /// 2O-07). No run-time flag: the place is fixed by the program text.
+    /// they are moved after the join on every path (ADR-0081). No run-time flag: the place is fixed by the program text.
     pub branch_drops: BTreeMap<Key, Vec<String>>,
 }
 
@@ -1056,7 +1054,7 @@ impl Mv<'_> {
                     self.expr(&arm.body, true);
                     // A binding with a field moved out drops the fields it
                     // still owns, as a local does at the end of its block
-                    // (backlog 4D-34: dropped whole, the moved field was
+                    // (dropped whole, the moved field was
                     // freed twice).
                     let mut owned = Vec::new();
                     for b in binds {

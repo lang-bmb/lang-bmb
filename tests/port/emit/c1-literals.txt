@@ -1,4 +1,4 @@
-#[summary("리터럴을 돌려주는 함수: 정수의 폭마다, bool, f64, char, 바이트, 단위 값, 부호를 바꾼 리터럴")]
+#[summary("Functions that return a literal: each integer width, bool, f64, char, byte, the unit value, a negated literal")]
 mod lits {
     #[effects(pure)]
     fn a() -> i64 { 42 }

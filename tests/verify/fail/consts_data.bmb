@@ -1,4 +1,4 @@
-#[summary("집합 const의 증명 실패(ADR-0052 §5, backlog 2V-19b): 표의 원소와 구조체 필드는 증명기가 아는 값이라 틀린 주장에는 반례가 나온다")]
+#[summary("Proof failures of aggregate consts (ADR-0052 §5): table elements and struct fields are values the prover knows, so a wrong claim gets a counterexample")]
 mod kdf {
     struct Range { lo: u64, hi: u64 }
 

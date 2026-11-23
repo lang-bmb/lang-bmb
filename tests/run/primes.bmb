@@ -1,4 +1,4 @@
-#[summary("실행: 체로 소수 모으기와 정렬된 두 Vec 합치기 (ADR-0031, backlog 2G-07 실용성)")]
+#[summary("Run: collecting primes with a sieve and merging two sorted Vecs (ADR-0031)")]
 mod pr {
     spec fn small(n: usize) -> bool { 2 <= n && n <= 100000 }
 

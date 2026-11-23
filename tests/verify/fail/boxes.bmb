@@ -1,4 +1,4 @@
-#[summary("Box<T>: 따르지 않는 것 (ADR-0047 §3, backlog 2O-01)")]
+#[summary("Box<T>: what does not follow (ADR-0047 §3)")]
 mod bf {
     struct Pt { x: i64, y: i64 }
 

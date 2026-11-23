@@ -1,15 +1,14 @@
-//! LLVM text IR generation (backlog 1C-01, 1C-03, 1C-04).
+//! LLVM text IR generation.
 //!
 //! Every implicit proof obligation (overflow, division, bounds) has a runtime
 //! check here unless the proof gate proved that very obligation. Proved
 //! arithmetic carries `nsw`/`nuw`, proved indexing uses `inbounds` without a
 //! check, and every `&mut` parameter is `noalias` (ADR-0015). Structs and
 //! enums (ADR-0026) live in memory as named LLVM types and are copied where
-//! Rust copies them (backlog 2B-06). A `Vec` (ADR-0031 §4) is a header
+//! Rust copies them. A `Vec` (ADR-0031 §4) is a header
 //! `{ptr, len, cap}` in memory that moves like a data value (copying the
 //! header is the move); its buffer is freed where `moves.rs` says, and a
-//! temporary `Vec` read but not moved at the end of its statement (backlog
-//! 2G-04). Unproved
+//! temporary `Vec` read but not moved at the end of its statement. Unproved
 //! obligations keep a check that traps; `bmb build` refuses such programs
 //! anyway, so this matters only for `bmb emit-llvm` on partial proofs.
 
@@ -55,7 +54,7 @@ impl CVal {
 }
 
 /// Where a scalar reference argument's temporary is copied back after the
-/// call (backlog 2T-08): a place in memory form, or an element of a scalar
+/// call: a place in memory form, or an element of a scalar
 /// slice (its element kind and address).
 enum Back {
     Mem(String),
@@ -93,7 +92,7 @@ fn is_data(t: &TypeKind) -> bool {
 }
 
 /// Whether an array element of type `t` lives in memory as an aggregate:
-/// a struct, an enum or a fixed-size array (backlog 2V-04b).
+/// a struct, an enum or a fixed-size array.
 fn is_mem_elem(t: &TypeKind) -> bool {
     is_mem(t) || matches!(value_ty(t), TypeKind::Array(..))
 }
@@ -382,7 +381,7 @@ fn type_defs(tb: &Tables, extra: &[TypeKind]) -> String {
     out
 }
 
-/// `bmb dump layout` (backlog 4D-05b): how the code generator lays the
+/// `bmb dump layout`: how the code generator lays the
 /// program's types out, for a program that checks. Per distinct type of
 /// `all_types` (by its text): its register and in-memory LLVM types, its
 /// size and alignment under `layout`, the predicates that hold of it, and
@@ -472,7 +471,7 @@ fn all_types<'a>(tb: &'a Tables, extra: &'a [TypeKind]) -> Vec<&'a TypeKind> {
     // In the order of their texts, each once: the order of the type
     // definitions and the glue is then the program's, not its layout's
     // (the spans of `types` follow the source order, which `fmt` changes;
-    // backlog 4D-38 found IR that differed after `fmt`).
+    // IR was once found to differ after `fmt`).
     let by_text: BTreeMap<String, &TypeKind> = all.into_iter().map(|x| (ty_str(x), x)).collect();
     by_text.into_values().collect()
 }
@@ -508,7 +507,7 @@ fn holds_vec(t: &TypeKind, tb: &Tables) -> bool {
 
 /// The drop glue of every type that owns heap memory (ADR-0047 §4):
 /// `@"bmb_drop.<type>"(ptr %p)` drops the value at `%p`. A `Vec` frees
-/// its buffer (its elements own nothing yet, backlog 2O-03), a `Box`
+/// its buffer (its elements own nothing yet), a `Box`
 /// drops its value and frees it, a struct drops its fields in
 /// declaration order, an enum the payloads of its variant in order.
 fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
@@ -529,7 +528,7 @@ fn drop_glue(tb: &Tables, extra: &[TypeKind]) -> String {
         let mut body = String::new();
         let mut inner: Vec<TypeKind> = Vec::new();
         match t {
-            // Each element, in order (backlog 2O-03c).
+            // Each element, in order.
             TypeKind::Array(e, n) => {
                 let _ = write!(
                     body,
@@ -837,7 +836,7 @@ fn narrow(elem: &str) -> Option<(u32, bool)> {
 
 /// In-memory type of an array element: `bool` and the narrow integers have
 /// their own width, as in Rust and C, so LLVM recognizes fills and
-/// vectorizes loads (backlog 1E-09).
+/// vectorizes loads.
 fn mem(elem: &str) -> &str {
     match narrow(elem) {
         _ if elem == "i1" => "i8",
@@ -1039,7 +1038,7 @@ impl<'p> Gen<'p> {
         ));
         self.block(&bad);
         // The output written before the trap reaches stdout first, as Rust's
-        // line-buffered `stdout` shows the lines before a panic (backlog 1B-52).
+        // line-buffered `stdout` shows the lines before a panic.
         self.emit("call void @bmb_trap()");
         self.emit("unreachable");
         self.block(&ok);
@@ -1386,7 +1385,7 @@ impl<'p> Gen<'p> {
                 .unwrap_or_default();
             for n in owned {
                 // A path: the binding, or a field it still owns after
-                // another was moved out (backlog 4D-34).
+                // another was moved out.
                 if n.contains('.') {
                     self.drop_path(&n);
                 } else if let Some(Slot::Data { ptr, ty }) = self.slots.get(&n).cloned() {
@@ -1913,7 +1912,7 @@ impl<'p> Gen<'p> {
                     _ => unreachable!(),
                 }
             }
-            // `&s[a..b]` (ADR-0050 §2), `&v[a..b]` of integers (4C-05).
+            // `&s[a..b]` (ADR-0050 §2), `&v[a..b]` of integers.
             ExprKind::Index { base, index } if matches!(index.kind, ExprKind::Range { .. }) => {
                 let ExprKind::Range { lo, hi, .. } = &index.kind else {
                     unreachable!("a range")
@@ -2025,7 +2024,7 @@ impl<'p> Gen<'p> {
                         CVal::Arr { len, .. } => CVal::Imm(len),
                         _ => unreachable!(),
                     },
-                    // An integer's bytes (backlog 2N-09c): each byte is the
+                    // An integer's bytes: each byte is the
                     // register shifted right logically and truncated.
                     m @ ("to_be_bytes" | "to_le_bytes") => {
                         let i = self.ty(recv).int().expect("an integer method");
@@ -2053,7 +2052,7 @@ impl<'p> Gen<'p> {
                         }
                     }
                     // `Some` of the wrapping shift exactly when the amount is
-                    // below the width (backlog 2N-09b).
+                    // below the width.
                     m @ ("checked_shl" | "checked_shr") => {
                         let i = self.ty(recv).int().expect("an integer method");
                         let n = self.expr(&args[0]).imm();
@@ -2119,7 +2118,7 @@ impl<'p> Gen<'p> {
             ExprKind::Call { path, args, .. } if crate::check::is_f64_from(path) => {
                 self.f64_from(e, &args[0])
             }
-            // An integer from its bytes (backlog 2N-09c): each byte loaded,
+            // An integer from its bytes: each byte loaded,
             // shifted to its place and or-ed in; a narrow signed type is the
             // sign extension of its `w` bits.
             ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
@@ -2165,7 +2164,7 @@ impl<'p> Gen<'p> {
             ExprKind::Call { path, args, .. } => self.call(path, args, e),
             ExprKind::If { cond, then, els } if matches!(self.ty(e), TypeKind::Array(..)) => {
                 // An array-valued `if`: each branch copies its array into
-                // one buffer (backlog 1B-25).
+                // one buffer.
                 let TypeKind::Array(el, n) = self.ty(e) else {
                     unreachable!()
                 };
@@ -2323,7 +2322,7 @@ impl<'p> Gen<'p> {
         }
     }
 
-    // ---------- Vec (ADR-0031 §4, backlog 2G-04) ----------
+    // ---------- Vec (ADR-0031 §4) ----------
 
     /// The buffer and length of the `Vec` header at `hdr`, read now (a
     /// `push` may move the buffer).
@@ -2532,7 +2531,7 @@ impl<'p> Gen<'p> {
     /// The value of an `if` condition. Its temporaries are freed here,
     /// before the branch: an `else if` computes its condition only on the
     /// path that reaches it, and a temporary freed after the whole `if`
-    /// would be freed on the paths that never made it (backlog 4D-23).
+    /// would be freed on the paths that never made it.
     fn cond(&mut self, cond: &Expr) -> String {
         self.region(|g| g.expr(cond)).imm()
     }
@@ -2794,7 +2793,7 @@ impl<'p> Gen<'p> {
     }
 
     /// Drops what the branch ending at `span` owns but another branch of the
-    /// same join moved (ADR-0081, backlog 2O-07).
+    /// same join moved (ADR-0081).
     fn drop_branch(&mut self, span: Span) {
         let Some(paths) = self
             .t
@@ -2810,13 +2809,13 @@ impl<'p> Gen<'p> {
         }
     }
 
-    /// Drops the local or field path `p` (`s`, `s.buf`, backlog 2O-03).
+    /// Drops the local or field path `p` (`s`, `s.buf`).
     fn drop_path(&mut self, p: &str) {
         let mut parts = p.split('.');
         let root = parts.next().unwrap_or(p);
         let (mut ptr, mut ty) = match self.slots.get(root).cloned() {
             Some(Slot::Data { ptr, ty }) => (ptr, ty),
-            // An array of owned elements (backlog 2O-03c).
+            // An array of owned elements.
             Some(Slot::Arr { ptr, .. }) => match self.local_ty(root) {
                 Some(t) => (ptr, value_ty(&t).clone()),
                 None => return,
@@ -2832,7 +2831,7 @@ impl<'p> Gen<'p> {
     }
 
     /// The field paths still owned that an assignment at `span` drops
-    /// (a partially moved place, backlog 2O-03).
+    /// (a partially moved place).
     fn partial_replaces(&self, span: Span) -> Vec<String> {
         self.t
             .moves
@@ -3159,7 +3158,7 @@ impl<'p> Gen<'p> {
         CVal::Imm(res)
     }
 
-    /// A bit method (ADR-0048 §2, §5, backlog 2N-03) of the register value
+    /// A bit method (ADR-0048 §2, §5) of the register value
     /// `a` of `i` (extended to 64 bits) and its `u32` amount `n`: the
     /// operation at `i`'s width with LLVM's intrinsics (`fshl`/`fshr` for a
     /// rotation, which take the amount modulo the width; `ctpop`; `ctlz`
@@ -3215,7 +3214,7 @@ impl<'p> Gen<'p> {
                     "{r} = call {it} @llvm.{f}.{it}({it} {x}, i1 false)"
                 ));
             }
-            // The ones counted as the zeros of the complement (backlog 2N-09).
+            // The ones counted as the zeros of the complement.
             "leading_ones" | "trailing_ones" => {
                 let f = if m == "leading_ones" { "ctlz" } else { "cttz" };
                 let n = self.t();
@@ -3318,7 +3317,7 @@ impl<'p> Gen<'p> {
     }
 
     /// Fills the array of structs or enums of type `t` at `ptr` from an
-    /// array literal or a repeat (2B-14). Every element is evaluated and
+    /// array literal or a repeat. Every element is evaluated and
     /// copied out before the first store, as for scalar elements.
     fn init_data_array(&mut self, e: &Expr, ptr: &str, t: &TypeKind) {
         let TypeKind::Array(el, _) = t else {
@@ -3640,8 +3639,7 @@ impl<'p> Gen<'p> {
         v
     }
 
-    /// The address passed for a scalar reference argument `a` (backlog
-    /// 2T-08): a local's or a reference parameter's slot itself; for a
+    /// The address passed for a scalar reference argument `a`: a local's or a reference parameter's slot itself; for a
     /// field or an element (stored in memory form), a temporary holding
     /// its value, copied back after the call when `mutable` (references
     /// are second-class, so nothing else sees the place meanwhile).
@@ -3679,7 +3677,7 @@ impl<'p> Gen<'p> {
             | ExprKind::Ref { .. }
             | ExprKind::Field { .. }
             | ExprKind::Index { .. } => self.place(inner).0,
-            // A value lent for the call (`m.contains(&7)`, backlog 4B-04):
+            // A value lent for the call (`m.contains(&7)`):
             // a temporary holds it.
             _ => {
                 let v = self.expr(inner).imm();
@@ -3790,7 +3788,7 @@ impl<'p> Gen<'p> {
                 value,
                 span,
             } => match &target.kind {
-                // `*x = v` through a scalar reference parameter (2T-08).
+                // `*x = v` through a scalar reference parameter.
                 ExprKind::Deref(x) if matches!(&x.kind, ExprKind::Var(id) if matches!(self.slots[&id.name], Slot::Scalar { .. })) =>
                 {
                     let ExprKind::Var(id) = &x.kind else {
@@ -3834,7 +3832,7 @@ impl<'p> Gen<'p> {
                             Slot::Data { ty, .. } => is_vec(ty) && is_mem_elem(&vec_elem(ty)),
                             Slot::Scalar { .. } => false,
                         },
-                        // An array field (2B-14, 2B-15).
+                        // An array field.
                         // An element of an array field or of an inner array.
                         _ => true,
                     } =>
@@ -4026,7 +4024,7 @@ fn head_rest() -> String {
 }
 
 /// The constant IR texts of the code generator by name (`bmb dump
-/// runtime`, backlog 4D-05c1): what a port holds as generated text
+/// runtime`): what a port holds as generated text
 /// (`scripts/codegen_text.py`).
 pub fn runtime_texts() -> Vec<(&'static str, String)> {
     let mut texts = vec![
@@ -4053,7 +4051,7 @@ pub struct Module {
 }
 
 /// Emits one LLVM module for the whole program. The module is the whole
-/// program (closed world, backlog 2D-07): every function, including the BMB
+/// program (closed world): every function, including the BMB
 /// `main` and the print helper, has `internal` linkage, so LLVM may inline
 /// and drop them freely. Only the C entry point `@main` is external.
 pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
@@ -4062,7 +4060,7 @@ pub fn emit(p: &Program, t: &Tables, proven: &BTreeSet<ObKey>) -> Module {
 
 /// As `emit`, taking the IR of each definition from the incremental cache
 /// when its key (source, callee signatures, usable proofs inside it) is
-/// unchanged, and storing what it lowers (backlog 2D-10). Each definition's
+/// unchanged, and storing what it lowers. Each definition's
 /// IR depends only on those, so the module is the same either way.
 pub fn emit_with(
     p: &Program,
@@ -4121,7 +4119,7 @@ pub fn emit_with(
         } else {
             Vec::new()
         };
-        // An instance is stored under its own key (backlog 2T-04), with
+        // An instance is stored under its own key, with
         // the instances it calls and the types it uses.
         let targs: Vec<TypeKind> = t.fns[&base]
             .generics
@@ -4190,7 +4188,7 @@ pub fn emit_with(
                         },
                     );
                 }
-                // `&T` / `&mut T` of a scalar (backlog 2T-08): the
+                // `&T` / `&mut T` of a scalar: the
                 // caller's slot, read and written through as the local's.
                 TypeKind::Ref { mutable, inner } if is_scalar_ty(&inner.kind) => {
                     let attr = if *mutable { "noalias " } else { "readonly " };

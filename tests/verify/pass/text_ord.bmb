@@ -1,4 +1,4 @@
-#[summary("String은 Ord다: 제네릭 정의는 정렬 위 비해석 전순서로 한 번 증명되고, String 인스턴스의 호출자는 Rust의 바이트 사전순으로 결과를 안다 (backlog 4B-04)")]
+#[summary("String is Ord: the generic definition is proved once with an uninterpreted total order over the sort, and callers of the String instance know the result by Rust's byte-lexicographic order")]
 mod text_ord {
     #[effects(alloc)]
     fn caller() -> () {

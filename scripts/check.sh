@@ -5,13 +5,13 @@
 #
 # The quick sequential steps stop at the first failure. After the one build,
 # the test executables and the bench checks are independent and run
-# concurrently (backlog INF-08, scripts/gate_jobs.py): each runs to the end,
+# concurrently (scripts/gate_jobs.py): each runs to the end,
 # a failing job's output is printed with its name, and any failure makes the
 # exit code non-zero.
 #
-# One gate runs at a time (INF-35): a second one waits for the lock. What goes
-# stale is checked first, in seconds (scripts/fresh.sh, INF-34). A run that
-# leaves a file in the tree fails at the end (INF-36).
+# One gate runs at a time: a second one waits for the lock. What goes
+# stale is checked first, in seconds (scripts/fresh.sh). A run that
+# leaves a file in the tree fails at the end.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [ -z "${BMB_GATE_LOCK_HELD:-}" ]; then
@@ -27,27 +27,26 @@ python3 scripts/tree_state.py snapshot > "$tree"
 
 step "format";  cargo fmt --all --check
 # The generated documents, the backlog's form, the surface fingerprint, the
-# gate-power mutants (backlog 2T-05) and the solver-free health metrics.
+# gate-power mutants and the solver-free health metrics.
 # A gate-power run applies one mutant: the documents that count source lines
 # are stale by construction and are no evidence about the mutant, so of these
-# only the surface fingerprint runs, as a job (backlog 1B-59).
+# only the surface fingerprint runs, as a job.
 power_jobs=()
 if [ -z "${BMB_GATE_POWER_RUN:-}" ]; then
   step "fresh"; scripts/fresh.sh
 else
-  power_jobs=(--job "surface fingerprint (4D-01)=python3 scripts/surface.py check")
+  power_jobs=(--job "surface fingerprint=python3 scripts/surface.py check")
 fi
 step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "build"   # every test executable and target/debug/bmb, which the benches use
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 # The port is proved once, into an empty cache: the jobs that read its proof
 # (port difftest, components, health S7) reuse it instead of each proving the
-# whole port again (backlog INF-40). Its definitions are proved in as many
+# whole port again. Its definitions are proved in as many
 # processes as the machine has cores, each from an empty cache of its own,
-# and the single run below gives the verdict from the merged cache (backlog
-# INF-41). The optimized build of the same sources proves it: no solver time
+# and the single run below gives the verdict from the merged cache. The optimized build of the same sources proves it: no solver time
 # is saved, but building the queries is about ten times faster than in the
-# debug build, which took most of this step (backlog INF-43; the tests above
+# debug build, which took most of this step (the tests above
 # and the jobs below still run the debug build).
 step "port proof"
 cargo build --release --quiet
@@ -62,8 +61,8 @@ fi
 rm -f "$built.port"
 
 step "test, bench m1, bench m1b, bench hname, bench edit (write, diff, ast), bench view, bench lean, bench repair, bench review, bench intent, bench impossible, bench bvb, bench m3, bench bnb, bench twin, bench bcb, bench brb, bench brb-encap, bench brb-encap-b, bench brb-effect, bench brb-hard, bench run_models, bench utility report, port difftest, health, progress report (concurrent)"
-# Bench sessions are independent (ADR-0025, backlog 2A-04): m1b and bvb run two at a time per agent.
-# The original-Verus side of bvb (2A-09) needs the Verus toolchain: here only its harness logic
+# Bench sessions are independent (ADR-0025): m1b and bvb run two at a time per agent.
+# The original-Verus side of bvb needs the Verus toolchain: here only its harness logic
 # runs (stub verifier); the real oracle/weak runs are the `bvb-verus` CI job.
 python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" \
   --job "test doc=cargo test --doc --quiet" \
@@ -75,19 +74,19 @@ grep -qF "| 작성 1회 성공률 | 10/10 |" <<< "$table" || { echo "harness sum
   --job "bench m1 model agents=python3 bench/m1/test_anthropic_agent.py && python3 bench/m1/test_model_api.py && python3 bench/m1/test_stateless.py" \
   --job "bench m1 harness tests=python3 bench/m1/test_harness.py && python3 bench/m1/test_resultlog.py && python3 bench/m1/test_sessionlog.py" \
   --job "bench condition (ADR-0070)=python3 bench/test_condition.py" \
-  --job "bench failure table (T0-16)=python3 bench/test_failures.py" \
+  --job "bench failure table=python3 bench/test_failures.py" \
   --job "bench repeated runs (ADR-0077)=python3 bench/test_repeat.py" \
-  --job "bench utility report (T0-26)=python3 bench/test_utility.py" \
-  --job "surface (4D-01)=python3 scripts/test_surface.py" \
+  --job "bench utility report=python3 bench/test_utility.py" \
+  --job "surface=python3 scripts/test_surface.py" \
   --job 'bench m1b oracle=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent oracle --expect all-pass --jobs 2 --out "$tmp" > /dev/null
 table=$(python3 bench/m1/harness.py summarize "$tmp")
 grep -qF "| 작성 1회 성공률 | 25/25 |" <<< "$table" || { echo "m1b summarize: unexpected table"; exit 1; }
-# BSB (backlog 2A-10): the reference contracts kill every hidden mutant.
+# BSB: the reference contracts kill every hidden mutant.
 grep -qE "\| 명세 변이체 판별률 \| ([0-9]+)/\1 \(100\.0%\) \|" <<< "$table" || { echo "m1b: reference contracts must kill every mutant"; grep "변이체" <<< "$table"; exit 1; }' \
   --job 'bench m1b weak=tmp=$(mktemp); trap "rm -f $tmp" EXIT
 python3 bench/m1/harness.py --set bench/m1b run --agent weak --expect weak-fail --jobs 2 --out "$tmp" > /dev/null
-# The weak contracts kill fewer (BSB, backlog 2A-10).
+# The weak contracts kill fewer (BSB).
 row=$(python3 bench/m1/harness.py summarize "$tmp" | grep "명세 변이체 판별률")
 grep -qE "\| [0-9]+/[0-9]+ \(" <<< "$row" && ! grep -qE "\| ([0-9]+)/\1 \(" <<< "$row" || { echo "m1b weak: unexpected kill rate: $row"; exit 1; }' \
   --job 'bench edit=python3 bench/edit/gen.py --check > /dev/null
@@ -105,18 +104,18 @@ done' \
   python3 bench/m1/harness.py --set bench/$s run --agent weak --expect weak-fail --jobs 2 > /dev/null
 done' \
   --job "bench view (compact sets, not frozen)=python3 bench/view/test_gen.py" \
-  --job "bench lean (fixed context sets, 2D-28)=python3 bench/lean/test_gen.py" \
-  --job "bench repair (H-REPAIR ablation set, T1-45)=python3 bench/repair/gen.py --check > /dev/null && python3 bench/repair/test_gen.py" \
-  --job "bench ablate (H-UNDECIDE, H-PROBE, H-HISTORY sets, T0-37)=python3 bench/ablate/gen.py --check > /dev/null && python3 bench/ablate/test_gen.py" \
-  --job "bench review (H-REVIEW change set, T1-44)=python3 bench/review/gen.py --check > /dev/null && python3 bench/review/test_review.py" \
-  --job "bench intent (H-INTENT item set, T1-44e)=python3 bench/intent/gen.py --check > /dev/null && python3 bench/intent/test_intent.py" \
+  --job "bench lean (fixed context sets)=python3 bench/lean/test_gen.py" \
+  --job "bench repair (H-REPAIR ablation set)=python3 bench/repair/gen.py --check > /dev/null && python3 bench/repair/test_gen.py" \
+  --job "bench ablate (H-UNDECIDE, H-PROBE, H-HISTORY sets)=python3 bench/ablate/gen.py --check > /dev/null && python3 bench/ablate/test_gen.py" \
+  --job "bench review (H-REVIEW change set)=python3 bench/review/gen.py --check > /dev/null && python3 bench/review/test_review.py" \
+  --job "bench intent (H-INTENT item set)=python3 bench/intent/gen.py --check > /dev/null && python3 bench/intent/test_intent.py" \
   --job 'bench hname=python3 bench/hname/gen.py --check > /dev/null
 for s in alpha mislead; do
   python3 bench/m1/harness.py --set bench/m1b-$s run --agent oracle --expect all-pass --jobs 2 > /dev/null
   python3 bench/m1/harness.py --set bench/m1b-$s run --agent weak --expect weak-fail --jobs 2 > /dev/null
 done' \
   --job 'bench impossible=o=$(mktemp); w=$(mktemp); trap "rm -f $o $w" EXIT
-# BMB-Impossible (backlog 2A-13, H-GAME): every infeasible task has a proved
+# BMB-Impossible (H-GAME): every infeasible task has a proved
 # impossibility certificate, the reference reports it, and the gaming control
 # (a changed contract) passes the gate and is judged gamed.
 python3 bench/impossible/certify.py > /dev/null
@@ -143,12 +142,12 @@ st=$(python3 bench/bvb/verus/harness.py strength "$tmp")
 grep -qF "\"spec_accepted\": 0, \"eligible\": 45" <<< "$st" || { echo "bvb weak: spec strength not 0/45"; exit 1; }' \
   --job "bench bvb tests=python3 bench/bvb/port.py check && python3 bench/bvb/test_bvb.py" \
   --job "bench bvb verus harness (stub verifier)=python3 bench/bvb/verus/test_harness.py" \
-  --job "port difftest (4D-15)=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
-  --job "bootstrap fixed point (4E-02)=python3 scripts/bootstrap.py run > /dev/null" \
+  --job "port difftest=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
+  --job "bootstrap fixed point=python3 scripts/bootstrap.py run > /dev/null" \
   --job "bench m3 generator=python3 bench/m3/test_gen.py > /dev/null" \
   --job "bench bnb=python3 bench/bnb/test_bnb.py > /dev/null" \
   --job "bench twin=python3 bench/twin/test_pair.py" \
-  --job "bench waiting (measurement queue, INF-39)=python3 bench/test_waiting.py" \
+  --job "bench waiting (measurement queue)=python3 bench/test_waiting.py" \
   --job "bench run_models (dry run)=python3 bench/run_models.py --dry-run --limit 2 > /dev/null && python3 bench/test_run_models.py" \
   --job "bench bcb=python3 bench/bcb/test_bcb.py > /dev/null" \
   --job 'bench brb oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
@@ -167,7 +166,7 @@ python3 bench/brb/harness.py run --arm rust --agent weak --proptest off --expect
   --job "bench brb tests=python3 bench/brb/test_brb.py" \
   --job "bench brb oracle strength (ADR-0119)=python3 bench/brb/test_oracle_strength.py && python3 bench/brb/oracle_strength.py check > /dev/null" \
   --job 'bench brb-encap oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
-# H-ENCAP (backlog T0-09): the reference operation passes the hidden invariant
+# H-ENCAP: the reference operation passes the hidden invariant
 # judge and its own check in both arms.
 python3 bench/brb-encap/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
 python3 bench/brb-encap/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null
@@ -194,7 +193,7 @@ done' \
   --job "bench brb-encap adequacy=python3 bench/brb-encap/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-encap tests=python3 bench/brb-encap/test_brb_encap.py" \
   --job 'bench brb-encap-b oracle=b=$(mktemp); r=$(mktemp); trap "rm -f $b $r" EXIT
-# H-ENCAP with the new operation as an `impl` method (backlog T0-29): the
+# H-ENCAP with the new operation as an `impl` method: the
 # same checks as brb-encap.
 python3 bench/brb-encap-b/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
 python3 bench/brb-encap-b/harness.py run --arm rust --agent oracle --proptest off --expect all-pass --jobs 2 --out "$r" > /dev/null
@@ -221,7 +220,7 @@ done' \
   --job "bench brb-encap-b adequacy=python3 bench/brb-encap-b/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-encap-b tests=python3 bench/brb-encap-b/test_brb_encap_b.py" \
   --job 'bench brb-effect controls=b=$(mktemp); r=$(mktemp); wb=$(mktemp); wr=$(mktemp); trap "rm -f $b $r $wb $wr" EXIT
-# H-EFFECT (backlog T1-43): the references pass the hidden judge (printed
+# H-EFFECT: the references pass the hidden judge (printed
 # lines included) in both arms; the weak solutions pass their own check and
 # the hidden judge finds the defect.
 python3 bench/brb-effect/harness.py run --arm bmb --agent oracle --expect all-pass --jobs 2 --out "$b" > /dev/null
@@ -243,11 +242,11 @@ python3 bench/brb-hard/harness.py run --arm rust --agent weak --proptest off --e
 python3 bench/brb-hard/harness.py summarize "$b" "$r" | grep -qF "| 성공(숨은 테스트 전부 통과) | 12/12 | 12/12 |" || { echo "brb-hard summarize: unexpected table"; exit 1; }' \
   --job "bench brb-hard adequacy=python3 bench/brb-hard/harness.py adequacy --jobs 2 > /dev/null" \
   --job "bench brb-hard tests=python3 bench/brb-hard/test_brb_hard.py" \
-  --job "gate scripts (INF-34..36)=python3 scripts/test_gate_scripts.py" \
-  --job "gate power rules (1B-59)=python3 scripts/test_gate_power.py" \
+  --job "gate scripts=python3 scripts/test_gate_scripts.py" \
+  --job "gate power rules=python3 scripts/test_gate_power.py" \
   --job "solver stability rules=python3 scripts/test_solver_stability.py" \
-  --job "conformance suite (5A-02)=python3 scripts/test_conformance.py && python3 scripts/conformance.py run" \
-  --job "components and port ledger (4D-08, 4D-10)=python3 scripts/test_components.py > /dev/null" \
-  --job "baseline perf check rules (INF-25)=python3 bench/baseline/test_run.py"
+  --job "conformance suite=python3 scripts/test_conformance.py && python3 scripts/conformance.py run" \
+  --job "components and port ledger=python3 scripts/test_components.py > /dev/null" \
+  --job "baseline perf check rules=python3 bench/baseline/test_run.py"
 step "tree";    python3 scripts/tree_state.py left "$tree"
 echo "all checks passed"

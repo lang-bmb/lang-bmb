@@ -1,4 +1,4 @@
-#[summary("정수 연산을 폭과 부호마다: 산술(넘침 검사), 나눗셈과 나머지(0과 MIN / -1), 비트 연산, 시프트(리터럴 양과 변수 양), 비교, 부호 바꿈, 비트 뒤집기")]
+#[summary("Integer operations for each width and sign: arithmetic (overflow checks), division and remainder (0 and MIN / -1), bit operations, shifts (literal and variable amounts), comparison, negation, bitwise not")]
 mod ints {
     #[effects(pure)]
     fn add_i8(a: i8, b: i8) -> i8 { a + b }

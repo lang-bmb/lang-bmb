@@ -1,4 +1,4 @@
-//! Contract lint (DESIGN.md §8.2 "계약 조정", backlog 2D-08).
+//! Contract lint (DESIGN.md §8.2 "Contract adjustment").
 //!
 //! Six deterministic reports, as warning diagnostics (`W09xx`):
 //!
@@ -14,10 +14,10 @@
 //! - `W0903` an `ensures` clause no caller's proof uses: with that one clause
 //!   removed, every caller still verifies completely. Only functions that
 //!   have callers, all of them verified, are examined.
-//! - `W0904` a single change to a function's body (backlog 2D-09) that its
+//! - `W0904` a single change to a function's body that its
 //!   specification does not distinguish: the mutated function still
 //!   verifies completely. Changes: `+`/`-`, `<`/`<=`, `>`/`>=`, `==`/`!=`,
-//!   `/`/`%`, `&&`/`||` swapped, `*` replaced by `+` (backlog 2D-16), an
+//!   `/`/`%`, `&&`/`||` swapped, `*` replaced by `+`, an
 //!   integer literal `c` replaced by `c + 1`, a `bool` literal flipped, an
 //!   `if` condition negated, an index `a[i]` replaced by `a[i + 1]` and by
 //!   `a[i - 1]` (two mutants; often killed by the bounds proof, which is a
@@ -29,24 +29,24 @@
 //!   run, taken round-robin over functions in path order (site order within
 //!   a function); the rest are counted as `mutants_skipped`.
 //! - `W0905` a loop exit or the end of the body of a verified function that
-//!   its own proof cannot reach (`verify::vacuous_ends`, backlog 1B-44):
+//!   its own proof cannot reach (`verify::vacuous_ends`):
 //!   what follows holds vacuously. No honest program yields one.
 //!
 //! W0902, W0904 and W0905 skip `#[external_body]` functions (ADR-0029 §1):
 //! their body is not proved, so every mutant and every dropped clause would
-//! "still verify" (backlog 2E-05).
+//! "still verify".
 //! - `W0909` an executable function declares an effect its body does not
 //!   need (ADR-0030 §3): its own operations and its callees' declared
 //!   effects need none of it. Syntactic, no proof involved.
 //! - `W0910` a loop of an `io` function that prints and carries state (a
 //!   local declared before the loop and assigned in it) whose every update
-//!   is pure (backlog 2D-30, from T0-34): the update can be a pure function
+//!   is pure: the update can be a pure function
 //!   with a contract, proved, and only the printing shell needs a test.
 //!   Syntactic.
 //! - `W0906` a `forall` whose one trigger term and another term of its body
 //!   read the same array (or call the same function) at different arguments
 //!   that mention the bound variables, as `#[trigger] out[k + 1] == out[k] +
-//!   a[k + 1]` (backlog 1B-45): each instance yields a term the trigger
+//!   a[k + 1]`: each instance yields a term the trigger
 //!   matches again, a matching loop that can run the solver to its limit.
 //!   Syntactic, no proof involved. A `forall` with several trigger terms
 //!   (one multi-pattern) is not reported.
@@ -55,22 +55,20 @@
 //! nothing else changes, so the type tables still apply) and only the
 //! affected definitions are proved again (`verify::verify_defs`), through a
 //! proof cache (in memory, or `DIR/proofs` with `--cache DIR`; with it, the
-//! first whole-program verification also goes through the incremental cache,
-//! backlog 2D-15). Each clause is judged on its own: two clauses
+//! first whole-program verification also goes through the incremental cache). Each clause is judged on its own: two clauses
 //! reported separately may not be removable together. Re-verifications are
 //! capped (`MAX_PRE_TRIALS`, `MAX_POST_TRIALS`); clauses beyond the cap are
 //! counted as `skipped` in the summary, in a fixed (path, clause) order. It
 //! runs only on request (`bmb lint`); `check` and `verify` are unchanged.
 //!
-//! Every query after the first verification is advisory (`smt::advisory`,
-//! backlog T2-16): its solver process has the smaller memory limit
+//! Every query after the first verification is advisory (`smt::advisory`): its solver process has the smaller memory limit
 //! `Z3_ADVISORY_MEMORY_MB`, and its full query the smaller resource limit
-//! `Z3_ADVISORY_RLIMIT` (ADR-0131, backlog T2-18). A query that reaches
+//! `Z3_ADVISORY_RLIMIT` (ADR-0131). A query that reaches
 //! either is undecided, as at the gate's limit, so a report can be left out
 //! but none is added. The first verification runs under the gate's limits:
 //! "verified" means what the gate means.
 //!
-//! `bmb lint --select CODES` runs only the listed checks (backlog T2-12):
+//! `bmb lint --select CODES` runs only the listed checks:
 //! each reports what it reports in a full run, and the first verification
 //! and the precondition check run only when a selected check needs them.
 //! The summary carries the solver cost of the two satisfiability checks
@@ -107,7 +105,7 @@ pub fn default_codes() -> Vec<&'static str> {
 }
 
 /// Checks that run only when `--select` names them: W0918 (the contract
-/// fixes the result, backlog T1-44a) is information, and most contracts
+/// fixes the result) is information, and most contracts
 /// that bound a result rather than fix it are meant so.
 pub const ON_REQUEST: [&str; 1] = ["W0918"];
 
@@ -225,7 +223,7 @@ pub fn lint_sources(files: &[(String, String)]) -> Result<LintOutput, String> {
 }
 
 /// As `lint_sources`, with the proof cache and the incremental cache kept in
-/// `cache_dir` (as `bmb verify --cache`, backlog 2D-15): the first, whole
+/// `cache_dir` (as `bmb verify --cache`): the first, whole
 /// program verification reuses every unchanged definition, and the
 /// restricted re-verifications reuse proved obligations from earlier runs.
 /// The result is the same.
@@ -237,7 +235,7 @@ pub fn lint_sources_cached(
 }
 
 /// As `lint_sources_cached`, running only the checks whose codes `select`
-/// lists (`CODES`; backlog T2-12). Each selected check reports exactly what
+/// lists (`CODES`). Each selected check reports exactly what
 /// it reports in a full run. The first verification runs only for the
 /// checks that judge verified functions (W0902 to W0905), the precondition
 /// check also for the ones that skip its unsatisfiable functions (W0902,
@@ -366,8 +364,7 @@ pub fn lint_sources_selected(
         clean(&base, &fe.diags, &spans, &one)
     };
 
-    // W0918: a contract that allows two results for one input (backlog
-    // T1-44a). Information, not an error: the freedom may be meant (any
+    // W0918: a contract that allows two results for one input. Information, not an error: the freedom may be meant (any
     // index of a maximum); the witness is the example a reader checks.
     let mut det_cost = None;
     if runs("W0918") {
@@ -986,7 +983,7 @@ fn apply_site(f: &mut FnDef, text: &str, k: usize) {
     });
 }
 
-// ---------- mutants as programs (`bmb mutate`, backlog 2A-10) ----------
+// ---------- mutants as programs (`bmb mutate`) ----------
 
 /// One W0904 change applied to one function, as program text (the hidden
 /// mutant sets of the spec-strength benchmark BSB are made from these).
@@ -1071,7 +1068,7 @@ pub fn mutate_sources(files: &[(String, String)], defs: &[String]) -> Result<Vec
     Ok(out)
 }
 
-/// W0905 for reach point `what` (backlog 1B-44). No honest program yields
+/// W0905 for reach point `what`. No honest program yields
 /// one: in a verified function every point is reached, so a report means
 /// contradictory contracts or a fault in the encoding.
 fn w0905(path: &str, span: Span, what: &str) -> Diag {
@@ -1088,7 +1085,7 @@ fn w0905(path: &str, span: Span, what: &str) -> Diag {
     )
 }
 
-// ---------- escapes (W1001, W1002, ADR-0029, backlog 2E-04) ----------
+// ---------- escapes (W1001, W1002, ADR-0029) ----------
 
 /// W1001 for each `#[rationale(..)]` whose hash is not the one it is bound
 /// to (ADR-0029 §3): what it speaks for (the definition, the predicates it
@@ -1161,7 +1158,7 @@ fn needless_assumes(base: &crate::verify::Outcome, defs: &BTreeMap<String, &FnDe
     out
 }
 
-// ---------- unneeded effects (W0909, ADR-0030 §3, backlog 2F-02) ----------
+// ---------- unneeded effects (W0909, ADR-0030 §3) ----------
 
 /// W0909 for each executable function that declares an effect its body
 /// does not need (`Tables::effect_needs`: its own operations and its
@@ -1215,7 +1212,7 @@ fn unneeded_effects(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) 
     out
 }
 
-// ---------- pure state in printing loops (W0910, backlog 2D-30) ----------
+// ---------- pure state in printing loops (W0910) ----------
 
 /// W0910 for each outermost `while`/`for` of an `io` function whose body
 /// calls a function that needs `io` and assigns locals declared before the
@@ -1223,7 +1220,7 @@ fn unneeded_effects(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) 
 /// That loop is a state machine with its output: the update is a pure
 /// function of the state and the loop's inputs, which a contract can
 /// specify and the gate prove, and only the printing remains to test (the
-/// agents of T0-30 kept both in one `io` function, H-EFFECT). The suggested
+/// agents of an earlier measurement kept both in one `io` function, H-EFFECT). The suggested
 /// signature takes the variables the updates read and returns the state.
 fn io_loop_cores(t: &crate::verify::Tables, defs: &BTreeMap<String, &FnDef>) -> Vec<Diag> {
     use crate::check::Effects;
@@ -1585,7 +1582,7 @@ pub(crate) fn each_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     }
 }
 
-// ---------- self-matching triggers (W0906, backlog 1B-45) ----------
+// ---------- self-matching triggers (W0906) ----------
 
 /// The subexpressions of `e`, specification parts included.
 fn children(e: &Expr) -> Vec<&Expr> {
@@ -1806,7 +1803,7 @@ fn self_matching(f: &FnDef, text: &str) -> Vec<Diag> {
     out
 }
 
-// ---------- method calls by path (W0911, backlog 2M-02) ----------
+// ---------- method calls by path (W0911) ----------
 
 /// W0911 for each call by path of a method that the normal form writes as
 /// a method call (ADR-0051, `check::methodize`): `T::f(&x, a)` is `x.f(a)`
@@ -2046,7 +2043,7 @@ fn enclosed(t: &str) -> bool {
     true
 }
 
-// ---------- canonical counting loops (W0907, backlog 2K-04) ----------
+// ---------- canonical counting loops (W0907) ----------
 
 /// The blocks of `b`, nested ones included.
 fn blocks_in<'b>(b: &'b Block, out: &mut Vec<&'b Block>) {
@@ -2205,7 +2202,7 @@ fn int_literal(e: &Expr) -> bool {
 /// `hi` reads, no `continue` goes to the loop and nothing after it names
 /// `i`. That is `for i in lo..hi` with the same invariants: the range
 /// `for` is encoded as exactly this expansion plus its head invariant and
-/// measure (backlog 2K-01d), so the proof carries over. The fix splices the
+/// measure, so the proof carries over. The fix splices the
 /// source, so comments stay.
 pub fn counting_whiles(f: &FnDef, text: &str) -> Vec<Diag> {
     let mut blocks = Vec::new();
@@ -2435,7 +2432,7 @@ mod tests {
     use super::*;
 
     // Detection is tested in `tests/verify.rs` (`proofs_are_not_vacuous`,
-    // which fails when the 2G-05 loop fault is put back).
+    // which fails when the loop-length fault is put back).
     #[test]
     fn w0905_names_the_point_and_the_function() {
         let d = w0905("m::f", Span::default(), "exit of the loop");

@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_intern.bmb (backlog 4B-02 (g)), for its
+// Rust translation of tests/run/std_intern.bmb, for its
 // expected output (`rustc --edition 2021`): an interner as rustc keeps one,
 // a map from text to number and the names by number.
 use std::collections::BTreeMap;

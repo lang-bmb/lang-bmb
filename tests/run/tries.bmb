@@ -1,4 +1,4 @@
-#[summary("? 연산자의 실행: Option과 Result, 탈출 간선의 해제, 소유 페이로드, 오류의 이동 (ADR-0049 §1, backlog 2K-01e)")]
+#[summary("Running the ? operator: Option and Result, drops on exit edges, owned payloads, the move of the error (ADR-0049 §1)")]
 mod tr {
     spec fn one_digit(r: Result<u64, Vec<u8>>) -> bool {
         match r {

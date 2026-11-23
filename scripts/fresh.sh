@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What goes stale, checked in seconds (backlog INF-34, INF-37): the generated
+# What goes stale, checked in seconds: the generated
 # documents and blocks, the surface fingerprint and the gate-power mutants.
 # The gate
 # runs this first: these used to fail forty minutes into a run, three times

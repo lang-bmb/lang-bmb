@@ -1,4 +1,4 @@
-#[summary("std::collections 텍스트 키 차등 시험: 표준 입력의 줄마다 연산(`i 키 v` 넣기, `r 키` 빼기, `g 키` 찾기)을 BTreeMap<String, u64>와 BTreeSet<String>에 하고 결과와 끝의 내용을 순서대로 찍는다 (tests/stdlib.rs, backlog 4B-04)")]
+#[summary("std::collections text key differential test: applies the operation on each line of standard input (`i key v` insert, `r key` remove, `g key` look up) to a BTreeMap<String, u64> and a BTreeSet<String>, and prints each result and the final contents in order (tests/stdlib.rs)")]
 mod tdiff {
     spec fn stop(t: &[u8], a: usize, r: usize) -> bool {
         a <= r && r <= t.len() && (r == t.len() || t[r] == 32 || t[r] == 10)

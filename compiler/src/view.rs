@@ -1,4 +1,4 @@
-//! The compact agent view of tool output (backlog 2D-23, 2D-25, ADR-0068).
+//! The compact agent view of tool output (ADR-0068).
 //!
 //! `bmb mcp --compact` passes every tool result through `compact`. The maps
 //! and the CLI stay JSONL (ADR-0020); this is a projection of that text for

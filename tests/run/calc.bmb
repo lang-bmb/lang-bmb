@@ -1,4 +1,4 @@
-#[summary("전위 표기 계산기: 바이트열을 식 트리로 읽고 넘침 없이 평가 (backlog 2O-06)")]
+#[summary("Prefix-notation calculator: reads a byte string into an expression tree and evaluates it without overflow")]
 mod calc {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>), Mul(Box<Expr>, Box<Expr>) }
 

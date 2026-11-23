@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 // `print!` and `println!` that end the process quietly when standard output
-// is closed (`bmb hash DIR | head`, backlog 1D-24) instead of panicking with
+// is closed (`bmb hash DIR | head`) instead of panicking with
 // a backtrace: exit status 141, as a process killed by SIGPIPE. SIGPIPE
 // itself stays ignored so that a solver that dies is an error, not a signal.
 macro_rules! print {
@@ -163,7 +163,7 @@ const USAGE: &str = "usage:
                             --bounded gives `query` and `map` results as windows of at most
                             32768 bytes with `offset` and `limit` arguments (ADR-0127);
                             --bounded-16k is the same at 16384 bytes (the default is
-                            measured, backlog 2D-39); --rename-ops offers `tx_rename` and
+                            measured); --rename-ops offers `tx_rename` and
                             `tx_expect`, and `rename` and `expect` lists in `write` (checked
                             and applied before the items; a write may only rename)
   bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,
@@ -445,7 +445,7 @@ fn run() -> ExitCode {
                 inputs.remove(c);
             }
             // emit-llvm --all-checks: no proof, every obligation keeps its
-            // runtime check (runs unproved programs such as mutants, 2A-10).
+            // runtime check (runs unproved programs such as mutants).
             let mut all_checks = false;
             if cmd == "emit-llvm"
                 && let Some(c) = inputs.iter().position(|a| a == "--all-checks")
@@ -1030,9 +1030,9 @@ fn run() -> ExitCode {
             }
         }
         // Each front-end stage's output, for comparing another
-        // implementation stage by stage (backlog 4A-03): the tokens, and
+        // implementation stage by stage: the tokens, and
         // the parsed program in normal form before any check.
-        // The code generator's constant IR texts (backlog 4D-05c1).
+        // The code generator's constant IR texts.
         Some("dump") if args.len() == 2 && args[1] == "runtime" => {
             for (name, text) in bmb::codegen::runtime_texts() {
                 println!(
@@ -1173,7 +1173,7 @@ fn respond(r: Result<String, String>) -> ExitCode {
     }
 }
 
-/// `--stats` of `verify`, `emit-llvm` and `build` (backlog 2A-14, BCB): which
+/// `--stats` of `verify`, `emit-llvm` and `build` (BCB): which
 /// definitions were encoded and lowered, which were reused by the incremental
 /// cache, and the proof cache counts; for `emit-llvm` and `build` also the
 /// runtime checks the IR keeps because their obligations are unproved.

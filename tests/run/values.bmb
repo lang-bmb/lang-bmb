@@ -1,4 +1,4 @@
-#[summary("실행 예제: 값 의미 — 복사, &mut, 페이로드, 분기 결과 (backlog 2B-06)")]
+#[summary("Run example: value semantics — copies, &mut, payloads, branch results")]
 mod values {
     struct Point { x: i64, y: i64 }
 

@@ -1,4 +1,4 @@
-//! Strings in the checker (ADR-0050, backlog 2U-01): `String`, `&str`
+//! Strings in the checker (ADR-0050): `String`, `&str`
 //! and `char`, their literals, the operations of ADR-0050 §2 with Rust's
 //! names and signatures, and the Rust habits around them.
 //!

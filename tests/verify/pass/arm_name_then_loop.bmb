@@ -1,4 +1,4 @@
-#[summary("갈래가 묶은 이름은 그 match에서 끝난다: 다른 갈래가 return해도, 뒤의 match 한 갈래 안의 for가 같은 이름을 변수로 쓸 수 있다 (백로그 4D-31: 증명기가 멈췄다)")]
+#[summary("A name bound by an arm ends with that match: even when another arm returns, a for inside an arm of a later match can use the same name as its variable (the prover used to crash)")]
 mod an {
     enum K { A(Vec<u8>), B(u8) }
 

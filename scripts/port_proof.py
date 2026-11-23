@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Proves a BMB program's definitions in several processes and merges their
-caches (backlog INF-41).
+caches.
 
 `bmb verify` proves one definition after another in one process. The port
 is one program of several hundred definitions, and the gate proves it from
@@ -16,7 +16,7 @@ and gives the rows a single run gives.
 
 BMB is the compiler that proves (default `target/debug/bmb`). The gate
 passes the optimized build of the same sources: building the queries is
-about ten times faster there (backlog INF-43).
+about ten times faster there.
 
 Nothing is trusted that the single run would not prove: every proof in DIR
 was found in this run, from empty caches, by the same compiler, and the

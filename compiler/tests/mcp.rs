@@ -1,5 +1,5 @@
-//! MCP server end to end over stdio (backlog 1D-11). The responses are
-//! read with the tests' own JSON reader (backlog 4A-04).
+//! MCP server end to end over stdio. The responses are
+//! read with the tests' own JSON reader.
 
 mod common;
 
@@ -123,7 +123,7 @@ fn agent_session_over_mcp() {
     assert!(!err && t.contains("\"tx\":1"));
     c.tool(
         "tx_unit",
-        &format!("{{\"tx\":1,\"path\":\"calc\",\"summary\":{}}}", q("계산")),
+        &format!("{{\"tx\":1,\"path\":\"calc\",\"summary\":{}}}", q("calc")),
     );
     let bad = "#[effects(pure)]\nfn twice(x: i64) -> bool { x }";
     c.tool(
@@ -143,7 +143,7 @@ fn agent_session_over_mcp() {
     c.tool("tx_begin", "{}");
     c.tool(
         "tx_unit",
-        &format!("{{\"tx\":2,\"path\":\"calc\",\"summary\":{}}}", q("계산")),
+        &format!("{{\"tx\":2,\"path\":\"calc\",\"summary\":{}}}", q("calc")),
     );
     let good = "#[effects(pure)]\nfn twice(x: i64) -> i64 { x.wrapping_mul(2) }";
     c.tool(
@@ -152,7 +152,7 @@ fn agent_session_over_mcp() {
     );
     c.tool(
         "tx_unit",
-        &format!("{{\"tx\":2,\"path\":\"app\",\"summary\":{}}}", q("진입점")),
+        &format!("{{\"tx\":2,\"path\":\"app\",\"summary\":{}}}", q("entry")),
     );
     let main = "#[effects(io)]\nfn main() -> () { print_i64(calc::twice(21)) }";
     c.tool(
@@ -253,7 +253,7 @@ fn commit_ok(c: &mut Client, steps: &[(&str, String)]) {
     assert!(!err, "{t}");
 }
 
-/// Error paths of the tools (backlog 1D-19): each is a tool error
+/// Error paths of the tools: each is a tool error
 /// (`isError: true`) with a reason, and none changes the workspace.
 #[test]
 fn tool_errors_over_mcp() {
@@ -305,7 +305,7 @@ fn tool_errors_over_mcp() {
         ],
     );
     // An `impl` block with no function writes nothing: the commit is
-    // rejected rather than dropping it (backlog T0-20, ADR-0074 §4).
+    // rejected rather than dropping it (ADR-0074 §4).
     let (t, _) = c.tool("tx_begin", "{}");
     let id = json::parse(&t)
         .unwrap()
@@ -418,7 +418,7 @@ fn tool_errors_over_mcp() {
     assert_eq!(files.len(), 1);
     assert!(files[0].0.ends_with("lib.bmb") && !files[0].1.contains("fn dec"));
 
-    // Path traversal and bad `put` code are rejected at commit (1D-15).
+    // Path traversal and bad `put` code are rejected at commit.
     let before = snapshot(&root);
     for steps in [
         vec![(
@@ -450,7 +450,7 @@ fn tool_errors_over_mcp() {
     }
     assert!(!root.parent().unwrap().join("evil.bmb").exists());
 
-    // The server survives malformed and deeply nested input (1A-11).
+    // The server survives malformed and deeply nested input.
     c.send(&"[".repeat(200_000));
     let mut line = String::new();
     c.out.read_line(&mut line).unwrap();
@@ -468,7 +468,7 @@ fn tool_errors_over_mcp() {
 
 /// Valid JSON that is not a request object, and a request without `method`,
 /// are answered with JSON-RPC "invalid request" (-32600) instead of silence,
-/// which left the client waiting (found by the session fuzzer, 1D-23).
+/// which left the client waiting (found by the session fuzzer).
 #[test]
 fn invalid_requests_get_an_error_response() {
     let root = temp_root("invalid");
@@ -503,7 +503,7 @@ fn invalid_requests_get_an_error_response() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Threat model of the MCP surface (backlog 2D-20, docs/mcp-threat-model.md):
+/// Threat model of the MCP surface (docs/mcp-threat-model.md):
 /// a workspace made by someone else cannot make the tools read or write
 /// outside it through symbolic links, transactions are capped, and text from
 /// the workspace stays data inside one response line.
@@ -630,7 +630,7 @@ fn untrusted_workspace_cannot_reach_outside() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
-/// `write` (backlog 2D-24): one call creates the unit, puts the definitions,
+/// `write`: one call creates the unit, puts the definitions,
 /// commits and proves; a rejected write changes nothing; a proof failure is a
 /// tool error after the commit, with its counterexample.
 #[test]
@@ -656,7 +656,7 @@ fn write_tool_commits_and_proves_in_one_call() {
         "write",
         &format!(
             "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
-            q("계산"),
+            q("calc"),
             q(bad)
         ),
     );
@@ -675,7 +675,7 @@ fn write_tool_commits_and_proves_in_one_call() {
         "write",
         &format!(
             "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
-            q("계산"),
+            q("calc"),
             q(good)
         ),
     );
@@ -687,7 +687,7 @@ fn write_tool_commits_and_proves_in_one_call() {
     );
 
     // A type and its `impl` with the functions commit and prove in one call
-    // (ADR-0074; T0-20 rejected them, before that they were dropped).
+    // (ADR-0074; they were once rejected, and before that dropped).
     let mixed = "struct P { x: i64 }\n\nimpl P {\n    #[effects(pure)]\n    fn get(self: &P) -> i64 { self.x }\n}\n\n#[effects(pure)]\nfn one() -> i64 { 1 }";
     let (t, err) = c.tool(
         "write",
@@ -724,7 +724,7 @@ fn write_tool_commits_and_proves_in_one_call() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// The file diff surface (`--file-tools`, backlog T1-06, ADR-0073): a
+/// The file diff surface (`--file-tools`, ADR-0073): a
 /// unified diff creates, edits and deletes unit files, then the call commits
 /// and proves; a diff that does not apply, or a result with a type error or a
 /// file holding another unit, writes nothing; the stored file is the normal
@@ -810,7 +810,7 @@ fn file_tools_edit_by_unified_diff() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// The JSON AST surface (`--ast-tools`, backlog T1-06, ADR-0073): the tree
+/// The JSON AST surface (`--ast-tools`, ADR-0073): the tree
 /// is read at a pointer and edited by a JSON Patch, then committed and
 /// proved; a bad patch or tree writes nothing, and diagnostics point into
 /// the tree (`at`) instead of a text position.
@@ -949,7 +949,7 @@ fn ast_tools_edit_by_json_patch() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `--compact` (backlog 2D-23, ADR-0068): the same answers in the compact
+/// `--compact` (ADR-0068): the same answers in the compact
 /// agent view. Every surface keeps its path, status, signature and contract,
 /// every definition and edge is listed, no hash or file position is shown,
 /// verified definitions become a count, and the default server is unchanged.
@@ -962,7 +962,7 @@ fn compact_view_carries_the_same_answers() {
         "write",
         &format!(
             "{{\"unit\":\"calc\",\"summary\":{},\"code\":{}}}",
-            q("계산"),
+            q("calc"),
             q(code)
         ),
     );
@@ -1101,7 +1101,7 @@ fn compact_view_carries_the_same_answers() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `--tool-docs` (backlog 2D-28): the tool descriptions document the tools
+/// `--tool-docs`: the tool descriptions document the tools
 /// on their own, so a prompt need not. Only `query` and `write` read
 /// differently; names and arguments stay (`write` describes its arguments in
 /// the schema only); no design reference is left in them; `--compact` still says which form results come in; without the flag
@@ -1187,7 +1187,7 @@ fn tool_docs_document_the_tools_on_their_own() {
 }
 
 /// The tool list every frozen set's server shows is byte-for-byte the one it
-/// was frozen with (ADR-0074 §6, backlog T0-23): the hashes were taken before
+/// was frozen with (ADR-0074 §6): the hashes were taken before
 /// `put` and `remove` learned types, `impl` blocks and traits, whose new
 /// descriptions appear only with `--item-docs`. A change here changes what
 /// the model sees in those sets (ADR-0070): make it a new flag instead.
@@ -1309,7 +1309,7 @@ fn sha256(text: &str) -> String {
     format!("sha256:{}", &String::from_utf8(out.stdout).unwrap()[..64])
 }
 
-/// `--undecided-info` (ADR-0108 §2, backlog 2D-34): when a `write`'s proof
+/// `--undecided-info` (ADR-0108 §2): when a `write`'s proof
 /// fails and a diagnostic suggests `#[uses(..)]`, the response carries the
 /// search's row (`proved` with the list and the attribute's replacement),
 /// and the workspace is not changed; without the flag there is no row.
@@ -1387,7 +1387,7 @@ fn probe_tool_on_request_and_read_only() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// `--bounded` (ADR-0127, backlog 2D-38): `query` and `map` results are
+/// `--bounded` (ADR-0127): `query` and `map` results are
 /// windows of the CLI's response, the tools take `offset` and `limit` and
 /// say so; without the flag the response is whole and the tool lists keep
 /// their bytes (`frozen_tool_lists_keep_their_bytes`).
@@ -1484,7 +1484,7 @@ fn bounded_results_are_windows_of_the_response() {
     );
 }
 
-/// `--rename-ops` (backlog T1-20): `tx_rename` and `tx_expect`, and `rename`
+/// `--rename-ops`: `tx_rename` and `tx_expect`, and `rename`
 /// and `expect` in `write`, offered only on request (the frozen tool lists
 /// keep their bytes). A rename rewrites the declaration and every reference
 /// and keeps the identities; an `expect` rejects a write that depends on a

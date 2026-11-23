@@ -1,4 +1,4 @@
-#[summary("UTF-8 불변식을 사용 지점 사실로: ASCII 바이트 뒤, 온전한 글자 뒤, 첫 바이트 앞이 글자 경계임을 실행 검사 없이 증명한다 (backlog 2U-06)")]
+#[summary("The UTF-8 invariant as use-site facts: proves without run-time checks that the positions after an ASCII byte, after a whole character and before a first byte are character boundaries")]
 mod u8f {
     spec fn within(i: usize, t: &str) -> bool {
         i <= t.len()

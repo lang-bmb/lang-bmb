@@ -363,7 +363,7 @@ impl<'p> Ids<'p> {
     }
 
     /// The nameless text of `key` as an incremental proof key reads it
-    /// (ADR-0063 §4, backlog T1-49), references written by `res`: a
+    /// (ADR-0063 §4), references written by `res`: a
     /// definition's whole text, its caller surface or its declaration
     /// (`Read`), a type's declaration without its `impl`s (the key reads a
     /// type's fields and payloads, ADR-0027), a trait as `trait` (a key
@@ -389,7 +389,7 @@ impl<'p> Ids<'p> {
     }
 
     /// Method `name` of trait `trait_path` as an incremental proof key
-    /// reads it (backlog T1-49): its trait and position in the trait's
+    /// reads it: its trait and position in the trait's
     /// declaration, its declaration's caller surface, and the functions
     /// that define it (each `impl`'s, in source order, and the default
     /// body). A call with a known `Self` reads that `impl`'s contract

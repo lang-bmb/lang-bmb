@@ -1,4 +1,4 @@
-#[summary("f64 실행: 망델브로 집합을 글자로 그린다(48×20, 반복 최대 64회). 기대 출력은 mandel_ref.rs(Rust)의 출력 (ADR-0061, backlog T2-03)")]
+#[summary("Running f64: draws the Mandelbrot set in characters (48×20, at most 64 iterations). The expected output is the output of mandel_ref.rs (Rust) (ADR-0061)")]
 mod md {
     // Iterations of z = z^2 + c before |z| > 2, at most `limit`.
     #[effects(pure)]

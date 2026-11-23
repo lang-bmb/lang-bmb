@@ -1,4 +1,4 @@
-#[summary("재귀 타입의 경계 (ADR-0047 §1, backlog 2O-02)")]
+#[summary("Edges of recursive types (ADR-0047 §1)")]
 mod rc {
     enum Expr { Num(i64), Add(Box<Expr>, Box<Expr>) }
 

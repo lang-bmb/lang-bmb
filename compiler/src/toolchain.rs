@@ -1,4 +1,4 @@
-//! Pinned external tools (INF-02, INF-03). Versions come from
+//! Pinned external tools. Versions come from
 //! `scripts/toolchain.env`, the single source of truth. A missing tool or a
 //! different version is an error, never a warning: the proof gate must not run
 //! on an unknown solver.
@@ -49,7 +49,7 @@ fn run(cmd: &str, arg: &str) -> Result<String, String> {
 /// Ok(version) if `z3` on PATH is exactly the pinned version.
 ///
 /// A successful check is remembered for the process as long as `PATH` is
-/// unchanged (backlog 1D-18): every proof run asks, and `z3 --version` is a
+/// unchanged: every proof run asks, and `z3 --version` is a
 /// process start. Failures are not remembered, so a missing or wrong solver is
 /// reported on every call.
 pub fn check_z3() -> Result<String, String> {

@@ -1,4 +1,4 @@
-#[summary("범위 for의 실행: 끝을 포함하는 범위의 최댓값, continue의 증가, break·return, 빈 범위, 한 번 읽는 끝 (backlog 2K-01d)")]
+#[summary("Running range for: the maximum value of an inclusive range, the increment on continue, break·return, empty ranges, an end read once")]
 mod rg {
     spec fn bounded(s: i64, i: usize) -> bool {
         0 <= s && s <= 1000 * i

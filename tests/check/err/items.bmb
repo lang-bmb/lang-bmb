@@ -5,7 +5,7 @@ mod no_summary {
     fn f() -> () {}
 }
 
-#[summary("항목 규칙")]
+#[summary("Item rules")]
 mod items {
     use other::thing;
     use other::*;
@@ -29,6 +29,6 @@ mod items {
     fn generic<T>(x: i64) -> i64 { x }
 }
 
-#[summary("중복 단위")]
+#[summary("A duplicate unit")]
 mod items {
 }

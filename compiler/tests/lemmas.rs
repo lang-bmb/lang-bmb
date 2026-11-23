@@ -2,12 +2,12 @@
 //! definitions (ADR-0017 §3). If this test fails, the gate is unsound.
 //!
 //! The terms of bit operations (ADR-0048 §4) compute Rust's results, and the
-//! facts assumed with them hold (backlog 2N-02). Those are checked by
+//! facts assumed with them hold. Those are checked by
 //! evaluating the terms rather than by the solver (which does not decide
 //! them at 32 bits in minutes): every pair of 8-bit operands, and edge and
 //! pseudo-random values of the wider types.
 //!
-//! The same holds for the bit methods (backlog 2N-03), and the bit-vector
+//! The same holds for the bit methods, and the bit-vector
 //! translation of a `by (bit_vector)` sub-proof (`subproof::bit_vector`) is
 //! exact: at every sampled point its goal is true exactly when the term it
 //! translates has the value the term has there, also for operands outside
@@ -633,7 +633,7 @@ const AMOUNTS: [u32; 18] = [
     u32::MAX,
 ];
 
-/// The bit methods' terms (backlog 2N-03) compute Rust's results for
+/// The bit methods' terms compute Rust's results for
 /// every amount (a variable one through the named bit-vector functions, a
 /// constant one in linear form), and their facts hold.
 #[test]
@@ -665,7 +665,7 @@ fn bit_method_terms_are_rusts_methods() {
     }
 }
 
-/// The bytes of an integer and the integer of bytes (backlog 2N-09c) are
+/// The bytes of an integer and the integer of bytes are
 /// Rust's `to_{be,le}_bytes` and `from_{be,le}_bytes`, for every value, for
 /// operands outside the type (their image, ADR-0090) and for bytes outside
 /// `u8` (theirs).
@@ -779,7 +779,7 @@ fn encoder_terms(i: IntTy) -> Vec<String> {
     ts
 }
 
-/// The bit-vector translation of a sub-proof is exact (backlog 2N-03): for
+/// The bit-vector translation of a sub-proof is exact: for
 /// every term the encoder makes, the translation's two's complement value
 /// is the term's value at every sampled point of the variables' types.
 #[test]
@@ -827,7 +827,7 @@ fn bit_vector_translations_are_exact() {
     }
 }
 
-/// Division by a term (backlog 2N-11): the code's unsigned `/`·`%`
+/// Division by a term: the code's unsigned `/`·`%`
 /// (SMT-LIB's Euclidean `div`/`mod`) and signed ones (`bmb_tdiv`/`bmb_trem`)
 /// translate exactly wherever the divisor is not zero, for operands of
 /// either sign (specification arithmetic), and a divisor that may be zero
@@ -925,7 +925,7 @@ fn z3_answer(script: &str) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-/// A reach-point query of bounded integers and bit-vectors (backlog T2-13)
+/// A reach-point query of bounded integers and bit-vectors
 /// as a bit-vector query: the SHA-256 `Σ0` point, which the integer form
 /// leaves undecided, is `sat`; a contradiction through `bv2nat` is `unsat`
 /// and exact; a divisor that may be zero makes it `sat`-only; a function
@@ -1018,7 +1018,7 @@ fn bit_vector_goals_and_guards() {
     }
 }
 
-/// The text terms of the prover (ADR-0050 §3, backlog 2U-02) against
+/// The text terms of the prover (ADR-0050 §3) against
 /// Rust: `is_char_boundary` on valid UTF-8 at every position (the byte read
 /// is the term's only array access, given as `b`), `char::from_u32`'s
 /// scalar values and `len_utf8`.

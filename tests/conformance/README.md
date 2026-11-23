@@ -1,6 +1,6 @@
 # Conformance tests
 
-A collection of cases that pins the rules of each section of the language reference (`docs/reference/01`~`08`) (backlog 5A-02, 5A-05). A case does not lean on the implementation: it records only the input program and the expected diagnostic codes and lines, the proof verdict and the fields of the status line, the exit code, the number of remaining runtime checks, and the output of the run. Messages, columns, fix texts, IR text, `rlimit` values and times are not in a case.
+A collection of cases that pins the rules of each section of the language reference (`docs/reference/01`~`08`). A case does not lean on the implementation: it records only the input program and the expected diagnostic codes and lines, the proof verdict and the fields of the status line, the exit code, the number of remaining runtime checks, and the output of the run. Messages, columns, fix texts, IR text, `rlimit` values and times are not in a case.
 
 ## Shape of a case
 

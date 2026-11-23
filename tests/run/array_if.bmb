@@ -1,4 +1,4 @@
-#[summary("배열 값 if: 가지마다 배열을 고르고, 대입에도 쓴다")]
+#[summary("if with array values: each branch picks an array, also used in assignment")]
 mod pick {
     #[effects(pure)]
     fn first(c: bool) -> i64 {
@@ -20,7 +20,7 @@ mod pick {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {

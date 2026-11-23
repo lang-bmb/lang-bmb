@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Differential tests of the port (port map §3, backlog 4D-15).
+"""Differential tests of the port (port map §3).
 
 A case names two commands, the stage0 side `a` and the port side `b`, and
 an input set. Each run starts both in an empty directory of its own with
@@ -169,7 +169,7 @@ def build(spec, out, bmb):
         files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
         if not files:
             return f"no file matches {globs}"
-        # The gate proves the port once (check.sh "port proof", INF-40): a
+        # The gate proves the port once (check.sh "port proof"): a
         # build finds the proofs of the files it shares with it in this cache.
         cmd = [bmb, "build", "--cache", os.path.join(ROOT, "target", "port-proof"), *files, "-o", out]
     elif "rustc" in spec:
@@ -222,7 +222,7 @@ def run(path, only, bmb, keep, prebuilt=None):
                 return 2
             if name in (prebuilt or {}):
                 # A program built elsewhere stands in (the bootstrap chain's
-                # stage2 for stage1, backlog 4E-02).
+                # stage2 for stage1).
                 built[name] = os.path.abspath(prebuilt[name])
                 continue
             built[name] = os.path.join(os.path.abspath(out_dir), name)

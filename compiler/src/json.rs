@@ -73,7 +73,7 @@ pub fn parse(s: &str) -> Result<Value, String> {
 }
 
 /// Maximum nesting of arrays and objects. Deeper input is rejected instead of
-/// overflowing the stack (backlog 1A-11).
+/// overflowing the stack.
 pub const MAX_DEPTH: usize = 256;
 
 struct P<'a> {
@@ -313,7 +313,7 @@ impl P<'_> {
 mod tests {
     use super::*;
 
-    /// What `std::json` rejects, stage0 rejects (backlog 4D-15): numbers
+    /// What `std::json` rejects, stage0 rejects: numbers
     /// outside RFC 8259 §6, half a surrogate pair, a raw control character.
     #[test]
     fn rejects_what_the_grammar_does() {

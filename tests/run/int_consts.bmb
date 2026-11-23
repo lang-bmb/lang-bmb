@@ -1,4 +1,4 @@
-#[summary("정수 상수 `T::MIN`·`T::MAX` (2N-06)")]
+#[summary("The integer constants `T::MIN`·`T::MAX`")]
 mod ic {
     spec fn at_least_min(x: i64) -> bool {
         i64::MIN <= x

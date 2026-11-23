@@ -1,4 +1,4 @@
-#[summary("구조체만으로 된 재귀: 정해지지 않은 정렬과 필드 사실 (ADR-0047 §3, backlog 2O-03d)")]
+#[summary("Recursion through structs only: an uninterpreted sort and field facts (ADR-0047 §3)")]
 mod rs {
     struct Node { v: i64, kids: Vec<Node> }
 

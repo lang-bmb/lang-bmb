@@ -1,5 +1,4 @@
-//! Contract weakening between two versions of a program (backlog 2D-19,
-//! DESIGN.md §8.2 "계약 조정", hypothesis H-GAME): `bmb weaken OLD NEW`.
+//! Contract weakening between two versions of a program (DESIGN.md §8.2 "Contract adjustment", hypothesis H-GAME): `bmb weaken OLD NEW`.
 //!
 //! **Matching.** Executable functions and `proof fn`s (free and in `impl T`
 //! blocks) are matched by path; the rest by identity `id` (ADR-0059: a pure
@@ -1011,8 +1010,7 @@ fn undecided(r: &Row) -> Verdict {
     }
 }
 
-/// A proof that reads a definition's contract (ADR-0065 §3, backlog
-/// T1-27): the definition (its path in the new version, or the old path of
+/// A proof that reads a definition's contract (ADR-0065 §3): the definition (its path in the new version, or the old path of
 /// a removed one) and the spec fns the reading proof's `#[uses]` reveals
 /// (full paths).
 #[derive(Clone, Debug, PartialEq, Eq)]

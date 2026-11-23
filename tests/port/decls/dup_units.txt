@@ -1,4 +1,4 @@
-#[summary("같은 이름의 단위 둘: 함수 값을 낮춘 함수가 제 단위로 돌아간다 (4D-29)")]
+#[summary("Two units of the same name: a function lowered from a function value goes back to its own unit")]
 mod tr {
     trait Shape {
         #[effects(pure)]
@@ -22,7 +22,7 @@ mod tr {
     fn use_it() -> i64 { apply(inc, 1) }
 }
 
-#[summary("둘째")]
+#[summary("The second")]
 mod tr {
     #[effects(pure)]
     fn short(x: i64) -> i64 { x }

@@ -1,4 +1,4 @@
-//! The standard library (ADR-0092 §1, backlog 4B-02): BMB source under
+//! The standard library (ADR-0092 §1): BMB source under
 //! `lib/std/`, embedded in the compiler (`build.rs`), proved by the same
 //! gate as any program, and added to every program that names it.
 //!

@@ -1,4 +1,4 @@
-//! MCP server over stdio (backlog 1D-11). The agent's only path to the code:
+//! MCP server over stdio. The agent's only path to the code:
 //! map queries and slices to read, transactions to write (DESIGN.md principle 6).
 //!
 //! Transport: JSON-RPC 2.0, one message per line on stdin/stdout.
@@ -18,31 +18,30 @@ struct Tx {
     base: Vec<(String, String)>,
 }
 
-/// Open transactions at once (backlog 2D-20: each holds a copy of the files).
+/// Open transactions at once (each holds a copy of the files).
 pub const MAX_OPEN_TXS: usize = 64;
 
 pub struct Server {
     root: PathBuf,
     txs: BTreeMap<u64, Tx>,
     next_tx: u64,
-    /// Front-end results of the last call (backlog 3A-03): every call still
+    /// Front-end results of the last call: every call still
     /// reads the workspace files, so a change from any writer is seen, but
     /// unchanged files are not parsed again and an unchanged program is
     /// neither checked nor indexed again.
     front: crate::FrontCache,
-    /// Offer the one-call `write` tool (backlog 2D-24).
+    /// Offer the one-call `write` tool.
     write_tool: bool,
-    /// Show tool results in the compact agent view (`view::compact`,
-    /// backlog 2D-23, ADR-0068).
+    /// Show tool results in the compact agent view (`view::compact`, ADR-0068).
     compact: bool,
     /// Tool descriptions that document the tools on their own, so a prompt
-    /// need not (`--tool-docs`, backlog 2D-28).
+    /// need not (`--tool-docs`).
     tool_docs: bool,
     /// The file diff edit surface: `read_file` and `edit_file`
-    /// (`--file-tools`, backlog T1-06, ADR-0073).
+    /// (`--file-tools`, ADR-0073).
     file_tools: bool,
     /// The JSON AST edit surface: `read_ast` and `edit_ast`, and positions
-    /// as pointers into the tree (`--ast-tools`, backlog T1-06, ADR-0073).
+    /// as pointers into the tree (`--ast-tools`, ADR-0073).
     ast_tools: bool,
     /// Descriptions of `tx_put`, `tx_remove` and `write` that name every
     /// item they write, not only definitions (`--item-docs`, ADR-0074 §6).
@@ -54,14 +53,14 @@ pub struct Server {
     pub undecided_info: bool,
     /// `--probe-tool` (ADR-0109): the read tool `probe`.
     pub probe_tool: bool,
-    /// `--rename-ops` (backlog T1-20): `tx_rename` and `tx_expect`, and
+    /// `--rename-ops`: `tx_rename` and `tx_expect`, and
     /// `rename` and `expect` in `write`. Off, the tool list of the frozen
     /// sets is unchanged (ADR-0021).
     pub rename_ops: bool,
     /// `--bounded` (ADR-0127): a `query` or `map` result is a window of at
     /// most `map::RESPONSE_BUDGET` bytes on the response, moved with
     /// `offset` and `limit`. `--bounded-16k` is the same window at half the
-    /// budget: which of the two becomes the default is measured (2D-39).
+    /// budget: which of the two becomes the default is measured.
     pub bounded: bool,
     /// The budget of that window, in bytes.
     pub budget: usize,
@@ -128,7 +127,7 @@ fn obj(kv: Vec<(&str, Value)>) -> Value {
     Value::Object(kv.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
 }
 
-/// The tools of `--rename-ops` (backlog T1-20) added to `list`: `tx_rename`
+/// The tools of `--rename-ops` added to `list`: `tx_rename`
 /// and `tx_expect` before `tx_commit`, and in `write` (when it is there)
 /// the lists `rename` and `expect`, with `unit` no longer required (a write
 /// may only rename).
@@ -258,8 +257,7 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 /// (`bmb mcp --write-tool`): the frozen measurement task sets see the tools
 /// they were frozen with (ADR-0021; compiler/README.md, MCP descriptions).
 /// With `compact` (`--compact`, ADR-0068) the read and proof tools describe
-/// the compact view their results come in. With `docs` (`--tool-docs`,
-/// backlog 2D-28) the descriptions are the one place that documents the
+/// the compact view their results come in. With `docs` (`--tool-docs`) the descriptions are the one place that documents the
 /// tools: `query` says what each query returns and `write` that it is the
 /// only way to write (what the frozen prompts' tool section said), each
 /// `write` argument is described once (in its schema), and no design
@@ -639,7 +637,7 @@ impl Server {
         }
     }
 
-    /// A server that also offers the one-call `write` tool (backlog 2D-24).
+    /// A server that also offers the one-call `write` tool.
     pub fn with_write_tool(root: &Path) -> Server {
         Server {
             write_tool: true,
@@ -648,7 +646,7 @@ impl Server {
     }
 
     /// The same server showing tool results in the compact agent view
-    /// (`bmb mcp --compact`, backlog 2D-23, ADR-0068).
+    /// (`bmb mcp --compact`, ADR-0068).
     pub fn compact(self) -> Server {
         Server {
             compact: true,
@@ -657,7 +655,7 @@ impl Server {
     }
 
     /// The same server with tool descriptions that document the tools on
-    /// their own (`bmb mcp --tool-docs`, backlog 2D-28).
+    /// their own (`bmb mcp --tool-docs`).
     pub fn tool_docs(self) -> Server {
         Server {
             tool_docs: true,
@@ -693,7 +691,7 @@ impl Server {
         Ok(&mut self.front)
     }
 
-    /// Proof cache of the workspace (backlog 2D-03): answers are the same with
+    /// Proof cache of the workspace: answers are the same with
     /// or without it, only faster.
     fn cache_dir(&self) -> std::path::PathBuf {
         self.root.join(".bmb-cache")
@@ -731,7 +729,7 @@ impl Server {
     /// Runs one tool. `Ok(text)` is a normal result, `Err(text)` a tool error.
     fn call(&mut self, name: &str, a: &Value) -> Result<String, String> {
         // The directories the tools read and write must not lead outside the
-        // workspace (backlog 2D-20, docs/mcp-threat-model.md).
+        // workspace (docs/mcp-threat-model.md).
         for d in ["src", ".bmb-cache", "target"] {
             workspace::refuse_symlink(&self.root.join(d))?;
         }
@@ -834,7 +832,7 @@ impl Server {
                 // BMB sessions take 2.9 times the model turns of Verus.
                 let mut ops = Vec::new();
                 // `--rename-ops`: the identities the write depends on, then
-                // the renames, before the items (backlog T1-20).
+                // the renames, before the items.
                 if self.rename_ops {
                     let pairs = |key: &str, other: &str| -> Result<Vec<(String, String)>, String> {
                         let Some(Value::Array(xs)) = a.get(key) else {
@@ -1117,7 +1115,7 @@ impl Server {
     pub fn handle(&mut self, msg: &Value) -> Option<Value> {
         // Anything but a request object (a string, a number, an array: MCP
         // has no batches) is an invalid request with a null id (JSON-RPC 2.0
-        // §5); before backlog 1D-23 it got no answer and the client waited.
+        // §5); it once got no answer and the client waited.
         if !matches!(msg, Value::Object(_)) {
             return Some(rpc_error(
                 Value::Null,
@@ -1281,8 +1279,7 @@ pub fn serve(root: &Path, flags: &[&str]) -> std::io::Result<()> {
         if let Some(r) = reply {
             writeln!(stdout, "{}", r.to_json())?;
             stdout.flush()?;
-            // The front-end cache's counts after each reply (backlog 4A-04:
-            // the cache test reads them through the CLI).
+            // The front-end cache's counts after each reply (the cache test reads them through the CLI).
             if has("--stats") {
                 let st = server.front_stats();
                 eprintln!(

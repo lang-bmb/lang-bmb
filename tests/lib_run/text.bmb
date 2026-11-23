@@ -1,4 +1,4 @@
-#[summary("실행: 바이트 라이브러리로 텍스트 만들기와 읽기 (ADR-0044, backlog 2S-02)")]
+#[summary("Run: building and reading text with the byte library (ADR-0044)")]
 mod app {
     spec fn short(v: &[u8], n: u64) -> bool { v.len() <= 50 * n }
 

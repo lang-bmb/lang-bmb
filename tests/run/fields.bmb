@@ -1,4 +1,4 @@
-#[summary("실행: 구조체 배열 필드의 원소 대입 (backlog 2B-15)")]
+#[summary("Run: element assignment in an array field of a struct")]
 mod fa {
     struct G { w: [i64; 3], n: i64 }
 

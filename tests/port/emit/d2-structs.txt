@@ -1,4 +1,4 @@
-#[summary("구조체: 리터럴과 필드 읽기·쓰기 (좁은 정수, bool, f64, 배열 필드, 안은 구조체), 값으로 넘기기와 돌려주기, 참조로 넘겨 고치기, if와 loop의 구조체 값, 가운데의 return, 구조체의 배열과 슬라이스, 필드의 스칼라 참조")]
+#[summary("Structs: literals and reading·writing fields (narrow integers, bool, f64, array fields, nested structs), passing and returning by value, passing by reference to modify, struct values of if and loop, return in the middle, arrays and slices of structs, scalar references to fields")]
 mod structs {
     struct Point { x: i64, y: i64 }
     struct Mixed { on: bool, small: u8, wide: i32, ratio: f64, tag: [u8; 3] }

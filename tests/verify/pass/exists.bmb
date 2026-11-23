@@ -1,4 +1,4 @@
-#[summary("명세의 `exists`: 계약·루프 불변식·사전조건에서 `forall`과 같은 트리거 규칙으로 증명된다(백로그 T0-25, ADR-0079)")]
+#[summary("`exists` in specs: proved in contracts·loop invariants·preconditions under the same trigger rules as `forall` (ADR-0079)")]
 mod exists_specs {
     #[effects(pure)]
     #[uses(has)]

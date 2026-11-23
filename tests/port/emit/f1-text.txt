@@ -1,4 +1,4 @@
-#[summary("글: String::from, push_str(제 자신의 바이트도), push(1~4바이트 글자), as_str, as_bytes, len, clone, 비교(==, !=, <, <=, >, >=: 접두사와 빈 글), &s[a..b]의 경계 검사, is_char_boundary, len_utf8, char::from_u32, String::from_utf8(맞는 것과 틀린 것), 제네릭 인스턴스가 받은 글의 비교, 글을 가진 구조체와 Vec<String>")]
+#[summary("Text: String::from, push_str (its own bytes too), push (characters of 1~4 bytes), as_str, as_bytes, len, clone, comparison (==, !=, <, <=, >, >=: prefixes and empty text), the boundary check of &s[a..b], is_char_boundary, len_utf8, char::from_u32, String::from_utf8 (valid and invalid), comparison of text received by a generic instance, structs that hold text and Vec<String>")]
 mod text {
     struct Named { name: String, n: i64 }
 

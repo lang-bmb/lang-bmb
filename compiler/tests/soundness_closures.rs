@@ -1,5 +1,4 @@
-//! Soundness fuzzing of the proof gate over function values (ADR-0053,
-//! backlog 2V-20i).
+//! Soundness fuzzing of the proof gate over function values (ADR-0053).
 //!
 //! Each random function `hK(a, y)` (its contract a random scalar `Func`'s,
 //! over `a` for `x`) computes an argument `x0 = ARG` from `a` and `y` and
@@ -149,7 +148,7 @@ impl Case {
             };
             format!(
                 // The contract inline (ADR-0095 A2): a closure's proof does
-                // not see the spec fns its function reveals (backlog 2V-20k).
+                // not see the spec fns its function reveals.
                 "{f}::<_>(move |x: i64| -> (r: i64) requires {req}{}, ensures {}, {{ {count}{} }}, x0)",
                 i.pre_text(),
                 p_text(&i.post),
@@ -232,13 +231,13 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
             }
         })
         .collect();
-    let mut module = format!("#[summary(\"건전성 퍼징: 함수 값\")]\nmod m {{\n{HEAD}");
+    let mut module = format!("#[summary(\"fuzzing: fn values\")]\nmod m {{\n{HEAD}");
     for (k, c) in cases.iter().enumerate() {
         module.push_str(&c.text(k));
     }
     module.push_str("}\n\n");
     let mut src = format!(
-        "{module}#[summary(\"실행\")]\nmod app {{\n    #[effects(io)]\n    fn main() -> () {{\n"
+        "{module}#[summary(\"run\")]\nmod app {{\n    #[effects(io)]\n    fn main() -> () {{\n"
     );
     let mut expected = String::new();
     for (k, c) in cases.iter().enumerate() {

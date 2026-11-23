@@ -1,4 +1,4 @@
-#[summary("배열·구조체·열거형 const(ADR-0052 §2, backlog 2V-19b): 표, 구조체, 변형, 인덱스·필드·match로 만든 상수, 명세와 실행 코드 양쪽")]
+#[summary("Array·struct·enum consts (ADR-0052 §2): tables, structs, variants, constants made by index·field·match, in both specs and exec code")]
 mod kd {
     struct Point { x: i64, y: i64 }
 

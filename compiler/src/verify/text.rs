@@ -1,12 +1,11 @@
-//! Text in the prover (ADR-0050 §3, backlog 2U-02).
+//! Text in the prover (ADR-0050 §3).
 //!
 //! A `String` or `&str` is its bytes, the pair of a byte array and a length
 //! (`Tables::lowered`), and a `char` its scalar value. The UTF-8 invariant
 //! holds by construction: every way to make text is a built-in that keeps
 //! it (a literal, `String::new`, `push_str` of text, `push` of a `char`,
 //! `from_utf8` after its check, a slice at character boundaries), so it is
-//! no obligation at those points. It is a fact where a boundary is asked
-//! (backlog 2U-06): a slice's obligation assumes what UTF-8 holds of the
+//! no obligation at those points. It is a fact where a boundary is asked: a slice's obligation assumes what UTF-8 holds of the
 //! bytes just before each bound, of the sliced text and of every text the
 //! definition received (parameters, call results), and at the end of each
 //! received text (`utf8_window`), without a quantifier. So a boundary
@@ -67,8 +66,7 @@ fn cont(x: &str) -> String {
     format!("(and (<= 128 {x}) (< {x} 192))")
 }
 
-/// What valid UTF-8 bytes `a` with length `n` hold at position `k`
-/// (backlog 2U-06), when it is below the length: the byte is one Rust's
+/// What valid UTF-8 bytes `a` with length `n` hold at position `k`, when it is below the length: the byte is one Rust's
 /// `str` can hold (not `0xC0`, `0xC1`, above `0xF4`); an ASCII byte or a
 /// whole character ends there or before a byte that is not a
 /// continuation; a first byte has its continuation bytes after it; a
@@ -105,7 +103,7 @@ pub fn utf8_at(a: &str, n: &str, k: &str) -> String {
 }
 
 /// What valid UTF-8 bytes `a` with length `n` hold just before position
-/// `i` (backlog 2U-06): the first byte begins a character, a continuation
+/// `i`: the first byte begins a character, a continuation
 /// byte at `i` has its first byte at most three bytes before it, and the
 /// four bytes before `i` are as `utf8_at` has them. Enough to decide
 /// whether `i` is a character boundary from the bytes before it: after an
@@ -141,7 +139,7 @@ fn parts(v: &Val) -> (String, String) {
 impl Enc<'_, '_> {
     /// Records text value `v` as valid UTF-8 where it enters the
     /// definition: a parameter, a call's result, a `&mut` argument after
-    /// the call (backlog 2U-06). No obligation goes with it: every way to
+    /// the call. No obligation goes with it: every way to
     /// make text keeps the invariant (ADR-0050 §3). What it holds is stated
     /// where a boundary is asked (`utf8_window`).
     pub(super) fn assume_text(&mut self, v: &Val) {
@@ -152,8 +150,7 @@ impl Enc<'_, '_> {
         }
     }
 
-    /// What UTF-8 holds where boundary `i` of text `(a, n)` is asked
-    /// (backlog 2U-06): the bytes before `i` (`utf8_before`) of that text
+    /// What UTF-8 holds where boundary `i` of text `(a, n)` is asked: the bytes before `i` (`utf8_before`) of that text
     /// and of every text known valid here (another text's bytes may equal
     /// these), and the end of each known text (its last character is
     /// whole: a prefix that matched it ends at a boundary).
@@ -193,7 +190,7 @@ impl Enc<'_, '_> {
     /// Whether `t`, a type under this instance's substitution, is a type
     /// argument `String` in the encoder's view: text lowers to `&[u8]`
     /// (`Tables::lowered`), and the only `Ord` type of that form is
-    /// `String` (backlog 4B-04), whose order is Rust's byte-lexicographic
+    /// `String`, whose order is Rust's byte-lexicographic
     /// one, the order of `&[u8]`.
     fn is_lowered_text(&self, t: &TypeKind) -> bool {
         let TypeKind::Ref { inner, .. } = t else {
@@ -244,8 +241,7 @@ impl Enc<'_, '_> {
         self.sub_text(&v, &lo, &hi)
     }
 
-    /// `&v[lo..hi]` of an array, `Vec` or slice of integers (backlog
-    /// 4C-05): the bounds obligation (E0805, Rust's `slice index starts at
+    /// `&v[lo..hi]` of an array, `Vec` or slice of integers: the bounds obligation (E0805, Rust's `slice index starts at
     /// .. but ends at ..` and `range end index .. out of range` panics)
     /// and the elements from `lo`, the same shifted array as text's.
     pub(super) fn elem_slice(&mut self, e: &Expr, base: &Expr, lo: &Expr, hi: &Expr) -> Val {

@@ -1,4 +1,4 @@
-#[summary("통계: 넘침을 값으로 받는 합, 길이로 나눈 평균, 변환한 값으로 고른 히스토그램 칸 (ADR-0028)")]
+#[summary("Statistics: a sum that receives overflow as a value, a mean divided by the length, a histogram bin picked by a converted value (ADR-0028)")]
 mod stats {
     // The sum, or `None` when it leaves `i64` at some step.
     #[effects(pure)]
@@ -62,7 +62,7 @@ mod stats {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     #[effects(io)]
     fn main() -> () {

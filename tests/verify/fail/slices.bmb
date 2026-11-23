@@ -1,4 +1,4 @@
-#[summary("데이터 타입 슬라이스: 거짓 주장은 증명되지 않는다 (backlog 2B-05c)")]
+#[summary("Slices of data types: false claims are not proved")]
 mod geo {
     struct Point { x: i64, y: i64 }
 
@@ -56,7 +56,7 @@ mod geo {
         }
     }
 
-    // An element of an inner array, out of bounds (backlog 2V-04b).
+    // An element of an inner array, out of bounds.
     spec fn row_idx(g: &[[i64; 3]], i: usize) -> bool { i < g.len() }
 
     #[effects(pure)]

@@ -1,4 +1,4 @@
-#[summary("비트 메서드(backlog 2N-03): FxHash의 회전과 곱, 비트 집합의 원소 수(count_ones)와 가장 작은 원소(trailing_zeros), 2의 거듭제곱 올림(leading_zeros), 바이트 순서(swap_bytes), xorshift(wrapping_shl/shr). 기대 출력은 같은 프로그램을 Rust로 옮겨 rustc로 돌린 것")]
+#[summary("Bit methods: the rotate and multiply of FxHash, the element count (count_ones) and smallest element (trailing_zeros) of a bit set, rounding up to a power of two (leading_zeros), byte order (swap_bytes), xorshift (wrapping_shl/shr). The expected output is the same program ported to Rust and run with rustc")]
 mod bm {
     spec fn small(n: u32) -> bool { 0 < n && n <= 1048576 }
 

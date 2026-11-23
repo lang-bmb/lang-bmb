@@ -1,4 +1,4 @@
-#[summary("열거형과 match와 ?: 변형 짓기 (페이로드 없는 것, 스칼라·구조체·배열 페이로드), match의 묶기와 값 (스칼라, 구조체, 단위 값), &mut의 match로 페이로드 고치기, Option과 Result의 ?, Option을 내는 메서드 (checked_*, 남기는 try_from, checked_shl), std::mem::replace와 swap")]
+#[summary("Enums, match and ?: building variants (without payload, scalar·struct·array payloads), bindings and values of match (scalar, struct, unit value), modifying a payload through match on &mut, ? on Option and Result, methods that return Option (checked_*, the try_from that is kept, checked_shl), std::mem::replace and swap")]
 mod enums {
     struct Point { x: i64, y: i64 }
     enum Shape { Dot, Circle(i64), Rect(Point, Point), Tags([u8; 2]) }

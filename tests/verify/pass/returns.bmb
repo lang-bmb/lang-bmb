@@ -1,4 +1,4 @@
-#[summary("조기 반환의 증명: 반환 지점의 사후 조건, 경로 끝 (ADR-0049 §3, backlog 2K-01a)")]
+#[summary("Proofs of early return: the postcondition at the return point, the end of the path (ADR-0049 §3)")]
 mod rt {
     spec fn at(a: &[i64], x: i64, r: Option<usize>) -> bool {
         match r {

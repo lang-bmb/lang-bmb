@@ -1,4 +1,4 @@
-#[summary("integer conversions with proved ranges (ADR-0028, backlog 2C-02)")]
+#[summary("integer conversions with proved ranges (ADR-0028)")]
 mod conv {
     spec fn small(n: usize) -> bool { n <= 1000000 }
 

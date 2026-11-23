@@ -1,4 +1,4 @@
-#[summary("trait 기본 본문 실패: 자기 계약 위반, 경계 `T`에 기본 spec 본문 없음 (2T-07c)")]
+#[summary("trait default body failures: violating its own contract, no default spec body for a bound `T`")]
 mod df {
     trait Shape {
         #[effects(pure)]

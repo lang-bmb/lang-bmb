@@ -1,4 +1,4 @@
-#[summary("정수 폭: i8·i16·i32·isize·u16·u32의 산술, 배열·Vec·필드의 제 폭 저장, 변환, MIN/MAX, 되감기·포화·검사 메서드 (ADR-0048 §1, backlog 2N-01b)")]
+#[summary("Integer widths: arithmetic of i8·i16·i32·isize·u16·u32, storage at their own width in arrays·Vec·fields, conversions, MIN/MAX, wrapping·saturating·checked methods (ADR-0048 §1)")]
 mod wd {
     struct Pixel {
         r: u8,

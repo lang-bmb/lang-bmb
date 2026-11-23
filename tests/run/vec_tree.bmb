@@ -1,4 +1,4 @@
-#[summary("Vec을 거친 재귀: 자식 목록을 가진 트리의 합 (ADR-0047, backlog 2O-03c)")]
+#[summary("Recursion through Vec: the sum of a tree with child lists (ADR-0047)")]
 mod rt {
     enum Tree { Leaf(i64), Many(Vec<Tree>) }
 

@@ -1,4 +1,4 @@
-//! Soundness fuzzing of text (backlog 2U-04, ADR-0050).
+//! Soundness fuzzing of text (ADR-0050).
 //!
 //! Random functions of `x, y: usize` build a `String` from a literal and run
 //! a sequence of text operations on it: `push` of a constant character and
@@ -78,7 +78,7 @@ enum Op {
     Clone,
     /// `while i < b { s.push_str(LITS[j]) }` (or a call of `grow{j}` when
     /// set), `b` being `y` or a constant, with the invariant of the length
-    /// when set (backlog 1B-56).
+    /// when set.
     Loop {
         bound: Idx,
         j: usize,
@@ -86,7 +86,7 @@ enum Op {
         inv: bool,
     },
     /// A call of `grow{j}(&mut s)` (with its postcondition of the length)
-    /// or `put{j}` (none): the callee pushes `LITS[j]` (backlog 1B-56).
+    /// or `put{j}` (none): the callee pushes `LITS[j]`.
     Grow {
         j: usize,
         ensures: bool,
@@ -276,7 +276,7 @@ const HELPERS: &str = "    spec fn is_len(r: usize, t: &str) -> bool {
 ";
 
 /// The callees that grow a `&mut String` by `LITS[j]`: `grow{j}` says by
-/// how much, `put{j}` does not (backlog 1B-56).
+/// how much, `put{j}` does not.
 fn growers() -> String {
     let mut o = String::new();
     for (j, t) in LITS.iter().enumerate().skip(1) {
@@ -565,7 +565,7 @@ struct Stats {
 fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let funcs: Vec<TFunc> = (0..6).map(|k| gen_func(&mut rng, k)).collect();
-    let mut src = String::from("#[summary(\"문자열 건전성 퍼징\")]\nmod m {\n");
+    let mut src = String::from("#[summary(\"text soundness fuzzing\")]\nmod m {\n");
     src.push_str(HELPERS);
     src.push_str(&growers());
     for f in &funcs {
@@ -574,7 +574,7 @@ fn batch(seed: u64, stats: &mut Stats, dir: &std::path::Path) {
     src.push_str("}\n\n");
     let module = src.clone();
     let main_head =
-        "#[summary(\"실행\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
+        "#[summary(\"run\")]\nmod app {\n    #[effects(alloc, io)]\n    fn main() -> () {\n";
     src.push_str(main_head);
     let mut expected = String::new();
     let mut faults: Vec<(usize, String)> = Vec::new();

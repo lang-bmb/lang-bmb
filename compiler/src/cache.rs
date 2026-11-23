@@ -1,4 +1,4 @@
-//! Proof cache (backlog 2D-01). An obligation is cached only once proved, and
+//! Proof cache. An obligation is cached only once proved, and
 //! its key is the SHA-256 of the exact text the solver received (options,
 //! prelude, revealed definitions, declarations, query; with canonical
 //! symbols, ADR-0063, `smt::canonical`) plus the solver version and the
@@ -8,8 +8,7 @@
 //! (a callee's contract, a revealed definition, the encoding, `rlimit`, the
 //! seed) changes the key, and so does the memory limit, which is not in the
 //! text: a proof found under the gate's limit does not answer the lint's
-//! advisory query of the same text, which runs under a smaller one (backlog
-//! T2-17). An advisory query's `rlimit` is its own too (ADR-0131), and that
+//! advisory query of the same text, which runs under a smaller one. An advisory query's `rlimit` is its own too (ADR-0131), and that
 //! one is in the text (`verify::query_header`), so the two differ there as
 //! well. Unproved obligations always run again.
 //!
@@ -24,7 +23,7 @@ pub const FILE: &str = "proofs";
 const MAGIC: &str = "bmb proof cache v5";
 
 /// Stage bits of an entry: the ground-instance retry ran at the probe's
-/// share (backlog 1B-46), and after the full query (it proved).
+/// share, and after the full query (it proved).
 pub const EARLY_RETRY: u8 = 1;
 pub const LATE_RETRY: u8 = 2;
 
@@ -32,8 +31,7 @@ pub const LATE_RETRY: u8 = 2;
 pub struct ProofCache {
     /// key -> (contribution to the definition's `rlimit` total, to its max,
     /// the retries that ran: `EARLY_RETRY`, `LATE_RETRY`). The stage bits
-    /// let a hit print the same script as the run that stored it (backlog
-    /// 2V-03).
+    /// let a hit print the same script as the run that stored it.
     known: BTreeMap<String, (u64, u64, u8)>,
     added: usize,
     pub hits: usize,

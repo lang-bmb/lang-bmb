@@ -1,6 +1,6 @@
-//! Mechanical fixes (backlog 1A-06, DESIGN.md §8.2): every `replacement` replaces
+//! Mechanical fixes (DESIGN.md §8.2): every `replacement` replaces
 //! exactly the text of its diagnostic's span, and applying them removes the
-//! diagnostics they belong to. Through the CLI (`bmb check`, backlog 4A-04).
+//! diagnostics they belong to. Through the CLI (`bmb check`).
 
 use std::process::Command;
 

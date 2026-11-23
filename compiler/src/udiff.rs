@@ -1,4 +1,4 @@
-//! Unified diffs (backlog T1-06, ADR-0073): the file diff edit surface
+//! Unified diffs (ADR-0073): the file diff edit surface
 //! (`edit_file`). Parsing and applying follow `git apply --recount`: a hunk
 //! is its lines, the counts in `@@ -a,b +c,d @@` are not trusted, the line
 //! number is where to look first, and context and removed lines must match

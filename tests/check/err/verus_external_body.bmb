@@ -1,7 +1,7 @@
 // The Verus spelling of `#[external_body]` is read as BMB's (E0216), so the
 // faults of the definition under it come in the same round: the missing
 // rationale (E1001) and the effect it needs (E0606). They are the
-// program's after the spelling is fixed, not a cascade (2V-23).
+// program's after the spelling is fixed, not a cascade.
 #[summary("t")]
 mod t {
     #[effects(pure)]

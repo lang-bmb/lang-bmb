@@ -1,8 +1,7 @@
-//! The `impact` query (backlog 2D-02) is complete: when a definition's body
+//! The `impact` query is complete: when a definition's body
 //! changes, every definition whose proof script changes is in the reported
 //! set. The proof scripts are exactly what the solver sees, so they are the
-//! ground truth for "this proof must be redone". Through the CLI (backlog
-//! 4A-04): scripts from `bmb verify --emit-smt`, maps and queries from
+//! ground truth for "this proof must be redone". Through the CLI: scripts from `bmb verify --emit-smt`, maps and queries from
 //! `bmb map` and `bmb query`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -251,7 +250,7 @@ mod u {
 }
 
 /// A definition's script does not change when an unrelated definition is
-/// added before it (backlog 4D-33). The enum declarations were written in
+/// added before it. The enum declarations were written in
 /// the order the program first used them, so `early`, which names `Ant`
 /// before `Zed`, turned the two declarations of `pick` around: its script,
 /// and with it the solver's cost, changed while its proof key did not.

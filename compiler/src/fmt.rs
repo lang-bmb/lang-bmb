@@ -1497,7 +1497,7 @@ pub fn qualified_text(
         out: String::new(),
         lens: BTreeMap::new(),
     };
-    // The `impl` a function is checked and proved in (backlog 2T-03): its
+    // The `impl` a function is checked and proved in: its
     // type parameters with their bounds, and for a trait's method or a
     // trait impl's function the trait and the type, which its contract and
     // refinement obligations depend on.
@@ -1726,7 +1726,7 @@ fn ret_text(f: &FnDef, ret: &str) -> String {
     }
 }
 
-/// What a caller's query reads of an executable function (backlog 2D-22):
+/// What a caller's query reads of an executable function:
 /// its qualified surface without `#[uses]`. A definition's `#[uses]` only
 /// reveals spec fn bodies in its own queries (`verify::uses_of`), so the
 /// incremental keys of its callers leave it out.

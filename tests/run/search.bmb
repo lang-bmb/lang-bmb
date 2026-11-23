@@ -1,4 +1,4 @@
-#[summary("실행 예제: 이분 탐색, 재귀, 최댓값, &mut 갱신")]
+#[summary("Run example: binary search, recursion, maximum, &mut update")]
 mod alg {
     spec fn is_sorted(a: &[i64]) -> bool {
         forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
@@ -121,7 +121,7 @@ mod alg {
     }
 }
 
-#[summary("진입점")]
+#[summary("Entry point")]
 mod app {
     spec fn printable_size(n: usize) -> bool { n <= 1000000 }
 

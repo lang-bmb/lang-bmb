@@ -1,4 +1,4 @@
-// Rust translation of tests/run/bit_methods.bmb (backlog 2N-03), for its
+// Rust translation of tests/run/bit_methods.bmb, for its
 // expected output.
 fn fx(h: u64, word: u64) -> u64 {
     (h.rotate_left(5) ^ word).wrapping_mul(0x517cc1b727220a95)

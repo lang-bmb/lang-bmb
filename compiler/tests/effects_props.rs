@@ -1,5 +1,4 @@
-//! Effect checking against a reference on random call graphs (ADR-0030 §8,
-//! backlog 2F-05).
+//! Effect checking against a reference on random call graphs (ADR-0030 §8).
 //!
 //! Each seed builds a module of functions `f0..fN` over `n: u64`, each with
 //! random own effects (`alloc`: `Vec::new()`, `io`: `print_i64`, `panic`: an
@@ -52,7 +51,7 @@ fn gen_defs(rng: &mut Rng) -> Vec<Def> {
 
 fn text(defs: &[Def], decl: &[Set]) -> String {
     let mut t = String::from(
-        "#[summary(\"효과 성질\")]\nmod m {\n    spec fn t(n: u64) -> bool { n < 100 }\n\n",
+        "#[summary(\"effect properties\")]\nmod m {\n    spec fn t(n: u64) -> bool { n < 100 }\n\n",
     );
     for (i, (d, e)) in defs.iter().zip(decl).enumerate() {
         let effects = if e.is_empty() {

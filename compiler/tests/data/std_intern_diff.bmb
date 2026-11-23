@@ -1,4 +1,4 @@
-#[summary("std::intern 차등 시험: 표준 입력의 줄마다 연산(`i 낱말` 번호 매기기, `g 낱말` 찾기)을 하고 번호를 찍은 뒤 끝에 이름을 번호 순서로 찍는다 (tests/stdlib.rs, backlog 4B-02 (g))")]
+#[summary("std::intern differential test: applies the operation on each line of standard input (`i word` number it, `g word` look it up), prints the number, and at the end prints the names in number order (tests/stdlib.rs)")]
 mod idiff {
     spec fn stop(t: &[u8], a: usize, r: usize) -> bool {
         a <= r && r <= t.len() && (r == t.len() || t[r] == 32 || t[r] == 10)

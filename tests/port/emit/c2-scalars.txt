@@ -1,4 +1,4 @@
-#[summary("bool과 f64의 연산, 짧은 회로, 지역 변수와 대입, 단위 값의 지역 변수, 블록과 if의 값")]
+#[summary("bool and f64 operations, short circuit, local variables and assignment, local variables of the unit value, the values of blocks and if")]
 mod scalars {
     #[effects(pure)]
     fn both(a: bool, b: bool) -> bool { a && b }

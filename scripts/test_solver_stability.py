@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of scripts/solver_stability.py (backlog 1B-40, T2-07)."""
+"""Tests of scripts/solver_stability.py."""
 import os
 import random
 import sys
@@ -61,7 +61,7 @@ class Variants(unittest.TestCase):
         # ADR-0048 §4: the exact query of a bit obligation follows its
         # abstracted attempt; ADR-0067: the probe comes just before the full
         # query (after the abstracted attempt); ADR-0023: a retry follows.
-        # They are stages of one obligation, in that order (backlog T2-07).
+        # They are stages of one obligation, in that order.
         probe = PROBE.format(k=1)
         script = SCRIPT.replace("; obligation 1: ", probe + "; obligation 1: ")
         script += RETRY.format(k=1)

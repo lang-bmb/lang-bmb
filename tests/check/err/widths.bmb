@@ -1,4 +1,4 @@
-#[summary("정수 폭의 경계: 부호 없는 수의 부정, 범위 밖 리터럴, 섞인 폭, 128비트 (backlog 2N-01b)")]
+#[summary("Edges of integer widths: negating an unsigned number, out-of-range literals, mixed widths, 128 bits")]
 mod wc {
     #[effects(pure)]
     fn negate(x: u32) -> u32 {

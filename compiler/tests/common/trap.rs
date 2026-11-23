@@ -1,4 +1,4 @@
-//! Trap programs for the soundness fuzzers (backlog 1B-51, from 2N-04).
+//! Trap programs for the soundness fuzzers.
 //!
 //! A fuzzer that only compares the output of calls with a value cannot see a
 //! check that a wrong proof erased, or one that code generation forgot,
@@ -6,8 +6,7 @@
 //! panics, so the call is never run. Here such a call runs as a program of
 //! its own (a trap ends the run): `main` prints `1`, makes the call, prints
 //! `2`. Both builds, proved checks removed and every check kept, must print
-//! `1` and end by `SIGILL` (`llvm.trap` after flushing stdout, backlog
-//! 1B-52), as Rust prints the lines before a panic.
+//! `1` and end by `SIGILL` (`llvm.trap` after flushing stdout), as Rust prints the lines before a panic.
 //!
 //! The program shares its definitions with the fuzzer's batch program, so
 //! the first build proves through the proof cache the batch filled and
@@ -53,8 +52,7 @@ pub fn body(call: &str) -> String {
 /// `bmb build` does) and runs each build: the first proves through the proof
 /// cache in `cache`, the second keeps every check (`--all-checks`). Returns
 /// `None` when both printed `1` and ended by `SIGILL`, or what went wrong.
-/// The CLI, so the fuzzers that use it test whichever compiler is built
-/// (backlog 4A-04).
+/// The CLI, so the fuzzers that use it test whichever compiler is built.
 pub fn check(files: &[(String, String)], cache: &Path, exe: &Path) -> Option<String> {
     let dir = exe.with_extension("src");
     fs::create_dir_all(&dir).unwrap();

@@ -1,4 +1,4 @@
-// Rust translation of tests/run/std_collections.bmb (backlog 4B-02), for
+// Rust translation of tests/run/std_collections.bmb, for
 // its expected output (`rustc --edition 2021`).
 use std::collections::{BTreeMap, BTreeSet};
 

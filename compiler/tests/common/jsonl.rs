@@ -1,6 +1,5 @@
 //! Fields of one JSONL row as the CLI writes them (flat keys, `fix` nested
-//! one level), for tests that run the CLI instead of the library (backlog
-//! 4A-04). A key is found by `"key":`, so `line` does not match `end_line`.
+//! one level), for tests that run the CLI instead of the library. A key is found by `"key":`, so `line` does not match `end_line`.
 
 /// The string value of `key`, unescaped.
 pub fn str_field(row: &str, key: &str) -> Option<String> {

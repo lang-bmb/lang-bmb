@@ -6,7 +6,7 @@
 //! Set `BMB_BLESS=1` to rewrite the expected `.jsonl` files.
 //!
 //! Through the CLI (`bmb check`, `bmb codes`), so the corpus tests whichever
-//! compiler is built (backlog 4A-04).
+//! compiler is built.
 
 use std::fs;
 use std::path::{Path, PathBuf};

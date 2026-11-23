@@ -1,4 +1,4 @@
-#[summary("실행: 중첩 배열과 배열을 담은 원소 (backlog 2V-04b)")]
+#[summary("Run: nested arrays and elements that hold arrays")]
 mod gr {
     struct Board { rows: [Row; 2] }
 

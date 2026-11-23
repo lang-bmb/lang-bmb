@@ -1,4 +1,4 @@
-//! Constant evaluation against execution (backlog 2V-19b, ADR-0052 §4):
+//! Constant evaluation against execution (ADR-0052 §4):
 //! random `const` initializers over the integer widths, built from
 //! literals, `T::MIN`/`T::MAX`, `+ - * / %`, unary `-` and `!`, `& | ^`,
 //! `<<`/`>>` by literal amounts (below, at and beyond the width), the

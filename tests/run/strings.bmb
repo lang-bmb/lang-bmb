@@ -1,4 +1,4 @@
-#[summary("문자열: 공백으로 나눈 낱말을 String으로 모으고, 가장 긴 낱말과 사전순 첫 낱말을 찾고, 쉼표로 다시 잇는다. 글자 경계 의무(E0820)와 길이 의무를 증명한다 (backlog 2U-05)")]
+#[summary("Strings: collects whitespace-separated words into Strings, finds the longest word and the lexicographically first word, and joins them again with commas. Proves the character boundary obligation (E0820) and the length obligations")]
 mod strs {
     spec fn between(i: usize, r: usize, t: &str) -> bool {
         i <= r && r <= t.len()
@@ -143,8 +143,7 @@ mod strs {
 
     // The words of `t` (runs of bytes other than spaces), as owned strings. A
     // word starts after a space and ends before one: both are character
-    // boundaries, as UTF-8 has an ASCII byte begin and end a character
-    // (backlog 2U-06).
+    // boundaries, as UTF-8 has an ASCII byte begin and end a character.
     #[effects(alloc)]
     fn words(t: &str) -> (r: Vec<String>)
         requires short(t),
