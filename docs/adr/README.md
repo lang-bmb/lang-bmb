@@ -199,3 +199,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0146](0146-text-search-and-bounded-twin-arm.md) | Text search of bodies `query text`; the BMB arm of the porting twins turns on the response window | Accepted |
 | [0147](0147-two-repositories.md) | Two repositories: the refined `lang-bmb` and the work-only `bmb-works` | Accepted |
 | [0148](0148-one-place-for-decision-records.md) | One place for decision records, `docs/adr`; nothing of the process stays in this repository | Accepted |
+| [0149](0149-gate-b-verdict-carried-over.md) | Gate B (economics) cannot be judged yet and is carried over to gate D | Proposed |

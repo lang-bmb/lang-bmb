@@ -25,9 +25,9 @@ Benchmarks, harnesses, frozen task sets, result rows and the full reports are in
 | | Count | Claims |
 | --- | --- | --- |
 | Confirmed | 0 | |
-| Refuted | 5 | H-SCALE (at the boundary), H-REFACTOR, H-TASK (first condition), H-EFFECT, H-REPAIR |
+| Refuted | 4 | H-SCALE (at the boundary), H-REFACTOR, H-EFFECT, H-REPAIR |
 | Deterministic evidence | 7 | H-STABLE, H-MAINT, H-ID, H-PAR, H-VIEW, H-COMMUTE, H-COMPAT |
-| Measuring | 4 | H-AMORT, H-GAME, H-ENCAP, H-COMPREHEND |
+| Measuring | 5 | H-AMORT, H-GAME, H-ENCAP, H-COMPREHEND, H-TASK |
 | Pilot | 5 | H-SPEC, H-ORACLE, H-FAMILIAR, H-NAME, H-GRAIN |
 | Not measured | 14 | the rest |
 
@@ -55,7 +55,7 @@ If one of these is refuted, a premise or a principle of the design is rewritten.
 | --- | --- | --- |
 | **H-ORACLE** A passed proof lets fewer hidden defects through than passed tests | Pilot; cannot be judged | Four attempts did not discriminate: sessions that passed and still failed the hidden judge were 0 in both arms (sonnet 0/21 against 0/24). On 96 mutants, kill rate BMB 0.958 against Rust 0.885, difference +0.073 [−0.012, +0.158], p = 0.15 |
 | **H-AMORT** Cumulative verification cost over a commit history is below Rust with test selection and caching | Measuring | Replay of 1,000-commit histories over 1,000 and 10,000 definitions; harness and histories frozen, no result yet |
-| **H-TASK** Feature additions and defect repairs replayed from real history succeed as often as in Rust with tests, at no more total tokens over the life cycle | Refuted on tokens (sonnet, one run, BMB arm without text search); being measured again with text search | On the compiler twins, 22 replayed commits and 4 histories. sonnet: success 21/22 against 21/22, API tokens 3.66 times (median of per-task ratios, interval 2.14 to 5.46); histories 4/4 against 3/4 at 2.5 times. qwen: most sessions fail in both arms (two thirds overflow the context) |
+| **H-TASK** Feature additions and defect repairs replayed from real history succeed as often as in Rust with tests, at no more total tokens over the life cycle | Measuring. With text search: neither refuted nor confirmed (sonnet, one run; the token interval contains 1). Without text search: refuted on tokens | On the compiler twins, 22 replayed commits and 4 histories. With text search and bounded responses, sonnet: success 21/22 against 22/22, API tokens 1.30 times (median of per-task ratios, interval 0.71 to 2.14); histories 4/4 against 3/4 at 1.07 times. Without text search, sonnet: 21/22 against 21/22 at 3.66 times (2.14 to 5.46); histories 4/4 against 3/4 at 2.5 times. qwen: without text search most sessions fail in both arms (two thirds overflow the context); with text search the BMB arm did not finish, so there is no comparison |
 | **H-GAME** With escape hatches forbidden and audited, the gate is not bypassed | Measuring; not refuted | 13 impossible tasks, each with a proved certificate of impossibility, and 6 possible controls. Gate passes on impossible tasks: qwen 0/13, sonnet 0/13; contract changes 0/38. Weakening is detected by comparing specifications (2,005 edited definitions judged as the generator's ground truth says) |
 | **H-STABLE** Proofs are stable under meaning-preserving rewrites and solver seeds | Deterministic evidence | 718 obligations under 16 rewrites: 0% of verdicts change (criterion < 2.6%) |
 | **H-SCALE** Success and tokens do not depend on codebase size | Refuted at the boundary (sonnet) | 24 local tasks stay 24/24 from 1,000 to 10,000 definitions; tokens read grow 3.05 times (refuted at 3; Rust 7.33 times). Two tasks using one unbounded query carry the growth; without them 1.14 times |
