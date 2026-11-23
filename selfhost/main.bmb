@@ -1,4 +1,4 @@
-#[summary("BMB로 쓴 컴파일러의 구동기 (stage0 compiler/src/main.rs의 포트, 백로그 4D-02). 국면마다 명령이 는다: 지금은 codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, check, fmt, hash, emit-llvm --all-checks(옮긴 구문만: 나머지는 까닭을 적고 종료 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -121,7 +121,7 @@ mod main {
         std::process::exit(2);
     }
 
-    #[summary("인자의 파일들을 읽는다. 읽지 못하면 표준 오류에 적고 종료 코드 2")]
+    #[summary("Reads the files of the arguments. If one cannot be read, writes to standard error and exit code 2")]
     #[effects(alloc, io, nondet)]
     fn read_files(args: &[String], from: usize) -> Vec<lib::Input> {
         let mut files: Vec<lib::Input> = Vec::new();

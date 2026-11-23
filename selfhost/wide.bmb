@@ -1,4 +1,4 @@
-#[summary("128비트 부호 없는 정수: u64 둘(값은 hi * 2^64 + lo). stage0이 Rust의 u128로 드는 정수 리터럴의 값을 포트가 드는 꼴 (백로그 4D-17)")]
+#[summary("128-bit unsigned integer: two u64s (value is hi * 2^64 + lo). The form in which the port holds the value of an integer literal that stage0 holds as Rust's u128")]
 mod wide {
     struct DivRem { q: U128, r: u64 }
 

@@ -1,115 +1,115 @@
-# 포트의 차등 시험 사례
+# Differential test cases of the port
 
-`scripts/difftest.py run tests/port/cases.json`이 읽는다(백로그 4D-15, 포팅 지도 `dev-docs/measurements/selfhost-port-map.md` §3.2). 사례마다 stage0 쪽(`a`)과 포트 쪽(`b`)을 같은 입력으로 돌려 stdout·stderr·종료 코드·남긴 파일을 바이트로 견준다. 게이트 작업 "port difftest (4D-15)"가 매번 돌린다.
+Read by `scripts/difftest.py run tests/port/cases.json`. Each case runs the stage0 side (`a`) and the port side (`b`) on the same input and compares stdout, stderr, the exit code and the files left behind, byte for byte. The gate job "port difftest" runs them every time.
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `cases.json` | 사례와 빌드 목록 |
-| `sha256_files.bmb` | 인자의 파일마다 `std::sha256` 값을 `sha256sum`의 줄 모양으로 |
-| `json_roundtrip.bmb` | 표준 입력의 줄마다 `std::json`으로 읽어 공백 없이 다시 쓴다 |
-| `json_ref.rs` | 같은 일을 stage0의 `json.rs`로(`#[path]`로 그대로 컴파일) |
-| `json_edge.txt` | JSON의 경계 입력(이스케이프, 수, 중첩, 받지 않는 꼴) |
-| `unicode_ref.rs` | ASCII 밖의 코드 포인트 전부를 Rust의 `char::is_alphabetic`·`is_numeric`·`is_whitespace`로 갈라 구간으로 |
-| `unicode_classes.bmb` | 같은 일을 포트의 표(`selfhost/unicode.bmb`)로 |
-| `lexer/` | 렉서의 경계 입력(확장자는 `.txt`: BMB 프로그램이 아닌 글이 다른 코퍼스에 섞이지 않게) |
-| `parser/` | 파서의 경계 입력(같은 이유로 `.txt`) |
-| `lower/` | 함수 값과 상수를 낮추는 단계의 경계 입력(같은 이유로 `.txt`) |
-| `decls/` | 검사기 1패스(선언 수집)의 경계 입력(같은 이유로 `.txt`) |
-| `types/` | 검사기 2패스(몸 검사)의 경계 입력(같은 이유로 `.txt`) |
-| `emit/` | 코드 생성의 입력(같은 이유로 `.txt`)과 허용 목록 `ported.txt`(포트가 IR을 내는 입력: `scripts/port_emit.py write`가 만든다) |
-| `gen/` | 검사를 통과하는 생성 프로그램의 얼린 표본 40개(`4D-36`: `tests/fmt_fuzz.rs`의 생성기, `BMB_FMT_FUZZ_EXPORT`). 변형 입력과 달리 검사 뒤의 단계(해시, 정규형, 한정 글)까지 간다. 생성기가 바뀌어도 다시 만들지 않는다 |
+| `cases.json` | The cases and the list of builds |
+| `sha256_files.bmb` | The `std::sha256` value of each file given as an argument, in the line format of `sha256sum` |
+| `json_roundtrip.bmb` | Reads each line of standard input with `std::json` and writes it back without whitespace |
+| `json_ref.rs` | The same job with stage0's `json.rs` (compiled as is through `#[path]`) |
+| `json_edge.txt` | Edge inputs for JSON (escapes, numbers, nesting, rejected forms) |
+| `unicode_ref.rs` | Classifies every code point outside ASCII with Rust's `char::is_alphabetic`, `is_numeric` and `is_whitespace`, as ranges |
+| `unicode_classes.bmb` | The same job with the port's tables (`selfhost/unicode.bmb`) |
+| `lexer/` | Edge inputs for the lexer (the extension is `.txt`, so that text that is not a BMB program does not get mixed into other corpora) |
+| `parser/` | Edge inputs for the parser (`.txt` for the same reason) |
+| `lower/` | Edge inputs for the stage that lowers function values and constants (`.txt` for the same reason) |
+| `decls/` | Edge inputs for the checker's first pass (collecting declarations) (`.txt` for the same reason) |
+| `types/` | Edge inputs for the checker's second pass (checking bodies) (`.txt` for the same reason) |
+| `emit/` | Inputs for code generation (`.txt` for the same reason) and the allow list `ported.txt` (the inputs for which the port emits IR: made by `scripts/port_emit.py write`) |
+| `gen/` | 40 frozen samples of generated programs that pass checking (the generator in `tests/fmt_fuzz.rs`, `BMB_FMT_FUZZ_EXPORT`). Unlike mutated inputs, they reach the stages after checking (hash, normal form, qualified text). They are not regenerated when the generator changes |
 
-포트(`selfhost/`)의 사례는 `a`가 `{bmb}`(stage0), `b`가 `{build:stage1}`(`selfhost/*.bmb`를 `bmb build`로)이다. 지금: `codes`, `codes-md`, `tokens`(추적되는 `.bmb` 전부를 파일 하나씩), `tokens-together`(여러 파일을 한 번에), `tokens-edges`(`lexer/`의 파일 하나씩), `parse`(추적되는 `.bmb` 전부를 파일 하나씩 `dump parse`로), `parse-together`(여러 파일을 한 번에: 단위의 순서와 같은 이름의 단위), `parse-edges`(`parser/`), `std`(추적되는 `.bmb` 전부를 파일 하나씩 `dump std`로: 이름을 든 라이브러리 단위를 더한 프로그램의 정규형), `std-together`(여러 파일을 한 번에), `lower`(추적되는 `.bmb` 전부를 파일 하나씩 `dump lower`로: 함수 값과 상수를 낮춘 프로그램의 정규형, 만든 이름, 넘긴 자리, 상수의 값), `lower-together`, `lower-edges`(`lower/`). `decls`·`decls-together`·`decls-edges`(`dump decls`: 검사기 1패스가 모은 선언). `types`(추적되는 `.bmb`를 파일 하나씩 `dump types`로: 진단, 풀린 프로그램의 정규형, 몸 검사가 계산한 표), `types-together`, `types-edges`(`types/`). `check`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `check`로: 진단의 JSONL과 종료 코드). `moves`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `dump moves`로: 함수마다 소유 값이 놓이는 자리), `moves-together`. `hash`(추적되는 `.bmb`와 `types/`의 파일을 하나씩 `hash`로: 정의와 타입 선언의 정체성 해시), `hash-together`. `fmt`(같은 파일들을 하나씩 `fmt`로: 검사한 프로그램의 정규형, 경로로 쓴 메서드 호출은 메서드 문법으로), `fmt-check`(`fmt --check`: 종료 코드와 표준 오류), `fmt-together`. `texts`(같은 파일들을 하나씩 `dump texts`로: 증분 키가 읽는 한정 글과 한정 해시), `texts-together`. `lowered`(같은 파일들을 하나씩 `dump lowered`로: 코드 생성이 읽는 낮춘 표, 글은 바이트이고 `char`는 `u32`: 시그니처, 데이터 타입, 지역 변수, 식의 타입, 글인 자리, 타입마다 참조를 벗긴 타입과 필드·변형), `lowered-together`. `layout`(같은 파일들을 하나씩 `dump layout`으로: 검사를 통과하면 타입마다 LLVM 타입·크기·정렬·술어, 모듈의 머리가 기대는 것, LLVM 타입 정의), `layout-together`. `emit`(추적되는 `.bmb`와 `emit/`·`types/`·`gen/`의 파일을 하나씩 `emit-llvm --all-checks`로: 포트 쪽은 `scripts/port_emit.py run`을 지난다. 허용 목록 `emit/ported.txt`의 입력은 포트의 IR·표준 출력·종료 코드를 stage0과 바이트로 견주고, 목록 밖의 입력은 포트가 "옮기지 않았다"로 끝나는지만 본다. 목록과 포트의 행동이 어긋나면(목록의 입력을 내지 못하거나 목록 밖의 입력을 내면) 실패한다). `emit-together`(`selfhost/*.bmb`를 한 번에: 포트가 자기 자신에서 내는 IR이 stage0의 것과 바이트 동일, `4D-05`의 닫는 조건). `emit-run`(`tests/run`과 `emit/`의 파일을 하나씩: 허용 목록에 있고 `main`이 있는 입력의 IR을 두 쪽에서 clang으로 지어 돌린 표준 출력과 종료 코드를 견주고, 옆에 `.out`이 있으면 그것과도 같아야 한다).
+For the cases of the port (`selfhost/`), `a` is `{bmb}` (stage0) and `b` is `{build:stage1}` (`selfhost/*.bmb` through `bmb build`). At present: `codes`, `codes-md`, `tokens` (every tracked `.bmb`, one file at a time), `tokens-together` (several files at once), `tokens-edges` (the files of `lexer/`, one at a time), `parse` (every tracked `.bmb`, one file at a time, with `dump parse`), `parse-together` (several files at once: the order of units and units of the same name), `parse-edges` (`parser/`), `std` (every tracked `.bmb`, one file at a time, with `dump std`: the normal form of the program with the named library units added), `std-together` (several files at once), `lower` (every tracked `.bmb`, one file at a time, with `dump lower`: the normal form of the program with function values and constants lowered, the generated names, the places passed, the values of constants), `lower-together`, `lower-edges` (`lower/`). `decls`, `decls-together`, `decls-edges` (`dump decls`: the declarations collected by the checker's first pass). `types` (the tracked `.bmb` files, one at a time, with `dump types`: diagnostics, the normal form of the resolved program, the tables computed by body checking), `types-together`, `types-edges` (`types/`). `check` (the tracked `.bmb` files and the files of `types/`, one at a time, with `check`: the JSONL of diagnostics and the exit code). `moves` (the tracked `.bmb` files and the files of `types/`, one at a time, with `dump moves`: for each function, the places where owned values are dropped), `moves-together`. `hash` (the tracked `.bmb` files and the files of `types/`, one at a time, with `hash`: the identity hashes of definitions and type declarations), `hash-together`. `fmt` (the same files, one at a time, with `fmt`: the normal form of the checked program, method calls written by path in method syntax), `fmt-check` (`fmt --check`: the exit code and standard error), `fmt-together`. `texts` (the same files, one at a time, with `dump texts`: the qualified text and qualified hashes read by the incremental key), `texts-together`. `lowered` (the same files, one at a time, with `dump lowered`: the lowered tables read by code generation, where text is bytes and `char` is `u32`: signatures, data types, local variables, the types of expressions, the positions that are text, and for each type its type with references stripped and its fields and variants), `lowered-together`. `layout` (the same files, one at a time, with `dump layout`: if checking passes, for each type its LLVM type, size, alignment and predicates, what the module head depends on, the LLVM type definitions), `layout-together`. `emit` (the tracked `.bmb` files and the files of `emit/`, `types/` and `gen/`, one at a time, with `emit-llvm --all-checks`: the port side goes through `scripts/port_emit.py run`. For inputs on the allow list `emit/ported.txt`, the port's IR, standard output and exit code are compared with stage0's byte for byte; for inputs outside the list, only whether the port ends with "not ported" is checked. If the list and the port's behaviour disagree (it fails to emit an input on the list, or emits an input outside it), the case fails). `emit-together` (`selfhost/*.bmb` at once: the IR the port emits from itself is byte-identical to stage0's, the condition that closes the port of code generation). `emit-run` (the files of `tests/run` and `emit/`, one at a time: for an input that is on the allow list and has a `main`, the IR from both sides is built with clang and run, and the standard output and exit code are compared; if there is an `.out` next to it, they must equal that too).
 
-`lexer/`의 파일:
+The files of `lexer/`:
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `tokens.txt` | 토큰 종류 전부를 잘 쓴 글(오류 없음): 세 진법과 128비트의 끝 값, 이스케이프, 레이블, `///` 묶음 |
-| `floats.txt` | 실수 리터럴 1,494개(오류 없음): 무작위 비트 무늬의 가장 짧은 글, 2의 거듭제곱, 부정규수, 이웃한 두 `f64`의 정확한 중간값과 그 양옆, 가장 큰 유한값의 경계, 긴 자리 |
-| `err-numbers.txt` | 수 리터럴의 진단(E0104·E0105·E0108·E0109·E0406) |
-| `err-text.txt`·`err-bytes.txt`·`err-unterminated.txt` | 문자열·문자·바이트 리터럴의 이스케이프와 끝나지 않은 리터럴(E0101·E0102) |
-| `err-quotes.txt` | 레이블, 수명(E0208), 여러 글자의 문자 리터럴 |
-| `err-names.txt` | ASCII 밖의 글자: 이름에 든 글자·숫자(한 이름에 한 번 알린다)와 그 밖의 글자, 유니코드 공백 |
-| `err-comments.txt` | 블록 주석(E0106) |
-| `mix-NN.txt` | 토큰 조각을 무작위로 이은 줄 40개씩(씨앗 고정). 셋에 하나는 오류 없는 조각만 |
+| `tokens.txt` | Well-formed text with every kind of token (no errors): the three radixes and the extreme values of 128 bits, escapes, labels, `///` groups |
+| `floats.txt` | 1,494 float literals (no errors): the shortest text of random bit patterns, powers of 2, subnormals, the exact midpoint of two adjacent `f64` values and its two neighbours, the boundary of the largest finite value, long digit strings |
+| `err-numbers.txt` | Diagnostics for number literals (E0104·E0105·E0108·E0109·E0406) |
+| `err-text.txt`·`err-bytes.txt`·`err-unterminated.txt` | Escapes of string, character and byte literals, and unterminated literals (E0101·E0102) |
+| `err-quotes.txt` | Labels, lifetimes (E0208), character literals of several characters |
+| `err-names.txt` | Characters outside ASCII: letters and digits inside a name (reported once per name) and other characters, Unicode whitespace |
+| `err-comments.txt` | Block comments (E0106) |
+| `mix-NN.txt` | 40 lines each of randomly joined token fragments (fixed seed). One in three has only error-free fragments |
 
-파일 하나에 오류가 하나라도 있으면 `dump tokens`는 토큰 대신 진단을 낸다. 그래서 오류 없는 파일이 토큰의 값을, 나머지가 진단의 글·위치·순서를 견준다.
+If a file has even one error, `dump tokens` emits diagnostics instead of tokens. So the error-free files compare the values of tokens, and the rest compare the text, position and order of diagnostics.
 
-`parser/`의 파일:
+The files of `parser/`:
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `err-items.txt` | 항목의 진단: 단위 밖의 항목(E0703), `pub`·`static`·`type` 같은 Rust의 항목(E0207·E0215·E0261), `use`(E0214), 속성의 꼴과 Verus의 `verifier`(E0216), `impl`의 속성(E0605), 튜플 구조체와 구조체 꼴 변형(E0233), 제네릭 매개변수와 `where`(E0240), trait과 `impl`의 머리(E0308), 수신자(E0228), `mut` 매개변수(E0210), 반환 타입(E0209·E0256) |
-| `err-types.txt` | 타입의 진단: 함수 포인터와 `impl Fn`(E0264·E0265), `dyn`(E0236), 튜플 타입(E0233), 배열 길이(E0406), 쓰지 않는 타입 이름(E0402) |
-| `err-stmts.txt` | 문장의 진단: 문장 앞의 속성(E1002), `admit()`(E0217), `assert .. by`(E0516), 패턴 `let`과 `while let`(E0226), `for`의 범위와 측도(E0252·E0253), 절의 순서와 되풀이, 몸의 처음에 쓴 절, 블록 꼴 식 문장의 끝, 복합 대입 |
-| `err-exprs.txt` | 식의 진단: 비교의 사슬(E0211), `as`(E0205), 튜플(E0233), 매크로(E0202), `crate::`·`super::`·`self::`(E0242), 호출 밖의 타입 인자(E0301), 필드 줄임(E0222), 클로저(E0263), 포함 범위(E0438), 패턴(E0232), `if let` |
-| `deep-KIND-N.txt` | 중첩 한도(256, E0107)의 양옆: 깊이 254·255·256·257·300의 괄호, 전위 연산자, 타입, 참조, 블록, 이항 연산의 사슬, `==>`, 색인·필드·`?`의 사슬, `else if`, 단위, `while`, `return`, `if`, 변환, 호출, `match` (21가지 × 5) |
-| `tree-deep.txt` | 중첩 한도 안에서 깊이 1만에 이르는 식 트리: 괄호 50단계마다 연산자 8종의 사슬 25개씩(트리 순회의 깊이, ADR-0140) |
-| `order.txt` | 정규형의 순서: 상수, 안의 단위, trait, 다른 단위의 타입에 대한 trait `impl`, 타입과 그 `impl`들, 제 타입이 없는 `impl`, 함수. 속성의 순서와 `#[uses]`·`#[effects]`의 정렬 |
-| `dup-units.txt` | 같은 이름의 최상위 단위와 `summary`가 문자열이 아닌 단위 |
-| `empty.txt`·`only-comment.txt` | 토큰이 없는 입력 |
+| `err-items.txt` | Diagnostics for items: items outside a unit (E0703), Rust items such as `pub`, `static` and `type` (E0207·E0215·E0261), `use` (E0214), the form of attributes and Verus's `verifier` (E0216), attributes of `impl` (E0605), tuple structs and struct-form variants (E0233), generic parameters and `where` (E0240), the heads of traits and `impl` (E0308), receivers (E0228), `mut` parameters (E0210), return types (E0209·E0256) |
+| `err-types.txt` | Diagnostics for types: function pointers and `impl Fn` (E0264·E0265), `dyn` (E0236), tuple types (E0233), array lengths (E0406), unused type names (E0402) |
+| `err-stmts.txt` | Diagnostics for statements: attributes before a statement (E1002), `admit()` (E0217), `assert .. by` (E0516), pattern `let` and `while let` (E0226), the range and measure of `for` (E0252·E0253), the order and repetition of clauses, clauses written at the start of a body, the end of block-form expression statements, compound assignment |
+| `err-exprs.txt` | Diagnostics for expressions: comparison chains (E0211), `as` (E0205), tuples (E0233), macros (E0202), `crate::`, `super::` and `self::` (E0242), type arguments outside a call (E0301), field shorthand (E0222), closures (E0263), inclusive ranges (E0438), patterns (E0232), `if let` |
+| `deep-KIND-N.txt` | Both sides of the nesting limit (256, E0107): parentheses of depth 254, 255, 256, 257 and 300, prefix operators, types, references, blocks, chains of binary operations, `==>`, chains of index, field and `?`, `else if`, units, `while`, `return`, `if`, conversions, calls, `match` (21 kinds × 5) |
+| `tree-deep.txt` | An expression tree reaching depth 10,000 within the nesting limit: 25 chains of 8 operator kinds at every 50 levels of parentheses (the depth of tree traversal, ADR-0140) |
+| `order.txt` | The order of the normal form: constants, inner units, traits, trait `impl`s for types of other units, types and their `impl`s, `impl`s without a type of their own, functions. The order of attributes and the sorting of `#[uses]` and `#[effects]` |
+| `dup-units.txt` | Top-level units of the same name and a unit whose `summary` is not a string |
+| `empty.txt`·`only-comment.txt` | Inputs without tokens |
 
-구문 오류가 하나라도 있으면 `dump parse`는 정규형 대신 진단을 낸다. 그래서 오류 없는 파일(코퍼스의 대부분과 `order.txt`, 한도 안의 `deep-`)이 구문 트리와 정규형을, 나머지가 진단의 글·위치·순서와 회복을 견준다. 입력 별칭의 경고(W0912~W0914)는 `dump parse`에 나오지 않는다: 그 글은 `lint`를 옮길 때 견준다.
+If there is even one syntax error, `dump parse` emits diagnostics instead of the normal form. So the error-free files (most of the corpus, `order.txt`, and the `deep-` files within the limit) compare the syntax tree and the normal form, and the rest compare the text, position and order of diagnostics and the recovery. The warnings for input aliases (W0912~W0914) do not appear in `dump parse`: that text is compared when `lint` is ported.
 
-`lower/`의 파일:
+The files of `lower/`:
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `consts-values.txt` | 상수 식의 꼴마다 하나: 리터럴과 연산, `MIN`·`MAX`, 시프트, wrapping·saturating 메서드, `as`, 배열과 반복, 구조체·변형·`Option`·`Result`, 필드·원소·`match`, 이름으로 쓴 길이와 횟수, 안 단위의 상수 |
-| `consts-errors.txt` | 상수의 진단: 넘침과 0으로 나눔(E0260), 상수 식이 아닌 것(E0259), 서로를 가리키는 상수(E0318), 같은 이름(E0302), 값이 아닌 타입(E0437), 길이의 진단(E0301·E0406·E0401), 타입이 다른 피연산자(E0401) |
-| `closures.txt` | 함수 값을 낮추는 꼴: `Fn`·`FnMut`·`FnOnce` 경계, 값과 참조로 받는 매개변수, 넘긴 함수(같은 함수를 두 번, 경로로), 값을 잡는 `move` 클로저와 그 계약, 클로저 안의 클로저, `impl`과 trait `impl`의 함수 안, 안 단위 |
-| `closures-errors.txt` | 함수 값의 진단: `move` 없이 잡음·타입을 쓰지 않은 값을 잡음·바깥 클로저가 잡은 값을 읽음(E0262), 받는 쪽에 없는 효과(E0608), 경계의 인자가 아닌 클로저(E0264) |
+| `consts-values.txt` | One for each form of constant expression: literals and operations, `MIN` and `MAX`, shifts, wrapping and saturating methods, `as`, arrays and repetition, structs, variants, `Option` and `Result`, fields, elements and `match`, lengths and counts written by name, constants of inner units |
+| `consts-errors.txt` | Diagnostics for constants: overflow and division by zero (E0260), what is not a constant expression (E0259), constants that refer to each other (E0318), the same name (E0302), a type that is not a value (E0437), diagnostics for lengths (E0301·E0406·E0401), operands of different types (E0401) |
+| `closures.txt` | The forms of lowering function values: `Fn`, `FnMut` and `FnOnce` bounds, parameters taken by value and by reference, passed functions (the same function twice, by path), `move` closures that capture values and their contracts, closures inside closures, inside functions of `impl` and trait `impl`, inner units |
+| `closures-errors.txt` | Diagnostics for function values: capturing without `move`, capturing a value with no written type, reading a value captured by the outer closure (E0262), an effect the receiving side lacks (E0608), a closure that is not the argument of a bound (E0264) |
 
-`decls`·`decls-together`·`decls-edges`는 `dump decls`(검사기의 1패스가 모은 선언의 표와 그때까지의 진단)를 같은 입력 묶음으로 견준다. `decls/`의 파일:
+`decls`, `decls-together` and `decls-edges` compare `dump decls` (the table of declarations collected by the checker's first pass and the diagnostics up to that point) over the same sets of inputs. The files of `decls/`:
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `types.txt` | 필드와 `impl` 머리에 쓴 타입의 진단: `Self`·모르는 타입(E0305), 값이 아닌 타입 인자(E0403), `Vec`·`Box`·`String`·`Option`·`Result`의 인자 수와 원소(E0420·E0402), 경계(E0428), 소유자 하나(E0238), 포괄 `impl`(E0235), 머리가 부르지 않는 매개변수와 겹치는 `impl`(E0420·E0311), trait이 아닌 이름 |
-| `attrs.txt` | 속성과 시그니처의 진단: 불변식의 꼴(E0254·E0255), 효과(E0601·E0602·E0604·E0605·E0607·E0256), `#[external_body]`와 근거(E1001·E1002·E1004), 요약(E0704), 수신자의 이름(E0310), trait 메서드의 `decreases`(E0207)와 겹친 이름(E0302) |
-| `dup_units.txt` | 같은 이름의 단위 둘과 함수 값: 낮춘 함수가 제 단위로 돌아간다(`4D-29`) |
-| `dup_fns.txt` | 같은 이름의 함수 둘, 하나만 `Fn` 경계(`4D-29`: 고치기 전에는 stage0이 멈췄다) |
+| `types.txt` | Diagnostics for types written in fields and `impl` heads: `Self` and unknown types (E0305), type arguments that are not values (E0403), the argument count and elements of `Vec`, `Box`, `String`, `Option` and `Result` (E0420·E0402), bounds (E0428), a single owner (E0238), blanket `impl` (E0235), parameters the head does not mention and overlapping `impl`s (E0420·E0311), names that are not traits |
+| `attrs.txt` | Diagnostics for attributes and signatures: the form of invariants (E0254·E0255), effects (E0601·E0602·E0604·E0605·E0607·E0256), `#[external_body]` and justification (E1001·E1002·E1004), summaries (E0704), the name of the receiver (E0310), `decreases` on trait methods (E0207) and duplicate names (E0302) |
+| `dup_units.txt` | Two units of the same name and a function value: the lowered function goes back to its own unit |
+| `dup_fns.txt` | Two functions of the same name, only one with an `Fn` bound (before the fix stage0 halted) |
 
-`types/`의 파일:
+The files of `types/`:
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `methods.txt` | 메서드 호출: 타입의 `impl`과 trait의 메서드, 수신자를 넘기는 방식, 메서드로 부를 수 없는 함수(E0314), 두 trait의 같은 이름(E0313), 모르는 메서드(E0404), 정수·비트·`f64`·`Vec`의 내장 메서드와 그 인자 수(E0405), `unwrap`(E0229) |
-| `text.txt` | 글: `String::new` 따위 내장 호출, `&str` 인자의 꼴(리터럴, `as_str()`, `&s[a..b]`, E0218), `as_bytes()`, 글과 `char`의 메서드, 명세 안의 글 |
-| `calls.txt` | 호출: 모르는 함수(E0304), 부르는 곳과 함수의 종류(E0258·E0504·E0505), 효과(E0606), 쓴 타입 인자와 추론(E0237·E0429), trait 메서드의 `Self`, 조각·구조체의 참조 인자(E0401·E0408·E0409·E0410), 정수 변환(E0412·E0213) |
-| `whole.txt` | 프로그램 전체의 검사: `decreases` 없는 재귀(E0507), 경계 있는 `Self`를 지나는 재귀(E0207), 타입 매개변수를 싸서 넘기는 재귀(E0430), `main`의 꼴과 수(E0701·E0702) |
+| `methods.txt` | Method calls: methods of a type's `impl` and of traits, the ways of passing the receiver, functions that cannot be called as methods (E0314), the same name in two traits (E0313), unknown methods (E0404), the built-in methods of integers, bits, `f64` and `Vec` and their argument counts (E0405), `unwrap` (E0229) |
+| `text.txt` | Text: built-in calls such as `String::new`, the forms of `&str` arguments (literal, `as_str()`, `&s[a..b]`, E0218), `as_bytes()`, methods of text and `char`, text inside specifications |
+| `calls.txt` | Calls: unknown functions (E0304), the call site and the kind of function (E0258·E0504·E0505), effects (E0606), written type arguments and inference (E0237·E0429), `Self` of trait methods, reference arguments of slices and structs (E0401·E0408·E0409·E0410), integer conversions (E0412·E0213) |
+| `whole.txt` | Checking of the whole program: recursion without `decreases` (E0507), recursion through a bounded `Self` (E0207), recursion that passes a type parameter wrapped (E0430), the form and number of `main` (E0701·E0702) |
 
-| `moves.txt` | 이동의 진단: 옮긴 뒤의 사용(E0413), 일부가 옮겨진 값의 사용(E0433), 한 길에서만 옮김(E0414: `else` 없는 `if`, `&&`의 오른쪽, 루프의 몸), `&mut` 뒤나 참조에서 꺼냄(E0239·E0413), 참조를 `match`해서 소유 페이로드를 묶음 |
-| `moves-ok.txt` | 오류 없는 이동: 놓는 자리의 종류마다(`drops`, `arm_drops`, `branch_drops`, `consumed`, `exits`, `replaces`) |
-| `identity.txt` | 정체성 해시: 이름으로 가르는 타입(구조가 같은 두 구조체와 그 trait `impl`이 한 성분), 되부름 성분의 순서(지운 글로 같은 두 함수의 경로 순서, 색 정제로 갈리는 두 함수), trait 메서드의 순서와 기본 몸, 일반화 `impl`, 변형·필드·라벨의 자리 |
-| `by-path.txt` | 경로로 쓴 메서드 호출의 정규형(`compiler/tests/fmt.rs`의 `BY_PATH`): 메서드 문법이 되는 것(타고난 함수, 하나뿐인 trait 메서드)과 경로로 남는 것(타고난 함수가 가리는 trait 메서드, 두 trait이 가진 이름, 제 타입 매개변수가 있는 함수, 수신자가 없는 함수) |
+| `moves.txt` | Diagnostics for moves: use after move (E0413), use of a partly moved value (E0433), a move on only one path (E0414: `if` without `else`, the right side of `&&`, a loop body), taking out after `&mut` or from a reference (E0239·E0413), binding an owned payload by `match` on a reference |
+| `moves-ok.txt` | Error-free moves: one for each kind of drop place (`drops`, `arm_drops`, `branch_drops`, `consumed`, `exits`, `replaces`) |
+| `identity.txt` | Identity hashes: types distinguished by name (two structs of the same structure and their trait `impl`s in one component), the order of a recursion component (the path order of two functions equal in erased text, two functions separated by colour refinement), the order of trait methods and default bodies, generic `impl`, the positions of variants, fields and labels |
+| `by-path.txt` | The normal form of method calls written by path (`BY_PATH` in `compiler/tests/fmt.rs`): those that become method syntax (inherent functions, a trait method that is the only one) and those that stay as paths (a trait method shadowed by an inherent function, a name two traits have, a function with its own type parameters, a function without a receiver) |
 
-`emit/`의 파일(이름의 머리가 그것을 연 백로그 조각이다):
+The files of `emit/` (the head of a name is the stage of the code generator port that opened it):
 
-| 파일 | 내용 |
+| File | Contents |
 | --- | --- |
-| `c1-empty-main.txt` | 몸이 빈 `main`: 모듈의 머리와 `@main` |
-| `c1-literals.txt` | 리터럴을 돌려주는 함수: 정수의 폭과 진법, 부호를 바꾼 리터럴, `bool`, `f64`(`-0.0`), `char`, 바이트, 단위 값 |
-| `c1-params.txt` | 스칼라 매개변수의 자리, 읽기, 넘기지 않는 단위 값의 매개변수 |
-| `c1-units.txt` | 여러 단위와 안 단위의 정의가 경로 순서로, 내지 않는 명세·증명·제네릭 함수 |
-| `c1-no-main.txt` | `main`이 없는 프로그램 |
-| `c2-ints.txt` | 정수 연산을 폭과 부호마다(10가지): 산술과 넘침 검사, 나눗셈·나머지(0, `MIN / -1`), 비트 연산, 시프트(리터럴 양, 변수 양, 폭 이상의 양), 비교, 부호 바꿈, 비트 뒤집기 |
-| `c2-scalars.txt` | `bool`과 `f64`의 연산, 짧은 회로, 지역 변수와 대입, 단위 값의 지역 변수, 블록과 `if`의 값, 코드가 없는 증명 문장 |
-| `c2-calls.txt` | 제네릭 아닌 함수의 호출: 스칼라와 단위 값의 인자·결과, 다른 단위와 안 단위와 `impl`의 함수, `print_i64`·`print_u64`, `u32::from` |
-| `c3-convs.txt` | 정수 변환 `T::try_from(x).unwrap()`을 원천과 대상의 쌍마다(100가지): 넓어지는 변환은 검사 없이, 나머지는 범위 검사 |
-| `c3-methods.txt` | 정수 메서드를 폭과 부호마다: `wrapping_*`·`saturating_*`, 비트 메서드(회전, 세기, 뒤집기, 감기는 시프트, `is_power_of_two`), `MIN`·`MAX`, `f64::from` |
-| `c3-floats.txt` | `f64`의 메서드와 상수, `print_f64`(자릿수 검사와 런타임 조각) |
-| `c4-loops.txt` | 제어 흐름: `while`, `for`(닫힌 구간과 열린 구간, 부호와 폭), `loop`와 `break`의 값, 레이블로 떠나는 `break`·`continue`, 가운데의 `return` |
-| `d1-arrays.txt` | 스칼라 원소의 배열: 상수 리터럴과 셈하는 리터럴, 반복, 원소 읽기와 쓰기(좁은 정수, `bool`, `f64`), 배열 전체의 대입, 값으로 넘기는 배열과 배열 결과, 배열 값의 `if`, `len` |
-| `d1-slices.txt` | 스칼라 원소의 슬라이스: 읽기와 쓰기의 매개변수, `len`, 범위로 자른 조각, 바이트열과 글 리터럴, `print_str`·`print_bytes` |
-| `d1-refs.txt` | 스칼라의 참조: 지역 변수의 자리, 참조 매개변수를 그대로 넘기기, 원소의 임시 자리와 되돌려 쓰기, 빌려준 값, `*x`의 읽기와 쓰기 |
-| `d1-bytes.txt` | 정수와 바이트들: `to_be_bytes`·`to_le_bytes`, `from_be_bytes`·`from_le_bytes`(부호와 폭) |
-| `d2-structs.txt` | 구조체: 리터럴과 필드 읽기·쓰기(좁은 정수, `bool`, `f64`, 배열 필드, 안은 구조체), 값으로 넘기기와 돌려주기, 참조로 넘겨 고치기, `if`와 `loop`의 구조체 값, 가운데의 `return`, 구조체의 배열과 슬라이스, 필드의 스칼라 참조, 안은 배열 |
-| `d3-enums.txt` | 열거형과 `match`와 `?`: 변형 짓기(스칼라·구조체·배열 페이로드), `match`의 묶기와 값, `&mut`의 `match`로 페이로드 고치기, `Option`과 `Result`의 `?`, `Option`을 내는 메서드(`checked_*`, `try_from(..).ok()`, `checked_shl`), `std::mem::replace`·`swap` |
-| `e1-vecs.txt` | `Vec`: `new`·`with_capacity`, `push`(자람), `len`, 색인, `as_slice`·`as_mut_slice`, 범위 조각, `pop`, `truncate`, `clone`, `copy_within`, 구조체의 `Vec`, `Vec`의 `Vec`, 값으로 넘기기와 돌려주기, 임시 `Vec`, 블록 끝의 해제 |
-| `e2-owned.txt` | 힙을 가진 값의 해제: `Box`와 재귀 자료(큰 스택), 힙을 가진 구조체와 열거형, 갈래마다 다른 해제, 가운데의 `return`·`break`·`?`, `match`가 옮기는 페이로드, 대입이 갈아치우는 값, 버리는 식의 값, 임시값, 힙을 가진 값의 `clone` |
-| `g1-generics.txt` | 제네릭 함수와 타입의 인스턴스: 스칼라·구조체·`Vec` 타입 인자, 인스턴스가 부르는 인스턴스, 인스턴스 안에서만 나오는 타입, 제네릭 구조체와 열거형, `impl<T>`의 함수, 힙을 가진 타입 인자의 해제 |
-| `f1-text.txt` | 글: `String::from`, `push_str`, `push`(1~4바이트 글자), `as_str`·`as_bytes`, 비교 여섯 가지(접두사와 빈 글), `&s[a..b]`의 경계 검사, `is_char_boundary`, `len_utf8`, `char::from_u32`, `String::from_utf8`(맞는 것과 틀린 것), 글 타입 인자를 받은 인스턴스의 비교, 글을 가진 구조체와 `Vec<String>` |
-| `g2-traits.txt` | trait 메서드의 분배: 타입마다의 impl, 기본 본문과 재정의, 제네릭 함수 안의 trait 호출, 제네릭 impl, 스칼라 타입의 impl, `Self`를 돌려주는 함수, 경로로 부르기 |
-| `h1-sys.txt` | 시스템 인터페이스: 명령줄 인자, 환경 변수(없는 이름, NUL이 든 이름), 단조 시계, 표준 오류, 파일 읽기의 실패(`std::io::Error`), 프로세스 돌리기, 가운데의 `std::process::exit` |
-| `*.out` | `main`이 있는 입력의 기대 출력(`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`, `e1-*`, `e2-*`, `f1-*`, `g1-*`, `g2-*`, `h1-*`): 사례 `emit-run`이 견준다 |
+| `c1-empty-main.txt` | A `main` with an empty body: the module head and `@main` |
+| `c1-literals.txt` | Functions returning literals: the width and radix of integers, negated literals, `bool`, `f64` (`-0.0`), `char`, bytes, the unit value |
+| `c1-params.txt` | The places of scalar parameters, reading them, unit-value parameters that are not passed |
+| `c1-units.txt` | Definitions of several units and inner units in path order, and the specification, proof and generic functions that are not emitted |
+| `c1-no-main.txt` | A program without `main` |
+| `c2-ints.txt` | Integer operations for each width and sign (10 kinds): arithmetic and overflow checks, division and remainder (0, `MIN / -1`), bit operations, shifts (literal amount, variable amount, amount at or above the width), comparisons, negation, bit inversion |
+| `c2-scalars.txt` | Operations of `bool` and `f64`, short circuit, local variables and assignment, unit-value local variables, the values of blocks and `if`, proof statements without code |
+| `c2-calls.txt` | Calls of non-generic functions: scalar and unit-value arguments and results, functions of other units, inner units and `impl`, `print_i64` and `print_u64`, `u32::from` |
+| `c3-convs.txt` | The integer conversion `T::try_from(x).unwrap()` for each pair of source and target (100 kinds): widening conversions without a check, the rest with a range check |
+| `c3-methods.txt` | Integer methods for each width and sign: `wrapping_*` and `saturating_*`, bit methods (rotation, counting, reversal, wrapping shifts, `is_power_of_two`), `MIN` and `MAX`, `f64::from` |
+| `c3-floats.txt` | Methods and constants of `f64`, `print_f64` (the digit count check and the runtime fragment) |
+| `c4-loops.txt` | Control flow: `while`, `for` (closed and open ranges, sign and width), `loop` and the value of `break`, `break` and `continue` leaving by label, `return` in the middle |
+| `d1-arrays.txt` | Arrays of scalar elements: constant literals and computed literals, repetition, reading and writing elements (narrow integers, `bool`, `f64`), assignment of a whole array, arrays passed by value and array results, `if` with an array value, `len` |
+| `d1-slices.txt` | Slices of scalar elements: read and write parameters, `len`, slices cut by a range, byte string and text literals, `print_str` and `print_bytes` |
+| `d1-refs.txt` | References to scalars: the places of local variables, passing a reference parameter on as is, temporary places of elements and writing back, lent values, reading and writing `*x` |
+| `d1-bytes.txt` | Integers and bytes: `to_be_bytes` and `to_le_bytes`, `from_be_bytes` and `from_le_bytes` (sign and width) |
+| `d2-structs.txt` | Structs: literals and reading and writing fields (narrow integers, `bool`, `f64`, array fields, nested structs), passing and returning by value, passing by reference and modifying, struct values of `if` and `loop`, `return` in the middle, arrays and slices of structs, scalar references to fields, nested arrays |
+| `d3-enums.txt` | Enums, `match` and `?`: building variants (scalar, struct and array payloads), bindings and values of `match`, modifying a payload by `match` on `&mut`, `?` on `Option` and `Result`, methods that produce `Option` (`checked_*`, `try_from(..).ok()`, `checked_shl`), `std::mem::replace` and `swap` |
+| `e1-vecs.txt` | `Vec`: `new` and `with_capacity`, `push` (growth), `len`, indexing, `as_slice` and `as_mut_slice`, range slices, `pop`, `truncate`, `clone`, `copy_within`, `Vec` of structs, `Vec` of `Vec`, passing and returning by value, temporary `Vec`, drop at the end of a block |
+| `e2-owned.txt` | Drop of values that own heap: `Box` and recursive data (large stack), structs and enums that own heap, a different drop in each arm, `return`, `break` and `?` in the middle, payloads moved by `match`, values replaced by assignment, values of discarded expressions, temporaries, `clone` of values that own heap |
+| `g1-generics.txt` | Instances of generic functions and types: scalar, struct and `Vec` type arguments, instances called by instances, types that appear only inside an instance, generic structs and enums, functions of `impl<T>`, drop of type arguments that own heap |
+| `f1-text.txt` | Text: `String::from`, `push_str`, `push` (characters of 1~4 bytes), `as_str` and `as_bytes`, the six comparisons (prefix and empty text), the bounds check of `&s[a..b]`, `is_char_boundary`, `len_utf8`, `char::from_u32`, `String::from_utf8` (valid and invalid), comparison in an instance that received a text type argument, structs that hold text and `Vec<String>` |
+| `g2-traits.txt` | Dispatch of trait methods: an impl for each type, default bodies and overrides, trait calls inside generic functions, generic impls, impls for scalar types, functions returning `Self`, calling by path |
+| `h1-sys.txt` | The system interface: command line arguments, environment variables (a missing name, a name containing NUL), the monotonic clock, standard error, failure of reading a file (`std::io::Error`), running a process, `std::process::exit` in the middle |
+| `*.out` | The expected output of inputs that have a `main` (`c2-calls`, `c3-floats`, `c4-loops`, `d1-*`, `d2-*`, `d3-*`, `e1-*`, `e2-*`, `f1-*`, `g1-*`, `g2-*`, `h1-*`): compared by the case `emit-run` |

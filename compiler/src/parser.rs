@@ -687,12 +687,12 @@ impl<'a> Parser<'a> {
                 } else if s == "static" {
                     // ADR-0052 §7: an immutable `static` is a `const`; a
                     // `static mut` is global state, which BMB passes as an
-                    // argument (DESIGN §4.1 "효과").
+                    // argument (DESIGN §4.1 "Effects").
                     let mutable = matches!(self.peek_at(1), Tok::Ident(m) if m == "mut");
                     let d = Diag::new("E0261", sp, "`static` items are not used");
                     self.diags.push(if mutable {
                         d.fix(
-                            "global mutable state is passed as an argument (DESIGN §4.1 \"효과\")",
+                            "global mutable state is passed as an argument (DESIGN §4.1 \"Effects\")",
                             None,
                         )
                     } else {

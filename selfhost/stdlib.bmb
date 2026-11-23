@@ -1,6 +1,6 @@
-#[summary("프로그램이 이름을 든 표준 라이브러리 단위를 프로그램에 더한다 (stage0 compiler/src/stdlib.rs의 포트, 백로그 4D-03b; ADR-0092 §1). 단위의 글은 std_units가 든다")]
+#[summary("Adds the standard library units the program names to the program (port of stage0 compiler/src/stdlib.rs; ADR-0092 §1). std_units holds the text of the units")]
 mod stdlib {
-    #[summary("프로그램의 메서드 호출 이름을 모으는 손님")]
+    #[summary("Visitor that collects the method call names of the program")]
     struct Methods { names: Vec<String> }
 
     impl ast::ExprFn for Methods {
@@ -46,7 +46,7 @@ mod stdlib {
         }
     }
 
-    #[summary("std::U로 시작하는 경로가 든 라이브러리 단위를 표시하는 손님. names는 단위의 이름들, hit는 그 차례의 표시")]
+    #[summary("Visitor that marks the library units named by paths starting with std::U. names is the names of the units, hit is the marks in that order")]
     struct Named { names: Vec<String>, hit: Vec<bool> }
 
     impl refs::Rewrite for Named {
@@ -74,7 +74,7 @@ mod stdlib {
         fn var(self: &mut Named, name: &mut String) -> () {}
     }
 
-    #[summary("프로그램이 이름을 든 라이브러리 단위들을, 그 단위들이 든 것까지, 단위 std 하나로 프로그램에 더한다. 프로그램에 std라는 단위가 있으면 E0309")]
+    #[summary("Adds the library units the program names, down to those that those units name, to the program as a single unit std. E0309 if the program has a unit named std")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
     fn add(sm: &mut source::SourceMap, program: &mut ast::Program, diags: &mut diag::Diags) -> () {
@@ -143,23 +143,23 @@ mod stdlib {
         }
         match first {
             None => {},
-            Some(file) => { let span: source::Span = source::Span { file: file, lo: 0, hi: 0 }; let mut attrs: Vec<ast::Attr> = Vec::new(); let mut args: Vec<ast::AttrArg> = Vec::new(); args.push(ast::AttrArg::Str(String::from("표준 라이브러리 (ADR-0092)"), span)); attrs.push(ast::Attr { name: ast::Ident { name: String::from("summary"), span: span }, args: args, span: span }); program.mods.push(ast::Mod { name: ast::Ident { name: String::from("std"), span: span }, attrs: attrs, fns: Vec::new(), mods: mods, types: Vec::new(), impls: Vec::new(), traits: Vec::new(), trait_impls: Vec::new(), uses: Vec::new(), consts: Vec::new(), lens: Vec::new(), span: span }); },
+            Some(file) => { let span: source::Span = source::Span { file: file, lo: 0, hi: 0 }; let mut attrs: Vec<ast::Attr> = Vec::new(); let mut args: Vec<ast::AttrArg> = Vec::new(); args.push(ast::AttrArg::Str(String::from("Standard library (ADR-0092)"), span)); attrs.push(ast::Attr { name: ast::Ident { name: String::from("summary"), span: span }, args: args, span: span }); program.mods.push(ast::Mod { name: ast::Ident { name: String::from("std"), span: span }, attrs: attrs, fns: Vec::new(), mods: mods, types: Vec::new(), impls: Vec::new(), traits: Vec::new(), trait_impls: Vec::new(), uses: Vec::new(), consts: Vec::new(), lens: Vec::new(), span: span }); },
         }
     }
 
-    #[summary("path가 라이브러리의 것인가: std 또는 std::로 시작")]
+    #[summary("Whether path is the library's: std or starts with std::")]
     #[effects(pure)]
     fn in_std(path: &str) -> bool {
         path == "std" || std::str::starts_with(path, "std::")
     }
 
-    #[summary("단위 m이 라이브러리의 단위 std인가")]
+    #[summary("Whether unit m is the library's unit std")]
     #[effects(pure)]
     fn is_std(m: &ast::Mod) -> bool {
         m.name.name.as_str() == "std"
     }
 
-    #[summary("프로그램 p가 든 라이브러리 단위의 표시: std::U 경로, 그리고 &str을 받는 std::str의 함수를 메서드로 부른 것 (ADR-0098)")]
+    #[summary("Marks of the library units program p names: std::U paths, and functions of std::str taking &str called as methods (ADR-0098)")]
     #[effects(alloc)]
     fn named(p: &mut ast::Program, names: &[String], str_fns: &[String]) -> Vec<bool> {
         let mut own: Vec<String> = Vec::new();
@@ -193,7 +193,7 @@ mod stdlib {
         n.hit
     }
 
-    #[summary("std::str의 실행 함수 가운데 첫 매개변수가 &str인 것의 이름: 메서드로 부를 수 있는 것 (ADR-0098)")]
+    #[summary("Names of the exec functions of std::str whose first parameter is &str: those that can be called as methods (ADR-0098)")]
     #[effects(alloc)]
     fn str_fn_names() -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -215,7 +215,7 @@ mod stdlib {
         out
     }
 
-    #[summary("실행 함수이고 첫 매개변수가 &str인가")]
+    #[summary("Whether it is an exec function and its first parameter is &str")]
     #[effects(pure)]
     fn takes_str(f: &ast::FnDef) -> bool {
         match &f.kind {

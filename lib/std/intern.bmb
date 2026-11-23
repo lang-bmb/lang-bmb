@@ -1,4 +1,4 @@
-#[summary("인턴 표(rustc의 `Symbol` 표와 같은 뜻): 텍스트마다 번호가 하나, 처음 오면 0부터 다음 번호, 번호는 그 텍스트를 가리킨다. 정렬된 텍스트 키의 맵(std::collections) 위에 선다 (ADR-0092 §2, backlog 4B-02 (g))")]
+#[summary("Intern table (same meaning as rustc's `Symbol` table): one number per text, the next number from 0 on first arrival, and the number refers to that text. Built on the map of sorted text keys (std::collections) (ADR-0092 §2)")]
 mod intern {
     // Interned texts: `names[i]` is the text of number `i`, and `ids` maps
     // each text to its number.

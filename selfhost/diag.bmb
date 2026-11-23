@@ -1,4 +1,4 @@
-#[summary("진단: 안정된 코드의 표, 진단 자료, 결정론적 JSONL 쓰기, 코드 참조 문서 (stage0 compiler/src/diag.rs의 포트, 백로그 4D-02)")]
+#[summary("Diagnostics: table of stable codes, diagnostic data, deterministic JSONL writing, code reference document (port of stage0 compiler/src/diag.rs)")]
 mod diag {
     struct Bound { b: i64, l: usize }
 
@@ -19,7 +19,7 @@ mod diag {
             self.items.push(d);
         }
 
-        #[summary("결정론적 JSONL: 위치와 코드의 순서로, 같은 줄은 한 번만")]
+        #[summary("Deterministic JSONL: in order of position and code, identical lines only once")]
         #[effects(alloc)]
         fn to_jsonl(self: &Diags, sm: &source::SourceMap) -> String {
             let mut rows: Vec<Row> = Vec::new();
@@ -70,7 +70,7 @@ mod diag {
         j < rows.len() && row_lt(&rows[x], &rows[j])
     }
 
-    #[summary("컴파일러가 내는 모든 진단 코드, 참조 문서의 순서. 코드는 안정적이다: 번호를 바꾸거나 은퇴한 코드를 다시 쓰지 않는다")]
+    #[summary("All diagnostic codes the compiler emits, in reference document order. Codes are stable: never renumbered, and retired codes are never reused")]
     #[effects(alloc)]
     fn codes() -> Vec<Code> {
         let mut v: Vec<Code> = Vec::new();
@@ -305,13 +305,13 @@ mod diag {
         out
     }
 
-    #[summary("d에 고침을 단다: 설명과, 있으면 바꿔 쓸 글")]
+    #[summary("Attaches a fix to d: a description and, if any, the replacement text")]
     #[effects(alloc)]
     fn fix(d: Diag, message: &str, replacement: Option<String>) -> Diag {
         Diag { code: d.code, span: d.span, message: d.message, fix: Some(Fix { message: String::from(message), replacement: replacement }), obligation: d.obligation, bounded: d.bounded }
     }
 
-    #[summary("참조 문서의 절: 코드 접두사와 제목")]
+    #[summary("Section of the reference document: code prefix and title")]
     #[effects(alloc)]
     fn groups() -> Vec<Code> {
         let mut v: Vec<Code> = Vec::new();
@@ -334,7 +334,7 @@ mod diag {
         Diag { code: String::from(code), span: span, message: String::from(message), fix: None, obligation: None, bounded: None }
     }
 
-    #[summary("ord에 x를 넣는다: x보다 뒤가 아닌 마지막 행의 다음 자리(안정 삽입 정렬의 한 걸음)")]
+    #[summary("Inserts x into ord: the position after the last row that is not after x (one step of a stable insertion sort)")]
     #[effects(alloc)]
     fn placed(rows: &[Row], ord: &[usize], x: usize) -> Vec<usize>
         requires x < rows.len(),
@@ -364,7 +364,7 @@ mod diag {
         out
     }
 
-    #[summary("s를 Markdown 표의 칸으로 덧붙인다: |를 이스케이프. 자르는 자리는 한 바이트 글자의 앞뒤라 글자 경계이고, 증명이 인코딩을 따라가지 않아 실행 때 확인한다")]
+    #[summary("Appends s as a Markdown table cell: escapes |. The cut positions are before and after a one-byte character and so are character boundaries; the proof does not follow the encoding, so this is checked at run time")]
     #[effects(alloc)]
     fn push_cell(out: &mut String, s: &str) -> () {
         let mut a: usize = 0;
@@ -413,7 +413,7 @@ mod diag {
         }
     }
 
-    #[summary("진단 하나를 JSON 객체로")]
+    #[summary("One diagnostic as a JSON object")]
     #[effects(alloc)]
     fn render(d: &Diag, sm: &source::SourceMap) -> String {
         let a: source::Pos = sm.line_col(d.span.file, d.span.lo);
@@ -450,7 +450,7 @@ mod diag {
         s
     }
 
-    #[summary("더 내지 않는 코드. 다시 쓰이지 않게 적어 둔다")]
+    #[summary("Codes no longer emitted. Recorded so that they are not reused")]
     #[effects(alloc)]
     fn retired() -> Vec<Code> {
         let mut v: Vec<Code> = Vec::new();
@@ -463,7 +463,7 @@ mod diag {
         v
     }
 
-    #[summary("행 a가 b보다 앞인가: 파일, 위치, 코드, 쓴 글의 순서(Rust의 튜플 순서)")]
+    #[summary("Whether row a precedes b: in order of file, position, code, written text (Rust's tuple order)")]
     #[effects(pure)]
     fn row_lt(a: &Row, b: &Row) -> bool {
         if a.file != b.file {

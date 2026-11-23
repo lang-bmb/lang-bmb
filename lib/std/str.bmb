@@ -1,4 +1,4 @@
-#[summary("텍스트 연산(Rust `str`의 이름과 뜻): 접두·접미, 찾기, 떼기, ASCII 공백 다듬기, 글자 해독. 결과는 바이트 명세와 정확히 같고 조각 대신 위치를 돌려준다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Text operations (names and meaning of Rust `str`): prefix and suffix, finding, stripping, ASCII whitespace trimming, char decoding. Results are exactly the same as the byte specification and return positions instead of slices (ADR-0092 §2)")]
 mod str {
     // ---------- prefixes and suffixes ----------
 

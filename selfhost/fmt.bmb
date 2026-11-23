@@ -1,24 +1,24 @@
-#[summary("정규형 출력기: 한 프로그램에 한 글 (ADR-0019) (stage0 compiler/src/fmt.rs의 포트, 백로그 4D-02). 이름을 쓰는 방식이 셋이다(Names): 쓴 그대로, 다른 정의를 온 경로로 쓰는 한정 글(ADR-0019 §2), 이름을 지운 정체성 글(ADR-0059 §1, 해시는 identity가 센다). f는 남은 깊이다")]
+#[summary("Normal form printer: one text per program (ADR-0019) (port of stage0 compiler/src/fmt.rs). There are three ways of writing names (Names): as written, qualified text that writes other definitions by full path (ADR-0019 §2), identity text with names erased (ADR-0059 §1, identity computes the hash). f is the remaining depth")]
 mod fmt {
-    #[summary("정체성 글에서 호출 경로가 가리키는 것: 정의(온 경로), 열거형(온 경로)의 k번째 변형, 내장")]
+    #[summary("What a call path refers to in identity text: a definition (full path), the k-th variant of an enum (full path), a built-in")]
     enum Callee { Def(String), Variant(String, usize), Plain }
 
-    #[summary("경로 path의 것과 자리 하나 (타입의 표의 자리, 변형이나 필드의 선언 자리)")]
+    #[summary("The item at path path and one position (position in the table of types, declaration position of a variant or field)")]
     struct Found { path: String, at: usize }
 
-    #[summary("const의 이름으로 쓴 반복 횟수: 횟수의 자리와 그 이름")]
+    #[summary("Repeat count written as the name of a const: position of the count and that name")]
     struct LenName { file: u32, lo: u32, hi: u32, name: String }
 
-    #[summary("이름을 쓰는 방식: 쓴 그대로, 한정(다른 정의를 온 경로로), 정체성의 참조 모으기(참조마다 열쇠를 적고 #?로 쓴다), 정체성(참조를 표 refs의 글로)")]
+    #[summary("Ways of writing names: as written, qualified (other definitions by full path), identity reference collection (records a key per reference and writes #?), identity (references as the text of table refs)")]
     enum Mode { Plain, Qualify, Collect, Identity }
 
-    #[summary("출력기가 이름을 푸는 데 쓰는 것. 한정과 정체성은 검사기의 표(fns, adts, 식의 타입 types)와 찍는 정의의 단위 unit을 읽는다. 정체성은 그 위에 trait의 온 경로들 traits, 참조의 글 refs(열쇠는 종류 숫자 0 정의·1 타입·2 trait, 쌍점, 온 경로), 모은 열쇠 seen, 그리고 묶인 이름의 자리(binders: 이름에서 _k로, labels: 라벨에서 _k로)를 든다. 묶는 이름은 함수 안에서 하나뿐이라(E0303) 표 하나로 정의 전체를 든다")]
+    #[summary("What the printer uses to resolve names. Qualified and identity read the checker's tables (fns, adts, expression types types) and unit, the unit of the definition being printed. Identity additionally holds the full paths of traits traits, the reference texts refs (the key is the kind digit 0 definition·1 type·2 trait, a colon, the full path), the collected keys seen, and the slots of bound names (binders: from name to _k, labels: from label to _k). A binding name is unique within a function (E0303), so one table holds the whole definition")]
     struct Names { mode: Mode, unit: String, fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, traits: Vec<String>, refs: table::Table<RefRow>, seen: Vec<String>, binders: table::Table<String>, labels: table::Table<String>, next: usize, next_label: usize }
 
     struct Printer { out: String, lens: Vec<LenName>, names: Names }
 
     impl Printer {
-        #[summary("자리 span의 식이 가진, 선언된 구조체나 열거형: 온 경로와 표 adts의 자리. 참조와 Box는 벗긴다")]
+        #[summary("Declared struct or enum that the expression at position span has: full path and position in table adts. References and Box are stripped")]
         #[effects(alloc)]
         fn adt_at(self: &Printer, span: source::Span) -> Option<Found> {
             let at: usize = match self.names.types.find(body::span_key(span).as_str()) {
@@ -35,7 +35,7 @@ mod fmt {
             }
         }
 
-        #[summary("이 단위의 타입 name에 인자를 붙인 것 (impl의 머리)")]
+        #[summary("Type name of this unit with arguments attached (head of an impl)")]
         #[effects(alloc)]
         fn applied_ty(self: &mut Printer, name: &str, args: &[ast::Type]) -> String {
             let mut s: String = String::new();
@@ -93,7 +93,7 @@ mod fmt {
             self.line(depth, row.as_str());
         }
 
-        #[summary("이름 name을 묶는다(매개변수, 지역 변수, 타입 매개변수, ..): 정체성 글에서는 묶인 자리 _k")]
+        #[summary("Binds name name (parameter, local variable, type parameter, ..): in identity text, the bound slot _k")]
         #[effects(alloc)]
         fn bind(self: &mut Printer, name: &str) -> String {
             if !self.is_id() {
@@ -106,7 +106,7 @@ mod fmt {
             b
         }
 
-        #[summary("라벨 name을 묶는다: 정체성 글에서는 묶인 자리 _k")]
+        #[summary("Binds label name: in identity text, the bound slot _k")]
         #[effects(alloc)]
         fn bind_label(self: &mut Printer, name: &str) -> String {
             if !self.is_id() {
@@ -119,7 +119,7 @@ mod fmt {
             b
         }
 
-        #[summary("prefix{ ... }suffix를 찍는다, 블록의 내용은 들여써서")]
+        #[summary("Prints prefix{ ... }suffix, with the block's contents indented")]
         #[effects(alloc)]
         fn block_open(self: &mut Printer, b: &ast::Block, depth: usize, prefix: &str, suffix: &str, f: usize) -> ()
             decreases f,
@@ -152,7 +152,7 @@ mod fmt {
             self.line(depth, close.as_str());
         }
 
-        #[summary("trait 한정 b: 선언된 trait은 참조로, Copy·Eq·Ord는 이름으로")]
+        #[summary("Trait bound b: declared traits as references, Copy·Eq·Ord by name")]
         #[effects(alloc)]
         fn bound(self: &mut Printer, b: &[ast::Ident]) -> String {
             let plain: String = path_str(b);
@@ -264,7 +264,7 @@ mod fmt {
             s
         }
 
-        #[summary("호출 경로 path가 가리키는 것, 검사기가 푸는 대로: 이 단위의 f, T::f, Trait::f, 온 경로, 아니면 호출의 열거형 타입의 변형")]
+        #[summary("What call path path refers to, as the checker resolves it: this unit's f, T::f, Trait::f, a full path, otherwise a variant of the call's enum type")]
         #[effects(alloc)]
         fn callee(self: &Printer, path: &[ast::Ident], span: source::Span) -> Callee {
             let plain: String = path_str(path);
@@ -288,7 +288,7 @@ mod fmt {
             }
         }
 
-        #[summary("정수 변환 T::try_from(x).unwrap()의 x를 CAST 우선순위로 찍은 글")]
+        #[summary("Text of the x of the integer conversion T::try_from(x).unwrap() printed at CAST precedence")]
         #[effects(alloc)]
         fn cast_operand(self: &mut Printer, recv: &ast::Expr, f: usize) -> String
             decreases f,
@@ -335,7 +335,7 @@ mod fmt {
             }
         }
 
-        #[summary("kw와 쉼표로 이은 식들, 끝에 쉼표. 식이 없으면 쓰지 않는다")]
+        #[summary("kw and comma-joined expressions, with a trailing comma. Writes nothing if there are no expressions")]
         #[effects(alloc)]
         fn clause_line(self: &mut Printer, kw: &str, items: &[ast::Expr], depth: usize, f: usize) -> ()
             decreases f,
@@ -364,7 +364,7 @@ mod fmt {
             }
         }
 
-        #[summary("move |x: T| -> (r: R) requires P, ensures Q, { .. }를 한 줄로 (ADR-0053 §1)")]
+        #[summary("move |x: T| -> (r: R) requires P, ensures Q, { .. } on one line (ADR-0053 §1)")]
         #[effects(alloc)]
         fn closure_text(self: &mut Printer, c: &ast::Closure, f: usize) -> String
             decreases f,
@@ -398,7 +398,7 @@ mod fmt {
             head
         }
 
-        #[summary("참조를 모으는 중인가")]
+        #[summary("Whether references are being collected")]
         #[effects(pure)]
         fn collecting(self: &Printer) -> bool {
             match &self.names.mode {
@@ -409,7 +409,7 @@ mod fmt {
             }
         }
 
-        #[summary("조건이나 match의 대상: 구조체 식을 담으면 괄호로 싼다 (Rust는 거기서 괄호 없는 것을 받지 않는다)")]
+        #[summary("Condition or match scrutinee: parenthesized if it contains a struct expression (Rust does not accept an unparenthesized one there)")]
         #[effects(alloc)]
         fn cond(self: &mut Printer, e: &ast::Expr, f: usize) -> String
             decreases f,
@@ -425,7 +425,7 @@ mod fmt {
             }
         }
 
-        #[summary("const의 이름으로 쓴 횟수면 그 이름, 아니면 수")]
+        #[summary("The name if the count is written as the name of a const, otherwise the number")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
         fn count_text(self: &Printer, rp: &ast::Repeat) -> String {
@@ -444,7 +444,7 @@ mod fmt {
             s
         }
 
-        #[summary("경로 path의 함수, spec fn, trait 메서드의 참조")]
+        #[summary("Reference of the function, spec fn, or trait method at path path")]
         #[effects(alloc)]
         fn def_ref(self: &mut Printer, path: &str) -> String {
             let tr: Option<String> = match self.names.fns.find(path) {
@@ -457,7 +457,7 @@ mod fmt {
             }
         }
 
-        #[summary("종류 kind(0 정의, 1 타입, 2 trait)와 온 경로 path의 것의 참조: 모으는 중이면 열쇠를 적고 #?, 아니면 표 refs의 글, 표에 없으면(검사된 프로그램에는 없다) #?와 경로")]
+        #[summary("Reference of the item of kind kind (0 definition, 1 type, 2 trait) and full path path: when collecting, records the key and writes #?, otherwise the text of table refs, and if not in the table (never so in a checked program) #? and the path")]
         #[effects(alloc)]
         fn entity(self: &mut Printer, kind: &str, path: &str) -> String {
             let key: String = types::cat3(kind, ":", path);
@@ -473,7 +473,7 @@ mod fmt {
             }
         }
 
-        #[summary("e를 찍는다. 우선순위가 min보다 낮으면 괄호로 싼다")]
+        #[summary("Prints e. Parenthesized if its precedence is lower than min")]
         #[effects(alloc)]
         fn expr(self: &mut Printer, e: &ast::Expr, min: u8, f: usize) -> String
             decreases f,
@@ -538,7 +538,7 @@ mod fmt {
             s
         }
 
-        #[summary("여러 줄에 걸칠 수 있는 식(if, 블록)을 문장으로 찍는다")]
+        #[summary("Prints an expression that may span several lines (if, block) as a statement")]
         #[effects(alloc)]
         fn expr_stmt(self: &mut Printer, e: &ast::Expr, depth: usize, suffix: &str, f: usize) -> ()
             decreases f,
@@ -553,7 +553,7 @@ mod fmt {
             }
         }
 
-        #[summary("쉼표로 이은 식들")]
+        #[summary("Comma-joined expressions")]
         #[effects(alloc)]
         fn exprs(self: &mut Printer, xs: &[ast::Expr], f: usize) -> String
             decreases f,
@@ -575,7 +575,7 @@ mod fmt {
             s
         }
 
-        #[summary("자리 span의 식이 가진 구조체에서 필드 name의 선언 자리")]
+        #[summary("Declaration position of field name in the struct that the expression at position span has")]
         #[effects(alloc)]
         fn field_at(self: &Printer, span: source::Span, name: &str) -> Option<usize> {
             if !self.is_id() {
@@ -587,7 +587,7 @@ mod fmt {
             }
         }
 
-        #[summary("필드의 이름: 정체성 글에서는 base_span의 식이 가진 구조체에서의 선언 자리")]
+        #[summary("Name of a field: in identity text, its declaration position in the struct that the expression at base_span has")]
         #[effects(alloc)]
         fn field_name(self: &Printer, base_span: source::Span, name: &str) -> String {
             match self.field_at(base_span, name) {
@@ -596,7 +596,7 @@ mod fmt {
             }
         }
 
-        #[summary("머리와 이름 순의 함수들: impl 블록의 몸")]
+        #[summary("Head and functions in name order: body of an impl block")]
         #[effects(alloc)]
         fn fn_block(self: &mut Printer, head: &str, fs: &[ast::FnDef], depth: usize, f: usize) -> ()
             decreases f,
@@ -637,7 +637,7 @@ mod fmt {
             self.line(depth, "}");
         }
 
-        #[summary("for의 머리: 라벨, 범위, 변수의 순서로 묶는다")]
+        #[summary("Head of a for: binds in the order label, range, variable")]
         #[effects(alloc)]
         fn for_head(self: &mut Printer, fo: &ast::For, f: usize) -> String
             decreases f,
@@ -661,7 +661,7 @@ mod fmt {
             fhead
         }
 
-        #[summary("정의 하나. rename이 비지 않았으면 정의의 이름을 그것으로 쓴다 (해시는 _로)")]
+        #[summary("One definition. If rename is not empty, the definition's name is written as that (_ for hashes)")]
         #[effects(alloc)]
         fn function(self: &mut Printer, d: &ast::FnDef, depth: usize, rename: &str, with_body: bool, f: usize) -> ()
             decreases f,
@@ -783,7 +783,7 @@ mod fmt {
             }
         }
 
-        #[summary("<T: Copy, U: Copy + geo::Shape>, 또는 없음. 정체성 글에서는 매개변수를 묶고 한정을 참조로 쓴다")]
+        #[summary("<T: Copy, U: Copy + geo::Shape>, or nothing. In identity text, binds the parameters and writes the bounds as references")]
         #[effects(alloc)]
         fn generics(self: &mut Printer, gs: &[ast::TypeParam]) -> String {
             if !self.is_id() {
@@ -820,7 +820,7 @@ mod fmt {
             s
         }
 
-        #[summary("정체성 글의 타입: 선언된 타입은 참조로, 타입 매개변수는 묶인 자리로, 내장은 이름으로")]
+        #[summary("Type in identity text: declared types as references, type parameters as bound slots, built-ins by name")]
         #[effects(alloc)]
         fn id_kind(self: &mut Printer, t: &ast::TypeKind, f: usize) -> String
             decreases f,
@@ -887,7 +887,7 @@ mod fmt {
             self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
         }
 
-        #[summary("정체성 글인가 (참조를 모으는 중이거나 쓰는 중)")]
+        #[summary("Whether this is identity text (collecting or writing references)")]
         #[effects(pure)]
         fn is_id(self: &Printer) -> bool {
             match &self.names.mode {
@@ -898,7 +898,7 @@ mod fmt {
             }
         }
 
-        #[summary("쓴 그대로의 글인가")]
+        #[summary("Whether this is as-written text")]
         #[effects(pure)]
         fn is_plain(self: &Printer) -> bool {
             match &self.names.mode {
@@ -909,7 +909,7 @@ mod fmt {
             }
         }
 
-        #[summary("라벨의 쓰임: 묶인 라벨이면 그 자리")]
+        #[summary("Use of a label: its slot if it is a bound label")]
         #[effects(alloc)]
         fn label(self: &Printer, name: &str) -> String {
             if self.is_id() {
@@ -921,7 +921,7 @@ mod fmt {
             String::from(name)
         }
 
-        #[summary("'l: (라벨을 묶는다), 또는 없음")]
+        #[summary("'l: (binds the label), or nothing")]
         #[effects(alloc)]
         fn label_head(self: &mut Printer, l: &Option<ast::Ident>) -> String {
             let mut s: String = String::new();
@@ -932,7 +932,7 @@ mod fmt {
             s
         }
 
-        #[summary("let T { a, b } = 의 머리: 타입은 정체성 글에서 참조로, 필드는 쓴 순서로 묶는다")]
+        #[summary("Head of let T { a, b } = : the type as a reference in identity text, fields bound in written order")]
         #[effects(alloc)]
         fn let_fields_head(self: &mut Printer, lf: &ast::LetFields) -> String {
             let mut lhead: String = String::from("let ");
@@ -964,7 +964,7 @@ mod fmt {
             lhead
         }
 
-        #[summary("let [mut ]x: T = 의 머리")]
+        #[summary("Head of let [mut ]x: T =")]
         #[effects(alloc)]
         fn let_head(self: &mut Printer, le: &ast::Let) -> String {
             let mut head: String = String::from("let ");
@@ -978,7 +978,7 @@ mod fmt {
             head
         }
 
-        #[summary("들여쓴 한 줄")]
+        #[summary("One indented line")]
         #[effects(alloc)]
         fn line(self: &mut Printer, depth: usize, text: &str) -> () {
             let mut k: usize = 0;
@@ -992,7 +992,7 @@ mod fmt {
             self.out.push_str("\n");
         }
 
-        #[summary("여러 줄에 걸치는 꼴(if, 블록, match, loop)이면 head와 suffix를 붙여 줄들로 찍고 참을 준다")]
+        #[summary("If the form spans several lines (if, block, match, loop), prints it as lines with head and suffix attached and returns true")]
         #[effects(alloc)]
         fn lines_of(self: &mut Printer, e: &ast::Expr, depth: usize, head: &str, suffix: &str, f: usize) -> bool
             decreases f,
@@ -1039,7 +1039,7 @@ mod fmt {
             }
         }
 
-        #[summary("묶인 이름의 쓰임: 묶인 이름이면 그 자리, 그 밖의 이름(None 등)은 쓴 대로")]
+        #[summary("Use of a bound name: its slot if it is a bound name, other names (None etc.) as written")]
         #[effects(alloc)]
         fn local(self: &Printer, name: &str) -> String {
             if self.is_id() {
@@ -1051,7 +1051,7 @@ mod fmt {
             String::from(name)
         }
 
-        #[summary("invariant와 decreases의 줄들")]
+        #[summary("Lines of invariant and decreases")]
         #[effects(alloc)]
         fn loop_clauses(self: &mut Printer, invariants: &[ast::Expr], measure: Option<String>, depth: usize, f: usize) -> ()
             decreases f,
@@ -1066,7 +1066,7 @@ mod fmt {
             }
         }
 
-        #[summary("head['l: ]loop, 절들은 while처럼 제 줄에, 그리고 몸")]
+        #[summary("head['l: ]loop, clauses on their own lines as in while, then the body")]
         #[effects(alloc)]
         fn loop_lines(self: &mut Printer, lp: &ast::Loop, depth: usize, head: &str, suffix: &str, f: usize) -> ()
             decreases f,
@@ -1092,7 +1092,7 @@ mod fmt {
             self.block_open(&lp.body, depth, "", suffix, f - 1);
         }
 
-        #[summary("match, 갈래마다 한 줄 (갈래의 몸은 한 줄로)")]
+        #[summary("match, one line per arm (arm bodies on one line)")]
         #[effects(alloc)]
         fn match_lines(self: &mut Printer, ma: &ast::Match, depth: usize, prefix: &str, suffix: &str, f: usize) -> ()
             decreases f,
@@ -1121,7 +1121,7 @@ mod fmt {
             self.line(depth, close.as_str());
         }
 
-        #[summary("trait trait_path의 메서드 name: 정체성 글에서는 trait의 참조와 trait 안의 메서드 자리 (#<id>#k)")]
+        #[summary("Method name of trait trait_path: in identity text, the trait's reference and the method's position within the trait (#<id>#k)")]
         #[effects(alloc)]
         fn method_ref(self: &mut Printer, trait_path: &str, name: &str) -> String {
             if !self.is_id() {
@@ -1364,7 +1364,7 @@ mod fmt {
             self.line(depth, "}");
         }
 
-        #[summary("head value suffix: 값은 여러 줄의 if나 블록일 수 있다")]
+        #[summary("head value suffix: the value may be a multi-line if or block")]
         #[effects(alloc)]
         fn multiline_value(self: &mut Printer, v: &ast::Expr, depth: usize, head: &str, suffix: &str, f: usize) -> ()
             decreases f,
@@ -1380,7 +1380,7 @@ mod fmt {
             }
         }
 
-        #[summary("여러 줄 꼴을 식 안에서는 한 줄로: 줄마다 다듬어 빈칸으로 잇는다")]
+        #[summary("A multi-line form on one line inside an expression: trims each line and joins with a space")]
         #[effects(alloc)]
         fn one_line(self: &mut Printer, e: &ast::Expr, f: usize) -> String
             decreases f,
@@ -1394,7 +1394,7 @@ mod fmt {
             joined_lines(text.as_str())
         }
 
-        #[summary("x: T, y: U. bind면 이름을 묶는다 (함수와 한정자의 매개변수; 클로저의 것은 묶지 않는다)")]
+        #[summary("x: T, y: U. If bind, binds the names (parameters of functions and quantifiers; those of closures are not bound)")]
         #[effects(alloc)]
         fn params_text(self: &mut Printer, ps: &[ast::Param], bind: bool) -> String {
             let mut s: String = String::new();
@@ -1417,7 +1417,7 @@ mod fmt {
             s
         }
 
-        #[summary("패턴: 정체성 글에서는 변형을 대상(자리 scrut)의 열거형 안의 자리로, 묶는 이름을 묶인 자리로")]
+        #[summary("Pattern: in identity text, variants as positions within the enum of the scrutinee (position scrut), binding names as bound slots")]
         #[effects(alloc)]
         fn pat(self: &mut Printer, p: &ast::Pat, scrut: source::Span) -> String {
             if !self.is_id() {
@@ -1453,7 +1453,7 @@ mod fmt {
             s
         }
 
-        #[summary("경로: 한정 글에서는 이 단위의 f, T::f(impl의 함수), Trait::f(trait의 메서드)를 온 경로로, 검사기가 푸는 대로")]
+        #[summary("Path: in qualified text, this unit's f, T::f (function of an impl), Trait::f (method of a trait) as full paths, as the checker resolves them")]
         #[effects(alloc)]
         fn path(self: &Printer, path: &[ast::Ident]) -> String {
             let plain: String = path_str(path);
@@ -1463,7 +1463,7 @@ mod fmt {
             plain
         }
 
-        #[summary("식으로 쓴 경로: 정체성 글에서는 식(자리 span)의 열거형의 변형이면 그 참조")]
+        #[summary("Path written as an expression: in identity text, its reference if it is a variant of the enum of the expression (position span)")]
         #[effects(alloc)]
         fn path_text(self: &mut Printer, pa: &[ast::Ident], span: source::Span) -> String {
             if self.is_id() && pa.len() > 0 {
@@ -1475,7 +1475,7 @@ mod fmt {
             self.path(pa)
         }
 
-        #[summary("한정 글에서 경로 path가 이 단위의 정의를 가리키는가")]
+        #[summary("Whether path path refers to a definition of this unit in qualified text")]
         #[effects(alloc)]
         fn qualified(self: &Printer, path: &[ast::Ident]) -> bool {
             let on: bool = match &self.names.mode {
@@ -1503,7 +1503,7 @@ mod fmt {
             self.line(depth, row.as_str());
         }
 
-        #[summary("x.f(..)로 쓴 호출의 수신자: 넘긴 방식이 붙인 &나 .as_str()을 벗긴 것")]
+        #[summary("Receiver of a call written as x.f(..): with the & or .as_str() added by the passing mode stripped")]
         #[effects(alloc)]
         fn recv_text(self: &mut Printer, arg: &ast::Expr, by_ref: bool, as_str: bool, f: usize) -> String
             decreases f,
@@ -1550,7 +1550,7 @@ mod fmt {
             }
         }
 
-        #[summary("묶인 이름을 잊는다 (새 정의, 또는 trait의 다음 메서드)")]
+        #[summary("Forgets the bound names (a new definition, or the next method of a trait)")]
         #[effects(alloc)]
         fn reset_binders(self: &mut Printer) -> () {
             self.names.binders = table::new::<String>();
@@ -1559,7 +1559,7 @@ mod fmt {
             self.names.next_label = 0;
         }
 
-        #[summary("결과의 타입 T, 또는 (r: T). bind면 결과의 이름을 묶는다")]
+        #[summary("Result type T, or (r: T). If bind, binds the result's name")]
         #[effects(alloc)]
         fn ret_text(self: &mut Printer, r: &ast::Ret, bind: bool) -> String {
             match &r.name {
@@ -1588,7 +1588,7 @@ mod fmt {
             }
         }
 
-        #[summary("구조체 식: 정체성 글에서는 필드를 선언 자리로, 타입을 참조로 (식의 자리 span의 타입에서)")]
+        #[summary("Struct expression: in identity text, fields as declaration positions and the type as a reference (from the type at the expression's position span)")]
         #[effects(alloc)]
         fn struct_text(self: &mut Printer, sl: &ast::StructLit, span: source::Span, f: usize) -> String
             decreases f,
@@ -1628,7 +1628,7 @@ mod fmt {
             head
         }
 
-        #[summary("정의의 #[summary(\"..\")] (ADR-0117). 쓴 그대로의 글에만: 어느 해시도 읽지 않는다")]
+        #[summary("The definition's #[summary(\"..\")] (ADR-0117). Only in as-written text: no hash reads it")]
         #[effects(alloc)]
         fn summary_line(self: &mut Printer, attrs: &[ast::Attr], depth: usize) -> () {
             if !self.is_plain() {
@@ -1649,7 +1649,7 @@ mod fmt {
             }
         }
 
-        #[summary("trait T { fn m(..) -> R; .. }, 메서드는 이름 순 (ADR-0046 §1)")]
+        #[summary("trait T { fn m(..) -> R; .. }, methods in name order (ADR-0046 §1)")]
         #[effects(alloc)]
         fn trait_def(self: &mut Printer, t: &ast::TraitDef, depth: usize, f: usize) -> ()
             decreases f,
@@ -1698,7 +1698,7 @@ mod fmt {
             self.line(depth, "}");
         }
 
-        #[summary("trait 메서드: 기본 몸, 또는 ;로 끝나는 시그니처")]
+        #[summary("Trait method: a default body, or a signature ending in ;")]
         #[effects(alloc)]
         fn trait_fn(self: &mut Printer, tf: &ast::TraitFn, depth: usize, rename: &str, f: usize) -> ()
             decreases f,
@@ -1722,7 +1722,7 @@ mod fmt {
             }
         }
 
-        #[summary("trait의 정체성 글 (ADR-0059 §1): 속성과, order(t.fns의 자리)의 순서로 이름 없는 메서드들")]
+        #[summary("Identity text of a trait (ADR-0059 §1): attributes and the nameless methods in the order of order (positions in t.fns)")]
         #[effects(alloc)]
         fn trait_identity(self: &mut Printer, t: &ast::TraitDef, order: &[usize], f: usize) -> ()
             decreases f,
@@ -1754,7 +1754,7 @@ mod fmt {
             self.line(0, "}");
         }
 
-        #[summary("impl<..> Trait for T { .. }, 함수는 이름 순 (ADR-0046 §2)")]
+        #[summary("impl<..> Trait for T { .. }, functions in name order (ADR-0046 §2)")]
         #[effects(alloc)]
         fn trait_impl(self: &mut Printer, i: &ast::TraitImpl, depth: usize, f: usize) -> ()
             decreases f,
@@ -1771,7 +1771,7 @@ mod fmt {
             self.fn_block(head.as_str(), i.fns.as_slice(), depth, f - 1);
         }
 
-        #[summary("쓴 타입: 정체성 글에서는 이름 없이")]
+        #[summary("Written type: without names in identity text")]
         #[effects(alloc)]
         fn ty(self: &mut Printer, t: &ast::Type) -> String {
             if self.is_id() {
@@ -1781,13 +1781,13 @@ mod fmt {
             }
         }
 
-        #[summary("struct T { f: U, .. } / enum T { A, B(U), .. }를 한 줄로. 필드와 변형은 선언 순서를 지킨다 (ADR-0026 §6)")]
+        #[summary("struct T { f: U, .. } / enum T { A, B(U), .. } on one line. Fields and variants keep declaration order (ADR-0026 §6)")]
         #[effects(alloc)]
         fn type_def(self: &mut Printer, t: &ast::TypeDef, depth: usize) -> () {
             self.type_def_as(t, depth, t.name.name.as_str());
         }
 
-        #[summary("타입 선언을 이름 name으로. 정체성 글에서는 필드와 변형을 자리로: 그 타입들만 쓴다 (ADR-0059 §1)")]
+        #[summary("Type declaration under name name. In identity text, fields and variants as positions: only their types are written (ADR-0059 §1)")]
         #[effects(alloc)]
         fn type_def_as(self: &mut Printer, t: &ast::TypeDef, depth: usize, name: &str) -> () {
             self.summary_line(t.attrs.as_slice(), depth);
@@ -1818,7 +1818,7 @@ mod fmt {
             self.line(depth, row.as_str());
         }
 
-        #[summary("단위에 쓴 타입 경로: 타입 매개변수(묶인 자리), 선언된 타입(참조), 내장(이름)")]
+        #[summary("Type path written in a unit: type parameter (bound slot), declared type (reference), built-in (name)")]
         #[effects(alloc)]
         fn type_ref(self: &mut Printer, path: &[String]) -> String {
             if path.len() == 1 {
@@ -1840,7 +1840,7 @@ mod fmt {
             }
         }
 
-        #[summary("#[uses(name)]이나 #[invariant(name)]의 이름: 한정 글에서는 온 경로, 정체성 글에서는 참조")]
+        #[summary("Name of #[uses(name)] or #[invariant(name)]: full path in qualified text, reference in identity text")]
         #[effects(alloc)]
         fn uses_name(self: &mut Printer, name: &str) -> String {
             if self.is_plain() {
@@ -1852,7 +1852,7 @@ mod fmt {
             }
         }
 
-        #[summary("자리 span의 식이 가진 열거형에서 변형 name: 열거형의 온 경로와 변형의 선언 자리")]
+        #[summary("Variant name in the enum that the expression at position span has: the enum's full path and the variant's declaration position")]
         #[effects(alloc)]
         fn variant_at(self: &Printer, span: source::Span, name: &str) -> Option<Found> {
             match self.adt_at(span) {
@@ -1861,7 +1861,7 @@ mod fmt {
             }
         }
 
-        #[summary("열거형 tp의 k번째 변형의 참조: #<id>#k")]
+        #[summary("Reference of the k-th variant of enum tp: #<id>#k")]
         #[effects(alloc)]
         fn variant_ref(self: &mut Printer, tp: &str, k: usize) -> String {
             let mut s: String = self.entity("1", tp);
@@ -1871,16 +1871,16 @@ mod fmt {
         }
     }
 
-    #[summary("한정 글의 줄 하나 (dump texts): 정의의 경로, 한정 정규형, 부르는 쪽이 읽는 겉")]
+    #[summary("One line of qualified text (dump texts): the definition's path, qualified normal form, the surface that callers read")]
     struct QualRow { path: String, text: String, caller: String }
 
-    #[summary("정체성 글이 참조 하나를 쓰는 글(#<id>, #self, #self<색>, #self.k)과, trait이면 그 메서드의 정체성 순서")]
+    #[summary("Text with which identity text writes one reference (#<id>, #self, #self<color>, #self.k) and, for a trait, the identity order of its methods")]
     struct RefRow { text: String, methods: Vec<String> }
 
-    #[summary("최상위 단위 하나의 정규형")]
+    #[summary("Normal form of one top-level unit")]
     struct Unit { name: String, text: String }
 
-    #[summary("속성 인자를 쓴 대로: 이름, 문자열, key = value. f는 남은 깊이")]
+    #[summary("Attribute arguments as written: name, string, key = value. f is the remaining depth")]
     #[effects(alloc)]
     fn attr_arg(x: &ast::AttrArg, f: usize) -> String
         decreases f,
@@ -1895,7 +1895,7 @@ mod fmt {
         }
     }
 
-    #[summary("쉼표로 이은 속성 인자들")]
+    #[summary("Comma-joined attribute arguments")]
     #[effects(alloc)]
     fn attr_args(xs: &[ast::AttrArg]) -> String {
         let mut s: String = String::new();
@@ -1912,7 +1912,7 @@ mod fmt {
         s
     }
 
-    #[summary("Rust의 연산자 우선순위 (ADR-0019 §1, ADR-0048 §2)")]
+    #[summary("Rust's operator precedence (ADR-0019 §1, ADR-0048 §2)")]
     #[effects(pure)]
     fn bin_prec(op: &ast::BinOp) -> (r: u8)
         ensures r >= 1, r <= 10,
@@ -1940,14 +1940,14 @@ mod fmt {
         }
     }
 
-    #[summary("부르는 쪽의 질의가 실행 함수에서 읽는 것 (백로그 2D-22): #[uses]를 뺀 한정된 겉. 정의의 #[uses]는 제 질의에서만 spec fn의 몸을 드러내므로 부르는 쪽의 증분 키는 그것을 뺀다")]
+    #[summary("What a caller's query reads from an executable function: the qualified surface without #[uses]. A definition's #[uses] reveals the body of a spec fn only in its own query, so the caller's incremental key excludes it")]
     #[effects(alloc)]
     fn caller_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str) -> String {
         let g: ast::FnDef = without_uses(d);
         qualified_text(pr, heads, &g, unit, false)
     }
 
-    #[summary("파일이 source::CAPTURE인 self인가")]
+    #[summary("Whether it is a self whose file is source::CAPTURE")]
     #[effects(pure)]
     fn captured_self(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -1989,7 +1989,7 @@ mod fmt {
         }
     }
 
-    #[summary("T::try_from(x)의 꼴(T는 정수 타입)이면 T의 이름, 아니면 빈 글")]
+    #[summary("Name of T if of the form T::try_from(x) (T an integer type), otherwise empty text")]
     #[effects(alloc)]
     fn cast_name(recv: &ast::Expr) -> String {
         match &recv.kind {
@@ -2031,7 +2031,7 @@ mod fmt {
         }
     }
 
-    #[summary("\\와 \"를 이스케이프한 글")]
+    #[summary("Text with \\ and \" escaped")]
     #[effects(alloc)]
     fn escape(s: &str) -> String {
         let mut o: String = String::new();
@@ -2053,14 +2053,14 @@ mod fmt {
         o
     }
 
-    #[summary("식 하나의 정규형")]
+    #[summary("Normal form of one expression")]
     #[effects(alloc)]
     fn expr_text(e: &ast::Expr) -> String {
         let mut pr: Printer = plain();
         pr.expr(e, 0, 1000000000)
     }
 
-    #[summary("구조체의 필드 name의 선언 자리")]
+    #[summary("Declaration position of field name of the struct")]
     #[effects(pure)]
     fn field_index(k: &types::AdtKind, name: &str) -> Option<usize> {
         match k {
@@ -2069,7 +2069,7 @@ mod fmt {
         }
     }
 
-    #[summary("프로그램 전체의 정규형: 최상위 단위마다 글 하나, 단위 이름 순 (ADR-0019 §3). 같은 이름이면 뒤의 것")]
+    #[summary("Normal form of the whole program: one text per top-level unit, in unit name order (ADR-0019 §3). For the same name, the later one")]
     #[effects(alloc)]
     fn format_units(p: &ast::Program) -> Vec<Unit> {
         let mut keys: Vec<String> = Vec::new();
@@ -2102,7 +2102,7 @@ mod fmt {
         out
     }
 
-    #[summary("<T: Copy, U: Copy + geo::Shape>, 또는 없음 (ADR-0046)")]
+    #[summary("<T: Copy, U: Copy + geo::Shape>, or nothing (ADR-0046)")]
     #[effects(alloc)]
     fn generics_str(gs: &[ast::TypeParam]) -> String {
         let mut s: String = String::new();
@@ -2142,7 +2142,7 @@ mod fmt {
         s
     }
 
-    #[summary("e 안에, 괄호로 구분된 인자 목록 밖에 구조체 식이 있는가. f는 남은 깊이")]
+    #[summary("Whether e contains a struct expression outside a parenthesis-delimited argument list. f is the remaining depth")]
     #[effects(pure)]
     fn has_struct_lit(e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -2189,7 +2189,7 @@ mod fmt {
         }
     }
 
-    #[summary("타입들 가운데 이름이 name인 것이 있는가")]
+    #[summary("Whether any of the types is named name")]
     #[effects(pure)]
     fn has_type(ts: &[ast::TypeDef], name: &str) -> bool {
         let mut i: usize = 0;
@@ -2204,13 +2204,13 @@ mod fmt {
         false
     }
 
-    #[summary("정체성 출력기: 검사기의 표와 trait의 온 경로들을 든다. 단위와 참조의 글은 찍을 때마다 정한다(names.unit, names.refs)")]
+    #[summary("Identity printer: holds the checker's tables and the full paths of traits. The unit and the reference texts are set at each print (names.unit, names.refs)")]
     #[effects(alloc)]
     fn identity(fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, tys: table::Table<ast::TypeKind>, traits: Vec<String>) -> Printer {
         Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Identity, unit: String::new(), fns: fns, adts: adts, types: tys, traits: traits, refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
     }
 
-    #[summary("함수가 검사되고 증명되는 impl의 머리 (백로그 2T-03), 없으면 빈 글: impl의 타입 매개변수와 그 한정, 그리고 경로의 마지막 마디 앞(trait의 메서드나 trait impl의 함수면 trait과 타입: 계약과 정제 의무가 거기 달렸다)")]
+    #[summary("Head of the impl in which the function is checked and proved, empty text if none: the impl's type parameters and their bounds, then what precedes the path's last segment (the trait and type for a trait method or a trait impl function: the contract and refinement obligations hang on them)")]
     #[effects(alloc)]
     fn impl_head(sig: &types::FnSig) -> String {
         let n: usize = sig.path.len();
@@ -2252,7 +2252,7 @@ mod fmt {
         out
     }
 
-    #[summary("함수의 자리(열쇠)마다 그 impl의 머리: 그 자리의, 내장도 인스턴스(경로가 >로 끝난다)도 아닌 첫 시그니처(경로의 순서)의 것")]
+    #[summary("For each function position (key), the head of its impl: that of the first signature (in path order) at that position that is neither a built-in nor an instance (path ends with >)")]
     #[effects(alloc)]
     fn impl_heads(fns: &table::Table<types::FnSig>) -> table::Table<String> {
         let mut out: table::Table<String> = table::new::<String>();
@@ -2270,7 +2270,7 @@ mod fmt {
         out
     }
 
-    #[summary("클로저가 잡은 값을 가리키는 self인가: 파일이 source::CAPTURE인 self, 또는 그것의 old")]
+    #[summary("Whether it is a self referring to a value captured by a closure: a self whose file is source::CAPTURE, or its old")]
     #[effects(pure)]
     fn is_capture_base(base: &ast::Expr) -> bool {
         match &base.kind {
@@ -2312,7 +2312,7 @@ mod fmt {
         }
     }
 
-    #[summary("정수 변환인가: 정본 꼴이 x as T인 (ADR-0095 A4), T::try_from(x).unwrap()의 트리 (T는 정수 타입)")]
+    #[summary("Whether it is an integer conversion: the tree of T::try_from(x).unwrap(), whose canonical form is x as T (ADR-0095 A4) (T an integer type)")]
     #[effects(alloc)]
     fn is_cast(me: &ast::Method) -> bool {
         me.name.name == "unwrap" && me.args.len() == 0 && cast_name(&*me.recv).len() > 0
@@ -2365,7 +2365,7 @@ mod fmt {
         }
     }
 
-    #[summary("줄마다 양끝의 공백을 떼고 빈칸 하나로 이은 글")]
+    #[summary("Text with whitespace trimmed from both ends of each line, joined with one space")]
     #[effects(alloc)]
     fn joined_lines(text: &str) -> String {
         let mut o: String = String::new();
@@ -2396,7 +2396,7 @@ mod fmt {
         o
     }
 
-    #[summary("경로의 마지막 마디 (:: 뒤). ::가 없으면 전체")]
+    #[summary("Last segment of the path (after ::). The whole if there is no ::")]
     #[effects(alloc)]
     fn last_seg(path: &str) -> String {
         let n: usize = path.len();
@@ -2413,13 +2413,13 @@ mod fmt {
         String::from(path)
     }
 
-    #[summary("키들의 안정 정렬 순서: 자리의 열. 키는 바이트 사전순")]
+    #[summary("Stable sort order of the keys: a sequence of positions. Keys in byte lexicographic order")]
     #[effects(alloc)]
     fn order(keys: &[String]) -> Vec<usize> {
         std::slice::sort_indices::<String>(keys)
     }
 
-    #[summary("이 단위의 타입일 수 있는 이름: 인자와 무관하게 한 마디 이름의 타입이면 그 이름, 아니면 빈 글")]
+    #[summary("Name that may be a type of this unit: the name if it is a type with a one-segment name regardless of arguments, otherwise empty text")]
     #[effects(alloc)]
     fn own_type(t: &ast::Type) -> String {
         match &t.kind {
@@ -2495,7 +2495,7 @@ mod fmt {
         s
     }
 
-    #[summary("이름들을 sep로 이은 글")]
+    #[summary("Text joining the names with sep")]
     #[effects(alloc)]
     fn path_join(p: &[ast::Ident], sep: &str) -> String {
         let mut s: String = String::new();
@@ -2517,7 +2517,7 @@ mod fmt {
         path_join(p, "::")
     }
 
-    #[summary("참조와 Box를 벗긴 타입이 이름 붙은 타입이면 그 경로(::로 이은), 아니면 빈 글")]
+    #[summary("Path (joined with ::) if the type with references and Box stripped is a named type, otherwise empty text")]
     #[effects(alloc)]
     fn peeled(t: &ast::TypeKind, f: usize) -> String
         decreases f,
@@ -2546,13 +2546,13 @@ mod fmt {
         }
     }
 
-    #[summary("쓴 그대로 찍는 출력기")]
+    #[summary("Printer that prints as written")]
     #[effects(alloc)]
     fn plain() -> Printer {
         Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Plain, unit: String::new(), fns: table::new::<types::FnSig>(), adts: table::new::<types::Adt>(), types: table::new::<ast::TypeKind>(), traits: Vec::new(), refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
     }
 
-    #[summary("식의 우선순위. 0은 안에 들 때 언제나 괄호로 싸는 꼴이다 (ADR-0019 §1)")]
+    #[summary("Precedence of an expression. 0 is a form always parenthesized when nested (ADR-0019 §1)")]
     #[effects(alloc)]
     fn prec(e: &ast::Expr) -> u8 {
         match &e.kind {
@@ -2594,7 +2594,7 @@ mod fmt {
         }
     }
 
-    #[summary("타입을 쓴 대로 덧붙인다 (stage0 check::ty_str). f는 남은 깊이")]
+    #[summary("Appends the type as written (stage0 check::ty_str). f is the remaining depth")]
     #[effects(alloc)]
     fn push_kind(out: &mut String, t: &ast::TypeKind, f: usize) -> ()
         decreases f,
@@ -2623,19 +2623,19 @@ mod fmt {
         }
     }
 
-    #[summary("수 n을 십진으로 붙인다")]
+    #[summary("Appends number n in decimal")]
     #[effects(alloc)]
     fn push_n(out: &mut String, n: usize) -> () {
         std::num::push_u64(out, n as u64);
     }
 
-    #[summary("타입을 쓴 대로 덧붙인다. f는 남은 깊이")]
+    #[summary("Appends the type as written. f is the remaining depth")]
     #[effects(alloc)]
     fn push_type(out: &mut String, t: &ast::Type, f: usize) -> () {
         push_kind(out, &t.kind, f);
     }
 
-    #[summary("정의 하나의 줄")]
+    #[summary("Line of one definition")]
     #[effects(alloc)]
     fn qual_row(path: String, unit: &str, d: &ast::FnDef, heads: &table::Table<String>, pr: &mut Printer) -> QualRow {
         let text: String = qualified_text(pr, heads, d, unit, true);
@@ -2643,7 +2643,7 @@ mod fmt {
         QualRow { path: path, text: text, caller: caller }
     }
 
-    #[summary("몸이 있는 모든 정의의 한정 글, body::defs_of의 순서로 (단위마다 안의 단위 먼저, 이어서 함수, impl T의 함수, trait impl의 함수, 기본 메서드의 몸)")]
+    #[summary("Qualified text of every definition with a body, in the order of body::defs_of (per unit, inner units first, then functions, functions of impl T, functions of trait impls, bodies of default methods)")]
     #[effects(alloc)]
     fn qual_rows(p: &ast::Program, fns: &table::Table<types::FnSig>) -> Vec<QualRow> {
         let mut by_span: table::Table<String> = table::new::<String>();
@@ -2740,7 +2740,7 @@ mod fmt {
         }
     }
 
-    #[summary("모든 정의와 타입 선언, trait, trait impl 머리의 한정 해시, 경로에서: 정의의 제 글에서 바뀐 것 (ADR-0019 §2). 커밋이 이것을 알린다(workspace::Commit). rows는 qual_rows의 것")]
+    #[summary("Qualified hashes of all definitions and type declarations, traits, trait impl heads, by path: what changed in a definition's own text (ADR-0019 §2). The commit reports this (workspace::Commit). rows is that of qual_rows")]
     #[effects(alloc)]
     fn qualified_hashes(p: &ast::Program, rows: &[QualRow]) -> table::Table<String> {
         let mut out: table::Table<String> = table::new::<String>();
@@ -2768,7 +2768,7 @@ mod fmt {
         out
     }
 
-    #[summary("정의 하나의 한정 정규형: 다른 정의를 온 경로로, 제 이름은 _로 (ADR-0019 §2). 증분 키가 읽는다(ADR-0032); 정체성 해시는 읽지 않는다(ADR-0059). pr은 한정 출력기, heads는 impl_heads의 표")]
+    #[summary("Qualified normal form of one definition: other definitions by full path, its own name as _ (ADR-0019 §2). The incremental key reads it (ADR-0032); the identity hash does not (ADR-0059). pr is the qualified printer, heads is the table of impl_heads")]
     #[effects(alloc)]
     fn qualified_text(pr: &mut Printer, heads: &table::Table<String>, d: &ast::FnDef, unit: &str, with_body: bool) -> String {
         pr.out = match heads.find(body::span_key(d.span).as_str()) {
@@ -2780,7 +2780,7 @@ mod fmt {
         pr.out.clone()
     }
 
-    #[summary("단위 mp의 타입 이름(local)을 온 경로로 쓴 타입 (한정 정규형: T는 mp::T). Vec와 Box의 안은 그대로 둔다(stage0과 같다)")]
+    #[summary("Type with the type names of unit mp (local) written as full paths (qualified normal form: T is mp::T). The insides of Vec and Box are left as is (same as stage0)")]
     #[effects(alloc)]
     fn qualify_type(t: &ast::Type, mp: &str, local: &[String], f: usize) -> ast::Type
         decreases f,
@@ -2810,7 +2810,7 @@ mod fmt {
         ast::Type { kind: kind, span: t.span }
     }
 
-    #[summary("단위 unit의 정의를 한정해 찍는 출력기 (ADR-0019 §2): 다른 정의를 온 경로로")]
+    #[summary("Printer that prints the definitions of unit unit qualified (ADR-0019 §2): other definitions by full path")]
     #[effects(alloc)]
     fn qualifying(fns: table::Table<types::FnSig>, unit: &str) -> Printer {
         Printer { out: String::new(), lens: Vec::new(), names: Names { mode: Mode::Qualify, unit: String::from(unit), fns: fns, adts: table::new::<types::Adt>(), types: table::new::<ast::TypeKind>(), traits: Vec::new(), refs: table::new::<RefRow>(), seen: Vec::new(), binders: table::new::<String>(), labels: table::new::<String>(), next: 0, next_label: 0 } }
@@ -2826,7 +2826,7 @@ mod fmt {
         }
     }
 
-    #[summary("결과: (r: T) 또는 T")]
+    #[summary("Result: (r: T) or T")]
     #[effects(alloc)]
     fn ret_str(r: &ast::Ret) -> String {
         match &r.name {
@@ -2835,7 +2835,7 @@ mod fmt {
         }
     }
 
-    #[summary("이름들을 바이트 사전순으로, 쉼표로 이은 글. unique면 같은 이름은 한 번만")]
+    #[summary("Text joining the names in byte lexicographic order with commas. If unique, the same name only once")]
     #[effects(alloc)]
     fn sorted_list(names: &[String], unique: bool) -> String {
         let ord: Vec<usize> = order(names);
@@ -2863,7 +2863,7 @@ mod fmt {
         s
     }
 
-    #[summary("<나 <<: 왼쪽의 변환을 괄호로 싸야 하는 연산자")]
+    #[summary("< or <<: operators whose left-hand conversion must be parenthesized")]
     #[effects(pure)]
     fn splits_cast(op: &ast::BinOp) -> bool {
         match op {
@@ -2889,7 +2889,7 @@ mod fmt {
         }
     }
 
-    #[summary("trait마다(unit::Trait, 그 선언) 그리고 trait impl의 머리마다(<unit::T as unit::Trait>, 그 매개변수) 줄 하나: 커밋이 put이 쓰는 항목을 모두 부르도록 (ADR-0074 §5). impl의 함수는 제 줄이 있다")]
+    #[summary("One line per trait (unit::Trait, its declaration) and per trait impl head (<unit::T as unit::Trait>, its parameters): so that the commit names every entry that put writes (ADR-0074 §5). Functions of an impl have their own lines")]
     #[effects(alloc)]
     fn trait_hashes(m: &ast::Mod, prefix: &str, out: &mut table::Table<String>, f: usize) -> ()
         decreases f,
@@ -2926,7 +2926,7 @@ mod fmt {
         }
     }
 
-    #[summary("단위 m(경로 mp)에 쓴 trait impl i의 주소, 검사기가 그 함수에 주는 이름에서 ::f를 뺀 것 (ADR-0074 §1): <mp::T as mp::Trait>. trait은 한 마디가 m의 trait이면 이 단위의 것, 아니면 쓴 대로; 단위의 제 타입 이름은 온 경로로")]
+    #[summary("Address of trait impl i written in unit m (path mp), the name the checker gives its functions minus ::f (ADR-0074 §1): <mp::T as mp::Trait>. The trait is this unit's if it is one segment and a trait of m, otherwise as written; the unit's own type names by full path")]
     #[effects(alloc)]
     fn trait_impl_address(mp: &str, m: &ast::Mod, i: &ast::TraitImpl) -> String {
         let local: Vec<String> = type_names(m);
@@ -2950,7 +2950,7 @@ mod fmt {
         types::cat7("<", ty.as_str(), " as ", tr.as_str(), ">", "", "")
     }
 
-    #[summary("양끝의 공백(유니코드)을 뗀 글")]
+    #[summary("Text with whitespace (Unicode) trimmed from both ends")]
     #[effects(alloc)]
     fn trim(s: &str) -> String {
         let mut start: usize = s.len();
@@ -2967,7 +2967,7 @@ mod fmt {
         lexer::cut(s, start, end)
     }
 
-    #[summary("앞의 공백(유니코드)을 뗀 글")]
+    #[summary("Text with leading whitespace (Unicode) trimmed")]
     #[effects(alloc)]
     fn trim_start(s: &str) -> String {
         let mut i: usize = 0;
@@ -2982,7 +2982,7 @@ mod fmt {
         String::new()
     }
 
-    #[summary("타입 선언의 한정 해시, 경로에서. 타입 선언은 제 겉이고 이름은 _로 쓴다 (ADR-0026 §6, 정의와 같이)")]
+    #[summary("Qualified hash of type declarations, by path. A type declaration is its own surface and its name is written as _ (ADR-0026 §6, as with definitions)")]
     #[effects(alloc)]
     fn type_hashes(m: &ast::Mod, prefix: &str, out: &mut table::Table<String>, f: usize) -> ()
         decreases f,
@@ -3016,7 +3016,7 @@ mod fmt {
         }
     }
 
-    #[summary("단위에 선언한 타입의 이름들")]
+    #[summary("Names of the types declared in the unit")]
     #[effects(alloc)]
     fn type_names(m: &ast::Mod) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -3037,7 +3037,7 @@ mod fmt {
         s
     }
 
-    #[summary("쉼표로 이은 타입들")]
+    #[summary("Comma-joined types")]
     #[effects(alloc)]
     fn types_str(ts: &[ast::Type]) -> String {
         let mut s: String = String::new();
@@ -3054,7 +3054,7 @@ mod fmt {
         s
     }
 
-    #[summary("열거형의 변형 name의 선언 자리")]
+    #[summary("Declaration position of variant name of the enum")]
     #[effects(pure)]
     fn variant_index(k: &types::AdtKind, name: &str) -> Option<usize> {
         match k {
@@ -3063,7 +3063,7 @@ mod fmt {
         }
     }
 
-    #[summary("#[uses]를 뺀 정의의 사본")]
+    #[summary("Copy of the definition without #[uses]")]
     #[effects(alloc)]
     fn without_uses(d: &ast::FnDef) -> ast::FnDef {
         let mut g: ast::FnDef = d.clone();

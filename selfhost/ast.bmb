@@ -1,35 +1,35 @@
-#[summary("구문 트리 (stage0 compiler/src/ast.rs의 포트, 백로그 4D-02). 식의 순회(expr_mut 등)는 손님 trait ExprFn을, 타입의 순회(unit_types_mut)는 TypeFn을 받는다. 깊은 사본은 내장 clone이다(ADR-0141)")]
+#[summary("Syntax tree (port of stage0 compiler/src/ast.rs). Expression traversals (expr_mut etc.) take the visitor trait ExprFn, type traversals (unit_types_mut) take TypeFn. The deep copy is the built-in clone (ADR-0141)")]
 mod ast {
-    #[summary("식 하나를 받는 순회의 손님 (stage0의 &mut dyn FnMut(&mut Expr))")]
+    #[summary("Visitor of a traversal that receives one expression (stage0's &mut dyn FnMut(&mut Expr))")]
     trait ExprFn {
         #[effects(alloc)]
         fn expr(self: &mut Self, e: &mut Expr) -> ();
     }
 
-    #[summary("타입 하나를 받는 순회의 손님: 그 타입을 쓴 단위의 경로와 함께 (stage0 unit_types_mut의 &mut dyn FnMut(&str, &mut Type))")]
+    #[summary("Visitor of a traversal that receives one type: together with the path of the unit that uses the type (&mut dyn FnMut(&str, &mut Type) of stage0 unit_types_mut)")]
     trait TypeFn {
         #[effects(alloc)]
         fn ty(self: &mut Self, unit: &str, t: &mut Type) -> ();
     }
 
-    #[summary("메서드 호출이 수신자를 넘기는 방식 (ADR-0051)")]
+    #[summary("How a method call passes the receiver (ADR-0051)")]
     enum Adjust { Value, Ref, RefMut, AsStr }
 
-    #[summary("match의 갈래 하나")]
+    #[summary("One arm of a match")]
     struct Arm { pat: Pat, body: Expr, span: source::Span }
 
-    #[summary("assert(cond); 또는 assert(cond) by (bit_vector); (ADR-0048 §4)")]
+    #[summary("assert(cond); or assert(cond) by (bit_vector); (ADR-0048 §4)")]
     struct Assert { cond: Expr, by: Option<Prover>, span: source::Span }
 
     #[summary("x = e;")]
     struct Assign { target: Expr, value: Expr, span: source::Span }
 
-    #[summary("assume(p(..)); (ADR-0029 §1). rationale은 그 앞의 #[rationale(..)]")]
+    #[summary("assume(p(..)); (ADR-0029 §1). rationale is the #[rationale(..)] before it")]
     struct Assume { cond: Expr, rationale: Option<Attr>, span: source::Span }
 
     struct Attr { name: Ident, args: Vec<AttrArg>, span: source::Span }
 
-    #[summary("속성의 인자: 이름, 문자열, key = value")]
+    #[summary("Argument of an attribute: name, string, key = value")]
     enum AttrArg { Ident(Ident), Str(String, source::Span), Pair(Ident, Box<AttrArg>) }
 
     enum BinOp { Add, Sub, Mul, Div, Rem, Eq, Ne, Lt, Le, Gt, Ge, And, Or, Implies, BitAnd, BitOr, BitXor, Shl, Shr }
@@ -39,10 +39,10 @@ mod ast {
     #[summary("break, break 'l, break e")]
     struct Break { label: Option<Ident>, value: Option<Box<Expr>> }
 
-    #[summary("경로로 부르는 호출 f(..), a::b::f(..). targs는 경로에 쓴 타입 인자, method는 x.f(..)로 썼을 때 수신자를 넘긴 방식")]
+    #[summary("Call by path f(..), a::b::f(..). targs are the type arguments written on the path, method is how the receiver was passed when written as x.f(..)")]
     struct Call { path: Vec<Ident>, targs: Vec<TArgs>, args: Vec<Expr>, method: Option<Adjust> }
 
-    #[summary("클로저 식 (ADR-0053 §1, §2)")]
+    #[summary("Closure expression (ADR-0053 §1, §2)")]
     struct Closure { is_move: bool, params: Vec<Param>, ret: Ret, pre: Vec<Expr>, post: Vec<Expr>, body: Block, span: source::Span }
 
     #[summary("const NAME: T = e; (ADR-0052)")]
@@ -54,10 +54,10 @@ mod ast {
 
     struct Field { name: Ident, ty: Type }
 
-    #[summary("구조체 식의 필드 하나")]
+    #[summary("One field of a struct expression")]
     struct FieldInit { name: Ident, value: Expr }
 
-    #[summary("Fn(A, B) -> R: 매개변수 타입들과 결과 (-> 가 없으면 ())")]
+    #[summary("Fn(A, B) -> R: parameter types and result (() if there is no ->)")]
     struct FnBound { kind: FnTrait, params: Vec<Type>, ret: Type, span: source::Span }
 
     struct FnDef { kind: FnKind, name: Ident, generics: Vec<TypeParam>, attrs: Vec<Attr>, params: Vec<Param>, ret: Ret, pre: Vec<Expr>, post: Vec<Expr>, measure: Option<Expr>, body: Block, span: source::Span }
@@ -78,12 +78,12 @@ mod ast {
 
     enum IntTy { I8, I16, I32, I64, Isize, U8, U16, U32, U64, Usize }
 
-    #[summary("const의 이름으로 쓴 반복 횟수 (ADR-0052 §4): 횟수의 자리와 이름")]
+    #[summary("Repeat count written as the name of a const (ADR-0052 §4): position of the count and the name")]
     struct Len { at: source::Span, path: Vec<Ident> }
 
     struct Let { mutable: bool, name: Ident, ty: Type, ty_missing: bool, init: Expr, span: source::Span }
 
-    #[summary("let Point { x, y } = p; (Rust 습관, E0230)")]
+    #[summary("let Point { x, y } = p; (Rust habit, E0230)")]
     struct LetFields { path: Vec<Ident>, fields: Vec<Ident>, init: Expr, span: source::Span }
 
     #[summary("'l: loop invariant .., decreases .., { .. } (ADR-0049 §1)")]
@@ -91,17 +91,17 @@ mod ast {
 
     struct Match { scrut: Box<Expr>, arms: Vec<Arm> }
 
-    #[summary("내장 메서드 호출 a.len(), x.wrapping_add(y)")]
+    #[summary("Built-in method call a.len(), x.wrapping_add(y)")]
     struct Method { recv: Box<Expr>, name: Ident, args: Vec<Expr> }
 
     struct Mod { name: Ident, attrs: Vec<Attr>, fns: Vec<FnDef>, mods: Vec<Mod>, types: Vec<TypeDef>, impls: Vec<Impl>, traits: Vec<TraitDef>, trait_impls: Vec<TraitImpl>, uses: Vec<UseItem>, consts: Vec<ConstDef>, lens: Vec<Len>, span: source::Span }
 
     struct Param { name: Ident, ty: Type }
 
-    #[summary("변형 패턴 Shape::Rect(a, _), Some(x), None. 페이로드 자리마다 새 이름이거나 _ (None)")]
+    #[summary("Variant pattern Shape::Rect(a, _), Some(x), None. Each payload slot is a new name or _ (None)")]
     struct Pat { path: Vec<Ident>, binds: Vec<Option<Ident>>, parens: bool, origin: PatOrigin, span: source::Span }
 
-    #[summary("패턴이 온 곳. Written만 소스가 쓴 것이다")]
+    #[summary("Where a pattern came from. Only Written is what the source wrote")]
     enum PatOrigin { Written, IfLetElse, Rejected }
 
     struct Program { mods: Vec<Mod> }
@@ -109,17 +109,17 @@ mod ast {
     #[summary("proof { .. } (ADR-0062 §1)")]
     struct ProofBlock { body: Block, span: source::Span }
 
-    #[summary("assert(e) by (..)의 증명기 (ADR-0048 §4)")]
+    #[summary("Prover of assert(e) by (..) (ADR-0048 §4)")]
     enum Prover { BitVector }
 
     struct Quant { q: Quantifier, binders: Vec<Param>, body: Box<Expr> }
 
     enum Quantifier { Forall, Exists }
 
-    #[summary("정수 리터럴을 쓴 진법 (ADR-0048 §3). 정규형이 지킨다: 0xff는 0xff로 남는다")]
+    #[summary("Radix in which an integer literal was written (ADR-0048 §3). The normal form keeps it: 0xff stays 0xff")]
     enum Radix { Dec, Hex, Oct, Bin }
 
-    #[summary("lo..hi. inclusive는 lo..=hi로 쓴 것")]
+    #[summary("lo..hi. inclusive means written as lo..=hi")]
     struct Range { lo: Box<Expr>, hi: Box<Expr>, inclusive: bool }
 
     #[summary("[v; N]")]
@@ -129,15 +129,15 @@ mod ast {
 
     enum Stmt { Let(Let), Assign(Assign), While(While), For(For), Assert(Assert), Assume(Assume), Proof(ProofBlock), LetFields(LetFields), Expr(Expr) }
 
-    #[summary("Point { x: e, y: e } (ADR-0026 §3). rest는 ..base (E0223)")]
+    #[summary("Point { x: e, y: e } (ADR-0026 §3). rest is ..base (E0223)")]
     struct StructLit { path: Vec<Ident>, fields: Vec<FieldInit>, rest: Option<Box<Expr>> }
 
-    #[summary("호출 경로의 마디 seg 뒤에 쓴 타입 인자 (ADR-0046 §3)")]
+    #[summary("Type arguments written after segment seg of a call path (ADR-0046 §3)")]
     struct TArgs { seg: usize, args: Vec<Type>, span: source::Span }
 
     struct TraitDef { name: Ident, attrs: Vec<Attr>, fns: Vec<TraitFn>, span: source::Span }
 
-    #[summary("trait의 메서드: 시그니처, 그리고 기본 몸을 썼는지")]
+    #[summary("Method of a trait: signature, and whether a default body was written")]
     struct TraitFn { f: FnDef, has_body: bool }
 
     #[summary("impl<T: Copy> geo::Shape for Wrap<T> { .. } (ADR-0046 §2)")]
@@ -151,19 +151,19 @@ mod ast {
 
     enum TypeKind { Int(IntTy), F64, Bool, Unit, Char, String, Str, Array(Box<Type>, u64), ArrayN(Box<Type>, Vec<String>), Slice(Box<Type>), Ref(bool, Box<Type>), Named(Vec<String>, Vec<Type>), Vec(Box<Type>), Box(Box<Type>), Param(String), Never, Error }
 
-    #[summary("타입 매개변수 T, T: Copy (ADR-0046 §1). fn_bound는 F: Fn(A, B) -> R")]
+    #[summary("Type parameter T, T: Copy (ADR-0046 §1). fn_bound is F: Fn(A, B) -> R")]
     struct TypeParam { name: Ident, bounds: Vec<Vec<Ident>>, fn_bound: Option<FnBound>, span: source::Span }
 
     enum UnOp { Neg, Not }
 
-    #[summary("이름 하나를 들이는 use")]
+    #[summary("A use that brings in one name")]
     struct UseItem { path: Vec<Ident>, span: source::Span }
 
     struct Variant { name: Ident, payload: Vec<Type>, span: source::Span }
 
     struct While { label: Option<Ident>, cond: Expr, invariants: Vec<Expr>, measure: Option<Expr>, body: Block, span: source::Span }
 
-    #[summary("src의 원소들을 차례 그대로 dst의 뒤로 옮긴다")]
+    #[summary("Moves the elements of src to the end of dst, in order")]
     #[effects(alloc)]
     fn append<T>(dst: &mut Vec<T>, src: Vec<T>) -> () {
         let mut rest: Vec<T> = src;
@@ -190,7 +190,7 @@ mod ast {
         }
     }
 
-    #[summary("블록의 모든 식을 안쪽부터. f는 남은 깊이 (ADR-0140)")]
+    #[summary("All expressions of a block, innermost first. f is the remaining depth (ADR-0140)")]
     #[effects(alloc)]
     fn block_mut<V: ExprFn>(b: &mut Block, v: &mut V, deep: bool, f: usize) -> ()
         decreases f,
@@ -217,7 +217,7 @@ mod ast {
         opt_box_mut::<V>(&mut b.tail, v, deep, f - 1);
     }
 
-    #[summary("block_mut과 같은 차례로 블록의 식을 걸으며 타입을 손님에게")]
+    #[summary("Walks the expressions of a block in the same order as block_mut, giving types to the visitor")]
     #[effects(alloc)]
     fn block_types<V: TypeFn>(b: &mut Block, unit: &str, v: &mut V, f: usize) -> ()
         decreases f,
@@ -244,7 +244,7 @@ mod ast {
         opt_box_types::<V>(&mut b.tail, unit, v, f - 1);
     }
 
-    #[summary("모든 const의 초기값 식 (ADR-0052)")]
+    #[summary("Initializer expressions of all consts (ADR-0052)")]
     #[effects(alloc)]
     fn const_exprs_mut<V: ExprFn>(p: &mut Program, v: &mut V) -> () {
         let n: usize = p.mods.len();
@@ -265,7 +265,7 @@ mod ast {
         }
     }
 
-    #[summary("식 e와 그 안의 모든 식을 안쪽부터 손님에게: 자식이 먼저, 마디가 나중. deep이 아니면 클로저의 안으로 들어가지 않는다(클로저 자신은 본다)")]
+    #[summary("Expression e and all expressions inside it to the visitor, innermost first: children first, the node after. Unless deep, does not enter closures (the closure itself is seen)")]
     #[effects(alloc)]
     fn expr_mut<V: ExprFn>(e: &mut Expr, v: &mut V, deep: bool, f: usize) -> ()
         decreases f,
@@ -313,7 +313,7 @@ mod ast {
         v.expr(e);
     }
 
-    #[summary("expr_mut과 같은 차례(자식이 먼저)로 걸으며 그 식에 쓴 타입을 손님에게: 블록·loop·if의 let, 호출의 타입 인자, 한정자의 변수")]
+    #[summary("Walks in the same order as expr_mut (children first), giving the types written in that expression to the visitor: lets of blocks, loop and if, type arguments of calls, variables of quantifiers")]
     #[effects(alloc)]
     fn expr_types<V: TypeFn>(e: &mut Expr, unit: &str, v: &mut V, f: usize) -> ()
         decreases f,
@@ -360,7 +360,7 @@ mod ast {
         }
     }
 
-    #[summary("식들을 차례로")]
+    #[summary("Expressions in order")]
     #[effects(alloc)]
     fn exprs_each<V: ExprFn>(xs: &mut Vec<Expr>, v: &mut V, deep: bool, f: usize) -> ()
         decreases f,
@@ -376,7 +376,7 @@ mod ast {
         }
     }
 
-    #[summary("프로그램의 모든 식(실행과 명세)을 안쪽부터")]
+    #[summary("All expressions of the program (executable and specification), innermost first")]
     #[effects(alloc)]
     fn exprs_mut<V: ExprFn>(p: &mut Program, v: &mut V) -> () {
         let n: usize = p.mods.len();
@@ -402,7 +402,7 @@ mod ast {
         }
     }
 
-    #[summary("함수 하나의 계약, 측도, 몸")]
+    #[summary("Contract, measure and body of one function")]
     #[effects(alloc)]
     fn fn_exprs_mut<V: ExprFn>(d: &mut FnDef, v: &mut V, deep: bool, f: usize) -> () {
         exprs_each::<V>(&mut d.pre, v, deep, f);
@@ -411,7 +411,7 @@ mod ast {
         block_mut::<V>(&mut d.body, v, deep, f);
     }
 
-    #[summary("함수 하나에 쓴 타입: 매개변수, 결과, 몸의 let(그 블록과 while·for·proof의 몸), 그리고 식을 안쪽부터 걸으며 블록·loop·if의 let, 호출의 타입 인자, 한정자의 변수")]
+    #[summary("Types written in one function: parameters, result, lets of the body (of that block and of while, for and proof bodies), and, walking expressions innermost first, lets of blocks, loop and if, type arguments of calls, variables of quantifiers")]
     #[effects(alloc)]
     fn fn_types_mut<V: TypeFn>(d: &mut FnDef, unit: &str, v: &mut V) -> () {
         let n: usize = d.params.len();
@@ -428,7 +428,7 @@ mod ast {
         block_types::<V>(&mut d.body, unit, v, 1000000000);
     }
 
-    #[summary("함수들을 차례로")]
+    #[summary("Functions in order")]
     #[effects(alloc)]
     fn fns_each<V: ExprFn>(fs: &mut Vec<FnDef>, v: &mut V, f: usize) -> () {
         let n: usize = fs.len();
@@ -479,7 +479,7 @@ mod ast {
         }
     }
 
-    #[summary("이름이 가리키는 정수 타입")]
+    #[summary("Integer type the name refers to")]
     #[effects(pure)]
     fn int_of(s: &str) -> Option<IntTy> {
         if s == "i8" {
@@ -515,7 +515,7 @@ mod ast {
         None
     }
 
-    #[summary("&mut T인가")]
+    #[summary("Whether it is &mut T")]
     #[effects(pure)]
     fn is_ref_mut(t: &TypeKind) -> bool {
         match t {
@@ -539,7 +539,7 @@ mod ast {
         }
     }
 
-    #[summary("&str인가")]
+    #[summary("Whether it is &str")]
     #[effects(pure)]
     fn is_ref_str(t: &TypeKind) -> bool {
         match t {
@@ -563,7 +563,7 @@ mod ast {
         }
     }
 
-    #[summary("str인가")]
+    #[summary("Whether it is str")]
     #[effects(pure)]
     fn is_str(t: &TypeKind) -> bool {
         match t {
@@ -587,7 +587,7 @@ mod ast {
         }
     }
 
-    #[summary("마디들을 ::로 이은 글")]
+    #[summary("Text of the segments joined with ::")]
     #[effects(alloc)]
     fn join_names(s: &[String]) -> String {
         let mut out: String = String::new();
@@ -600,7 +600,7 @@ mod ast {
         out
     }
 
-    #[summary("단위와 그 안 단위의 const 초기값")]
+    #[summary("Const initializers of a unit and its inner units")]
     #[effects(alloc)]
     fn mod_consts<V: ExprFn>(m: &mut Mod, v: &mut V, f: usize) -> ()
         decreases f,
@@ -622,7 +622,7 @@ mod ast {
         }
     }
 
-    #[summary("단위의 함수들: 안 단위 먼저, 그다음 자유 함수, impl, trait 선언, trait impl의 순서 (stage0 fns_mut)")]
+    #[summary("Functions of a unit: inner units first, then free functions, impls, trait declarations, trait impls, in that order (stage0 fns_mut)")]
     #[effects(alloc)]
     fn mod_exprs<V: ExprFn>(m: &mut Mod, v: &mut V, f: usize) -> ()
         decreases f,
@@ -669,7 +669,7 @@ mod ast {
         }
     }
 
-    #[summary("타입 인자 없이 이름 하나 t로 쓴 타입인가")]
+    #[summary("Whether it is a type written as the single name t without type arguments")]
     #[effects(pure)]
     fn named_is(k: &TypeKind, t: &str) -> bool {
         match k {
@@ -693,7 +693,7 @@ mod ast {
         }
     }
 
-    #[summary("이름으로 쓴 타입이면 그 경로를 ::로 이은 글")]
+    #[summary("If a type written by name, the text of its path joined with ::")]
     #[effects(alloc)]
     fn named_join(t: &TypeKind) -> Option<String> {
         match t {
@@ -717,7 +717,7 @@ mod ast {
         }
     }
 
-    #[summary("있으면 그 식을")]
+    #[summary("The expression, if there is one")]
     #[effects(alloc)]
     fn opt_box_mut<V: ExprFn>(o: &mut Option<Box<Expr>>, v: &mut V, deep: bool, f: usize) -> ()
         decreases f,
@@ -744,7 +744,7 @@ mod ast {
         }
     }
 
-    #[summary("있으면 그 식을")]
+    #[summary("The expression, if there is one")]
     #[effects(alloc)]
     fn opt_mut<V: ExprFn>(o: &mut Option<Expr>, v: &mut V, deep: bool, f: usize) -> ()
         decreases f,
@@ -771,7 +771,7 @@ mod ast {
         }
     }
 
-    #[summary("이항 연산자의 글을 덧붙인다")]
+    #[summary("Appends the text of a binary operator")]
     #[effects(alloc)]
     fn push_bin_symbol(out: &mut String, op: &BinOp) -> () {
         match op {
@@ -797,7 +797,7 @@ mod ast {
         }
     }
 
-    #[summary("정수 타입의 이름을 덧붙인다")]
+    #[summary("Appends the name of an integer type")]
     #[effects(alloc)]
     fn push_int_name(out: &mut String, t: &IntTy) -> () {
         match t {
@@ -814,7 +814,7 @@ mod ast {
         }
     }
 
-    #[summary("v를 진법 r의 정규형으로 쓴 글: 접두사, 소문자 자리, _ 구분 없이, 앞의 0 없이 (ADR-0019 §1)")]
+    #[summary("Text of v written in the normal form of radix r: prefix, lowercase digits, no _ separators, no leading zeros (ADR-0019 §1)")]
     #[effects(alloc)]
     #[uses(wide::divisor)]
     fn radix_text(r: Radix, v: wide::U128) -> String {
@@ -828,7 +828,7 @@ mod ast {
         out
     }
 
-    #[summary("named_is인 타입의 참조인가")]
+    #[summary("Whether it is a reference to a type that is named_is")]
     #[effects(pure)]
     fn ref_named_is(k: &TypeKind, t: &str) -> bool {
         match k {
@@ -852,7 +852,7 @@ mod ast {
         }
     }
 
-    #[summary("블록의 let의 타입: 그 블록과 while, for, proof의 몸의 것")]
+    #[summary("Types of the lets of a block: those of that block and of while, for and proof bodies")]
     #[effects(alloc)]
     fn stmt_types<V: TypeFn>(b: &mut Block, unit: &str, v: &mut V, f: usize) -> ()
         decreases f,
@@ -878,7 +878,7 @@ mod ast {
         }
     }
 
-    #[summary("식의 종류의 차례(선언 순서): 0 Int .. 34 Error")]
+    #[summary("Ordinal of the expression kind (declaration order): 0 Int .. 34 Error")]
     #[effects(pure)]
     fn tag(k: &ExprKind) -> u8 {
         match k {
@@ -1008,7 +1008,7 @@ mod ast {
         }
     }
 
-    #[summary("프로그램에 쓴 모든 타입(매개변수, 결과, let, 필드, 페이로드, impl의 머리, 타입 인자, 한정자의 변수, const)을 그것을 쓴 단위의 경로와 함께, 바깥 것만: 안의 타입은 손님이 바깥 것을 통해 본다. 단위가 먼저, 안 단위가 다음")]
+    #[summary("All types written in the program (parameters, results, lets, fields, payloads, impl heads, type arguments, variables of quantifiers, consts) together with the path of the unit that wrote them, outer ones only: the visitor sees inner types through the outer one. The unit first, inner units next")]
     #[effects(alloc)]
     fn unit_types_mut<V: TypeFn>(p: &mut Program, v: &mut V) -> () {
         let n: usize = p.mods.len();
@@ -1019,7 +1019,7 @@ mod ast {
         }
     }
 
-    #[summary("변수 읽기면 그 이름")]
+    #[summary("If a variable read, its name")]
     #[effects(alloc)]
     fn var_name(e: &Expr) -> Option<String> {
         match &e.kind {

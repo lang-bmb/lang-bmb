@@ -1,18 +1,18 @@
-#[summary("명령들이 부르는 진입점 (stage0 compiler/src/lib.rs의 포트, 백로그 4D-02). 국면마다 는다: 지금은 dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, check")]
+#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, check")]
 mod lib {
-    #[summary("emit-llvm의 결과: 진단의 JSONL, 모듈의 글, 옮기지 않은 구문의 까닭들")]
+    #[summary("Result of emit-llvm: JSONL of diagnostics, text of the module, reasons for syntax not yet ported")]
     struct Emitted { ok: bool, diags: String, ir: String, todo: Vec<String> }
 
-    #[summary("앞단의 결과: 쓴 프로그램(라이브러리 단위를 붙인)과 그것을 검사한 것")]
+    #[summary("Result of the front end: the program as written (with library units attached) and its checked form")]
     struct Front { source: ast::Program, ck: body::Checked }
 
-    #[summary("소스 파일 하나: 이름과 글")]
+    #[summary("One source file: name and text")]
     struct Input { name: String, text: String }
 
-    #[summary("명령의 결과: ok면 표준 출력에 쓸 글, 아니면 진단의 JSONL")]
+    #[summary("Result of a command: if ok, the text to write to standard output, otherwise JSONL of diagnostics")]
     struct Outcome { ok: bool, text: String }
 
-    #[summary("bmb check: 파일들을 한 프로그램으로 읽고 검사한다. 진단은 JSONL, 오류가 있으면 ok가 거짓")]
+    #[summary("bmb check: reads the files as one program and checks it. Diagnostics are JSONL, ok is false if there are errors")]
     #[effects(alloc)]
     fn check(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -21,7 +21,7 @@ mod lib {
         Outcome { ok: !diags.has_errors(), text: diags.to_jsonl(&sm) }
     }
 
-    #[summary("파서와 검사기의 몸 검사 사이의 단계를 글로 (stage0 lib::dump_stage, 백로그 4D-03a): 구문 오류면 dump parse처럼 진단만. 아니면 그때까지의 진단, --- 한 줄, 그 단계의 글. 지금은 std(이름을 든 라이브러리 단위를 더한 프로그램의 정규형)")]
+    #[summary("The stage between the parser and the checker's body check, as text (stage0 lib::dump_stage): on a syntax error, diagnostics only, like dump parse. Otherwise the diagnostics so far, a --- line, the text of that stage. For now std (the normal form of the program with the library units it names added)")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
     fn dump_stage(stage: &str, files: &[Input]) -> Outcome {
@@ -92,7 +92,7 @@ mod lib {
         Outcome { ok: !diags.has_errors(), text: out }
     }
 
-    #[summary("파일들의 토큰을 JSONL로: 렉서의 차등 시험이 견주는 출력")]
+    #[summary("Tokens of the files as JSONL: the output the lexer's differential test compares")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
     fn dump_tokens(files: &[Input]) -> Outcome {
@@ -122,7 +122,7 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("bmb emit-llvm --all-checks (stage0 lib::emit_llvm_sources_with, 백로그 4D-05): 검사하고 낮춘 표로 모듈을 짓는다. 오류가 있으면 ok가 거짓. 아니면 ir이 모듈의 글이고, todo가 비어 있지 않으면 아직 옮기지 않은 구문을 만난 것이라 ir을 쓰지 않는다")]
+    #[summary("bmb emit-llvm --all-checks (stage0 lib::emit_llvm_sources_with): checks and builds the module from the lowered tables. ok is false if there are errors. Otherwise ir is the text of the module, and if todo is not empty, syntax not yet ported was met, so ir is not used")]
     #[effects(alloc)]
     fn emit_llvm(files: &[Input]) -> Emitted {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -136,7 +136,7 @@ mod lib {
         Emitted { ok: true, diags: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo }
     }
 
-    #[summary("bmb fmt: 프로그램의 정규형 (ADR-0019 §1), 단위 이름의 순서로 줄 하나를 사이에 두고. 경로로 쓴 메서드 호출은 메서드 문법이 된다(ADR-0051). 라이브러리 단위는 프로그램의 글이 아니다(ADR-0092 §1). 오류가 있으면 진단만 내고 ok가 거짓")]
+    #[summary("bmb fmt: normal form of the program (ADR-0019 §1), in unit name order with one line in between. Method calls written as paths become method syntax (ADR-0051). Library units are not text of the program (ADR-0092 §1). If there are errors, emits only diagnostics and ok is false")]
     #[effects(alloc)]
     fn format(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -163,7 +163,7 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("파일들을 읽기만 한(검사하지 않은) 프로그램의 정규형: 파서의 차등 시험이 견주는 출력. 단위의 글을 이름 순으로 빈 줄 하나씩 사이에 둔다")]
+    #[summary("Normal form of the program as only read (not checked) from the files: the output the parser's differential test compares. Unit texts in name order with one blank line in between")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
     fn format_parsed(files: &[Input]) -> Outcome {
@@ -200,7 +200,7 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("앞단: 파일들을 한 프로그램으로 읽고, 그것이 부르는 라이브러리 단위를 붙이고(ADR-0092 §1), 검사한다 (stage0 lib.rs의 frontend)")]
+    #[summary("Front end: reads the files as one program, attaches the library units it calls (ADR-0092 §1), and checks it (frontend of stage0 lib.rs)")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
     fn frontend(files: &[Input], sm: &mut source::SourceMap, diags: &mut diag::Diags) -> Front {
@@ -223,7 +223,7 @@ mod lib {
         Front { source: program, ck: ck }
     }
 
-    #[summary("bmb hash (ADR-0059 §1): 정의와 타입 선언마다 정체성과 몸·겉의 해시를 경로의 순서로, JSONL로. 오류가 있으면 진단만 내고 ok가 거짓")]
+    #[summary("bmb hash (ADR-0059 §1): for each definition and type declaration, the identity and the hashes of body·surface in path order, as JSONL. If there are errors, emits only diagnostics and ok is false")]
     #[effects(alloc)]
     fn hash(files: &[Input]) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -261,7 +261,7 @@ mod lib {
         std::num::push_u64(out, s.hi as u64);
     }
 
-    #[summary("v를 0x와 16진 열여섯 자리로 덧붙인다")]
+    #[summary("Appends v as 0x and sixteen hex digits")]
     #[effects(alloc)]
     fn push_bits(out: &mut String, v: u64) -> () {
         out.push_str("0x");
@@ -280,7 +280,7 @@ mod lib {
         }
     }
 
-    #[summary("놓는 자리의 표 하나를 줄마다: {\"moves\":경로,\"kind\":종류,자리,\"names\":[..]} (이름은 적힌 순서)")]
+    #[summary("One table of drop places, one per line: {\"moves\":path,\"kind\":kind,place,\"names\":[..]} (names in recorded order)")]
     #[effects(alloc)]
     fn push_drops(out: &mut String, path: &str, kind: &str, t: &table::Table<Vec<String>>, sm: &source::SourceMap) -> () {
         let total: usize = t.len();
@@ -294,7 +294,7 @@ mod lib {
         }
     }
 
-    #[summary("[[이름,타입],..]")]
+    #[summary("[[name,type],..]")]
     #[effects(alloc)]
     fn push_fields(out: &mut String, fs: &[types::FieldSig]) -> () {
         out.push_str("[");
@@ -313,7 +313,7 @@ mod lib {
         out.push_str("]");
     }
 
-    #[summary("\"file\":..,\"lo\":..,\"hi\":.. (표의 열쇠 k의 자리)")]
+    #[summary("\"file\":..,\"lo\":..,\"hi\":.. (the position of table key k)")]
     #[effects(alloc)]
     fn push_key(out: &mut String, k: &str, sm: &source::SourceMap) -> () {
         let s: source::Span = body::key_span(k);
@@ -325,7 +325,7 @@ mod lib {
         std::num::push_u64(out, s.hi as u64);
     }
 
-    #[summary("dump layout의 글 (stage0 codegen::dump_layout, 백로그 4D-05b): 표에 나오는 타입마다 레지스터 타입, 메모리 타입, 크기와 정렬, 성립하는 술어, 원소로서의 종류. 이어서 모듈의 머리가 기대는 것(Vec을 드는가, 힙 값을 갖는가, 진입점), --- 한 줄, LLVM 타입 정의")]
+    #[summary("Text of dump layout (stage0 codegen::dump_layout): for each type appearing in the tables, register type, memory type, size and alignment, predicates that hold, kind as an element. Then what the module header depends on (whether it mentions Vec, whether it has heap values, the entry point), a --- line, LLVM type definitions")]
     #[effects(alloc)]
     fn push_layout(out: &mut String, ck: &body::Checked, t: &lowered::Tables) -> () {
         let mut shapes: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
@@ -359,7 +359,7 @@ mod lib {
         out.push_str(codegen::type_defs(t, no_extra.as_slice()).as_str());
     }
 
-    #[summary("dump lowered의 글 (stage0 lib::dump_lowered, 백로그 4D-05a): 낮춘 표의 시그니처, 데이터 타입, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자, 글인 자리, 이어서 표에 나오는 타입마다 참조를 벗긴 타입과 그 인스턴스의 필드·변형")]
+    #[summary("Text of dump lowered (stage0 lib::dump_lowered): signatures of the lowered tables, data types, heads of trait impls, local variables, expression types, type arguments, places that are text, then for each type appearing in the tables the type with references stripped and the fields·variants of its instance")]
     #[effects(alloc)]
     fn push_low(out: &mut String, t: &lowered::Tables, sm: &source::SourceMap) -> () {
         let mut shapes: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
@@ -445,7 +445,7 @@ mod lib {
         }
     }
 
-    #[summary("낮추기가 만든 이름, 함수 값을 넘긴 자리, const와 그 값을 줄마다 (dump lower)")]
+    #[summary("Names made by lowering, places where a function value is passed, consts and their values, one per line (dump lower)")]
     #[effects(alloc)]
     fn push_lowered(out: &mut String, lowered: &closures::Lowered, consts: &table::Table<consts::Const>, sm: &source::SourceMap) -> () {
         for i in 0..lowered.names.len() {
@@ -480,7 +480,7 @@ mod lib {
         }
     }
 
-    #[summary("{\"moves\":경로,\"kind\":종류,자리")]
+    #[summary("{\"moves\":path,\"kind\":kind,place")]
     #[effects(alloc)]
     fn push_move_head(out: &mut String, path: &str, kind: &str, k: &str, sm: &source::SourceMap) -> () {
         out.push_str("{\"moves\":");
@@ -491,7 +491,7 @@ mod lib {
         push_key(out, k, sm);
     }
 
-    #[summary("함수마다 놓는 자리를 줄마다 (stage0 check::dump_tables의 moves, bmb dump moves)")]
+    #[summary("Drop places per function, one per line (moves of stage0 check::dump_tables, bmb dump moves)")]
     #[effects(alloc)]
     fn push_moves(out: &mut String, ck: &body::Checked, sm: &source::SourceMap) -> () {
         let total: usize = ck.b.needs.len();
@@ -505,7 +505,7 @@ mod lib {
         }
     }
 
-    #[summary("이름들을 순서대로 JSON 배열로")]
+    #[summary("Names in order as a JSON array")]
     #[effects(alloc)]
     fn push_names(out: &mut String, xs: &[String]) -> () {
         let sorted: Vec<String> = decls::sorted(xs);
@@ -521,7 +521,7 @@ mod lib {
         out.push_str("]");
     }
 
-    #[summary("자리의 집합을 자리의 순서로 줄마다")]
+    #[summary("A set of places, one per line in place order")]
     #[effects(alloc)]
     fn push_places(out: &mut String, path: &str, kind: &str, keys: &[String], sm: &source::SourceMap) -> () {
         let sorted: Vec<String> = decls::sorted(keys);
@@ -533,7 +533,7 @@ mod lib {
         }
     }
 
-    #[summary("타입 x를 그 글로 shapes에: 같은 글이 있으면 그대로 둔다")]
+    #[summary("Adds type x by its text to shapes: left as is if the same text exists")]
     #[effects(alloc)]
     fn push_shape(shapes: &mut table::Table<ast::TypeKind>, x: &ast::TypeKind) -> () {
         let k: String = types::text(x);
@@ -542,7 +542,7 @@ mod lib {
         }
     }
 
-    #[summary("몸 검사가 계산한 표를 글로 (stage0 check::dump_tables, bmb dump types): 풀린 프로그램의 정규형, 이어서 지역 변수, 식의 타입, 타입 인자, 호출, 효과, 재귀, 외부 몸, 신뢰되지 않을 수 있는 정의, 읽는 상수를 줄마다")]
+    #[summary("Tables computed by the body check, as text (stage0 check::dump_tables, bmb dump types): normal form of the resolved program, then local variables, expression types, type arguments, calls, effects, recursion, external bodies, definitions that may be untrusted, constants read, one per line")]
     #[effects(alloc)]
     fn push_tables(out: &mut String, ck: &body::Checked, sm: &source::SourceMap) -> () {
         let units: Vec<fmt::Unit> = fmt::format_units(&ck.program);
@@ -632,7 +632,7 @@ mod lib {
         }
     }
 
-    #[summary("dump texts의 글 (백로그 4D-03f4): 정의마다 한정 정규형과 부르는 쪽이 읽는 겉, 이어서 항목마다 한정 해시")]
+    #[summary("Text of dump texts: for each definition the qualified normal form and the surface the caller reads, then for each item the qualified hash")]
     #[effects(alloc)]
     fn push_texts(out: &mut String, ck: &body::Checked) -> () {
         let rows: Vec<fmt::QualRow> = fmt::qual_rows(&ck.program, &ck.b.c.fns);
@@ -659,7 +659,7 @@ mod lib {
         }
     }
 
-    #[summary("토큰 하나의 JSON 줄")]
+    #[summary("JSON line of one token")]
     #[effects(alloc)]
     fn push_token(out: &mut String, name: &str, t: &lexer::Token) -> () {
         out.push_str("{\"file\":");
@@ -684,7 +684,7 @@ mod lib {
         out.push_str("}\n");
     }
 
-    #[summary("단위의 정규형을 이름 순으로, 빈 줄 하나씩 사이에 두고")]
+    #[summary("Normal forms of the units in name order, with one blank line in between")]
     #[effects(alloc)]
     fn push_units(out: &mut String, p: &ast::Program) -> () {
         let units: Vec<fmt::Unit> = fmt::format_units(p);
@@ -700,7 +700,7 @@ mod lib {
         }
     }
 
-    #[summary("[[이름,[타입,..]],..]")]
+    #[summary("[[name,[type,..]],..]")]
     #[effects(alloc)]
     fn push_variants(out: &mut String, vs: &[types::VariantSig]) -> () {
         out.push_str("[");

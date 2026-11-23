@@ -1,13 +1,13 @@
-#[summary("글을 열쇠로 하는 표: 열쇠의 순서로 돌 수 있고 값은 자리로 읽는다 (백로그 4D-03c, 4E-04). stage0의 BTreeMap<String, V>의 자리다: std의 BTreeMap은 값을 복사해 내주고(ADR-0097) 삽입이 O(n)이다. 색인은 높이로 균형을 잡는 트리(AVL)이고 마디는 Vec 하나에 있다: 찾기·넣기·순서로 n번째가 모두 O(log n)")]
+#[summary("Table keyed by text: can be iterated in key order and values are read by slot. Stands in for stage0's BTreeMap<String, V>: std's BTreeMap hands out values by copy (ADR-0097) and its insertion is O(n). The index is a height-balanced tree (AVL) and the nodes are in one Vec: lookup·insertion·n-th in order are all O(log n)")]
 mod table {
-    #[summary("트리의 마디: 열쇠 key의 값은 items[at]. l·r은 왼쪽·오른쪽 자식의 마디 번호(nodes의 색인 + 1, 없으면 0), h는 높이, n은 이 마디 아래의 열쇠 수")]
+    #[summary("Tree node: the value of key key is items[at]. l·r are the node numbers of the left·right children (index in nodes + 1, 0 if none), h is the height, n is the number of keys under this node")]
     struct Node { key: String, at: usize, l: usize, r: usize, h: usize, n: usize }
 
-    #[summary("nodes는 색인의 마디(넣은 순서), root는 뿌리의 마디 번호(빈 표면 0). 같은 열쇠를 다시 넣으면 그 자리의 값을 바꾼다")]
+    #[summary("nodes is the nodes of the index (in insertion order), root is the node number of the root (0 for an empty table). Inserting the same key again replaces the value in its slot")]
     struct Table<V> { nodes: Vec<Node>, root: usize, items: Vec<V> }
 
     impl<V> Table<V> {
-        #[summary("열쇠 k의 값의 자리 (items의 색인)")]
+        #[summary("Slot of the value of key k (index in items)")]
         #[effects(pure)]
         #[uses(within)]
         fn find(self: &Table<V>, k: &str) -> (r: Option<usize>)
@@ -25,13 +25,13 @@ mod table {
             }
         }
 
-        #[summary("열쇠 k가 있는가")]
+        #[summary("Whether key k is present")]
         #[effects(pure)]
         fn has(self: &Table<V>, k: &str) -> bool {
             seek(self.nodes.as_slice(), self.root, k) != 0
         }
 
-        #[summary("k를 v로. 있던 열쇠면 값을 바꾼다")]
+        #[summary("Sets k to v. Replaces the value if the key was present")]
         #[effects(alloc)]
         fn insert(self: &mut Table<V>, k: &str, v: V) -> () {
             let t: usize = seek(self.nodes.as_slice(), self.root, k);
@@ -52,7 +52,7 @@ mod table {
             self.root = put(&mut self.nodes, root, k, at, 1000000000);
         }
 
-        #[summary("열쇠의 순서로 n번째 열쇠. 범위 밖이면 빈 글")]
+        #[summary("The n-th key in key order. Empty text if out of range")]
         #[effects(alloc)]
         fn key(self: &Table<V>, n: usize) -> String {
             let t: usize = pick(self.nodes.as_slice(), self.root, n);
@@ -62,13 +62,13 @@ mod table {
             self.nodes[t - 1].key.clone()
         }
 
-        #[summary("열쇠의 수")]
+        #[summary("Number of keys")]
         #[effects(pure)]
         fn len(self: &Table<V>) -> usize {
             self.nodes.len()
         }
 
-        #[summary("열쇠의 순서로 n번째 값의 자리 (items의 색인)")]
+        #[summary("Slot of the n-th value in key order (index in items)")]
         #[effects(pure)]
         #[uses(within)]
         fn nth(self: &Table<V>, n: usize) -> (r: Option<usize>)
@@ -87,7 +87,7 @@ mod table {
         }
     }
 
-    #[summary("마디 t 아래의 열쇠 수. 없는 마디는 0")]
+    #[summary("Number of keys under node t. 0 for an absent node")]
     #[effects(pure)]
     fn count(ns: &[Node], t: usize) -> usize {
         if t == 0 || t > ns.len() {
@@ -97,7 +97,7 @@ mod table {
         }
     }
 
-    #[summary("마디 t의 높이. 없는 마디는 0")]
+    #[summary("Height of node t. 0 for an absent node")]
     #[effects(pure)]
     fn height(ns: &[Node], t: usize) -> usize {
         if t == 0 || t > ns.len() {
@@ -107,7 +107,7 @@ mod table {
         }
     }
 
-    #[summary("마디 t의 두 자식의 높이가 둘 이상 다르면 돌려서 맞춘다. 새 뿌리의 번호")]
+    #[summary("Rotates to rebalance if the heights of the two children of node t differ by two or more. Number of the new root")]
     #[effects(pure)]
     fn level(ns: &mut Vec<Node>, t: usize) -> usize
         ensures ns.len() == old(ns).len(),
@@ -141,7 +141,7 @@ mod table {
         t
     }
 
-    #[summary("빈 표")]
+    #[summary("Empty table")]
     #[effects(alloc)]
     fn new<V>() -> Table<V> {
         let items: Vec<V> = Vec::new();
@@ -149,7 +149,7 @@ mod table {
         Table { nodes: nodes, root: 0, items: items }
     }
 
-    #[summary("뿌리 root 아래에서 열쇠의 순서로 n번째 마디의 번호. 범위 밖이면 0")]
+    #[summary("Number of the n-th node in key order under root root. 0 if out of range")]
     #[effects(pure)]
     fn pick(ns: &[Node], root: usize, n: usize) -> usize {
         let mut t: usize = root;
@@ -172,7 +172,7 @@ mod table {
         0
     }
 
-    #[summary("뿌리 t 아래에 새 열쇠 k(값의 자리 at)를 넣는다. 새 뿌리의 번호. 있는 열쇠면 그 자리만 바꾼다. 연료 f는 트리의 깊이보다 크다(높이는 열쇠 수의 로그다)")]
+    #[summary("Inserts new key k (value slot at) under root t. Number of the new root. If the key is present, only replaces its slot. Fuel f is greater than the depth of the tree (the height is the logarithm of the number of keys)")]
     #[effects(alloc)]
     fn put(ns: &mut Vec<Node>, t: usize, k: &str, at: usize, f: usize) -> usize
         decreases f,
@@ -200,7 +200,7 @@ mod table {
         level(ns, t)
     }
 
-    #[summary("마디 t의 높이와 열쇠 수를 자식에서 다시 센다")]
+    #[summary("Recounts the height and number of keys of node t from its children")]
     #[effects(pure)]
     fn renew(ns: &mut Vec<Node>, t: usize) -> ()
         ensures ns.len() == old(ns).len(),
@@ -221,7 +221,7 @@ mod table {
         ns[t - 1].n = count(ns.as_slice(), l).saturating_add(count(ns.as_slice(), r)).saturating_add(1);
     }
 
-    #[summary("열쇠 k의 마디 번호. 없으면 0")]
+    #[summary("Node number of key k. 0 if absent")]
     #[effects(pure)]
     fn seek(ns: &[Node], root: usize, k: &str) -> usize {
         let mut t: usize = root;
@@ -241,7 +241,7 @@ mod table {
         0
     }
 
-    #[summary("왼쪽 돌리기: t의 오른쪽 자식이 t의 자리에 오고 t는 그 왼쪽 자식이 된다. 새 뿌리의 번호")]
+    #[summary("Left rotation: the right child of t comes to t's place and t becomes its left child. Number of the new root")]
     #[effects(pure)]
     fn turn_left(ns: &mut Vec<Node>, t: usize) -> usize
         ensures ns.len() == old(ns).len(),
@@ -261,7 +261,7 @@ mod table {
         r
     }
 
-    #[summary("오른쪽 돌리기: t의 왼쪽 자식이 t의 자리에 오고 t는 그 오른쪽 자식이 된다. 새 뿌리의 번호")]
+    #[summary("Right rotation: the left child of t comes to t's place and t becomes its right child. Number of the new root")]
     #[effects(pure)]
     fn turn_right(ns: &mut Vec<Node>, t: usize) -> usize
         ensures ns.len() == old(ns).len(),
@@ -281,7 +281,7 @@ mod table {
         l
     }
 
-    #[summary("r이 있으면 n보다 작다")]
+    #[summary("r, if present, is less than n")]
     spec fn within(r: Option<usize>, n: usize) -> bool {
         match r {
             None => true,

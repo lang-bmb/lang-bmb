@@ -1,10 +1,10 @@
-#[summary("검사기의 1패스: 선언을 모은다 (stage0 compiler/src/check.rs의 Checker::collect의 포트, 백로그 4D-03d). 타입, trait, impl의 머리, 시그니처, 타입 불변식을 표에 넣고 그 자리에서 나는 진단을 낸다. 단위를 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+#[summary("Pass 1 of the checker: collects declarations (port of Checker::collect in stage0 compiler/src/check.rs). Puts types, traits, impl headers, signatures and type invariants into the table and emits the diagnostics arising there. The f of functions that walk units is the remaining depth (ADR-0140)")]
 mod decls {
-    #[summary("검사기의 표. tparams는 지금 보는 정의의 타입 매개변수, elem_params는 Vec의 원소로 쓰이는 타입 매개변수의 자리")]
+    #[summary("Table of the checker. tparams is the type parameters of the definition being looked at, elem_params the positions of type parameters used as Vec elements")]
     struct Checker { diags: Vec<diag::Diag>, fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, traits: table::Table<types::TraitInfo>, trait_impls: Vec<types::TraitImplInfo>, rejected_impls: Vec<types::TraitImplInfo>, overlapping_impls: Vec<source::Span>, imports: table::Table<table::Table<String>>, tparams: Vec<types::TParam>, elem_params: Vec<source::Span>, self_head: Option<SelfHead> }
 
     impl Checker {
-        #[summary("Box<T> (ADR-0047 §1): T는 값 타입")]
+        #[summary("Box<T> (ADR-0047 §1): T is a value type")]
         #[effects(alloc)]
         fn box_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind
             decreases f * 2,
@@ -31,7 +31,7 @@ mod decls {
             ast::TypeKind::Box(Box::new(ast::Type { kind: e, span: args[0].span }))
         }
 
-        #[summary("타입의 이름을 모두 온 경로로 푼다 (ADR-0026). report면 진단을 낸다(타입을 검사하는 자리에서 한 번)")]
+        #[summary("Resolves every type name to its full path (ADR-0026). If report, emits diagnostics (once, at the place where the type is checked)")]
         #[effects(alloc)]
         fn canon(self: &mut Checker, t: &ast::Type, mp: &str, report: bool, f: usize) -> ast::TypeKind
             decreases f * 2 + 1,
@@ -60,7 +60,7 @@ mod decls {
             }
         }
 
-        #[summary("args를 하나씩 푼다")]
+        #[summary("Resolves args one by one")]
         #[effects(alloc)]
         fn canon_args(self: &mut Checker, args: &[ast::Type], mp: &str, report: bool, f: usize) -> Vec<ast::Type>
             decreases f * 2,
@@ -252,7 +252,7 @@ mod decls {
             }
         }
 
-        #[summary("타입마다 #[invariant(p)]를 푼다 (ADR-0060 §1, 시그니처가 다 모인 뒤): p는 타입의 매개변수를 가진(경계가 같은) spec fn으로 &T<..>를 bool로 보내고, 몸이 상수 true가 아니다 (E0254)")]
+        #[summary("Resolves #[invariant(p)] for each type (ADR-0060 §1, after all signatures are collected): p is a spec fn with the type's parameters (same bounds) that maps &T<..> to bool, and its body is not the constant true (E0254)")]
         #[effects(alloc)]
         fn check_invariants(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -284,7 +284,7 @@ mod decls {
             }
         }
 
-        #[summary("필드의 타입이 다 정해진 뒤: 소유 값을 담는 필드 (ADR-0047 §1)")]
+        #[summary("After all field types are settled: fields holding owned values (ADR-0047 §1)")]
         #[effects(alloc)]
         fn check_owned_fields(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -310,7 +310,7 @@ mod decls {
             }
         }
 
-        #[summary("#[rationale(kind = K, hash = \"..\", \"설명\")] (ADR-0029 §1): kind는 닫힌 목록에서, 비지 않은 설명 하나, hash는 도구가 쓰는 문자열 (E1002)")]
+        #[summary("#[rationale(kind = K, hash = \"..\", \"description\")] (ADR-0029 §1): kind from a closed list, one non-empty description, hash a string written by tools (E1002)")]
         #[effects(alloc)]
         fn check_rationale(self: &mut Checker, a: &ast::Attr) -> () {
             let mut kind: bool = false;
@@ -337,7 +337,7 @@ mod decls {
             }
         }
 
-        #[summary("정의의 #[summary(\"..\")] (ADR-0117): 문자열 하나, 한 번")]
+        #[summary("A definition's #[summary(\"..\")] (ADR-0117): one string, once")]
         #[effects(alloc)]
         fn check_summary(self: &mut Checker, a: &ast::Attr, all: &[ast::Attr]) -> () {
             if !(a.args.len() == 1 && is_str_arg(&a.args[0])) {
@@ -356,7 +356,7 @@ mod decls {
             }
         }
 
-        #[summary("재귀 타입 (ADR-0047 §1, 백로그 2O-02). 값으로 자기를 담으면 크기가 없고(E0421: Box에 넣는다), 모든 값이 끝없으면 값이 없다(E0421: 변형 하나에서 끝낸다). 제네릭 타입은 제 매개변수 그대로만 자기를 담는다. 재귀 타입은 아직 배열을 담지 않는다(E0402)")]
+        #[summary("Recursive types (ADR-0047 §1). Holding itself by value has no size (E0421: put it in a Box), and if every value is endless it has no values (E0421: end it in one variant). A generic type holds itself only with its own parameters as they are. Recursive types do not hold arrays yet (E0402)")]
         #[effects(alloc)]
         fn check_type_cycles(self: &mut Checker) -> () {
             let n: usize = self.adts.len();
@@ -477,7 +477,7 @@ mod decls {
             }
         }
 
-        #[summary("1패스: 시그니처를 모은다")]
+        #[summary("Pass 1: collects signatures")]
         #[effects(alloc)]
         fn collect(self: &mut Checker, p: &ast::Program) -> () {
             self.elem_params = elem_params(p);
@@ -564,7 +564,7 @@ mod decls {
             self.fns.insert(path, types::FnSig { path: String::from(path), kind: kind_copy(&f.kind), generics: generics, impl_generics: ig.len(), params: params, ret: ret, effect: effect, vacuous: vacuous, builtin: false, in_impl: in_impl, trait_of: None, default: false, span: f.span });
         }
 
-        #[summary("단위 m의 i번째 impl T 블록. 경계의 목록마다 블록 하나 (ADR-0097), 이름 하나는 어느 블록에 있든 그 타입의 함수 하나")]
+        #[summary("The i-th impl T block of unit m. One block per bound list (ADR-0097), and one name is one function of that type whichever block it is in")]
         #[effects(alloc)]
         fn collect_impl(self: &mut Checker, m: &ast::Mod, i: usize, mp: &str, with_impl: &mut Vec<String>, impl_tys: &mut Vec<String>, impl_names: &mut Vec<Vec<String>>) -> ()
             requires i < m.impls.len() && impl_tys.len() == impl_names.len(),
@@ -789,7 +789,7 @@ mod decls {
             self.self_head = None;
         }
 
-        #[summary("단위의 구조체와 열거형의 이름을 올린다 (필드는 다음에)")]
+        #[summary("Registers the names of the unit's structs and enums (fields come next)")]
         #[effects(alloc)]
         fn collect_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -838,7 +838,7 @@ mod decls {
             }
         }
 
-        #[summary("impl Trait for T 블록의 함수를 trait의 메서드에 견준다 (ADR-0046 §2): 저마다 정의되고(E0315), Self = T일 때의 시그니처로(E0316)")]
+        #[summary("Compares the functions of an impl Trait for T block against the trait's methods (ADR-0046 §2): each is defined (E0315), with the signature when Self = T (E0316)")]
         #[effects(alloc)]
         fn conform(self: &mut Checker, info: &types::TraitImplInfo, ti: &ast::TraitImpl, mp: &str) -> () {
             let tr: String = info.trait_path.clone();
@@ -990,7 +990,7 @@ mod decls {
             }
         }
 
-        #[summary("#[effects(..)]가 선언하는 효과의 집합 (ADR-0030 §2). pure와 다른 효과를 함께 쓰거나 한 효과를 두 번 쓰면 E0607(정규형으로 고침), 모르는 이름은 E0602")]
+        #[summary("Set of effects declared by #[effects(..)] (ADR-0030 §2). Using pure together with another effect or one effect twice is E0607 (fix to the normal form), an unknown name is E0602")]
         #[effects(alloc)]
         fn effects_attr(self: &mut Checker, a: &ast::Attr) -> types::Effects {
             let mut e: types::Effects = types::pure();
@@ -1025,7 +1025,7 @@ mod decls {
             self.diags.push(diag::new(code, span, msg));
         }
 
-        #[summary("필드나 페이로드의 타입: 참조 없는 값 타입 (ADR-0015)")]
+        #[summary("Type of a field or payload: a value type without references (ADR-0015)")]
         #[effects(alloc)]
         fn field_type(self: &mut Checker, t: &ast::Type, mp: &str) -> ast::TypeKind {
             if is_ref_like(&t.kind) {
@@ -1039,13 +1039,13 @@ mod decls {
             self.canon(t, mp, true, 100000)
         }
 
-        #[summary("바꿔 쓸 글까지 붙은 진단")]
+        #[summary("Diagnostic with replacement text attached")]
         #[effects(alloc)]
         fn fixed(self: &mut Checker, code: &str, span: source::Span, msg: &str, fix: &str, to: &str) -> () {
             self.diags.push(diag::fix(diag::new(code, span, msg), fix, Some(String::from(to))));
         }
 
-        #[summary("#[effects(..)]를 읽고 속성의 결함을 모으는 동안 한 번 낸다")]
+        #[summary("Reads #[effects(..)] and emits once while collecting the attribute's defects")]
         #[effects(alloc)]
         fn fn_effect(self: &mut Checker, f: &ast::FnDef) -> types::Effects {
             let mut effect: types::Effects = types::pure();
@@ -1095,7 +1095,7 @@ mod decls {
             effect
         }
 
-        #[summary("t에 내장 trait b(Eq나 Ord)가 있는가: 정수, bool, char, String, 그리고 그것으로 묶인 타입 매개변수 (Ord는 Eq를 담는다). f64는 아니다 (ADR-0061 §1)")]
+        #[summary("Whether t has built-in trait b (Eq or Ord): integers, bool, char, String, and type parameters bounded by it (Ord includes Eq). Not f64 (ADR-0061 §1)")]
         #[effects(alloc)]
         fn has_builtin(self: &Checker, t: &ast::TypeKind, b: &str) -> bool {
             match types::param_name(t) {
@@ -1123,7 +1123,7 @@ mod decls {
             }
         }
 
-        #[summary("t가 사용자 trait tr을 구현하는가 (ADR-0046 §2): 그것으로 묶인 타입 매개변수, 또는 impl이 맞는 타입(impl의 경계도 선다)")]
+        #[summary("Whether t implements user trait tr (ADR-0046 §2): a type parameter bounded by it, or a type an impl matches (the impl's bounds hold too)")]
         #[effects(alloc)]
         fn has_trait(self: &Checker, t: &ast::TypeKind, tr: &str, f: usize) -> bool
             decreases f * 4 + 3,
@@ -1152,13 +1152,13 @@ mod decls {
             false
         }
 
-        #[summary("도움말이 붙은 진단")]
+        #[summary("Diagnostic with help attached")]
         #[effects(alloc)]
         fn help(self: &mut Checker, code: &str, span: source::Span, msg: &str, fix: &str) -> () {
             self.diags.push(diag::fix(diag::new(code, span, msg), fix, None));
         }
 
-        #[summary("t의 값이 배열을 담는가 (필드와 페이로드를 지나)")]
+        #[summary("Whether a value of t holds an array (through fields and payloads)")]
         #[effects(alloc)]
         fn holds_array(self: &Checker, t: &ast::TypeKind, seen: &mut Vec<String>, f: usize) -> bool
             decreases f * 2 + 1,
@@ -1187,7 +1187,7 @@ mod decls {
             }
         }
 
-        #[summary("impl i가 t에 trait tr을 주는가. 머리가 부르지 않는 매개변수는 그 impl의 결함(E0420)이지 타입이 어긴 경계가 아니다")]
+        #[summary("Whether impl i gives trait tr to t. A parameter the head does not name is a defect of that impl (E0420), not a bound the type violates")]
         #[effects(alloc)]
         fn impl_gives(self: &Checker, i: &types::TraitImplInfo, t: &ast::TypeKind, tr: &str, f: usize) -> bool
             decreases f * 4 + 2,
@@ -1287,7 +1287,7 @@ mod decls {
             self.trait_impls.push(info);
         }
 
-        #[summary("단위의 impl Trait for T 블록이 구현하는 타입 (ADR-0046 §2): 포괄 impl 없음(E0235), impl의 매개변수는 모두 타입에(E0420), trait이나 타입의 단위에(E0312), 같은 타입일 수 있는 둘 없음(E0311)")]
+        #[summary("Type implemented by an impl Trait for T block of the unit (ADR-0046 §2): no blanket impl (E0235), every impl parameter in the type (E0420), in the unit of the trait or the type (E0312), no two that could be the same type (E0311)")]
         #[effects(alloc)]
         fn impl_heads(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -1309,7 +1309,7 @@ mod decls {
             }
         }
 
-        #[summary("자리가 span인 impl Trait for T 블록과, 그 머리가 거절됐는지 (E0235, E0420, E0312, E0311). 거절된 impl의 함수도 모으고 검사한다 (백로그 2V-23)")]
+        #[summary("The impl Trait for T block whose position is span, and whether its head was rejected (E0235, E0420, E0312, E0311). Functions of a rejected impl are also collected and checked")]
         #[effects(alloc)]
         fn impl_info(self: &Checker, span: source::Span) -> Option<Found> {
             for i in 0..self.trait_impls.len()
@@ -1329,7 +1329,7 @@ mod decls {
             None
         }
 
-        #[summary("경로의 첫 마디가 단위 mp의 use에서 온 것이면 온 경로의 글")]
+        #[summary("If the first segment of the path comes from a use of unit mp, the text of the full path")]
         #[effects(alloc)]
         fn import_text(self: &Checker, segs: &[String], mp: &str) -> Option<String> {
             if segs.len() == 0 {
@@ -1341,14 +1341,14 @@ mod decls {
             }
         }
 
-        #[summary("t의 값이 복사되는가 (Rust Copy): &mut과 이동 타입이 아닌 모든 것")]
+        #[summary("Whether a value of t is copied (Rust Copy): everything that is not &mut or a move type")]
         #[effects(alloc)]
         fn is_copy(self: &Checker, t: &ast::TypeKind) -> bool {
             let mv: Vec<String> = self.moving_params();
             !types::is_ref_mut(t) && !types::is_move_in(t, &self.adts, mv.as_slice())
         }
 
-        #[summary("단위 mp의 trait들의 제 이름 (경로의 순서)")]
+        #[summary("Own names of the traits of unit mp (in path order)")]
         #[effects(alloc)]
         fn local_traits(self: &Checker, mp: &str) -> Vec<String> {
             let mut out: Vec<String> = Vec::new();
@@ -1364,7 +1364,7 @@ mod decls {
             out
         }
 
-        #[summary("단위 mp의 타입들의 제 이름 (경로의 순서)")]
+        #[summary("Own names of the types of unit mp (in path order)")]
         #[effects(alloc)]
         fn local_types(self: &Checker, mp: &str) -> Vec<String> {
             let mut out: Vec<String> = Vec::new();
@@ -1380,7 +1380,7 @@ mod decls {
             out
         }
 
-        #[summary("t가 bounds의 경계를 모두 지키는가 (진단 없음)")]
+        #[summary("Whether t satisfies all the bounds in bounds (no diagnostics)")]
         #[effects(alloc)]
         fn meets(self: &Checker, t: &ast::TypeKind, bounds: &[String], f: usize) -> bool
             decreases f * 4 + 1,
@@ -1411,13 +1411,13 @@ mod decls {
             self.help("E1001", span, types::cat2(what, " is an escape and needs a `#[rationale(..)]` before it").as_str(), "write `#[rationale(kind = K, \"why the fact holds\")]` before it, `K` one of `nonlinear`, `solver_limit`, `boundary`, `performance`");
         }
 
-        #[summary("Copy 경계가 없는 지금의 타입 매개변수들")]
+        #[summary("The current type parameters without a Copy bound")]
         #[effects(alloc)]
         fn moving_params(self: &Checker) -> Vec<String> {
             types::moving_of(self.tparams.as_slice())
         }
 
-        #[summary("소유 값을 담는 필드 (ADR-0047 §1): Copy 타입 매개변수의 인자로는 안 된다")]
+        #[summary("Fields holding owned values (ADR-0047 §1): not allowed as the argument of a Copy type parameter")]
         #[effects(alloc)]
         fn owned_field(self: &mut Checker, t: &ast::TypeKind, span: source::Span, f: usize) -> ()
             decreases f,
@@ -1459,7 +1459,7 @@ mod decls {
             }
         }
 
-        #[summary("self는 수신자의 이름이다: impl T 함수의 첫 매개변수로 타입이 T, &T, &mut T인 것 (ADR-0026 §3). has는 impl 안인지, impl_ty는 그 타입의 경로")]
+        #[summary("self is the receiver's name: the first parameter of an impl T function whose type is T, &T or &mut T (ADR-0026 §3). has is whether inside an impl, impl_ty the path of that type")]
         #[effects(alloc)]
         fn receiver_rule(self: &mut Checker, f: &ast::FnDef, impl_ty: &str, has: bool, mp: &str) -> () {
             for k in 0..f.params.len()
@@ -1485,7 +1485,7 @@ mod decls {
             }
         }
 
-        #[summary("필드와 페이로드의 타입을 풀고 필드가 담을 수 있는 것인지 본다")]
+        #[summary("Resolves the types of fields and payloads and checks whether a field can hold them")]
         #[effects(alloc)]
         fn resolve_types(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -1518,7 +1518,7 @@ mod decls {
             }
         }
 
-        #[summary("매개변수 p의 타입 인자 t의 E0428/E0403 (자리 span): 경계를 지키는 값 타입. 보고했으면 false")]
+        #[summary("E0428/E0403 of type argument t for parameter p (position span): a value type satisfying the bounds. false if reported")]
         #[effects(alloc)]
         fn targ_ok(self: &mut Checker, t: &ast::TypeKind, p: &types::TParam, of: &str, span: source::Span, report: bool) -> bool {
             if types::is_error(t) {
@@ -1583,7 +1583,7 @@ mod decls {
             true
         }
 
-        #[summary("타입 매개변수 gs (ADR-0046). report면 그 결함을 낸다(정의마다 한 번): 모르는 경계, 겹친 이름")]
+        #[summary("Type parameters gs (ADR-0046). If report, emits their defects (once per definition): unknown bounds, duplicate names")]
         #[effects(alloc)]
         fn tparams_of(self: &mut Checker, gs: &[ast::TypeParam], report: bool, mp: &str) -> Vec<types::TParam> {
             let mut out: Vec<types::TParam> = Vec::new();
@@ -1615,7 +1615,7 @@ mod decls {
             out
         }
 
-        #[summary("단위의 trait 이름을 올린다 (ADR-0046 §1; 메서드는 타입 뒤에)")]
+        #[summary("Registers the unit's trait names (ADR-0046 §1; methods come after types)")]
         #[effects(alloc)]
         fn trait_names(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -1653,7 +1653,7 @@ mod decls {
             }
         }
 
-        #[summary("segs가 단위 mp에서 부르는 trait의 온 경로")]
+        #[summary("Full path of the trait that segs names in unit mp")]
         #[effects(alloc)]
         fn trait_path(self: &Checker, segs: &[ast::Ident], mp: &str) -> Option<String> {
             let name: String = path_text(segs);
@@ -1668,7 +1668,7 @@ mod decls {
             }
         }
 
-        #[summary("단위의 trait들의 메서드 시그니처 (ADR-0046 §2): Self에 제네릭이고(그 trait으로 묶인다) 그 뒤에 제 매개변수. decreases는 E0207")]
+        #[summary("Method signatures of the unit's traits (ADR-0046 §2): generic over Self (bounded by that trait), followed by their own parameters. decreases is E0207")]
         #[effects(alloc)]
         fn trait_sigs(self: &mut Checker, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -1733,7 +1733,7 @@ mod decls {
             }
         }
 
-        #[summary("segs가 단위 mp에서 부르는 타입의 온 경로")]
+        #[summary("Full path of the type that segs names in unit mp")]
         #[effects(alloc)]
         fn type_path(self: &Checker, segs: &[ast::Ident], mp: &str) -> Option<String> {
             let name: String = path_text(segs);
@@ -1748,7 +1748,7 @@ mod decls {
             }
         }
 
-        #[summary("trait name의 E0305: 그 단위의 가장 가까운 trait, 없으면 help")]
+        #[summary("E0305 for trait name: the nearest trait of that unit, help if none")]
         #[effects(alloc)]
         fn unknown_trait(self: &Checker, name: &str, span: source::Span, mp: &str, help: &str) -> diag::Diag {
             let d: diag::Diag = diag::new("E0305", span, types::cat3("unknown trait `", name, "`").as_str());
@@ -1759,7 +1759,7 @@ mod decls {
             }
         }
 
-        #[summary("타입 이름의 E0305: 그 단위의 가장 가까운 타입을 고침으로")]
+        #[summary("E0305 for a type name: the nearest type of that unit as the fix")]
         #[effects(alloc)]
         fn unknown_type(self: &Checker, path: &[String], span: source::Span, mp: &str) -> diag::Diag {
             let name: String = types::join(path, "::");
@@ -1779,7 +1779,7 @@ mod decls {
             }
         }
 
-        #[summary("Vec의 원소가 될 수 있는가: 스칼라, 배열 없는 구조체·열거형, 또 다른 Vec이나 그것의 Box (백로그 2O-03b)")]
+        #[summary("Whether it can be a Vec element: scalars, structs·enums without arrays, and another Vec or a Box of one")]
         #[effects(alloc)]
         fn vec_elem_ok(self: &Checker, e: &ast::TypeKind, f: usize) -> bool
             decreases f,
@@ -1808,7 +1808,7 @@ mod decls {
             }
         }
 
-        #[summary("Vec<T> (ADR-0031 §1): T는 스칼라이거나 배열 없는 구조체·열거형")]
+        #[summary("Vec<T> (ADR-0031 §1): T is a scalar or a struct·enum without arrays")]
         #[effects(alloc)]
         fn vec_type(self: &mut Checker, span: source::Span, args: &[ast::Type], mp: &str, report: bool, f: usize) -> ast::TypeKind
             decreases f * 2,
@@ -1836,10 +1836,10 @@ mod decls {
         }
     }
 
-    #[summary("impl_info의 답")]
+    #[summary("Answer of impl_info")]
     struct Found { info: types::TraitImplInfo, rejected: bool }
 
-    #[summary("함수에 쓴 타입에서 Vec의 원소로 쓰인 이름을 모으는 손님")]
+    #[summary("Visitor that collects the names used as Vec elements in the types written in a function")]
     struct Names { used: Vec<String> }
 
     impl ast::TypeFn for Names {
@@ -1849,10 +1849,10 @@ mod decls {
         }
     }
 
-    #[summary("trait impl 안에서 Self가 가리키는 타입과 그 글")]
+    #[summary("Type that Self refers to inside a trait impl, and its text")]
     struct SelfHead { head: ast::TypeKind, text: String }
 
-    #[summary("타입 q를 인자 args(열쇠들을 이은 글)로 쓴 자리")]
+    #[summary("Place where type q is used with arguments args (text joining the keys)")]
     struct Use { q: String, args: String }
 
     #[effects(pure)]
@@ -1867,7 +1867,7 @@ mod decls {
         false
     }
 
-    #[summary("공백뿐인가 (Rust의 trim: 유니코드 White_Space)")]
+    #[summary("Whether it is only whitespace (Rust's trim: Unicode White_Space)")]
     #[effects(alloc)]
     fn blank(s: &str) -> bool {
         let cs: Vec<u32> = types::chars(s);
@@ -1883,7 +1883,7 @@ mod decls {
         true
     }
 
-    #[summary("impl의 경계 목록의 열쇠: 매개변수마다 이름과 정렬한 경계, 그것들을 정렬해 잇는다 (ADR-0097)")]
+    #[summary("Key of an impl's bound list: per parameter the name and sorted bounds, those sorted and joined (ADR-0097)")]
     #[effects(alloc)]
     fn bounds_key(ig: &[types::TParam]) -> String {
         let mut rows: Vec<String> = Vec::new();
@@ -1895,7 +1895,7 @@ mod decls {
         types::join(sorted(rows.as_slice()).as_slice(), ";")
     }
 
-    #[summary("t가 값으로 담는 타입들 (Box와 Vec이 끊는다)")]
+    #[summary("Types that t holds by value (Box and Vec break it)")]
     #[effects(alloc)]
     fn contained(t: &ast::TypeKind, out: &mut Vec<String>, f: usize) -> ()
         decreases f,
@@ -1947,7 +1947,7 @@ mod decls {
         s
     }
 
-    #[summary("a n b m c를 이은 글 (수는 10진)")]
+    #[summary("Text joining a n b m c (numbers in decimal)")]
     #[effects(alloc)]
     fn counts(a: &str, n: usize, b: &str, m: usize, c: &str) -> String {
         let mut s: String = String::from(a);
@@ -1958,7 +1958,7 @@ mod decls {
         s
     }
 
-    #[summary("표의 글: 타입, 함수, trait, impl, use의 행 (stage0 check::dump_decls, bmb dump decls)")]
+    #[summary("Text of the table: rows of types, functions, traits, impls, uses (stage0 check::dump_decls, bmb dump decls)")]
     #[effects(alloc)]
     fn dump(c: &Checker) -> String {
         let mut out: String = String::new();
@@ -2010,7 +2010,7 @@ mod decls {
         out
     }
 
-    #[summary("함수 하나: 제 매개변수를 표시하고 쓴 이름을 all에 더한다")]
+    #[summary("One function: marks its own parameters and adds the names used to all")]
     #[effects(alloc)]
     fn elem_fn(d: &ast::FnDef, out: &mut Vec<source::Span>, all: &mut Vec<String>) -> () {
         let mut c: ast::FnDef = d.clone();
@@ -2083,7 +2083,7 @@ mod decls {
         }
     }
 
-    #[summary("쓴 타입 t가 Vec의 원소로 부르는 한 마디 이름들")]
+    #[summary("One-segment names that the written type t refers to as elements of Vec")]
     #[effects(alloc)]
     fn elem_names(t: &ast::TypeKind, out: &mut Vec<String>, f: usize) -> ()
         decreases f,
@@ -2112,7 +2112,7 @@ mod decls {
         }
     }
 
-    #[summary("정의가 Vec의 원소로 쓰는 타입 매개변수의 자리 (백로그 2T-10)")]
+    #[summary("Positions of the type parameters that a definition uses as elements of Vec")]
     #[effects(alloc)]
     fn elem_params(p: &ast::Program) -> Vec<source::Span> {
         let mut out: Vec<source::Span> = Vec::new();
@@ -2132,7 +2132,7 @@ mod decls {
         }
     }
 
-    #[summary("유한한 값이 있는 타입인가 (ok는 이미 그렇다고 안 것)")]
+    #[summary("Whether the type has a finite value (ok holds those already known to)")]
     #[effects(alloc)]
     fn finite(t: &ast::TypeKind, ok: &[String], f: usize) -> bool
         decreases f,
@@ -2169,7 +2169,7 @@ mod decls {
         }
     }
 
-    #[summary("s의 from부터 pat이 처음 시작하는 자리")]
+    #[summary("First position from from in s where pat starts")]
     #[effects(pure)]
     fn first_of(s: &str, pat: &str, from: usize) -> (r: Option<usize>)
         ensures match r { None => true, Some(i) => i + pat.len() <= s.len(), },
@@ -2198,7 +2198,7 @@ mod decls {
         None
     }
 
-    #[summary("이름 name의 속성이 있는가")]
+    #[summary("Whether there is an attribute named name")]
     #[effects(pure)]
     fn has_attr(attrs: &[ast::Attr], name: &str) -> bool {
         for i in 0..attrs.len()
@@ -2240,7 +2240,7 @@ mod decls {
         }
     }
 
-    #[summary("마디가 하나인 이름은 단위 mp의 것으로 (온 경로는 그대로)")]
+    #[summary("A one-segment name becomes that of unit mp (a full path stays as is)")]
     #[effects(alloc)]
     fn in_unit(s: &str, mp: &str) -> String {
         match first_of(s, "::", 0) {
@@ -2318,7 +2318,7 @@ mod decls {
         }
     }
 
-    #[summary("경로인가 (::가 있는 글): 사용자 trait의 경계")]
+    #[summary("Whether it is a path (text containing ::): the bound of a user trait")]
     #[effects(pure)]
     fn is_path(s: &str) -> bool {
         let n: usize = s.len();
@@ -2455,7 +2455,7 @@ mod decls {
         }
     }
 
-    #[summary("gs 가운데 used에 든 이름의 자리를 out에")]
+    #[summary("Positions of the names in gs that are in used, into out")]
     #[effects(alloc)]
     fn mark(gs: &[ast::TypeParam], used: &[String], out: &mut Vec<source::Span>) -> () {
         for i in 0..gs.len()
@@ -2467,7 +2467,7 @@ mod decls {
         }
     }
 
-    #[summary("t가 무엇을 지나서든 부르는 모든 사용자 타입")]
+    #[summary("All user types that t refers to, through anything")]
     #[effects(alloc)]
     fn named(t: &ast::TypeKind, out: &mut Vec<Use>, f: usize) -> ()
         decreases f,
@@ -2496,7 +2496,7 @@ mod decls {
         }
     }
 
-    #[summary("내장 선언만 든 검사기")]
+    #[summary("Checker holding only the built-in declarations")]
     #[effects(alloc)]
     fn new() -> Checker {
         let mut fns: table::Table<types::FnSig> = table::new::<types::FnSig>();
@@ -2516,7 +2516,7 @@ mod decls {
         Checker { diags: Vec::new(), fns: fns, adts: adts, traits: table::new::<types::TraitInfo>(), trait_impls: Vec::new(), rejected_impls: Vec::new(), overlapping_impls: Vec::new(), imports: table::new::<table::Table<String>>(), tparams: Vec::new(), elem_params: Vec::new(), self_head: None }
     }
 
-    #[summary("참조, 슬라이스, str, ()처럼 값 타입이 아닌 것")]
+    #[summary("What is not a value type, like references, slices, str, ()")]
     #[effects(pure)]
     fn not_value(t: &ast::TypeKind) -> bool {
         match t {
@@ -2540,7 +2540,7 @@ mod decls {
         }
     }
 
-    #[summary("제 매개변수 그대로 쓴 인자들의 열쇠 (Use.args와 견준다)")]
+    #[summary("Key of the arguments written as its own parameters unchanged (compared with Use.args)")]
     #[effects(alloc)]
     fn own_key(gs: &[types::TParam]) -> String {
         let mut key: String = String::new();
@@ -2559,7 +2559,7 @@ mod decls {
         types::join(tparam_names(ps).as_slice(), sep)
     }
 
-    #[summary("자료 타입의 필드나 페이로드의 타입들 (선언의 순서)")]
+    #[summary("Types of the fields or payloads of a data type (declaration order)")]
     #[effects(alloc)]
     fn parts(k: &types::AdtKind) -> Vec<ast::TypeKind> {
         let mut out: Vec<ast::TypeKind> = Vec::new();
@@ -2570,7 +2570,7 @@ mod decls {
         out
     }
 
-    #[summary("이름들의 경로 글: a::b")]
+    #[summary("Path text of names: a::b")]
     #[effects(alloc)]
     fn path_text(p: &[ast::Ident]) -> String {
         let mut s: String = String::new();
@@ -2585,7 +2585,7 @@ mod decls {
         s
     }
 
-    #[summary("인자 없는 한 마디 이름이면 그 이름")]
+    #[summary("The name, if it is a one-segment name without arguments")]
     #[effects(alloc)]
     fn plain_name(t: &ast::TypeKind) -> Option<String> {
         match t {
@@ -2721,7 +2721,7 @@ mod decls {
         out.push_str("]");
     }
 
-    #[summary("근거의 종류 (ADR-0029 §1)의 이름인가")]
+    #[summary("Whether it is the name of a kind of evidence (ADR-0029 §1)")]
     #[effects(pure)]
     fn rationale_kind(a: &ast::AttrArg) -> bool {
         match a {
@@ -2731,7 +2731,7 @@ mod decls {
         }
     }
 
-    #[summary("names[p]에서 간선을 따라 닿는 이름들. fuel은 닿을 수 없는 상한이다")]
+    #[summary("Names reachable from names[p] along edges. fuel is an upper bound that cannot be reached")]
     #[effects(alloc)]
     fn reach(names: &[String], edges: &[Vec<String>], p: usize) -> Vec<String> {
         let mut seen: Vec<String> = Vec::new();
@@ -2758,7 +2758,7 @@ mod decls {
         is_exec(a) && is_exec(b) || is_spec(a) && is_spec(b) || is_proof(a) && is_proof(b)
     }
 
-    #[summary("names가 gs의 이름과 차례까지 같은가")]
+    #[summary("Whether names equals the names of gs, order included")]
     #[effects(pure)]
     fn same_names(names: &[String], gs: &[types::TParam]) -> bool {
         if names.len() != gs.len() {
@@ -2774,7 +2774,7 @@ mod decls {
         true
     }
 
-    #[summary("경계의 집합이 같은가 (elem은 빼고: 몸마다 제 Vec에서 따라온다)")]
+    #[summary("Whether the sets of bounds are the same (elem excluded: each body derives it from its own Vec)")]
     #[effects(pure)]
     fn same_set(a: &[String], b: &[String]) -> bool {
         for i in 0..a.len()
@@ -2794,7 +2794,7 @@ mod decls {
         true
     }
 
-    #[summary("xs를 바이트 순서로 (삽입 정렬)")]
+    #[summary("xs in byte order (insertion sort)")]
     #[effects(alloc)]
     fn sorted(xs: &[String]) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -2831,13 +2831,13 @@ mod decls {
         a.file == b.file && a.lo == b.lo && a.hi == b.hi
     }
 
-    #[summary("a의 처음부터 b의 끝까지")]
+    #[summary("From the start of a to the end of b")]
     #[effects(pure)]
     fn span_to(a: source::Span, b: source::Span) -> source::Span {
         source::Span { file: a.file, lo: a.lo, hi: b.hi }
     }
 
-    #[summary("블록의 값이 리터럴 true인가")]
+    #[summary("Whether the block's value is the literal true")]
     #[effects(pure)]
     fn tail_true(b: &ast::Block) -> bool {
         match &b.tail {
@@ -2857,7 +2857,7 @@ mod decls {
         out
     }
 
-    #[summary("경로의 마지막 마디 앞까지 (마디가 하나면 빈 글)")]
+    #[summary("Up to before the last segment of the path (empty text if one segment)")]
     #[effects(alloc)]
     fn unit_of(path: &str) -> String {
         let segs: Vec<String> = refs::split_path(path);
@@ -2867,7 +2867,7 @@ mod decls {
         types::join_head(segs.as_slice(), segs.len() - 1)
     }
 
-    #[summary("prefix에 단위의 이름을 붙인 경로")]
+    #[summary("Path with the unit's name appended to prefix")]
     #[effects(alloc)]
     fn unit_path(prefix: &str, m: &ast::Mod) -> String {
         types::cat2(prefix, m.name.name.as_str())
@@ -2881,7 +2881,7 @@ mod decls {
         }
     }
 
-    #[summary("단위 mp에서 #[uses(name)]이 부르는 정의: 그 단위의 f나 Trait::f, 아니면 온 경로 (ADR-0046 §4)")]
+    #[summary("Definition that #[uses(name)] refers to in unit mp: that unit's f or Trait::f, otherwise a full path (ADR-0046 §4)")]
     #[effects(alloc)]
     fn uses_target(name: &str, mp: &str, fns: &table::Table<types::FnSig>) -> Option<String> {
         let here: String = types::cat3(mp, "::", name);
@@ -2912,7 +2912,7 @@ mod decls {
         None
     }
 
-    #[summary("쓴 필드나 페이로드의 타입의 자리들 (선언의 순서)")]
+    #[summary("Positions of the types of the written fields or payloads (declaration order)")]
     #[effects(alloc)]
     fn written_spans(k: &ast::TypeDefKind) -> Vec<source::Span> {
         let mut out: Vec<source::Span> = Vec::new();

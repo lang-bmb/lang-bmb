@@ -1,4 +1,4 @@
-#[summary("슬라이스 연산(Rust `slice`의 이름과 뜻): 키의 안정 정렬 순서와 이진 탐색. 정렬은 위치의 순열로 돌려준다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Slice operations (names and meaning of Rust `slice`): stable sort order of keys and binary search. Sorting returns a permutation of positions (ADR-0092 §2)")]
 mod slice {
     // ---------- sorted order ----------
 

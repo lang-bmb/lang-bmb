@@ -1,4 +1,4 @@
-#[summary("CRC-32(T4-04): ISO-HDLC/zlib의 반사 CRC-32(다항식 0xedb88320, 초기값·최종 xor 0xffffffff). 결과는 비트 단위 정의 reg와 같음이 증명된다. Rust crc32fast·Python zlib.crc32와 같은 값")]
+#[summary("CRC-32: the reflected CRC-32 of ISO-HDLC/zlib (polynomial 0xedb88320, initial value and final xor 0xffffffff). The result is proven the same as the bitwise definition reg. Same values as Rust crc32fast and Python zlib.crc32")]
 mod crc32 {
     // One bit of the register: shift right, and xor the reflected polynomial
     // when the bit shifted out is set.

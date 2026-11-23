@@ -1,27 +1,27 @@
-#[summary("재귀 하강 파서. 항목과 문장의 경계에서 회복해 한 번에 낼 수 있는 구문 오류를 모두 낸다 (stage0 compiler/src/parser.rs의 포트, 백로그 4D-02). 깊이 d는 stage0의 depth이고, 재귀의 측도는 남은 깊이와 함수의 차례다")]
+#[summary("Recursive descent parser. Recovers at item and statement boundaries and reports every syntax error that can be reported in one pass (port of stage0 compiler/src/parser.rs). Depth d is stage0's depth, and the measure of the recursion is the remaining depth and the order of the functions")]
 mod parser {
-    #[summary("impl 블록의 함수들과 닫는 }의 자리")]
+    #[summary("Functions of an impl block and the position of the closing }")]
     struct Body { fns: Vec<ast::FnDef>, hi: source::Span }
 
-    #[summary("계약 절 셋")]
+    #[summary("The three contract clauses")]
     struct Clauses { pre: Vec<ast::Expr>, post: Vec<ast::Expr>, measure: Option<ast::Expr> }
 
-    #[summary("복합 대입을 읽었으면 그 문장")]
+    #[summary("The statement, if a compound assignment was read")]
     enum Compound { No, Yes(ast::Stmt) }
 
-    #[summary("impl 블록: 고유한 것이거나 trait의 것")]
+    #[summary("impl block: inherent or of a trait")]
     enum ImplItem { Inherent(ast::Impl), Trait(ast::TraitImpl) }
 
-    #[summary("몸의 처음에 쓴 루프의 절: {의 자리와 decreases")]
+    #[summary("Loop clauses written at the start of the body: position of { and decreases")]
     struct Lead { open: Option<source::Span>, measure: Option<ast::Expr> }
 
-    #[summary("이름 붙은 타입의 경로와 인자")]
+    #[summary("Path and arguments of a named type")]
     struct NamedTy { path: Vec<String>, args: Vec<ast::Type> }
 
     struct Parser { t: Toks, diags: diag::Diags, text: String, no_struct: bool, impl_ty: Option<String>, decl_ok: bool, generics_span: Option<source::Span>, units: Vec<String>, lens: Vec<ast::Len>, in_ret: bool }
 
     impl Parser {
-        #[summary("속성 하나. 읽지 못했거나 버리는 것(Verus의 verifier)이면 없음")]
+        #[summary("One attribute. None if it could not be read or is discarded (Verus's verifier)")]
         #[effects(alloc)]
         fn attr(self: &mut Parser) -> Option<ast::Attr> {
             let lo: source::Span = self.bump();
@@ -74,7 +74,7 @@ mod parser {
             Some(ast::Attr { name: name, args: args, span: span })
         }
 
-        #[summary("속성의 인자들을 )나 끝 앞까지 읽어 args에 더한다")]
+        #[summary("Reads the attribute's arguments up to ) or the end and adds them to args")]
         #[effects(alloc)]
         fn attr_args(self: &mut Parser, args: &mut Vec<ast::AttrArg>) -> () {
             let mut n: usize = self.left();
@@ -134,7 +134,7 @@ mod parser {
             }
         }
 
-        #[summary("속성 인자의 <a::T as b::Tr>::name을 as 둘레에 빈칸 하나씩 둔 이름 하나로. 맞지 않는 토큰 너머는 읽지 않는다")]
+        #[summary("<a::T as b::Tr>::name in an attribute argument as one name with one space on each side of as. Does not read past a token that does not match")]
         #[effects(alloc)]
         fn attr_impl_path(self: &mut Parser) -> Option<ast::Ident> {
             let lo: source::Span = self.bump();
@@ -161,7 +161,7 @@ mod parser {
             Some(ast::Ident { name: name, span: lo.to(hi) })
         }
 
-        #[summary("#[name(args)]들. 속성의 이름은 제 이름 공간이다: #[invariant(p)]는 루프 절의 키워드를 쓴다 (ADR-0060 §1)")]
+        #[summary("The #[name(args)]s. Attribute names are their own namespace: #[invariant(p)] uses the keyword of the loop clause (ADR-0060 §1)")]
         #[effects(alloc)]
         fn attrs(self: &mut Parser) -> Vec<ast::Attr> {
             let mut out: Vec<ast::Attr> = Vec::new();
@@ -178,7 +178,7 @@ mod parser {
             out
         }
 
-        #[summary("루프의 절을 몸의 처음에 쓴 것 (while c { invariant a, decreases d, .. }): 머리의 것으로 읽는다 (입력 별칭, ADR-0095 B6). {와 절들을 읽고 {의 자리를 준다. 나머지 블록은 부른 쪽이 읽는다. 수정은 절들을 몸 앞으로 옮긴다")]
+        #[summary("Loop clauses written at the start of the body (while c { invariant a, decreases d, .. }): read as those of the head (input alias, ADR-0095 B6). Reads { and the clauses and gives the position of {. The caller reads the rest of the block. The fix moves the clauses before the body")]
         #[effects(alloc)]
         fn body_clauses(self: &mut Parser, loop_lo: source::Span, invariants: &mut Vec<ast::Expr>, has_measure: bool, d: usize) -> Option<Lead>
             requires d <= 256,
@@ -218,7 +218,7 @@ mod parser {
             Some(Lead { open: Some(open), measure: measure })
         }
 
-        #[summary("경로 a::b: 이름마다 자리와 함께. 뒤에 이름이 오는 ::만 넘는다")]
+        #[summary("Path a::b: each name with its position. Only crosses a :: that is followed by a name")]
         #[effects(alloc)]
         fn bound_path(self: &mut Parser) -> Vec<ast::Ident> {
             let mut path: Vec<ast::Ident> = Vec::new();
@@ -243,7 +243,7 @@ mod parser {
             self.t.bump()
         }
 
-        #[summary("지금 토큰이 계약 절의 키워드면 그 차례: 0 requires, 1 ensures, 2 decreases. 아니면 3")]
+        #[summary("The index of the current token if it is a contract clause keyword: 0 requires, 1 ensures, 2 decreases. Otherwise 3")]
         #[effects(pure)]
         fn clause_kw(self: &Parser) -> (r: usize)
             ensures r <= 3,
@@ -259,7 +259,7 @@ mod parser {
             }
         }
 
-        #[summary("쉼표로 나눈 절들을 out에 더한다")]
+        #[summary("Adds the comma-separated clauses to out")]
         #[effects(alloc)]
         fn clause_list(self: &mut Parser, out: &mut Vec<ast::Expr>, d: usize) -> Option<bool>
             requires d <= 256,
@@ -299,7 +299,7 @@ mod parser {
             }
         }
 
-        #[summary("문장의 끝(;, 또는 괄호 밖의 {, }, =) 앞에 복합 대입 연산자가 오는가")]
+        #[summary("Whether a compound assignment operator comes before the end of the statement (;, or {, }, = outside parentheses)")]
         #[effects(pure)]
         #[uses(inside)]
         fn compound_ahead(self: &Parser) -> bool {
@@ -331,7 +331,7 @@ mod parser {
             false
         }
 
-        #[summary("t op= e; (백로그 2N-07): t = t op e;로 읽는다, 입력 별칭 (ADR-0095, W0914). 그 꼴에서 자리는 두 번 읽히므로 아무것도 부르지 않아야 한다. 다른 것이면 아무것도 읽지 않는다")]
+        #[summary("t op= e;: read as t = t op e;, input alias (ADR-0095, W0914). In that form the place is read twice, so it must call nothing. If it is anything else, reads nothing")]
         #[effects(alloc)]
         fn compound_assign(self: &mut Parser, lo: source::Span, d: usize) -> Option<Compound>
             requires d <= 256,
@@ -406,7 +406,7 @@ mod parser {
             Some(Compound::Yes(ast::Stmt::Assign(ast::Assign { target: target, value: both, span: lo.to(hi) })))
         }
 
-        #[summary("자리에서 n째 토큰부터의 복합 대입 연산자 (+=, <<=, ..). 렉서에는 그런 토큰이 없다: +=는 붙은 +와 =, <<=는 <와 <=, >>=는 >와 >=이다")]
+        #[summary("Compound assignment operator starting at the n-th token from the position (+=, <<=, ..). The lexer has no such tokens: += is an adjacent + and =, <<= is < and <=, >>= is > and >=")]
         #[effects(pure)]
         fn compound_op(self: &Parser, n: usize) -> Option<ast::BinOp> {
             if !self.t.joined(n) {
@@ -443,7 +443,7 @@ mod parser {
             }
         }
 
-        #[summary("if/while의 조건이나 match의 대상: T {는 몸을 연다")]
+        #[summary("Condition of if/while or scrutinee of match: T { opens the body")]
         #[effects(alloc)]
         fn cond_expr(self: &mut Parser, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -476,7 +476,7 @@ mod parser {
             }
         }
 
-        #[summary("else 뒤: else if면 한 단계 깊이 읽은 if, 아니면 블록 식")]
+        #[summary("After else: an if read one level deeper if else if, otherwise a block expression")]
         #[effects(alloc)]
         fn else_branch(self: &mut Parser, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -493,13 +493,13 @@ mod parser {
             Some(ast::Expr { kind: ast::ExprKind::Block(b), span: span })
         }
 
-        #[summary("return이나 break의 값이 없는 자리인가")]
+        #[summary("Whether this is a position where return or break has no value")]
         #[effects(pure)]
         fn ends_value(self: &Parser) -> bool {
             self.is_p(";") || self.is_p("}") || self.is_p(")") || self.is_p(",") || self.is_p("]") || self.eof()
         }
 
-        #[summary("한 단계 더 깊이 들어갈 수 있는가. 한도면 E0107 (백로그 1A-11)")]
+        #[summary("Whether it can go one level deeper. E0107 at the limit")]
         #[effects(alloc)]
         fn enter(self: &mut Parser, d: usize) -> (r: bool)
             ensures r == (d < 256),
@@ -516,13 +516,13 @@ mod parser {
             self.t.kind(0) == 9
         }
 
-        #[summary("진단 하나")]
+        #[summary("One diagnostic")]
         #[effects(alloc)]
         fn err(self: &mut Parser, code: &str, sp: source::Span, msg: &str) -> () {
             self.diags.push(diag::new(code, sp, msg));
         }
 
-        #[summary("E0103: what을 기대했는데 지금 토큰이 왔다. 기대한 것이 토큰 하나면 넣으라는 안내를 붙인다 (백로그 2D-18)")]
+        #[summary("E0103: expected what but the current token came. If what was expected is a single token, attaches a help to insert it")]
         #[effects(alloc)]
         fn err_expected(self: &mut Parser, what: &str) -> () {
             let found: String = self.t.describe();
@@ -541,40 +541,40 @@ mod parser {
             self.diags.push(d);
         }
 
-        #[summary("안내가 붙은 진단")]
+        #[summary("Diagnostic with a help")]
         #[effects(alloc)]
         fn err_fix(self: &mut Parser, code: &str, sp: source::Span, msg: &str, fix: &str) -> () {
             self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
         }
 
-        #[summary("지금 토큰에 내는, 안내가 붙은 진단")]
+        #[summary("Diagnostic with a help, reported at the current token")]
         #[effects(alloc)]
         fn err_fix_here(self: &mut Parser, code: &str, msg: &str, fix: &str) -> () {
             let sp: source::Span = self.span();
             self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
         }
 
-        #[summary("from부터 직전 토큰까지에 내는, 안내가 붙은 진단")]
+        #[summary("Diagnostic with a help, reported from from to the previous token")]
         #[effects(alloc)]
         fn err_fix_to(self: &mut Parser, code: &str, from: source::Span, msg: &str, fix: &str) -> () {
             let sp: source::Span = from.to(self.prev_span());
             self.diags.push(diag::fix(diag::new(code, sp, msg), fix, None));
         }
 
-        #[summary("지금 토큰에 내는 진단")]
+        #[summary("Diagnostic reported at the current token")]
         #[effects(alloc)]
         fn err_here(self: &mut Parser, code: &str, msg: &str) -> () {
             let sp: source::Span = self.span();
             self.diags.push(diag::new(code, sp, msg));
         }
 
-        #[summary("기계 수정이 붙은 진단")]
+        #[summary("Diagnostic with a machine fix")]
         #[effects(alloc)]
         fn err_rep(self: &mut Parser, code: &str, sp: source::Span, msg: &str, fix: &str, rep: &str) -> () {
             self.diags.push(diag::fix(diag::new(code, sp, msg), fix, Some(String::from(rep))));
         }
 
-        #[summary("from부터 직전 토큰까지에 내는, 기계 수정이 붙은 진단")]
+        #[summary("Diagnostic with a machine fix, reported from from to the previous token")]
         #[effects(alloc)]
         fn err_rep_to(self: &mut Parser, code: &str, from: source::Span, msg: &str, fix: &str, rep: &str) -> () {
             let sp: source::Span = from.to(self.prev_span());
@@ -591,7 +591,7 @@ mod parser {
             }
         }
 
-        #[summary("예약어가 아닌 이름")]
+        #[summary("A name that is not a reserved word")]
         #[effects(alloc)]
         fn ident(self: &mut Parser, what: &str) -> Option<ast::Ident> {
             match self.t.ident(0) {
@@ -600,7 +600,7 @@ mod parser {
             }
         }
 
-        #[summary("impl 블록의 {부터 함수들, 그리고 }의 자리")]
+        #[summary("The functions of an impl block from its {, and the position of }")]
         #[effects(alloc)]
         fn impl_body(self: &mut Parser, impl_ty: Option<String>, d: usize) -> Option<Body>
             requires d <= 256,
@@ -635,7 +635,7 @@ mod parser {
             Some(Body { fns: fns, hi: hi })
         }
 
-        #[summary("invariant ..,의 목록들, 키워드를 되풀이했든 아니든 (ADR-0095 B5). more는 이 목록 앞에 루프가 이미 절을 가졌을 때")]
+        #[summary("Lists of invariant ..,, whether the keyword was repeated or not (ADR-0095 B5). more is when the loop already had a clause before this list")]
         #[effects(alloc)]
         fn invariant_lists(self: &mut Parser, out: &mut Vec<ast::Expr>, more: bool, d: usize) -> Option<bool>
             requires d <= 256,
@@ -667,13 +667,13 @@ mod parser {
             self.t.is_p(0, p)
         }
 
-        #[summary("남은 걸음의 상한: 토큰을 읽는 루프의 측도")]
+        #[summary("Upper bound on the remaining steps: the measure of loops that read tokens")]
         #[effects(pure)]
         fn left(self: &Parser) -> usize {
             self.t.items.len()
         }
 
-        #[summary("항목 앞의 pub은 E0207")]
+        #[summary("pub before an item is E0207")]
         #[effects(alloc)]
         fn no_pub(self: &mut Parser) -> () {
             if self.is_kw("pub") {
@@ -756,7 +756,7 @@ mod parser {
             Some(args)
         }
 
-        #[summary("assume(p(..)); (ADR-0029 §1), assume에서")]
+        #[summary("assume(p(..)); (ADR-0029 §1), at assume")]
         #[effects(alloc)]
         fn parse_assume(self: &mut Parser, lo: source::Span, rationale: Option<ast::Attr>, d: usize) -> Option<StmtOrTail>
             requires d <= 256,
@@ -851,7 +851,7 @@ mod parser {
             self.parse_block_rest(lo, d)
         }
 
-        #[summary("{(자리 lo) 뒤의 블록")]
+        #[summary("Block after { (position lo)")]
         #[effects(alloc)]
         fn parse_block_rest(self: &mut Parser, lo: source::Span, d: usize) -> Option<ast::Block>
             requires d <= 256,
@@ -886,7 +886,7 @@ mod parser {
             Some(ast::Block { stmts: stmts, tail: boxed, span: lo.to(hi) })
         }
 
-        #[summary("assert(..) 뒤의 by (bit_vector) (ADR-0048 §4). 다른 증명기 이름이나 Verus의 by { .. }는 E0516이고 단언은 보통의 것으로 남는다")]
+        #[summary("by (bit_vector) after assert(..) (ADR-0048 §4). Another prover name or Verus's by { .. } is E0516 and the assertion stays an ordinary one")]
         #[effects(alloc)]
         fn parse_by(self: &mut Parser, close: source::Span) -> Option<ast::Prover> {
             if !self.is_kw("by") {
@@ -915,7 +915,7 @@ mod parser {
             None
         }
 
-        #[summary("e as T: 전위 연산자 뒤, * 앞, Rust처럼 (-x as u64는 (-x) as u64, ADR-0095 A4)")]
+        #[summary("e as T: after prefix operators, before *, as in Rust (-x as u64 is (-x) as u64, ADR-0095 A4)")]
         #[effects(alloc)]
         fn parse_cast(self: &mut Parser, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -994,7 +994,7 @@ mod parser {
             Some(Clauses { pre: pre, post: post, measure: measure })
         }
 
-        #[summary("[move] |x: T, ..| -> R requires .., ensures .., { body } (ADR-0053 §1, §2): 매개변수와 결과의 타입을 쓴다 (E0263)")]
+        #[summary("[move] |x: T, ..| -> R requires .., ensures .., { body } (ADR-0053 §1, §2): the types of the parameters and the result are written (E0263)")]
         #[effects(alloc)]
         fn parse_closure(self: &mut Parser, is_move: bool, lo: source::Span, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -1067,7 +1067,7 @@ mod parser {
             Some(ast::ConstDef { attrs: attrs, name: name, ty: ty, value: value, span: lo.to(hi) })
         }
 
-        #[summary("식, 또는 두 식의 범위 lo..hi. 범위는 식이 오는 어디에나 쓸 수 있고, 뜻이 있는 자리는 검사기가 가린다 (E0435)")]
+        #[summary("An expression, or a range lo..hi of two expressions. A range can be written anywhere an expression can, and the checker decides the positions where it has meaning (E0435)")]
         #[effects(alloc)]
         fn parse_expr(self: &mut Parser, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -1190,7 +1190,7 @@ mod parser {
             Some(ast::FnDef { kind: kind, name: name, generics: generics, attrs: attrs, params: params, ret: ret, pre: cl.pre, post: cl.post, measure: cl.measure, body: body, span: span })
         }
 
-        #[summary("for i in lo..hi [invariant ..,] { .. } / lo..=hi (ADR-0049 §2). 반복자(for x in v.iter(), for x in &v)는 E0252")]
+        #[summary("for i in lo..hi [invariant ..,] { .. } / lo..=hi (ADR-0049 §2). Iterators (for x in v.iter(), for x in &v) are E0252")]
         #[effects(alloc)]
         fn parse_for(self: &mut Parser, label: Option<ast::Ident>, d: usize) -> Option<ast::Stmt>
             requires d <= 256,
@@ -1238,7 +1238,7 @@ mod parser {
             Some(ast::Stmt::For(ast::For { label: label, var: var, lo: lo, hi: hi, inclusive: inclusive, invariants: invariants, body: body, span: span }))
         }
 
-        #[summary("<T, U: Copy + geo::Shape> (ADR-0046 §1), 또는 없음. const 매개변수는 언어 밖이다")]
+        #[summary("<T, U: Copy + geo::Shape> (ADR-0046 §1), or none. const parameters are outside the language")]
         #[effects(alloc)]
         fn parse_generics(self: &mut Parser, d: usize) -> Vec<ast::TypeParam>
             requires d <= 256,
@@ -1352,7 +1352,7 @@ mod parser {
             Some(ast::Expr { kind: ast::ExprKind::If(ast::If { cond: Box::new(cond), then: then, els: els }), span: lo.to(hi) })
         }
 
-        #[summary("Rust 습관: if let P = e { a } else { b }. 그것이 뜻하는 match로 읽는다 (P => a, 나머지 => b). 검사기가 그 match를 수정으로 E0225를 낸다")]
+        #[summary("Rust habit: if let P = e { a } else { b }. Read as the match it means (P => a, rest => b). The checker reports E0225 with that match as the fix")]
         #[effects(alloc)]
         fn parse_if_let(self: &mut Parser, lo: source::Span, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -1381,7 +1381,7 @@ mod parser {
             Some(ast::Expr { kind: ast::ExprKind::Match(ast::Match { scrut: Box::new(scrut), arms: arms }), span: span })
         }
 
-        #[summary("impl T { .. } (ADR-0026), 또는 impl Trait for T { .. } (ADR-0046 §2)")]
+        #[summary("impl T { .. } (ADR-0026), or impl Trait for T { .. } (ADR-0046 §2)")]
         #[effects(alloc)]
         fn parse_impl(self: &mut Parser, d: usize) -> Option<ImplItem>
             requires d <= 256,
@@ -1653,7 +1653,7 @@ mod parser {
                         self.unsafe_habit(sp);
                     } else if s == "static" {
                         if self.t.is_kw(1, "mut") {
-                            self.err_fix("E0261", sp, "`static` items are not used", "global mutable state is passed as an argument (DESIGN §4.1 \"효과\")");
+                            self.err_fix("E0261", sp, "`static` items are not used", "global mutable state is passed as an argument (DESIGN §4.1 \"Effects\")");
                         } else {
                             self.err_rep("E0261", sp, "`static` items are not used", "write `const`", "const");
                         }
@@ -1786,7 +1786,7 @@ mod parser {
             Some(lhs)
         }
 
-        #[summary("변형 패턴: T::V, T::V(a, _), Some(x), None, 또는 _ (와일드카드 갈래: 검사기가 그것이 뜻하는 갈래들과 함께 거부한다)")]
+        #[summary("Variant pattern: T::V, T::V(a, _), Some(x), None, or _ (wildcard arm: the checker rejects it together with the arms it means)")]
         #[effects(alloc)]
         fn parse_pat(self: &mut Parser) -> Option<ast::Pat> {
             let lo: source::Span = self.span();
@@ -2161,7 +2161,7 @@ mod parser {
             ast::Program { mods: mods }
         }
 
-        #[summary("forall|x: T, ..| e와 exists|x: T, ..| e (ADR-0079)")]
+        #[summary("forall|x: T, ..| e and exists|x: T, ..| e (ADR-0079)")]
         #[effects(alloc)]
         fn parse_quant(self: &mut Parser, q: ast::Quantifier, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -2398,7 +2398,7 @@ mod parser {
             None
         }
 
-        #[summary("trait Name { fn m(self: &Self) -> T; .. } (ADR-0046 §1). 메서드는 ;로 끝나거나 몸(기본 몸)을 가진다")]
+        #[summary("trait Name { fn m(self: &Self) -> T; .. } (ADR-0046 §1). A method ends with ; or has a body (default body)")]
         #[effects(alloc)]
         fn parse_trait(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::TraitDef>
             requires d <= 256,
@@ -2464,7 +2464,7 @@ mod parser {
             self.parse_type_inner(d + 1)
         }
 
-        #[summary("식의 경로에서 :: 뒤의 <A, B>")]
+        #[summary("<A, B> after :: in an expression path")]
         #[effects(alloc)]
         fn parse_type_args(self: &mut Parser, d: usize) -> Vec<ast::Type>
             requires d <= 256,
@@ -2485,7 +2485,7 @@ mod parser {
             args
         }
 
-        #[summary("struct T { f: U, .. } 또는 enum T { A, B(U, V), .. } (ADR-0026 §1)")]
+        #[summary("struct T { f: U, .. } or enum T { A, B(U, V), .. } (ADR-0026 §1)")]
         #[effects(alloc)]
         fn parse_type_def(self: &mut Parser, attrs: Vec<ast::Attr>, d: usize) -> Option<ast::TypeDef>
             requires d <= 256,
@@ -2766,7 +2766,7 @@ mod parser {
             self.parse_postfix(d)
         }
 
-        #[summary("use a::b::c; (백로그 2V-15): 이름 하나는 검사기가 고쳐 쓰도록 남기고, 그 밖은 E0214")]
+        #[summary("use a::b::c;: a single name is left for the checker to rewrite, anything else is E0214")]
         #[effects(alloc)]
         fn parse_use(self: &mut Parser) -> Option<ast::UseItem> {
             let lo: source::Span = self.span();
@@ -2813,7 +2813,7 @@ mod parser {
             None
         }
 
-        #[summary("where 절 (Rust 습관, E0240): 경계는 가리키는 타입 매개변수에 붙고, 수정이 거기에 써 넣는다 (정규형, 백로그 2T-03). gs는 앞에서 읽은 매개변수이고 수정은 그 <부터 절의 끝까지를 다시 쓴다")]
+        #[summary("where clause (Rust habit, E0240): the bounds attach to the type parameter they refer to, and the fix writes them there (normal form). gs is the parameters read before, and the fix rewrites from their < to the end of the clause")]
         #[effects(alloc)]
         fn parse_where(self: &mut Parser, gs: &mut Vec<ast::TypeParam>, gspan: Option<source::Span>, d: usize) -> ()
             requires d <= 256,
@@ -2910,7 +2910,7 @@ mod parser {
             Some(ast::Stmt::While(ast::While { label: label, cond: cond, invariants: invariants, measure: measure, body: body, span: span }))
         }
 
-        #[summary("이름과 그 뒤의 ::이름들을 한 글로. 이름이 아니면 없음")]
+        #[summary("A name and the ::names after it as one text. None if not a name")]
         #[effects(alloc)]
         fn plain_path(self: &mut Parser) -> Option<String> {
             let mut name: String = self.t.ident(0)?;
@@ -2933,7 +2933,7 @@ mod parser {
             self.t.prev_span()
         }
 
-        #[summary("for 범위의 끝: 그 뒤의 ..는 루프의 것이다")]
+        #[summary("End of a for range: the .. after it belongs to the loop")]
         #[effects(alloc)]
         fn range_bound(self: &mut Parser, d: usize) -> Option<ast::Expr>
             requires d <= 256,
@@ -2958,7 +2958,7 @@ mod parser {
             self.eat_p("]");
         }
 
-        #[summary("단위 안에서 회복: 다음 항목의 시작이나 닫는 } 앞에서 멈춘다")]
+        #[summary("Recovery inside a unit: stops before the start of the next item or the closing }")]
         #[effects(alloc)]
         fn recover_item(self: &mut Parser) -> () {
             let mut depth: usize = 0;
@@ -2994,7 +2994,7 @@ mod parser {
             }
         }
 
-        #[summary("for/loop/match 뒤에, 몸 블록까지 건너뛴다")]
+        #[summary("After for/loop/match, skips to the body block")]
         #[effects(pure)]
         fn recover_loop_body(self: &mut Parser) -> () {
             let mut n: usize = self.left();
@@ -3009,7 +3009,7 @@ mod parser {
             }
         }
 
-        #[summary("블록 안에서 회복: 지금 깊이의 ; 뒤나 } 앞에서 멈춘다")]
+        #[summary("Recovery inside a block: stops after a ; at the current depth or before a }")]
         #[effects(pure)]
         fn recover_stmt(self: &mut Parser) -> () {
             let mut depth: usize = 0;
@@ -3038,7 +3038,7 @@ mod parser {
             }
         }
 
-        #[summary("BMB에 자리가 없는 패턴 꼴의 E0232. 갈래가 남은 변형을 덮어 match가 다른 것을 알리지 않는다")]
+        #[summary("E0232 for a pattern form that has no place in BMB. The arm covers the remaining variants so that match reports nothing else")]
         #[effects(alloc)]
         fn rejected_pat(self: &mut Parser, lo: source::Span, msg: &str, fix: &str) -> ast::Pat {
             self.skip_to_arrow();
@@ -3049,7 +3049,7 @@ mod parser {
             ast::Pat { path: path, binds: Vec::new(), parens: false, origin: ast::PatOrigin::Rejected, span: span }
         }
 
-        #[summary("Rust 습관 (백로그 2D-29): crate::q::g, super::q::g, self::g. 경로는 뿌리부터 단위를 가리키므로 (q::g) 접두사는 E0242이고 뿌리 경로가 그 대체다. 경로는 대체가 만들 대로 이어 읽는다")]
+        #[summary("Rust habit: crate::q::g, super::q::g, self::g. Paths refer to units from the root (q::g), so the prefix is E0242 and the root path is its replacement. The path is read on as the replacement would make it")]
         #[effects(alloc)]
         fn relative_path_prefix(self: &mut Parser) -> Vec<ast::Ident> {
             let mut out: Vec<ast::Ident> = Vec::new();
@@ -3099,7 +3099,7 @@ mod parser {
             out
         }
 
-        #[summary("지금의 절 키워드가 그 목록 앞의 것을 되풀이한다 (invariant a, invariant b,: Dafny의 꼴): 목록이 이어진다 (입력 별칭, ADR-0095 B5). 수정은 키워드를 지우고 목록에 필요한 쉼표를 쓴다")]
+        #[summary("The current clause keyword repeats the one before its list (invariant a, invariant b,: Dafny's form): the list continues (input alias, ADR-0095 B5). The fix deletes the keyword and writes the comma the list needs")]
         #[effects(alloc)]
         fn repeated_keyword(self: &mut Parser) -> () {
             let kw: source::Span = self.span();
@@ -3116,7 +3116,7 @@ mod parser {
             self.diags.aliases.push(diag::fix(diag::new("W0912", span, msg.as_str()), "list the clauses after one keyword", Some(rep)));
         }
 
-        #[summary("여기의 <<나 >>: 붙은 두 < 또는 > 토큰. 렉서가 떼어 두어 Vec<Vec<i64>>가 타입 인자 목록 둘을 닫는다")]
+        #[summary("<< or >> here: two adjacent < or > tokens. The lexer keeps them apart so that Vec<Vec<i64>> closes two type argument lists")]
         #[effects(pure)]
         fn shift_op(self: &Parser) -> Option<ast::BinOp> {
             if !self.t.joined(0) {
@@ -3154,7 +3154,7 @@ mod parser {
             }
         }
 
-        #[summary("이미 연 매개변수 목록을 닫는 >까지 건너뛴다")]
+        #[summary("Skips to the > that closes an already opened parameter list")]
         #[effects(pure)]
         fn skip_angle_from(self: &mut Parser) -> () {
             let mut depth: usize = 1;
@@ -3178,7 +3178,7 @@ mod parser {
             }
         }
 
-        #[summary("지금 토큰에서 시작하는 균형 잡힌 괄호 묶음을 건너뛴다")]
+        #[summary("Skips the balanced bracket group starting at the current token")]
         #[effects(pure)]
         fn skip_group(self: &mut Parser) -> () {
             let which: u8 = if self.is_p("(") {
@@ -3216,7 +3216,7 @@ mod parser {
             }
         }
 
-        #[summary("패턴의 나머지를 갈래의 => 앞까지 건너뛴다")]
+        #[summary("Skips the rest of the pattern up to the arm's =>")]
         #[effects(pure)]
         fn skip_to_arrow(self: &mut Parser) -> () {
             let mut n: usize = self.left();
@@ -3248,22 +3248,22 @@ mod parser {
             }
         }
 
-        #[summary("Rust의 unsafe (ADR-0029 §7): 증명할 수 없는 몸은 근거를 붙인 #[external_body] 함수다")]
+        #[summary("Rust's unsafe (ADR-0029 §7): a body that cannot be proved is a #[external_body] function with a justification attached")]
         #[effects(alloc)]
         fn unsafe_habit(self: &mut Parser, sp: source::Span) -> () {
             self.err_fix("E0215", sp, "`unsafe` is not used: BMB code is proved", "a body that cannot be proved goes in its own function marked `#[external_body]`, with a `#[rationale(kind = .., \"why\")]` before it");
         }
     }
 
-    #[summary("문장이거나 블록의 꼬리 식")]
+    #[summary("A statement or the tail expression of a block")]
     enum StmtOrTail { Stmt(ast::Stmt), Tail(ast::Expr) }
 
-    #[summary("토큰 열과 읽는 자리. 마지막 토큰은 Eof이고 자리는 그것을 넘지 않는다")]
+    #[summary("Token sequence and reading position. The last token is Eof and the position does not pass it")]
     #[invariant(inside)]
     struct Toks { items: Vec<lexer::Token>, pos: usize }
 
     impl Toks {
-        #[summary("자리에서 n째 토큰의 색인. 끝을 넘으면 마지막 토큰")]
+        #[summary("Index of the n-th token from the position. The last token if past the end")]
         #[effects(pure)]
         #[uses(inside)]
         fn at(self: &Toks, n: usize) -> (r: usize)
@@ -3277,7 +3277,7 @@ mod parser {
             }
         }
 
-        #[summary("자리를 to로 되돌린다")]
+        #[summary("Resets the position to to")]
         #[effects(pure)]
         #[uses(inside)]
         fn back(self: &mut Toks, to: usize) -> () {
@@ -3286,7 +3286,7 @@ mod parser {
             }
         }
 
-        #[summary("지금 토큰의 자리를 돌려주고 다음으로 간다. Eof에서는 머문다")]
+        #[summary("Returns the position of the current token and goes to the next. Stays at Eof")]
         #[effects(pure)]
         #[uses(inside)]
         fn bump(self: &mut Toks) -> source::Span {
@@ -3297,7 +3297,7 @@ mod parser {
             sp
         }
 
-        #[summary("오류 메시지에 쓰는 지금 토큰의 이름")]
+        #[summary("Name of the current token, used in error messages")]
         #[effects(alloc)]
         #[uses(inside)]
         fn describe(self: &Toks) -> String {
@@ -3315,7 +3315,7 @@ mod parser {
             }
         }
 
-        #[summary("n째 토큰이 이름이면 그 글")]
+        #[summary("The text of the n-th token if it is a name")]
         #[effects(alloc)]
         fn ident(self: &Toks, n: usize) -> Option<String> {
             match &self.items[self.at(n)].tok {
@@ -3332,7 +3332,7 @@ mod parser {
             }
         }
 
-        #[summary("지금 토큰이 정수 리터럴이면 그 값")]
+        #[summary("The value of the current token if it is an integer literal")]
         #[effects(pure)]
         #[uses(inside)]
         fn int(self: &Toks) -> Option<wide::U128> {
@@ -3350,7 +3350,7 @@ mod parser {
             }
         }
 
-        #[summary("n째 토큰이 이름 k인가")]
+        #[summary("Whether the n-th token is the name k")]
         #[effects(pure)]
         fn is_kw(self: &Toks, n: usize, k: &str) -> bool {
             match &self.items[self.at(n)].tok {
@@ -3367,7 +3367,7 @@ mod parser {
             }
         }
 
-        #[summary("n째 토큰이 구두점 p인가")]
+        #[summary("Whether the n-th token is the punctuation p")]
         #[effects(pure)]
         fn is_p(self: &Toks, n: usize, p: &str) -> bool {
             match &self.items[self.at(n)].tok {
@@ -3384,13 +3384,13 @@ mod parser {
             }
         }
 
-        #[summary("n째 토큰과 그 다음 토큰이 붙어 있는가")]
+        #[summary("Whether the n-th token and the token after it are adjacent")]
         #[effects(pure)]
         fn joined(self: &Toks, n: usize) -> bool {
             self.items[self.at(n)].span.hi == self.items[self.at(n.saturating_add(1))].span.lo
         }
 
-        #[summary("n째 토큰의 종류: 0 이름, 1 정수, 2 실수, 3 문자열, 4 문자, 5 바이트, 6 바이트 문자열, 7 구두점, 8 레이블, 9 끝")]
+        #[summary("Kind of the n-th token: 0 name, 1 integer, 2 float, 3 string, 4 char, 5 byte, 6 byte string, 7 punctuation, 8 label, 9 end")]
         #[effects(pure)]
         fn kind(self: &Toks, n: usize) -> u8 {
             match &self.items[self.at(n)].tok {
@@ -3407,7 +3407,7 @@ mod parser {
             }
         }
 
-        #[summary("지금 토큰이 레이블이면 그 이름")]
+        #[summary("The name of the current token if it is a label")]
         #[effects(alloc)]
         #[uses(inside)]
         fn label(self: &Toks) -> Option<String> {
@@ -3425,7 +3425,7 @@ mod parser {
             }
         }
 
-        #[summary("지금 토큰이 리터럴이면 그 식")]
+        #[summary("The expression of the current token if it is a literal")]
         #[effects(alloc)]
         #[uses(inside)]
         fn literal(self: &Toks) -> Option<ast::ExprKind> {
@@ -3443,7 +3443,7 @@ mod parser {
             }
         }
 
-        #[summary("직전 토큰이 구두점 p인가")]
+        #[summary("Whether the previous token is the punctuation p")]
         #[effects(pure)]
         #[uses(inside)]
         fn prev_is_p(self: &Toks, p: &str) -> bool {
@@ -3464,7 +3464,7 @@ mod parser {
             }
         }
 
-        #[summary("직전 토큰의 자리")]
+        #[summary("Position of the previous token")]
         #[effects(pure)]
         #[uses(inside)]
         fn prev_span(self: &Toks) -> source::Span {
@@ -3475,13 +3475,13 @@ mod parser {
             }
         }
 
-        #[summary("n째 토큰의 자리")]
+        #[summary("Position of the n-th token")]
         #[effects(pure)]
         fn span(self: &Toks, n: usize) -> source::Span {
             self.items[self.at(n)].span
         }
 
-        #[summary("지금 토큰이 문자열 리터럴이면 그 글")]
+        #[summary("The text of the current token if it is a string literal")]
         #[effects(alloc)]
         #[uses(inside)]
         fn string(self: &Toks) -> Option<String> {
@@ -3500,7 +3500,7 @@ mod parser {
         }
     }
 
-    #[summary("gs[g]에 경계들을 더한다: 이미 있는 것(같은 글)은 빼고")]
+    #[summary("Adds bounds to gs[g]: leaving out those already there (same text)")]
     #[effects(alloc)]
     fn add_bounds(gs: &mut Vec<ast::TypeParam>, g: usize, bounds: Vec<Vec<ast::Ident>>) -> ()
         requires g < gs.len(),
@@ -3531,27 +3531,27 @@ mod parser {
         }
     }
 
-    #[summary("op로 묶은 이항 식: 자리는 두 피연산자를 덮는다")]
+    #[summary("Binary expression joined by op: its position covers both operands")]
     #[effects(alloc)]
     fn bin(op: ast::BinOp, l: ast::Expr, r: ast::Expr) -> ast::Expr {
         let span: source::Span = l.span.to(r.span);
         ast::Expr { kind: ast::ExprKind::Binary(op, Box::new(l), Box::new(r)), span: span }
     }
 
-    #[summary("if, 블록, match인가")]
+    #[summary("Whether it is an if, a block or a match")]
     #[effects(pure)]
     fn block_like(e: &ast::Expr) -> bool {
         let t: u8 = ast::tag(&e.kind);
         t == 15 || t == 16 || t == 27
     }
 
-    #[summary("언어의 타입 이름(쓰지 않는 Rust의 것 포함)인가")]
+    #[summary("Whether it is a type name of the language (including Rust's that are not used)")]
     #[effects(pure)]
     fn builtin_type(s: &str) -> bool {
         s == "i64" || s == "u64" || s == "usize" || s == "bool" || s == "i8" || s == "i16" || s == "i32" || s == "i128" || s == "isize" || s == "u8" || s == "u16" || s == "u32" || s == "u128" || s == "f32" || s == "f64" || s == "char" || s == "str"
     }
 
-    #[summary("as의 대상: 정수 타입이면 0이고 이름을 name에 쓴다. f64면 1, 그 밖은 2")]
+    #[summary("Target of as: 0 if an integer type, and writes its name to name. 1 if f64, 2 otherwise")]
     #[effects(alloc)]
     fn cast_target(t: &ast::Type, name: &mut String) -> u8 {
         match &t.kind {
@@ -3583,7 +3583,7 @@ mod parser {
         s
     }
 
-    #[summary("pos가 든 줄의 들여쓰기(줄 처음의 빈칸들)")]
+    #[summary("Indentation of the line containing pos (the spaces at the start of the line)")]
     #[effects(alloc)]
     fn indent_at(text: &str, pos: usize) -> String {
         let mut line: usize = 0;
@@ -3615,7 +3615,7 @@ mod parser {
         t.pos < t.items.len()
     }
 
-    #[summary("이름 붙은 타입이면 그 경로와 인자")]
+    #[summary("Its path and arguments if it is a named type")]
     #[effects(pure)]
     fn into_named(t: ast::Type) -> Option<NamedTy> {
         match t.kind {
@@ -3639,7 +3639,7 @@ mod parser {
         }
     }
 
-    #[summary("글의 길이를 u32로. 소스는 4GiB보다 작다 (source::small)")]
+    #[summary("Length of the text as u32. A source is smaller than 4GiB (source::small)")]
     #[effects(pure)]
     fn len32(s: &str) -> u32 {
         if s.len() < 4294967295 {
@@ -3649,7 +3649,7 @@ mod parser {
         }
     }
 
-    #[summary("기대한 것이 토큰 하나(`;`, `)`, ..)인가: 역따옴표로 싸였고 빈칸이 없다")]
+    #[summary("Whether what was expected is a single token (`;`, `)`, ..): wrapped in backticks and without spaces")]
     #[effects(pure)]
     fn one_token(what: &str) -> bool {
         let n: usize = what.len();
@@ -3668,7 +3668,7 @@ mod parser {
         true
     }
 
-    #[summary("gs에서 이름이 name인 매개변수의 자리. 없으면 gs의 길이")]
+    #[summary("Position in gs of the parameter named name. The length of gs if absent")]
     #[effects(pure)]
     fn param_named(gs: &[ast::TypeParam], name: &str) -> (r: usize)
         ensures r <= gs.len(),
@@ -3686,7 +3686,7 @@ mod parser {
         gs.len()
     }
 
-    #[summary("토큰들에서 프로그램을 읽는다. 진단은 diags에 더한다")]
+    #[summary("Reads a program from the tokens. Diagnostics are added to diags")]
     #[effects(alloc)]
     #[uses(inside)]
     fn parse(toks: Vec<lexer::Token>, diags: &mut diag::Diags, text: &str) -> ast::Program {
@@ -3702,7 +3702,7 @@ mod parser {
         program
     }
 
-    #[summary("경로의 글: 이름들을 ::로 이은 것")]
+    #[summary("Text of a path: the names joined with ::")]
     #[effects(alloc)]
     fn path_text(p: &[ast::Ident]) -> String {
         let mut s: String = String::new();
@@ -3719,7 +3719,7 @@ mod parser {
         s
     }
 
-    #[summary("복합 대입이 두 번 가리켜도 되는 자리: 호출이 없다. f는 남은 깊이")]
+    #[summary("A place that a compound assignment may refer to twice: it has no calls. f is the remaining depth")]
     #[effects(pure)]
     fn plain_place(e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -3766,7 +3766,7 @@ mod parser {
         }
     }
 
-    #[summary("호출이 없는 식인가. f는 남은 깊이")]
+    #[summary("Whether the expression has no calls. f is the remaining depth")]
     #[effects(pure)]
     fn pure_expr(e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -3813,13 +3813,13 @@ mod parser {
         }
     }
 
-    #[summary("파서가 단위나 정의의 이름으로 받지 않는 낱말")]
+    #[summary("Words the parser does not accept as the name of a unit or a definition")]
     #[effects(pure)]
     fn reserved(s: &str) -> bool {
         s == "fn" || s == "spec" || s == "proof" || s == "mod" || s == "let" || s == "mut" || s == "while" || s == "if" || s == "else" || s == "true" || s == "false" || s == "requires" || s == "ensures" || s == "decreases" || s == "invariant" || s == "forall" || s == "exists" || s == "old" || s == "assert" || s == "assume" || s == "return" || s == "for" || s == "loop" || s == "match" || s == "break" || s == "continue" || s == "as" || s == "pub" || s == "struct" || s == "enum" || s == "impl" || s == "trait" || s == "use" || s == "const" || s == "static" || s == "type" || s == "unsafe" || s == "self" || s == "Self" || s == "crate" || s == "super" || s == "where" || s == "ref" || s == "move" || s == "dyn" || s == "in" || s == "async" || s == "await"
     }
 
-    #[summary("인자 없는 한 마디 이름의 타입이면 그 이름")]
+    #[summary("The name if it is a type of a single-segment name without arguments")]
     #[effects(alloc)]
     fn simple_name(t: &ast::Type) -> Option<String> {
         match &t.kind {
@@ -3863,7 +3863,7 @@ mod parser {
         cat3("write `", r, "`")
     }
 
-    #[summary("끝의 공백(유니코드)을 뗀 글")]
+    #[summary("The text with trailing whitespace (Unicode) stripped")]
     #[effects(alloc)]
     fn trim_end(s: &str) -> String {
         let mut end: usize = 0;
@@ -3884,7 +3884,7 @@ mod parser {
         type_text_in(t, 1000)
     }
 
-    #[summary("수신자 수정에 쓰는, 쓴 타입의 글 (단순할 때만). f는 남은 깊이")]
+    #[summary("Text of the written type, used in the receiver fix (only when simple). f is the remaining depth")]
     #[effects(alloc)]
     fn type_text_in(t: &ast::Type, f: usize) -> Option<String>
         decreases f,
@@ -3913,7 +3913,7 @@ mod parser {
         }
     }
 
-    #[summary("(e)의 바깥 괄호가 글 전체를 싸면 그 안: 호출의 인자에는 괄호가 필요 없다")]
+    #[summary("The inside of (e) if its outer parentheses wrap the whole text: a call argument needs no parentheses")]
     #[effects(alloc)]
     fn unparen(x: &str) -> String {
         let n: usize = x.len();
@@ -3938,13 +3938,13 @@ mod parser {
         lexer::cut(x, 1, n - 1)
     }
 
-    #[summary("거부하려고만 알아보는 Rust의 항목")]
+    #[summary("Rust items recognized only to be rejected")]
     #[effects(pure)]
     fn unsupported_item(s: &str) -> bool {
         s == "static" || s == "type" || s == "extern" || s == "unsafe" || s == "macro_rules" || s == "union"
     }
 
-    #[summary("ASCII 대문자로 시작하는가")]
+    #[summary("Whether it starts with an ASCII uppercase letter")]
     #[effects(pure)]
     fn upper_first(s: &str) -> bool {
         s.len() > 0 && s.as_bytes()[0] >= 65 && s.as_bytes()[0] <= 90

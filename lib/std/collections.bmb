@@ -1,4 +1,4 @@
-#[summary("정렬된 모음(Rust `BTreeSet`·`BTreeMap`의 이름과 뜻): 정렬된 Vec 위의 집합과 맵, 키는 오름차순이고 유일하며 옮겨지는 값(`String`)이어도 된다. 넣기·빼기는 배열이 어떻게 바뀌는지 정확히 말한다 (ADR-0092 §2, backlog 4B-02·4B-04)")]
+#[summary("Sorted collections (names and meaning of Rust `BTreeSet`, `BTreeMap`): a set and a map over a sorted Vec; keys are ascending and unique and may be moved values (`String`). Insertion and removal state exactly how the array changes (ADR-0092 §2)")]
 mod collections {
     // The keys are strictly ascending, so each occurs once.
     spec fn strictly<K: Ord>(v: &[K]) -> bool {

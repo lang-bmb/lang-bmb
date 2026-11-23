@@ -1,33 +1,33 @@
-#[summary("정의의 정체성: 해시 참조, 이름은 메타데이터 (ADR-0059 §1) (stage0 compiler/src/identity.rs의 포트, 백로그 4D-03f2). 정의의 정체성(id)은 이름 없는 정규형(fmt의 정체성 글)의 SHA-256이다. 다른 정의(함수, spec fn, 타입, trait)는 그 id로(#<hex>), trait 메서드와 열거형의 변형은 #<id>#k로, 묶는 이름은 묶인 자리로(_0, _1, ..), 필드와 변형은 선언 자리로 쓴다. 타입의 글은 그 타입의 trait impl들을, trait의 글은 제 impl 전부를 담는다(이름으로 가르는 타입: 구조가 같아도 다른 타입이다). 서로 가리키는 정의들은 참조 그래프의 강결합 성분이고 그 안에서 성원은 #self.k다. 성원의 순서(Unison의 규칙): 성분을 지운 글(#self)의 해시, 그다음 갈라짐이 멈출 때까지 다른 성원을 앞 해시로 쓴 글의 해시(색 정제), 남은 동률은 경로로. 성분의 해시는 그 순서의 성원 해시들의 해시이고 성원의 id는 <성분>.k, 혼자인 성분은 제 해시다. trait의 메서드는 메서드의 글(trait의 것을 지운)과 그것을 정의하는 impl 함수들의 해시로 줄 세우고 남은 동률은 이름으로. 열쇠는 종류 숫자(0 정의, 1 타입, 2 trait), 쌍점, 온 경로다: 글의 순서가 stage0의 Key 순서다. 구문은 사본으로 든다(참조를 구조체에 둘 수 없다)")]
+#[summary("Identity of definitions: hash references, names are metadata (ADR-0059 §1) (port of stage0 compiler/src/identity.rs). The identity (id) of a definition is the SHA-256 of its nameless normal form (fmt's identity text). Other definitions (functions, spec fns, types, traits) are written by their id (#<hex>), trait methods and enum variants as #<id>#k, binding names as bound slots (_0, _1, ..), fields and variants as declaration positions. The text of a type contains that type's trait impls, and the text of a trait contains all of its impls (types distinguished by name: types of the same structure are still different types). Definitions that refer to each other are a strongly connected component of the reference graph, and within it a member is #self.k. Order of members (Unison's rule): the hash of the text with the component erased (#self), then, until the splitting stops, the hash of the text with the other members written as their previous hashes (color refinement), remaining ties by path. The hash of a component is the hash of the member hashes in that order, the id of a member is <component>.k, and a singleton component is its own hash. Methods of a trait are ordered by the hash of the method's text (with the trait's items erased) and of the impl functions that define it, remaining ties by name. A key is the kind digit (0 definition, 1 type, 2 trait), a colon, the full path: the order of the texts is stage0's Key order. Syntax is held as copies (references cannot be put in a struct)")]
 mod identity {
-    #[summary("trait impl 블록 하나 (걸어서 모은 것): 단위, 머리, 함수들의 자리와 이름")]
+    #[summary("One trait impl block (collected by walking): unit, head, positions and names of the functions")]
     struct Block { unit: String, head: TraitHead, spans: Vec<source::Span>, names: Vec<String> }
 
-    #[summary("몸이 있는 정의가 놓인 곳: 자유 함수, impl T, trait impl, trait 메서드의 기본 몸(trait의 온 경로)")]
+    #[summary("Where a definition with a body sits: free function, impl T, trait impl, default body of a trait method (the trait's full path)")]
     enum Ctx { Free, Impl(ImplHead), TraitImpl(TraitHead), Default(String) }
 
-    #[summary("bmb hash의 줄 하나")]
+    #[summary("One line of bmb hash")]
     struct DefHash { path: String, id: String, body: String, iface: String }
 
-    #[summary("해시한 것: 해시와, trait이면 메서드 이름의 정체성 순서")]
+    #[summary("What was hashed: the hashes and, for a trait, the identity order of the method names")]
     struct Done { hashes: Hashes, methods: Vec<String> }
 
-    #[summary("해시하는 것 하나: 몸이 있는 정의(함수, spec fn, impl 함수, trait의 기본 몸), 타입 선언, trait")]
+    #[summary("One item to hash: a definition with a body (function, spec fn, impl function, default body of a trait), a type declaration, a trait")]
     struct Ent { unit: String, kind: EntKind }
 
     enum EntKind { Def(ast::FnDef, Ctx), Type(ast::TypeDef), Trait(ast::TraitDef) }
 
-    #[summary("Tarjan의 틀 하나: 마디, 그 후속들, 다음에 볼 후속")]
+    #[summary("One frame of Tarjan: node, its successors, the next successor to visit")]
     struct Frame { v: String, succ: Vec<String>, next: usize }
 
-    #[summary("것 하나의 해시들. id는 sha256:<hex>, 되부름 성분의 k번째 성원이면 sha256:<hex>.k. body는 제 이름 없는 글(성분의 성원은 #self.k), iface는 몸을 뺀 것, caller는 iface에서 #[uses]를 뺀 것(부르는 쪽의 질의가 읽는 것, ADR-0043). 타입과 trait은 셋 다 그 글의 해시이고 spec fn은 iface가 body다(몸이 겉이다)")]
+    #[summary("Hashes of one item. id is sha256:<hex>, or sha256:<hex>.k for the k-th member of a recursive component. body is its own nameless text (members of the component are #self.k), iface is that without the body, caller is iface without #[uses] (what a caller's query reads, ADR-0043). For types and traits all three are the hash of that text, and for a spec fn iface is body (the body is the surface)")]
     struct Hashes { id: String, body: String, iface: String, caller: String }
 
-    #[summary("검사된 프로그램의 정체성들, 물을 때 센다. edges는 참조 그래프의 간선(것의 글이 가리키는 것들), done은 해시한 것")]
+    #[summary("Identities of a checked program, computed when asked. edges are the edges of the reference graph (the items that an item's text refers to), done is what has been hashed")]
     struct Ids { ents: table::Table<Ent>, impls: Vec<ImplInfo>, impls_of_type: table::Table<Vec<usize>>, impls_of_trait: table::Table<Vec<usize>>, edges: table::Table<Vec<String>>, done: table::Table<Done> }
 
     impl Ids {
-        #[summary("start와 그것이 닿는 모든 것을 해시한다 (Tarjan의 알고리즘: 성분을 그것이 가리키는 성분들 뒤에 끝낸다). fuel은 걸음의 한도다")]
+        #[summary("Hashes start and everything it reaches (Tarjan's algorithm: a component is finished after the components it refers to). fuel is the step limit")]
         #[effects(alloc)]
         fn ensure(self: &mut Ids, pr: &mut fmt::Printer, start: &str) -> () {
             if self.done.has(start) {
@@ -94,7 +94,7 @@ mod identity {
             }
         }
 
-        #[summary("밖을 가리키는 참조가 모두 해시된 성분 하나를 해시한다")]
+        #[summary("Hashes one component whose outward references are all hashed")]
         #[effects(alloc)]
         fn finish(self: &mut Ids, pr: &mut fmt::Printer, comp: Vec<String>) -> () {
             if comp.len() == 0 {
@@ -216,7 +216,7 @@ mod identity {
             }
         }
 
-        #[summary("key의 해시들. 프로그램에 그런 것이 없으면 None")]
+        #[summary("Hashes of key. None if the program has no such item")]
         #[effects(alloc)]
         fn get(self: &mut Ids, pr: &mut fmt::Printer, key: &str) -> Option<Hashes> {
             if !self.ents.has(key) {
@@ -229,7 +229,7 @@ mod identity {
             }
         }
 
-        #[summary("trait impl 하나를 한 줄로: impl<..> #trait for <타입> { #trait#k = #fn, .. }")]
+        #[summary("One trait impl on one line: impl<..> #trait for <type> { #trait#k = #fn, .. }")]
         #[effects(alloc)]
         fn impl_line(self: &Ids, pr: &mut fmt::Printer, k: usize) -> String {
             if k >= self.impls.len() {
@@ -258,7 +258,7 @@ mod identity {
             out
         }
 
-        #[summary("impl들의 줄을 글의 순서로 (원천에서의 순서는 뜻이 아니다)")]
+        #[summary("Lines of the impls in text order (order in the source carries no meaning)")]
         #[effects(alloc)]
         fn impl_lines(self: &Ids, pr: &mut fmt::Printer, list: &[usize]) -> String {
             let mut lines: Vec<String> = Vec::new();
@@ -270,7 +270,7 @@ mod identity {
             types::join(sorted(lines.as_slice()).as_slice(), "")
         }
 
-        #[summary("key가 실행 함수(fn)의 정의인가: 그것만 iface와 caller가 body와 다르다")]
+        #[summary("Whether key is the definition of an executable function (fn): only for those do iface and caller differ from body")]
         #[effects(alloc)]
         fn is_exec(self: &Ids, key: &str) -> bool {
             match self.ents.find(key) {
@@ -279,7 +279,7 @@ mod identity {
             }
         }
 
-        #[summary("성분 comp 안에서 trait path의 메서드 순서: 메서드마다 성분을 지운 글과, 그것을 정의하는 impl 함수들의 지운 글의 해시. 동률은 이름으로")]
+        #[summary("Method order of trait path within component comp: per method, the hash of its text with the component erased and of the erased texts of the impl functions that define it. Ties by name")]
         #[effects(alloc)]
         fn method_order(self: &Ids, pr: &mut fmt::Printer, path: &str, comp: &[String]) -> Vec<String> {
             let key: String = types::cat3("2", ":", path);
@@ -311,7 +311,7 @@ mod identity {
             out
         }
 
-        #[summary("key의 글. trait의 메서드는 order(이름들)의 순서로. 참조의 글은 pr.names가 정한다")]
+        #[summary("Text of key. Methods of a trait in the order of order (names). pr.names determines the reference texts")]
         #[effects(alloc)]
         fn print(self: &Ids, pr: &mut fmt::Printer, key: &str, part: &Part, order: &[String]) -> String {
             let at: usize = match self.ents.find(key) {
@@ -326,7 +326,7 @@ mod identity {
             }
         }
 
-        #[summary("key의 글이 가리키는 것들의 참조 글을 pr에 놓는다: 성분 comp의 성원은 member가 말하는 대로(#self, #self<색>, #self.k), 그 밖은 id로(#<hex>). trait의 메서드 순서는 성분의 것(methods)이거나 해시된 것이다. 놓지 않은 것(프로그램의 것이 아닌 것)은 출력기가 #?경로로 쓴다")]
+        #[summary("Places into pr the reference texts of the items that the text of key refers to: members of component comp as member says (#self, #self<color>, #self.k), the rest by id (#<hex>). The method order of a trait is the component's (methods) or the hashed one. Those not placed (not items of the program) are written by the printer as #?path")]
         #[effects(alloc)]
         fn resolve(self: &Ids, pr: &mut fmt::Printer, key: &str, comp: &[String], member: &Member, methods: &table::Table<Vec<String>>) -> () {
             let mut refs: table::Table<fmt::RefRow> = table::new::<fmt::RefRow>();
@@ -337,7 +337,7 @@ mod identity {
             pr.names.refs = refs;
         }
 
-        #[summary("key의 글이 가리키는 것들 (참조 그래프의 간선), 열쇠의 순서로")]
+        #[summary("Items that the text of key refers to (edges of the reference graph), in key order")]
         #[effects(alloc)]
         fn succ(self: &mut Ids, pr: &mut fmt::Printer, key: &str) -> Vec<String> {
             match self.edges.find(key) {
@@ -365,7 +365,7 @@ mod identity {
             out
         }
 
-        #[summary("key의 글: 참조를 comp, member, methods로 풀어 찍는다")]
+        #[summary("Text of key: prints with references resolved by comp, member, methods")]
         #[effects(alloc)]
         fn text(self: &Ids, pr: &mut fmt::Printer, key: &str, comp: &[String], member: &Member, methods: &table::Table<Vec<String>>, part: Part) -> String {
             self.resolve(pr, key, comp, member, methods);
@@ -377,25 +377,25 @@ mod identity {
         }
     }
 
-    #[summary("impl T의 머리: 타입 매개변수, 타입의 이름과 인자")]
+    #[summary("Head of impl T: type parameters, the type's name and arguments")]
     struct ImplHead { generics: Vec<ast::TypeParam>, name: String, args: Vec<ast::Type> }
 
-    #[summary("trait impl 블록: 단위, 타입 매개변수, 타입, trait의 온 경로, 함수들(메서드 이름과 정의의 경로)")]
+    #[summary("trait impl block: unit, type parameters, type, full path of the trait, functions (method name and path of the definition)")]
     struct ImplInfo { unit: String, generics: Vec<ast::TypeParam>, self_ty: ast::Type, trait_path: String, names: Vec<String>, paths: Vec<String> }
 
-    #[summary("해시하는 성분의 성원을 쓰는 법: #self(첫 줄 세우기), #self<해시>(정제), #self.k(마지막 글)")]
+    #[summary("How to write the members of the component being hashed: #self (first ordering), #self<hash> (refinement), #self.k (final text)")]
     enum Member { Erased, Colored(table::Table<String>), At(table::Table<usize>) }
 
-    #[summary("찍는 글: 몸까지, 몸 없이, 부르는 쪽이 읽는 겉")]
+    #[summary("Text to print: with the body, without the body, the surface the caller reads")]
     enum Part { Body, Iface, Caller }
 
-    #[summary("trait impl의 머리: 타입 매개변수, 쓴 trait 경로, 타입")]
+    #[summary("Head of a trait impl: type parameters, the trait path as written, the type")]
     struct TraitHead { generics: Vec<ast::TypeParam>, trait_path: Vec<ast::Ident>, self_ty: ast::Type }
 
-    #[summary("걸으며 모은 것: 함수의 이름의 자리마다(body::DefRow의 자리가 그것이다) 놓인 곳(ctx)과 구문(fns), trait impl 블록들, trait의 온 경로들")]
+    #[summary("Collected while walking: for each position of a function's name (the position of body::DefRow is that) where it sits (ctx) and its syntax (fns), the trait impl blocks, the full paths of traits")]
     struct Walk { ctx: table::Table<Ctx>, fns: table::Table<ast::FnDef>, blocks: Vec<Block>, traits: Vec<String> }
 
-    #[summary("서로 다른 값의 수")]
+    #[summary("Number of distinct values")]
     #[effects(alloc)]
     fn classes(c: &table::Table<String>) -> usize {
         let vals: Vec<String> = sorted(c.items.as_slice());
@@ -410,7 +410,7 @@ mod identity {
         n
     }
 
-    #[summary("단위 m과 그 안 단위를 걸어 타입과 trait을 ents에, 함수의 놓인 곳과 구문, trait impl 블록을 w에 모은다")]
+    #[summary("Walks unit m and its inner units, collecting types and traits into ents, and where functions sit, their syntax and trait impl blocks into w")]
     #[effects(alloc)]
     fn collect(m: &ast::Mod, prefix: &str, ents: &mut table::Table<Ent>, w: &mut Walk, f: usize) -> ()
         decreases f,
@@ -481,7 +481,7 @@ mod identity {
         }
     }
 
-    #[summary("t에 k가 참으로 적혔는가")]
+    #[summary("Whether k is recorded as true in t")]
     #[effects(alloc)]
     fn flag(t: &table::Table<bool>, k: &str) -> bool {
         match t.find(k) {
@@ -490,7 +490,7 @@ mod identity {
         }
     }
 
-    #[summary("새 글을 찍을 채비: 단위 unit, 빈 글, 묶인 이름 없음 (stage0은 글마다 새 출력기를 짓는다)")]
+    #[summary("Setup for printing a new text: unit unit, empty text, no bound names (stage0 builds a new printer per text)")]
     #[effects(alloc)]
     fn fresh(pr: &mut fmt::Printer, unit: &str) -> () {
         pr.out = String::new();
@@ -498,7 +498,7 @@ mod identity {
         pr.reset_binders();
     }
 
-    #[summary("모든 정의와 타입 선언의 정체성 해시, 경로의 순서로 (ADR-0059 §1: bmb hash). p는 검사된 프로그램, 표들은 그 검사기의 것")]
+    #[summary("Identity hashes of all definitions and type declarations, in path order (ADR-0059 §1: bmb hash). p is the checked program, the tables are that checker's")]
     #[effects(alloc)]
     fn hashes(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> Vec<DefHash> {
         let mut keys: Vec<String> = Vec::new();
@@ -538,7 +538,7 @@ mod identity {
         out
     }
 
-    #[summary("sha256: 접두어를 뗀 해시, 참조가 쓰는 꼴")]
+    #[summary("sha256: the hash with the prefix removed, the form references use")]
     #[effects(alloc)]
     fn hex(h: &str) -> String {
         if h.len() >= 7 && lexer::cut(h, 0, 7) == "sha256:" {
@@ -548,7 +548,7 @@ mod identity {
         }
     }
 
-    #[summary("열쇠가 trait의 것인가")]
+    #[summary("Whether the key is a trait's")]
     #[effects(pure)]
     fn is_trait(key: &str) -> bool {
         key.len() > 0 && key.as_bytes()[0] == 50
@@ -563,7 +563,7 @@ mod identity {
         }
     }
 
-    #[summary("trait t의 메서드 name의 선언 자리")]
+    #[summary("Declaration position of method name of trait t")]
     #[effects(pure)]
     fn method_at(t: &ast::TraitDef, name: &str) -> (r: Option<usize>) {
         let mut i: usize = 0;
@@ -578,7 +578,7 @@ mod identity {
         None
     }
 
-    #[summary("trait의 메서드 이름들, 선언의 순서")]
+    #[summary("Method names of the trait, in declaration order")]
     #[effects(alloc)]
     fn method_names(t: &ast::TraitDef) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -590,7 +590,7 @@ mod identity {
         out
     }
 
-    #[summary("프로그램 p의 것들을 모은다: 타입과 trait, 몸이 있는 정의(놓인 곳과 함께), trait impl 블록. w에는 걸으며 모은 것이 남는다(trait의 경로들)")]
+    #[summary("Collects the things of program p: types and traits, definitions with a body (with where they sit), trait impl blocks. w keeps what was collected while walking (the paths of traits)")]
     #[effects(alloc)]
     fn new(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, w: &mut Walk) -> Ids {
         let mut ids: Ids = Ids { ents: table::new::<Ent>(), impls: Vec::new(), impls_of_type: table::new::<Vec<usize>>(), impls_of_trait: table::new::<Vec<usize>>(), edges: table::new::<Vec<String>>(), done: table::new::<Done>() };
@@ -642,7 +642,7 @@ mod identity {
         ids
     }
 
-    #[summary("t에 적힌 k의 수, 없으면 0")]
+    #[summary("The number recorded for k in t, 0 if absent")]
     #[effects(alloc)]
     fn num(t: &table::Table<usize>, k: &str) -> usize {
         match t.find(k) {
@@ -651,7 +651,7 @@ mod identity {
         }
     }
 
-    #[summary("단위 unit에 쓴 타입이 이름 붙은 타입이면 그 온 경로, 아니면 빈 글")]
+    #[summary("If the type written in unit unit is a named type, its full path, otherwise empty text")]
     #[effects(alloc)]
     fn own_type(t: &ast::TypeKind, unit: &str) -> String {
         match t {
@@ -675,7 +675,7 @@ mod identity {
         }
     }
 
-    #[summary("열쇠의 경로 (종류 숫자와 쌍점 뒤)")]
+    #[summary("Path of the key (after the kind digit and the colon)")]
     #[effects(alloc)]
     fn path_of(key: &str) -> String {
         if key.len() >= 2 {
@@ -685,7 +685,7 @@ mod identity {
         }
     }
 
-    #[summary("t의 k의 목록에 v를 붙인다")]
+    #[summary("Appends v to the list of k in t")]
     #[effects(alloc)]
     fn push_at(t: &mut table::Table<Vec<usize>>, k: &str, v: usize) -> () {
         let mut list: Vec<usize> = match t.find(k) {
@@ -696,13 +696,13 @@ mod identity {
         t.insert(k, list);
     }
 
-    #[summary("글 s의 해시")]
+    #[summary("Hash of text s")]
     #[effects(alloc)]
     fn sha(s: &str) -> String {
         sha256::hex(s.as_bytes())
     }
 
-    #[summary("글의 순서로 줄 세운 사본")]
+    #[summary("Copy sorted in text order")]
     #[effects(alloc)]
     fn sorted(xs: &[String]) -> Vec<String> {
         let ord: Vec<usize> = std::slice::sort_indices::<String>(xs);
@@ -717,7 +717,7 @@ mod identity {
         out
     }
 
-    #[summary("단위 unit에 쓴 trait의 온 경로: 한 마디가 그 단위의 trait이면 그것, 아니면 쓴 대로")]
+    #[summary("Full path of the trait written in unit unit: if a single segment is a trait of that unit, that, otherwise as written")]
     #[effects(alloc)]
     fn trait_path(traits: &Vec<String>, unit: &str, path: &[ast::Ident]) -> String {
         let plain: String = fmt::path_str(path);
@@ -729,7 +729,7 @@ mod identity {
         }
     }
 
-    #[summary("타입 선언의 열쇠들: 안 단위 먼저")]
+    #[summary("Keys of type declarations: inner units first")]
     #[effects(alloc)]
     fn type_paths(m: &ast::Mod, prefix: &str, out: &mut Vec<String>, f: usize) -> ()
         decreases f,
@@ -751,7 +751,7 @@ mod identity {
         }
     }
 
-    #[summary("t에 적힌 k의 글, 없으면 빈 글")]
+    #[summary("The text recorded for k in t, empty text if absent")]
     #[effects(alloc)]
     fn word(t: &table::Table<String>, k: &str) -> String {
         match t.find(k) {

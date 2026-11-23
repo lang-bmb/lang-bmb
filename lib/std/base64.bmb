@@ -1,4 +1,4 @@
-#[summary("base64(T4-03): RFC 4648 §4의 표준 알파벳과 '=' 채우기. encode는 명세 enc_at과 같고 정규형이며 dec_byte로 되읽힘, decode는 정규형(§3.5: 버리는 비트가 0)만 받고 명세 dec_byte와 같음이 증명된다. 왕복 decode(encode(s)) == Some(s)도 증명된다")]
+#[summary("base64: the standard alphabet and '=' padding of RFC 4648 §4. encode is the same as the specification enc_at, is a normal form and reads back through dec_byte; decode accepts only the normal form (§3.5: discarded bits are 0) and is proven the same as the specification dec_byte. The round trip decode(encode(s)) == Some(s) is also proven")]
 mod base64 {
     // ---------- the alphabet (§4, table 1) ----------
 

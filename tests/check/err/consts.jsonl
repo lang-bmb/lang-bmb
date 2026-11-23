@@ -11,6 +11,6 @@
 {"code":"E0401","severity":"error","message":"expected `u64`, found `bool`","file":"err/consts.bmb","line":17,"col":24,"end_line":17,"end_col":28}
 {"code":"E0260","severity":"error","message":"constant evaluation failed: `300 as u8` overflows `u8`","file":"err/consts.bmb","line":18,"col":24,"end_line":18,"end_col":33,"fix":{"message":"a `const` is evaluated as Rust evaluates it: change the value, or give the `const` a type that holds it"}}
 {"code":"E0261","severity":"error","message":"`static` items are not used","file":"err/consts.bmb","line":19,"col":5,"end_line":19,"end_col":11,"fix":{"message":"write `const`","replacement":"const"}}
-{"code":"E0261","severity":"error","message":"`static` items are not used","file":"err/consts.bmb","line":20,"col":5,"end_line":20,"end_col":11,"fix":{"message":"global mutable state is passed as an argument (DESIGN §4.1 \"효과\")"}}
+{"code":"E0261","severity":"error","message":"`static` items are not used","file":"err/consts.bmb","line":20,"col":5,"end_line":20,"end_col":11,"fix":{"message":"global mutable state is passed as an argument (DESIGN §4.1 \"Effects\")"}}
 {"code":"E0303","severity":"error","message":"`OVER` hides a visible name of this function","file":"err/consts.bmb","line":27,"col":13,"end_line":27,"end_col":17,"fix":{"message":"choose a new name"}}
 {"code":"E0301","severity":"error","message":"unknown constant `UNKNOWN`","file":"err/consts.bmb","line":32,"col":15,"end_line":32,"end_col":28,"fix":{"message":"an array length is a literal or a `usize` `const`"}}

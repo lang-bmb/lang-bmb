@@ -1,4 +1,4 @@
-#[summary("정수의 10진·16진 읽기와 쓰기(Rust `str::parse`·`from_str_radix`·`Display`·`{:x}`의 뜻): 읽기는 바이트 명세와 정확히 같고, 쓰기는 정규형이며 되읽힌다 (ADR-0092 §2, backlog 4B-02)")]
+#[summary("Decimal and hexadecimal reading and writing of integers (meaning of Rust `str::parse`, `from_str_radix`, `Display`, `{:x}`): reading is exactly the same as the byte specification, writing is a normal form and reads back (ADR-0092 §2)")]
 mod num {
     // ---------- decimal digits ----------
 

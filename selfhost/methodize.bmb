@@ -1,12 +1,12 @@
-#[summary("메서드 호출의 정규형 (ADR-0051, 백로그 2M-02) (stage0 check::methodize의 포트, 백로그 4D-03f3): 경로로 쓴 메서드 호출 T::f(a, ..)를 x.f(..)로 고쳐 쓴다, 그것이 같은 함수를 같은 방식으로 가리킬 때. 고쳐 쓴 것은 다시 검사한다: 정체성 해시(부르는 것을 정체성으로, ADR-0059)가 바뀌거나 검사가 통과하지 않는 정의는 호출을 경로로 남긴다 (타고난 함수가 trait의 것을 가린다, 두 trait이 그 이름을 가진다, ..)")]
+#[summary("Normal form of method calls (ADR-0051) (port of stage0 check::methodize): rewrites a method call written as a path T::f(a, ..) to x.f(..), when that refers to the same function in the same way. The rewritten form is checked again: a definition whose identity hash (callees as identities, ADR-0059) changes or which does not pass the check keeps its calls as paths (an inherent function shadows the trait's, two traits have that name, ..)")]
 mod methodize {
-    #[summary("메서드인 호출 경로: 수신자가 참조인가(&x를 x로 쓴다)와 함수의 온 경로")]
+    #[summary("A call path that is a method: whether the receiver is a reference (&x is written as x) and the full path of the function")]
     struct Callee { by_ref: bool, path: String }
 
-    #[summary("고쳐 쓴 호출 하나: 그 정의의 자리(열쇠)와 그 함수의 온 경로")]
+    #[summary("One rewritten call: the position (key) of its definition and the full path of its function")]
     struct Conv { def: String, path: String }
 
-    #[summary("고쳐 쓰는 손님. keep_calls와 keep_defs는 경로로 남기는 호출과 정의(자리의 열쇠), mp는 걷는 단위, fk는 걷는 정의의 이름의 자리(body::DefRow의 자리), conv는 고쳐 쓴 호출들(호출의 자리에서)")]
+    #[summary("The rewriting visitor. keep_calls and keep_defs are the calls and definitions kept as paths (position keys), mp is the unit being walked, fk is the position of the name of the definition being walked (the position of body::DefRow), conv is the rewritten calls (by call position)")]
     struct Rewrite { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, keep_calls: table::Table<bool>, keep_defs: table::Table<bool>, mp: String, fk: String, conv: table::Table<Conv> }
 
     impl ast::ExprFn for Rewrite {
@@ -44,7 +44,7 @@ mod methodize {
         }
     }
 
-    #[summary("x.f(..)로 쓴 호출들이 가리키는 경로를 모으는 손님 (검사기가 푼 프로그램에서)")]
+    #[summary("Visitor collecting the paths that calls written as x.f(..) refer to (in the program resolved by the checker)")]
     struct Seen { calls: table::Table<String> }
 
     impl ast::ExprFn for Seen {
@@ -90,7 +90,7 @@ mod methodize {
         }
     }
 
-    #[summary("모든 정의와 타입 선언의 몸의 정체성 해시, 경로에서")]
+    #[summary("Identity hashes of the bodies of all definitions and type declarations, by path")]
     #[effects(alloc)]
     fn body_hashes(p: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> table::Table<String> {
         let rows: Vec<identity::DefHash> = identity::hashes(p, fns, adts, tys);
@@ -103,7 +103,7 @@ mod methodize {
         out
     }
 
-    #[summary("e가 경로 호출이면 그것")]
+    #[summary("e itself if it is a path call")]
     #[effects(alloc)]
     fn call_of(e: &ast::Expr) -> Option<ast::Call> {
         match &e.kind {
@@ -145,7 +145,7 @@ mod methodize {
         }
     }
 
-    #[summary("함수들을 차례로 고쳐 쓴다: 남기기로 한 정의는 건너뛴다")]
+    #[summary("Rewrites the functions in turn: definitions decided to be kept are skipped")]
     #[effects(alloc)]
     fn each_fn(fs: &mut Vec<ast::FnDef>, v: &mut Rewrite) -> () {
         let n: usize = fs.len();
@@ -159,7 +159,7 @@ mod methodize {
         }
     }
 
-    #[summary("첫 매개변수 k가 수신자인가: 참조면 Some(true), 값이면 Some(false)")]
+    #[summary("Whether the first parameter k is a receiver: Some(true) if a reference, Some(false) if a value")]
     #[effects(alloc)]
     fn first_param(k: &ast::TypeKind, is_trait: bool, owner: &str) -> Option<bool> {
         match k {
@@ -183,7 +183,7 @@ mod methodize {
         }
     }
 
-    #[summary("자리 x가 자리 c 안에 있는가")]
+    #[summary("Whether position x lies inside position c")]
     #[effects(pure)]
     fn inside(c: source::Span, x: source::Span) -> bool {
         c.file == x.file && c.lo <= x.lo && x.hi <= c.hi
@@ -197,7 +197,7 @@ mod methodize {
         }
     }
 
-    #[summary("단위 mp에 쓴 경로 호출 path가 메서드를 가리키는가: 타고난 impl 함수이거나 trait의 메서드이고, 수신자가 있고, 제 타입 매개변수가 없다")]
+    #[summary("Whether the path call path written in unit mp refers to a method: it is an inherent impl function or a trait method, has a receiver, and has no type parameters of its own")]
     #[effects(alloc)]
     fn method_callee(fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, mp: &str, path: &[ast::Ident], targs: &[ast::TArgs]) -> Option<Callee> {
         let n: usize = path.len();
@@ -251,7 +251,7 @@ mod methodize {
         }
     }
 
-    #[summary("프로그램 src의 메서드 호출을 정규형으로. fns, adts, tys는 src를 검사한 표이고 resolved는 검사기가 푼 src다 (body::check_resolved)")]
+    #[summary("Puts the method calls of program src into normal form. fns, adts, tys are the tables from checking src and resolved is src as resolved by the checker (body::check_resolved)")]
     #[effects(alloc)]
     fn methodize(src: &ast::Program, resolved: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> ast::Program {
         let want: table::Table<String> = body_hashes(resolved, fns, adts, tys);
@@ -342,7 +342,7 @@ mod methodize {
         p
     }
 
-    #[summary("타입 k가 메서드의 임자인가: trait의 메서드면 Self, 타고난 함수면 그 타입")]
+    #[summary("Whether type k is the owner of the method: Self for a trait method, that type for an inherent function")]
     #[effects(alloc)]
     fn own(k: &ast::TypeKind, is_trait: bool, owner: &str) -> bool {
         match k {
@@ -366,7 +366,7 @@ mod methodize {
         }
     }
 
-    #[summary("수신자: 참조로 받는 메서드에 넘긴 &x는 x로")]
+    #[summary("Receiver: &x passed to a method that takes it by reference becomes x")]
     #[effects(alloc)]
     fn receiver(first: &ast::Expr, by_ref: bool) -> ast::Expr {
         match &first.kind {
@@ -408,7 +408,7 @@ mod methodize {
         }
     }
 
-    #[summary("단위 m과 그 안 단위의 메서드 호출을 고쳐 쓴다: 안 단위 먼저, 그다음 자유 함수, impl, trait 선언, trait impl의 순서")]
+    #[summary("Rewrites the method calls of unit m and its inner units: inner units first, then in the order free functions, impls, trait declarations, trait impls")]
     #[effects(alloc)]
     fn rewrite_mod(m: &mut ast::Mod, prefix: &str, v: &mut Rewrite, f: usize) -> ()
         decreases f,
@@ -454,13 +454,13 @@ mod methodize {
         }
     }
 
-    #[summary("상자 안의 식의 사본")]
+    #[summary("Copy of the expression inside the box")]
     #[effects(alloc)]
     fn unboxed(x: &Box<ast::Expr>) -> ast::Expr {
         ast::Expr { kind: x.kind.clone(), span: x.span }
     }
 
-    #[summary("t에 적힌 k의 글, 없으면 빈 글")]
+    #[summary("The text recorded for k in t, empty text if absent")]
     #[effects(alloc)]
     fn word(t: &table::Table<String>, k: &str) -> String {
         match t.find(k) {

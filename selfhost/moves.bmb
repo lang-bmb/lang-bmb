@@ -1,27 +1,27 @@
-#[summary("움직이는 값의 소유 (stage0 compiler/src/moves.rs의 포트, 백로그 4D-03e9; ADR-0031 §2, ADR-0047 §2): Vec, Box, 그것을 담은 데이터 타입의 지역 변수는 값으로 쓰면 옮겨지고, 옮긴 뒤의 사용은 E0413이다. 구조체 지역 변수의 필드는 따로 옮겨진다(경로 s.buf마다 상태). 길이 만나는 곳마다 모든 길에서 가졌거나 모든 길에서 옮겼어야 한다(E0414). 그래서 값이 놓이는 자리가 글로 정해지고, 이 패스가 그것을 코드 생성에 적어 준다")]
+#[summary("Ownership of moving values (port of stage0 compiler/src/moves.rs; ADR-0031 §2, ADR-0047 §2): a local variable of Vec, Box, or a data type holding them is moved when used by value, and a use after the move is E0413. Fields of a struct local are moved separately (state per path s.buf). Wherever control paths join, it must have been owned on all paths or moved on all paths (E0414). So the place where a value is dropped is determined by the text, and this pass records it for code generation")]
 mod moves {
-    #[summary("check의 결과: 진단과 놓는 자리")]
+    #[summary("Result of check: diagnostics and drop places")]
     struct Checked { diags: Vec<diag::Diag>, info: MoveInfo }
 
-    #[summary("if나 match의 가지 하나의 끝: 상태, 함수를 떠났는가, 끝나는 자리의 열쇠")]
+    #[summary("End of one branch of an if or match: state, whether it left the function, key of the place where it ends")]
     struct End { state: State, dead: bool, key: String }
 
-    #[summary("함수 하나를 볼 때 읽는 것: 매개변수와 지역 변수의 타입(이름은 함수 안에서 하나다, E0303), 식의 타입, 데이터 타입, Copy 없는 타입 매개변수")]
+    #[summary("What is read when looking at one function: types of parameters and local variables (a name is unique within a function, E0303), expression types, data types, type parameters without Copy")]
     struct Env { locals: table::Table<ast::TypeKind>, types: table::Table<ast::TypeKind>, adts: table::Table<types::Adt>, moving: Vec<String> }
 
-    #[summary("자리의 열쇠와 거기서 놓는 경로들")]
+    #[summary("Key of a place and the paths dropped there")]
     struct Keyed { key: String, names: Vec<String> }
 
-    #[summary("함수 하나의 소유 값이 놓이는 자리 (열쇠는 자리). drops: 블록마다 그 끝에서 아직 가진 지역 변수(함수의 몸은 매개변수도). replaces: 가진 값을 바꾸는 대입. arm_drops: match 갈래마다 끝에서 아직 가진 묶음(필드가 옮겨졌으면 남은 필드). consumed: 살필 값을 옮기는 match와 ?. partial_replaces: 일부가 옮겨진 자리의 대입이 놓는 남은 필드. exits: return·break·continue·?가 놓는 것. branch_drops: 다른 가지가 옮긴 것을 이 가지의 끝에서 놓는다 (ADR-0081)")]
+    #[summary("Places where the owned values of one function are dropped (the key is the place). drops: per block, the local variables still owned at its end (for the function body, parameters too). replaces: assignments that replace an owned value. arm_drops: per match arm, the bindings still owned at the end (the remaining fields if a field was moved). consumed: match and ? that move the scrutinee. partial_replaces: the remaining fields dropped by an assignment to a partly moved place. exits: what return·break·continue·? drop. branch_drops: what another branch moved is dropped at the end of this branch (ADR-0081)")]
     struct MoveInfo { drops: table::Table<Vec<String>>, replaces: Vec<String>, arm_drops: table::Table<Vec<String>>, consumed: Vec<String>, partial_replaces: table::Table<Vec<String>>, exits: table::Table<Vec<String>>, branch_drops: table::Table<Vec<String>> }
 
-    #[summary("걷는 동안의 상태. dead: 지금의 길이 함수나 루프를 떠났다(뒤는 돌지 않고 만남은 이 길을 빼고 본다). ghost: proof 블록 안(값을 읽기만 한다). spec: 명세 자리(옮긴 지역 변수를 옮길 때의 값으로 읽는다, ADR-0098)")]
+    #[summary("State while walking. dead: the current control path has left the function or loop (what follows does not run and joins exclude this path). ghost: inside a proof block (values are only read). spec: specification position (a moved local variable is read as its value at the move, ADR-0098)")]
     struct Mv { state: State, dead: bool, loops: Vec<MvLoop>, diags: Vec<diag::Diag>, info: MoveInfo, ghost: bool, in_spec: bool }
 
-    #[summary("break나 continue가 떠날 수 있는 루프: 레이블, 그 앞에 살아 있던 이름들, break들이 떠나며 남긴 상태, continue들이 돌아가며 남긴 상태")]
+    #[summary("A loop that break or continue can leave: label, the names live before it, the states left by breaks on leaving, the states left by continues on going back")]
     struct MvLoop { labelled: bool, label: String, outer: Vec<String>, breaks: Vec<State>, continues: Vec<State> }
 
-    #[summary("경로마다 가졌는가 옮겼는가. 이름의 순서로 둔다 (stage0의 BTreeMap<String, St>)")]
+    #[summary("Whether each path is owned or moved. Kept in name order (stage0's BTreeMap<String, St>)")]
     struct State { names: Vec<String>, moved: Vec<bool> }
 
     #[summary("x = e")]
@@ -73,7 +73,7 @@ mod moves {
         }
     }
 
-    #[summary("필드에 대입: 지역 변수의 필드는 제 상태가 있다(옮겨졌을 수 있고 구조체는 아닐 수 있다). 그 밖의 필드는 참조 뒤나 Box 안의 값이다")]
+    #[summary("Assignment to a field: a field of a local variable has its own state (it may have been moved and may not be a struct). Other fields are values behind a reference or inside a Box")]
     #[effects(alloc)]
     fn assign_field(m: &mut Mv, env: &Env, a: &ast::Assign, base: &ast::Expr, owned: bool, f: usize) -> ()
         decreases f,
@@ -87,7 +87,7 @@ mod moves {
         }
     }
 
-    #[summary("자리 e가 &mut 매개변수를 지나 닿는가 (지역 변수의 Box를 지나는 것은 아니다: 그것은 통째로 옮겨진다)")]
+    #[summary("Whether place e is reached through a &mut parameter (not through a Box of a local variable: that is moved whole)")]
     #[effects(alloc)]
     fn behind_mut(env: &Env, e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -134,7 +134,7 @@ mod moves {
         }
     }
 
-    #[summary("블록: 그 값(꼬리)은 Rust처럼 옮겨져 나간다. 끝에서 이 블록이 선언한 지역 변수 가운데 아직 가진 것을 놓는다")]
+    #[summary("Block: its value (the tail) is moved out as in Rust. At the end, drops the local variables this block declared that are still owned")]
     #[effects(alloc)]
     fn block(m: &mut Mv, env: &Env, b: &ast::Block, f: usize) -> ()
         decreases f,
@@ -175,7 +175,7 @@ mod moves {
         }
     }
 
-    #[summary("실행 함수의 이동을 검사하고 진단과 놓는 자리를 돌려준다")]
+    #[summary("Checks the moves of executable functions and returns diagnostics and drop places")]
     #[effects(alloc)]
     fn check(d: &ast::FnDef, env: &Env) -> Checked {
         let mut m: Mv = Mv { state: empty(), dead: false, loops: Vec::new(), diags: Vec::new(), info: MoveInfo { drops: table::new::<Vec<String>>(), replaces: Vec::new(), arm_drops: table::new::<Vec<String>>(), consumed: Vec::new(), partial_replaces: table::new::<Vec<String>>(), exits: table::new::<Vec<String>>(), branch_drops: table::new::<Vec<String>>() }, ghost: false, in_spec: false };
@@ -196,7 +196,7 @@ mod moves {
         Checked { diags: m.diags, info: m.info }
     }
 
-    #[summary("p 아래의 필드 상태를 잊는다 (통째로 대입된다)")]
+    #[summary("Forgets the field states under p (it is assigned whole)")]
     #[effects(alloc)]
     fn clear(s: &mut State, p: &str) -> () {
         let pre: String = types::cat2(p, ".");
@@ -214,7 +214,7 @@ mod moves {
         s.moved = moved;
     }
 
-    #[summary("값에 clone이 있는가 (String, 복사되는 원소의 Vec)")]
+    #[summary("Whether the value has clone (String, Vec of copyable elements)")]
     #[effects(alloc)]
     fn clonable(env: &Env, t: &ast::TypeKind) -> bool {
         match t {
@@ -238,7 +238,7 @@ mod moves {
         }
     }
 
-    #[summary("*x: 옮기는 값을 참조나 Box에서 꺼낼 수 없다 (&mut 뒤면 E0239, 아니면 E0413)")]
+    #[summary("*x: a moving value cannot be taken out of a reference or Box (E0239 behind &mut, otherwise E0413)")]
     #[effects(alloc)]
     fn deref_expr(m: &mut Mv, env: &Env, e: &ast::Expr, x: &ast::Expr, moves: bool, f: usize) -> ()
         decreases f,
@@ -265,7 +265,7 @@ mod moves {
         expr(m, env, x, false, f - 1);
     }
 
-    #[summary("가진 지역 변수나 필드 p에서 놓을 경로들: 그것 자신, 또는 일부가 옮겨졌으면 아직 가진 필드 가운데 메모리를 가진 것들")]
+    #[summary("Paths to drop from an owned local variable or field p: itself, or if partly moved, those still-owned fields that hold memory")]
     #[effects(alloc)]
     fn drop_paths(m: &Mv, env: &Env, p: &str, f: usize) -> Vec<String>
         decreases f,
@@ -302,7 +302,7 @@ mod moves {
         State { names: Vec::new(), moved: Vec::new() }
     }
 
-    #[summary("식: moves면 그 값이 옮겨져 나간다 (let의 초기값, 대입의 오른쪽, 호출의 인자, 블록의 값). 지나서 읽는 것(v.len(), v[i], &v, *b, b.f)은 옮기지 않는다")]
+    #[summary("Expression: if moves, its value is moved out (initializer of a let, right side of an assignment, argument of a call, value of a block). Reading through (v.len(), v[i], &v, *b, b.f) does not move")]
     #[effects(alloc)]
     fn expr(m: &mut Mv, env: &Env, e: &ast::Expr, moves: bool, f: usize) -> ()
         decreases f,
@@ -372,7 +372,7 @@ mod moves {
         }
     }
 
-    #[summary("x.f: 지역 구조체의 필드는 따로 옮겨지거나 읽힌다. 그 밖의 필드는 참조 뒤나 Box 안이라 꺼낼 수 없다")]
+    #[summary("x.f: a field of a local struct is moved or read separately. Other fields are behind a reference or inside a Box and cannot be taken out")]
     #[effects(alloc)]
     fn field_expr(m: &mut Mv, env: &Env, e: &ast::Expr, base: &ast::Expr, moves: bool, f: usize) -> ()
         decreases f,
@@ -387,7 +387,7 @@ mod moves {
         }
     }
 
-    #[summary("구조체 타입 t의 필드 name의 타입")]
+    #[summary("Type of field name of struct type t")]
     #[effects(alloc)]
     fn field_ty(env: &Env, t: &ast::TypeKind, name: &str) -> Option<ast::TypeKind> {
         let path: String = match types::named_path(t) {
@@ -403,7 +403,7 @@ mod moves {
         }
     }
 
-    #[summary("for: while처럼 (ADR-0049 §2), 끝은 정수다")]
+    #[summary("for: like while (ADR-0049 §2), the bounds are integers")]
     #[effects(alloc)]
     fn for_stmt(m: &mut Mv, env: &Env, fr: &ast::For, f: usize) -> ()
         decreases f,
@@ -436,7 +436,7 @@ mod moves {
         }
     }
 
-    #[summary("그 자리에 둘 새 값: Vec은 Vec::new(), Option은 None, 그 밖에는 없다")]
+    #[summary("Fresh value to put in that place: Vec::new() for Vec, None for Option, none otherwise")]
     #[effects(alloc)]
     fn fresh_value(t: &ast::TypeKind) -> String {
         match t {
@@ -480,7 +480,7 @@ mod moves {
         }
     }
 
-    #[summary("if: 조건, 그리고 두 가지의 만남. else가 없으면 다른 길은 if 자신이라, then이 옮긴 것을 거기서 놓을 수 없다 (E0414)")]
+    #[summary("if: the condition, then the join of the two branches. Without else the other control path is the if itself, so what then moved cannot be dropped there (E0414)")]
     #[effects(alloc)]
     fn if_expr(m: &mut Mv, env: &Env, e: &ast::Expr, i: &ast::If, f: usize) -> ()
         decreases f,
@@ -500,7 +500,7 @@ mod moves {
         }
     }
 
-    #[summary("e가 *x나 x.f면 x")]
+    #[summary("x if e is *x or x.f")]
     #[effects(alloc)]
     fn inner_of(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -542,7 +542,7 @@ mod moves {
         }
     }
 
-    #[summary("자식 프로세스인가 (또는 그 참조): 주인이 하나이고 clone이 없다 (ADR-0091 §2)")]
+    #[summary("Whether it is a child process (or a reference to one): it has one owner and no clone (ADR-0091 §2)")]
     #[effects(alloc)]
     fn is_child(t: &ast::TypeKind) -> bool {
         let v: ast::TypeKind = types::value(t);
@@ -616,7 +616,7 @@ mod moves {
         }
     }
 
-    #[summary("두 길의 만남: 떠난 길은 만남에 닿지 않는다")]
+    #[summary("Join of two control paths: a path that left does not reach the join")]
     #[effects(alloc)]
     fn join(m: &mut Mv, a: State, a_dead: bool, b: State, b_dead: bool, span: source::Span) -> () {
         if a_dead && b_dead {
@@ -634,7 +634,7 @@ mod moves {
         }
     }
 
-    #[summary("if나 match의 가지들의 만남. 어떤 가지에서는 가졌고 다른 가지에서는 옮긴 경로는, 가진 가지마다 그 끝에서 놓고(branch_drops) 만남 뒤에는 옮긴 것이다 (ADR-0081)")]
+    #[summary("Join of the branches of an if or match. A path owned in some branch and moved in another is dropped at the end of each branch that owns it (branch_drops) and is moved after the join (ADR-0081)")]
     #[effects(alloc)]
     fn join_branches(m: &mut Mv, env: &Env, paths: &[End]) -> () {
         let mut reaching: Vec<usize> = Vec::new();
@@ -722,7 +722,7 @@ mod moves {
         m.state = out;
     }
 
-    #[summary("break나 continue: 루프 안에서 선언되어 아직 가진 지역 변수는 이 나가는 길에서 놓고, 나머지의 상태는 루프의 출구나 머리로 간다")]
+    #[summary("break or continue: local variables declared inside the loop and still owned are dropped on this exit path, and the state of the rest goes to the loop's exit or head")]
     #[effects(alloc)]
     fn jump(m: &mut Mv, env: &Env, span: source::Span, label: &Option<ast::Ident>, brk: bool) -> () {
         let mut found: bool = false;
@@ -762,7 +762,7 @@ mod moves {
         }
     }
 
-    #[summary("자리의 열쇠: 파일, 시작, 끝을 열 자리씩 (body::span_key와 같다: 표의 열쇠 순서가 stage0의 (file, lo, hi) 순서다)")]
+    #[summary("Key of a place: file, start, end with ten digits each (same as body::span_key: the table's key order is stage0's (file, lo, hi) order)")]
     #[effects(alloc)]
     fn key(s: source::Span) -> String {
         let mut out: String = String::new();
@@ -772,7 +772,7 @@ mod moves {
         out
     }
 
-    #[summary("x?와 return: 값이 나가고, 아직 가진 나머지는 이 나가는 길에서 놓는다")]
+    #[summary("x? and return: the value goes out, and the rest still owned is dropped on this exit path")]
     #[effects(alloc)]
     fn leave(m: &mut Mv, env: &Env, span: source::Span) -> () {
         let owned: Vec<String> = owned_now(m, env);
@@ -781,7 +781,7 @@ mod moves {
         }
     }
 
-    #[summary("e가 값으로 지역 구조체의 일부를 이름하고 그 지역 변수가 살펴지고 있으면 그 경로")]
+    #[summary("If e names part of a local struct by value and that local variable is being scrutinized, its path")]
     #[effects(alloc)]
     fn local_field(m: &Mv, env: &Env, e: &ast::Expr) -> Option<String> {
         match path_of(env, e, 1000000000) {
@@ -790,7 +790,7 @@ mod moves {
         }
     }
 
-    #[summary("루프의 머리로 돌아가는 상태들(몸의 끝에 닿았으면 그것, 그리고 continue마다)을 머리와 견준다: 한쪽에서 가졌고 다른 쪽에서 옮긴 지역 변수는 E0414이고 루프 뒤에는 옮긴 것이다")]
+    #[summary("Compares the states going back to the loop head (the end of the body if reached, and each continue) with the head: a local variable owned on one side and moved on the other is E0414 and is moved after the loop")]
     #[effects(alloc)]
     fn loop_backs(m: &mut Mv, head: &State, continues: &[State], out: &mut State, span: source::Span) -> () {
         let end: State = std::mem::replace(&mut m.state, empty());
@@ -829,7 +829,7 @@ mod moves {
         }
     }
 
-    #[summary("loop: break만이 떠난다. 하나도 없으면 끝나지 않는다")]
+    #[summary("loop: only break leaves. With none it does not terminate")]
     #[effects(alloc)]
     fn loop_expr(m: &mut Mv, env: &Env, e: &ast::Expr, lp: &ast::Loop, f: usize) -> ()
         decreases f,
@@ -872,7 +872,7 @@ mod moves {
         }
     }
 
-    #[summary("match: 갈래가 소유 페이로드를 묶으면 살필 값이 옮겨진다. 참조 뒤나 필드에서 묶어 내는 것은 꺼내는 것이다 (E0413, 참조를 match하라). 갈래마다 묶음을 가진 채 시작하고, 끝에서 아직 가진 것을 놓는다")]
+    #[summary("match: if an arm binds an owned payload, the scrutinee is moved. Binding out from behind a reference or from a field is taking out (E0413, match on a reference). Each arm starts owning its bindings, and drops what is still owned at the end")]
     #[effects(alloc)]
     fn match_expr(m: &mut Mv, env: &Env, e: &ast::Expr, mt: &ast::Match, f: usize) -> ()
         decreases f,
@@ -941,13 +941,13 @@ mod moves {
         }
     }
 
-    #[summary("E0414: 어떤 길에서는 옮겼고 다른 길에서는 아니다")]
+    #[summary("E0414: moved on some control path and not on another")]
     #[effects(alloc)]
     fn maybe_moved(m: &mut Mv, name: &str, span: source::Span, how: &str) -> () {
         m.diags.push(diag::fix(diag::new("E0414", span, types::cat4("`", name, "` is moved ", how).as_str()), types::cat3("move or assign `", name, "` on every path: an owned value is dropped at a point fixed by the program text (ADR-0031 §2)").as_str(), None));
     }
 
-    #[summary("두 상태의 만남: 한 길에서 가졌고 다른 길에서 옮긴 지역 변수는 E0414다 (그리고 여기부터 옮긴 것). 필드는 옮긴 것만 남긴다 (가진 것은 물려받는다)")]
+    #[summary("Join of two states: a local variable owned on one control path and moved on the other is E0414 (and moved from here on). For fields only the moved ones are kept (owned ones are inherited)")]
     #[effects(alloc)]
     fn merge(m: &mut Mv, a: &State, b: &State, span: source::Span) -> () {
         let mut all: Vec<String> = a.names.clone();
@@ -976,7 +976,7 @@ mod moves {
         m.state = out;
     }
 
-    #[summary("p 아래에서 옮겨진 필드 경로 (p.f..), 이름의 순서로 첫 것")]
+    #[summary("Field path moved under p (p.f..), the first in name order")]
     #[effects(alloc)]
     fn moved_part(s: &State, p: &str) -> Option<String> {
         let pre: String = types::cat2(p, ".");
@@ -990,7 +990,7 @@ mod moves {
         None
     }
 
-    #[summary("식 e의 값이 움직이는가")]
+    #[summary("Whether the value of expression e moves")]
     #[effects(alloc)]
     fn moves_ty(env: &Env, e: &ast::Expr) -> bool {
         match env.types.find(key(e.span).as_str()) {
@@ -999,7 +999,7 @@ mod moves {
         }
     }
 
-    #[summary("E0239: &mut 뒤에서 소유 값을 꺼냈다. 고침은 std::mem::replace로 새 값을 그 자리에 둔다 (ADR-0047 §2)")]
+    #[summary("E0239: an owned value was taken out from behind &mut. The fix puts a fresh value in that place with std::mem::replace (ADR-0047 §2)")]
     #[effects(alloc)]
     fn out_of_mut(m: &mut Mv, env: &Env, e: &ast::Expr) -> () {
         let place: String = fmt::expr_text(e);
@@ -1015,7 +1015,7 @@ mod moves {
         }
     }
 
-    #[summary("패턴이 묶는 이름 가운데 움직이는 값을 가진 것")]
+    #[summary("Names bound by the pattern that hold a moving value")]
     #[effects(alloc)]
     fn owned_binds(env: &Env, p: &ast::Pat) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -1030,7 +1030,7 @@ mod moves {
         out
     }
 
-    #[summary("살아 있는 지역 변수와 매개변수마다의 가진 경로 (return)")]
+    #[summary("Owned paths for each live local variable and parameter (return)")]
     #[effects(alloc)]
     fn owned_now(m: &Mv, env: &Env) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -1044,7 +1044,7 @@ mod moves {
         out
     }
 
-    #[summary("지역 변수 name이 움직이는 값을 갖는가")]
+    #[summary("Whether local variable name holds a moving value")]
     #[effects(alloc)]
     fn owns(env: &Env, name: &str) -> bool {
         match env.locals.find(name) {
@@ -1067,7 +1067,7 @@ mod moves {
         std::num::push_u64(out, x);
     }
 
-    #[summary("경로의 마지막 마디를 뺀 앞")]
+    #[summary("The path without its last segment")]
     #[effects(alloc)]
     fn parent_of(p: &str) -> String {
         let mut last: usize = 0;
@@ -1081,14 +1081,14 @@ mod moves {
         lexer::cut(p, 0, last)
     }
 
-    #[summary("E0433: 필드 part가 옮겨진 뒤에 p를 통째로 썼다. 한 번만 알린다: 여기부터는 통째로 쓴 것으로 친다")]
+    #[summary("E0433: p was used whole after field part was moved. Reported only once: from here on it counts as used whole")]
     #[effects(alloc)]
     fn partly_moved(m: &mut Mv, p: &str, part: &str, span: source::Span) -> () {
         m.diags.push(diag::fix(diag::new("E0433", span, types::cat5("`", p, "` is used after its field `", part, "` was moved").as_str()), types::cat3("assign `", part, "` again before this use, or use the other fields").as_str(), None));
         clear(&mut m.state, p);
     }
 
-    #[summary("e가 값으로 지역 구조체의 일부를 이름하면 그 필드 경로: s, s.f, s.f.g (참조나 Box를 지나지 않는다)")]
+    #[summary("The field path if e names part of a local struct by value: s, s.f, s.f.g (does not pass through a reference or Box)")]
     #[effects(alloc)]
     fn path_of(env: &Env, e: &ast::Expr, f: usize) -> Option<String>
         decreases f,
@@ -1135,7 +1135,7 @@ mod moves {
         }
     }
 
-    #[summary("필드 경로 p의 타입")]
+    #[summary("Type of field path p")]
     #[effects(alloc)]
     fn path_ty(env: &Env, p: &str) -> Option<ast::TypeKind> {
         let parts: Vec<String> = split_dots(p);
@@ -1167,7 +1167,7 @@ mod moves {
         }
     }
 
-    #[summary("가진 자리 p에 대입할 때 놓는 것: 옛 값 통째, 또는 일부가 옮겨졌으면 아직 가진 필드들")]
+    #[summary("What is dropped when assigning to owned place p: the whole old value, or the fields still owned if part was moved")]
     #[effects(alloc)]
     fn replace_at(m: &mut Mv, env: &Env, p: &str, span: source::Span) -> () {
         if status_in(&m.state, p) != 1 {
@@ -1183,7 +1183,7 @@ mod moves {
         }
     }
 
-    #[summary("경로의 첫 마디")]
+    #[summary("First segment of a path")]
     #[effects(alloc)]
     fn root_of(n: &str) -> String {
         for k in 0..n.len()
@@ -1196,7 +1196,7 @@ mod moves {
         String::from(n)
     }
 
-    #[summary("&&, ||, ==>의 오른쪽은 돌지 않을 수 있다: 건너뛴 길과 만난다")]
+    #[summary("The right side of &&, ||, ==> may not run: joins with the skipped path")]
     #[effects(alloc)]
     fn short_circuit(m: &mut Mv, env: &Env, e: &ast::Expr, l: &ast::Expr, r: &ast::Expr, f: usize) -> ()
         decreases f,
@@ -1238,7 +1238,7 @@ mod moves {
         }
     }
 
-    #[summary("xs를 바이트 순서로, 같은 것은 하나만")]
+    #[summary("xs in byte order, equal ones only once")]
     #[effects(alloc)]
     fn sorted_set(xs: &[String]) -> Vec<String> {
         let s: Vec<String> = decls::sorted(xs);
@@ -1253,7 +1253,7 @@ mod moves {
         out
     }
 
-    #[summary("명세 식 (ADR-0098): 옮긴 지역 변수를 읽는다")]
+    #[summary("Specification expression (ADR-0098): reads a moved local variable")]
     #[effects(alloc)]
     fn spec_expr(m: &mut Mv, env: &Env, e: &ast::Expr, f: usize) -> ()
         decreases f,
@@ -1267,7 +1267,7 @@ mod moves {
         m.in_spec = was;
     }
 
-    #[summary("a.b.c를 점으로 나눈 마디들")]
+    #[summary("Segments of a.b.c split at the dots")]
     #[effects(alloc)]
     fn split_dots(p: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -1284,7 +1284,7 @@ mod moves {
         out
     }
 
-    #[summary("n의 자리 (이름의 순서)")]
+    #[summary("Position of n (order of the names)")]
     #[effects(pure)]
     fn st_at(s: &State, n: &str) -> (r: Option<usize>)
         ensures match r { None => true, Some(i) => i < s.names.len() && i < s.moved.len(), },
@@ -1323,7 +1323,7 @@ mod moves {
         s.moved = moved;
     }
 
-    #[summary("n을 가졌다(false)거나 옮겼다(true)로. 이름의 순서를 지킨다")]
+    #[summary("Sets n to owned (false) or moved (true). Keeps the order of the names")]
     #[effects(alloc)]
     fn st_set(s: &mut State, n: &str, moved: bool) -> () {
         match st_at(s, n) {
@@ -1347,7 +1347,7 @@ mod moves {
         true
     }
 
-    #[summary("필드 경로 p의 상태: 0은 살피지 않는 지역 변수, 1은 가졌다, 2는 옮겼다 (그것이나 앞 마디가 옮겨졌으면)")]
+    #[summary("State of field path p: 0 is a local variable not tracked, 1 is owned, 2 is moved (if it or a preceding segment was moved)")]
     #[effects(alloc)]
     fn status_in(s: &State, p: &str) -> u8 {
         let mut found: u8 = 0;
@@ -1370,7 +1370,7 @@ mod moves {
         found
     }
 
-    #[summary("문장")]
+    #[summary("Statement")]
     #[effects(alloc)]
     fn stmt(m: &mut Mv, env: &Env, s: &ast::Stmt, f: usize) -> ()
         decreases f,
@@ -1391,7 +1391,7 @@ mod moves {
         }
     }
 
-    #[summary("구조체 타입 t의 필드 이름들 (구조체가 아니면 없다)")]
+    #[summary("Field names of struct type t (none if not a struct)")]
     #[effects(alloc)]
     fn struct_fields(env: &Env, t: &ast::TypeKind) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -1405,7 +1405,7 @@ mod moves {
         out
     }
 
-    #[summary("표의 k에 xs를 덧붙인다 (없으면 만든다)")]
+    #[summary("Appends xs to k in the table (creates it if absent)")]
     #[effects(alloc)]
     fn table_extend(t: &mut table::Table<Vec<String>>, k: &str, xs: &[String]) -> () {
         let mut all: Vec<String> = match t.find(k) {
@@ -1416,7 +1416,7 @@ mod moves {
         t.insert(k, all);
     }
 
-    #[summary("필드 경로 p의 사용 (지역 변수나 그 필드). moves면 옮긴다")]
+    #[summary("Use of field path p (a local variable or its field). Moves it if moves")]
     #[effects(alloc)]
     fn use_path(m: &mut Mv, p: &str, span: source::Span, moves: bool) -> () {
         if m.in_spec || m.ghost {
@@ -1437,7 +1437,7 @@ mod moves {
         }
     }
 
-    #[summary("지역 변수의 사용. 옮긴 뒤면 E0413 (한 번 알리고 여기부터 가진 것으로 친다)")]
+    #[summary("Use of a local variable. E0413 if after a move (reported once and treated as owned from here on)")]
     #[effects(alloc)]
     fn use_var(m: &mut Mv, env: &Env, id: &ast::Ident, span: source::Span, moves: bool) -> () {
         if m.in_spec || m.ghost {
@@ -1456,7 +1456,7 @@ mod moves {
         }
     }
 
-    #[summary("while: 머리의 상태, 조건, 몸, 그리고 돌아가는 길과 break들의 만남")]
+    #[summary("while: the state at the head, the condition, the body, and the join of the path back and the breaks")]
     #[effects(alloc)]
     fn while_stmt(m: &mut Mv, env: &Env, w: &ast::While, f: usize) -> ()
         decreases f,

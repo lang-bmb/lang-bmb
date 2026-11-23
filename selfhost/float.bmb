@@ -1,4 +1,4 @@
-#[summary("10진 글과 f64(비트 꼴) 사이의 정확한 변환: 읽기는 가장 가까운 값(동률은 짝수), 쓰기는 같은 값으로 되읽히는 가장 짧은 글(Rust의 str::parse와 {:?}). stage0이 Rust 표준 라이브러리에서 받던 것 (백로그 4D-18)")]
+#[summary("Exact conversion between decimal text and f64 (bit form): reading gives the nearest value (ties to even), writing gives the shortest text that reads back as the same value (Rust's str::parse and {:?}). What stage0 got from the Rust standard library")]
 mod float {
     const INF: u64 = 9218868437227405312;
     const TWO52: u64 = 4503599627370496;
@@ -16,7 +16,7 @@ mod float {
         }
     }
 
-    #[summary("x의 비트 수(0은 0)")]
+    #[summary("Number of bits of x (0 for 0)")]
     #[effects(pure)]
     fn bit_len(x: u64) -> (r: u64)
         ensures r <= 64,
@@ -35,7 +35,7 @@ mod float {
         k
     }
 
-    #[summary("자리 글자들의 값, lim에서 멈춘다")]
+    #[summary("Value of the digit characters, stops at lim")]
     #[effects(pure)]
     fn capped(d: &[u8], lim: u64) -> (r: u64)
         requires lim <= 1000000000000000000,
@@ -59,7 +59,7 @@ mod float {
         v
     }
 
-    #[summary("비트가 bits인 f64를 Rust의 {:?}가 쓰는 글: 되읽으면 같은 값인 가장 짧은 자리들, 1e16 이상이거나 1e-4 미만이면 지수 꼴")]
+    #[summary("Text that Rust's {:?} writes for the f64 whose bits are bits: the shortest digits that read back as the same value, exponent form if at least 1e16 or below 1e-4")]
     #[effects(alloc)]
     fn debug(bits: u64) -> String {
         let mut out: String = String::new();
@@ -138,7 +138,7 @@ mod float {
         out
     }
 
-    #[summary("q * 2^-s(sticky면 그보다 조금 큰 값)에 가장 가까운 f64의 비트. q는 63비트나 64비트")]
+    #[summary("Bits of the f64 nearest to q * 2^-s (a slightly larger value if sticky). q is 63 or 64 bits")]
     #[effects(pure)]
     fn pack(q: u64, sticky: bool, s: i64) -> u64 {
         if s > 100000 || s < -100000 {
@@ -193,7 +193,7 @@ mod float {
         (e + 1022) as u64 * TWO52 + mant
     }
 
-    #[summary("리터럴 int.frac e[-]exp의 값에 가장 가까운 f64의 비트(자리는 ASCII 숫자, 다른 바이트는 건너뛴다). 너무 큰 값은 무한대의 비트")]
+    #[summary("Bits of the f64 nearest to the value of the literal int.frac e[-]exp (digits are ASCII digits, other bytes are skipped). Too large a value gives the bits of infinity")]
     #[effects(alloc)]
     fn parse(int: &[u8], frac: &[u8], exp_neg: bool, exp: &[u8]) -> u64 {
         if int.len() > 4294967295 || frac.len() > 4294967295 {
@@ -288,7 +288,7 @@ mod float {
         }
     }
 
-    #[summary("num / den에 가장 가까운 f64의 비트. den은 0이 아니다")]
+    #[summary("Bits of the f64 nearest to num / den. den is not 0")]
     #[effects(alloc)]
     fn ratio(num: &big::Big, den: &big::Big) -> u64 {
         if big::is_zero(num) || big::is_zero(den) {
@@ -324,7 +324,7 @@ mod float {
         pack(q, !big::is_zero(&n), s)
     }
 
-    #[summary("digits(자리 값들)에 1을 더한다. 모두 9면 1과 0들이 되고 자리가 하나 늘어 k가 1 는다(Rust의 round_up)")]
+    #[summary("Adds 1 to digits (digit values). If all are 9 they become 1 and 0s, with one more digit, so k grows by 1 (Rust's round_up)")]
     #[effects(alloc)]
     fn rounded_up(d: &[u8], k: i64) -> Shortest
         requires k > -100000, k < 100000,
@@ -369,7 +369,7 @@ mod float {
         Shortest { digits: out, k: k }
     }
 
-    #[summary("mant * 2^exp을 그 이웃과 가르는 가장 짧은 자리들: 값은 0.d1d2.. * 10^k. 구간은 (mant - minus, mant + plus) * 2^exp이고 inclusive면 끝을 포함한다(Rust의 strategy::dragon::format_shortest)")]
+    #[summary("Shortest digits that separate mant * 2^exp from its neighbors: the value is 0.d1d2.. * 10^k. The interval is (mant - minus, mant + plus) * 2^exp and includes its ends if inclusive (Rust's strategy::dragon::format_shortest)")]
     #[effects(alloc)]
     fn shortest(m: u64, minus: u64, plus: u64, exp: i64, inclusive: bool) -> Shortest {
         let none: Vec<u8> = Vec::new();

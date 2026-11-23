@@ -1,34 +1,34 @@
-#[summary("프로그램이 다른 정의를 이름으로 드는 모든 자리와 모든 선언 이름을 걷는다 (stage0 compiler/src/refs.rs의 포트, 백로그 4D-03b). 자리마다 손님이 이름을 고칠 수 있다")]
+#[summary("Walks every position where the program refers to another definition by name and every declaration name (port of stage0 compiler/src/refs.rs). At each position the visitor can rewrite the name")]
 mod refs {
-    #[summary("걷는 손님 (stage0의 trait Rewrite)")]
+    #[summary("The walking visitor (stage0's trait Rewrite)")]
     trait Rewrite {
-        #[summary("선언 이름")]
+        #[summary("Declaration name")]
         #[effects(alloc)]
         fn decl(self: &mut Self, unit: &[String], kind: DeclKind, owner: &[String], name: &mut ast::Ident) -> ();
 
-        #[summary("메서드 호출 x.f(..)의 이름: 수신자의 타입으로만 함수를 가리킨다 (ADR-0051)")]
+        #[summary("Name of a method call x.f(..): refers to a function only through the receiver's type (ADR-0051)")]
         #[effects(alloc)]
         fn method(self: &mut Self, call: source::Span, name: &mut ast::Ident) -> ();
 
-        #[summary("단위 unit에서 타입 매개변수 tparams가 보이는 자리 site에 쓴 경로 segs. 마디와 그 수를 고칠 수 있다")]
+        #[summary("Path segs written at site site in unit unit, where type parameters tparams are visible. The segments and their number can be changed")]
         #[effects(alloc)]
         fn path(self: &mut Self, segs: &mut Vec<String>, site: Site, unit: &[String], tparams: &[String]) -> ();
 
-        #[summary("변수 읽기")]
+        #[summary("Variable read")]
         #[effects(alloc)]
         fn var(self: &mut Self, name: &mut String) -> ();
     }
 
-    #[summary("걷다가 만난 선언 이름의 종류. owner는 ImplFn이면 그 타입의 이름 하나, TraitFn이면 그 trait의 이름 하나, TraitImplFn이면 쓴 그대로의 trait 경로, 나머지는 비어 있다")]
+    #[summary("Kind of a declaration name met while walking. owner is the single name of the type for ImplFn, the single name of the trait for TraitFn, the trait path as written for TraitImplFn, and empty for the rest")]
     enum DeclKind { Fn, Type, ImplTy, ImplFn, Trait, TraitFn, TraitImplFn }
 
-    #[summary("경로를 쓴 자리: 그 경로가 정의를 어떻게 가리킬 수 있는지를 정한다")]
+    #[summary("Site where a path is written: determines how the path can refer to a definition")]
     enum Site { Call, Type, Struct, Variant, Bound }
 
-    #[summary("걷는 자리: 지금 단위와 보이는 타입 매개변수")]
+    #[summary("Where the walk is: the current unit and the visible type parameters")]
     struct Walker { unit: Vec<String>, tparams: Vec<String> }
 
-    #[summary("속성이 드는 spec fn들 (#[uses(..)], #[invariant(..)])")]
+    #[summary("The spec fns an attribute refers to (#[uses(..)], #[invariant(..)])")]
     #[effects(alloc)]
     fn attr_targets<R: Rewrite>(w: &Walker, r: &mut R, a: &mut ast::Attr) -> () {
         let n: usize = a.args.len();
@@ -43,7 +43,7 @@ mod refs {
         }
     }
 
-    #[summary("이름이 name인 속성마다 attr_targets")]
+    #[summary("attr_targets for each attribute named name")]
     #[effects(alloc)]
     fn attrs_named<R: Rewrite>(w: &Walker, r: &mut R, attrs: &mut Vec<ast::Attr>, name: &str) -> () {
         let n: usize = attrs.len();
@@ -56,7 +56,7 @@ mod refs {
         }
     }
 
-    #[summary("블록의 문장과 꼬리 식")]
+    #[summary("Statements and tail expression of a block")]
     #[effects(alloc)]
     fn block<R: Rewrite>(w: &Walker, r: &mut R, b: &mut ast::Block, f: usize) -> ()
         decreases f,
@@ -83,7 +83,7 @@ mod refs {
         opt_box::<R>(w, r, &mut b.tail, f - 1);
     }
 
-    #[summary("식 하나와 그 안")]
+    #[summary("One expression and its inside")]
     #[effects(alloc)]
     fn expr<R: Rewrite>(w: &Walker, r: &mut R, e: &mut ast::Expr, f: usize) -> ()
         decreases f,
@@ -131,7 +131,7 @@ mod refs {
         }
     }
 
-    #[summary("식들을 차례로")]
+    #[summary("Expressions in order")]
     #[effects(alloc)]
     fn exprs<R: Rewrite>(w: &Walker, r: &mut R, xs: &mut Vec<ast::Expr>, f: usize) -> ()
         decreases f,
@@ -147,7 +147,7 @@ mod refs {
         }
     }
 
-    #[summary("함수들: 선언 이름을 손님에게, 그리고 함수를 걷는다")]
+    #[summary("Functions: the declaration name to the visitor, then walks the function")]
     #[effects(alloc)]
     fn fns_decl<R: Rewrite>(w: &mut Walker, r: &mut R, fs: &mut Vec<ast::FnDef>, unit: &[String], kind: DeclKind, owner: &[String]) -> () {
         let n: usize = fs.len();
@@ -159,7 +159,7 @@ mod refs {
         }
     }
 
-    #[summary("함수 하나: 타입 매개변수, #[uses], 시그니처, 계약, 측도, 몸")]
+    #[summary("One function: type parameters, #[uses], signature, contract, measure, body")]
     #[effects(alloc)]
     fn function<R: Rewrite>(w: &mut Walker, r: &mut R, d: &mut ast::FnDef) -> () {
         let depth: usize = w.tparams.len();
@@ -179,7 +179,7 @@ mod refs {
         w.tparams.truncate(depth);
     }
 
-    #[summary("타입 매개변수들을 보이게 하고 그 경계를 걷는다")]
+    #[summary("Makes the type parameters visible and walks their bounds")]
     #[effects(alloc)]
     fn generics<R: Rewrite>(w: &mut Walker, r: &mut R, gs: &mut Vec<ast::TypeParam>) -> () {
         let n: usize = gs.len();
@@ -196,7 +196,7 @@ mod refs {
         }
     }
 
-    #[summary("이름들의 경로를 고친다. 앞에 붙은 마디는 첫 마디의 자리를 받는다")]
+    #[summary("Rewrites a path of names. Segments added in front take the position of the first segment")]
     #[effects(alloc)]
     fn idents<R: Rewrite>(w: &Walker, r: &mut R, path: &mut Vec<ast::Ident>, site: Site) -> () {
         let before: usize = path.len();
@@ -225,7 +225,7 @@ mod refs {
         *path = out;
     }
 
-    #[summary("impl T { .. }: 타입의 이름, 타입 인자, 함수들")]
+    #[summary("impl T { .. }: name of the type, type arguments, functions")]
     #[effects(alloc)]
     fn impl_block<R: Rewrite>(w: &mut Walker, r: &mut R, i: &mut ast::Impl, unit: &[String]) -> () {
         let none: Vec<String> = Vec::new();
@@ -239,7 +239,7 @@ mod refs {
         w.tparams.truncate(depth);
     }
 
-    #[summary("마디들을 ::로 이은 글")]
+    #[summary("Text of the segments joined with ::")]
     #[effects(alloc)]
     fn join_path(s: &[String]) -> String {
         let mut out: String = String::new();
@@ -265,7 +265,7 @@ mod refs {
         }
     }
 
-    #[summary("단위 m과 그 안 단위: 선언과 모든 참조")]
+    #[summary("Unit m and the units inside it: declarations and all references")]
     #[effects(alloc)]
     fn module<R: Rewrite>(w: &mut Walker, r: &mut R, m: &mut ast::Mod, prefix: &[String], f: usize) -> ()
         decreases f,
@@ -317,7 +317,7 @@ mod refs {
         }
     }
 
-    #[summary("있으면 그 식을")]
+    #[summary("The expression, if present")]
     #[effects(alloc)]
     fn opt<R: Rewrite>(w: &Walker, r: &mut R, o: &mut Option<ast::Expr>, f: usize) -> ()
         decreases f,
@@ -331,7 +331,7 @@ mod refs {
         }
     }
 
-    #[summary("있으면 그 식을")]
+    #[summary("The expression, if present")]
     #[effects(alloc)]
     fn opt_box<R: Rewrite>(w: &Walker, r: &mut R, o: &mut Option<Box<ast::Expr>>, f: usize) -> ()
         decreases f,
@@ -345,7 +345,7 @@ mod refs {
         }
     }
 
-    #[summary("a::b::c를 마디들로 (Rust의 split(\"::\")와 같다: 빈 글은 빈 마디 하나)")]
+    #[summary("a::b::c into segments (same as Rust's split(\"::\"): an empty text is one empty segment)")]
     #[effects(alloc)]
     fn split_path(s: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -367,7 +367,7 @@ mod refs {
         out
     }
 
-    #[summary("trait 선언: 이름과 메서드들")]
+    #[summary("trait declaration: name and methods")]
     #[effects(alloc)]
     fn trait_block<R: Rewrite>(w: &mut Walker, r: &mut R, t: &mut ast::TraitDef, unit: &[String]) -> () {
         let none: Vec<String> = Vec::new();
@@ -383,7 +383,7 @@ mod refs {
         }
     }
 
-    #[summary("impl Trait for T { .. }: trait의 경로, 타입, 함수들 (owner는 쓴 그대로의 trait 경로)")]
+    #[summary("impl Trait for T { .. }: path of the trait, type, functions (owner is the trait path as written)")]
     #[effects(alloc)]
     fn trait_impl_block<R: Rewrite>(w: &mut Walker, r: &mut R, i: &mut ast::TraitImpl, unit: &[String]) -> () {
         let depth: usize = w.tparams.len();
@@ -398,7 +398,7 @@ mod refs {
         w.tparams.truncate(depth);
     }
 
-    #[summary("타입 하나와 그 안")]
+    #[summary("One type and its inside")]
     #[effects(alloc)]
     fn ty<R: Rewrite>(w: &Walker, r: &mut R, t: &mut ast::Type, f: usize) -> ()
         decreases f,
@@ -427,7 +427,7 @@ mod refs {
         }
     }
 
-    #[summary("타입 선언의 필드와 페이로드의 타입")]
+    #[summary("Types of the fields and payloads of a type declaration")]
     #[effects(alloc)]
     fn type_body<R: Rewrite>(w: &Walker, r: &mut R, k: &mut ast::TypeDefKind) -> () {
         match k {
@@ -436,7 +436,7 @@ mod refs {
         }
     }
 
-    #[summary("타입 선언: 이름, #[invariant]의 술어, 필드와 페이로드의 타입")]
+    #[summary("Type declaration: name, predicate of #[invariant], types of the fields and payloads")]
     #[effects(alloc)]
     fn type_decl<R: Rewrite>(w: &mut Walker, r: &mut R, td: &mut ast::TypeDef, unit: &[String]) -> () {
         let none: Vec<String> = Vec::new();
@@ -448,7 +448,7 @@ mod refs {
         w.tparams.truncate(depth);
     }
 
-    #[summary("타입들을 차례로")]
+    #[summary("Types in order")]
     #[effects(alloc)]
     fn types<R: Rewrite>(w: &Walker, r: &mut R, ts: &mut Vec<ast::Type>, f: usize) -> ()
         decreases f,
@@ -464,7 +464,7 @@ mod refs {
         }
     }
 
-    #[summary("프로그램의 모든 단위를 손님 r로 걷는다")]
+    #[summary("Walks every unit of the program with visitor r")]
     #[effects(alloc)]
     fn walk<R: Rewrite>(p: &mut ast::Program, r: &mut R) -> () {
         let mut w: Walker = Walker { unit: Vec::new(), tparams: Vec::new() };

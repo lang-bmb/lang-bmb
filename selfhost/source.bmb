@@ -1,4 +1,4 @@
-#[summary("소스 파일과 바이트 구간: 파일 번호, 줄의 시작, 줄·열 (stage0 compiler/src/source.rs의 포트, 백로그 4D-02)")]
+#[summary("Source files and byte spans: file number, line starts, line·column (port of stage0 compiler/src/source.rs)")]
 mod source {
     const CAPTURE: u32 = 1073741824;
     const CONST_VALUES: u32 = 2147483648;
@@ -22,7 +22,7 @@ mod source {
             (self.files.len() - 1) as u32
         }
 
-        #[summary("파일 id의 바이트 pos의 줄과 열(1부터, 열은 글자 수). 컴파일러가 만든 파일(표에 없는 id)은 빈 파일 하나로 읽는다")]
+        #[summary("Line and column of byte pos of file id (from 1, column in characters). A file made by the compiler (an id not in the table) is read as one empty file")]
         #[effects(pure)]
         #[uses(file_ok)]
         fn line_col(self: &SourceMap, id: u32, pos: u32) -> Pos {
@@ -55,7 +55,7 @@ mod source {
             Pos { line: (lo + 1) as u32, col: (col + 1) as u32 }
         }
 
-        #[summary("파일 id의 이름을 JSON 문자열로 덧붙인다(컴파일러가 만든 파일은 <generated>)")]
+        #[summary("Appends the name of file id as a JSON string (<generated> for a file made by the compiler)")]
         #[effects(alloc)]
         fn push_name(self: &SourceMap, out: &mut String, id: u32) -> () {
             if id as usize >= self.files.len() {
@@ -83,7 +83,7 @@ mod source {
         }
     }
 
-    #[summary("text[a..b]의 글자 수: 글자를 시작하는 바이트의 수")]
+    #[summary("Number of characters in text[a..b]: the number of bytes that start a character")]
     #[effects(pure)]
     fn chars(text: &str, a: usize, b: usize) -> (r: usize)
         requires a <= b, b <= text.len(),
@@ -115,7 +115,7 @@ mod source {
         text.len() < 4294967295
     }
 
-    #[summary("text의 줄들이 시작하는 바이트")]
+    #[summary("Bytes at which the lines of text start")]
     #[effects(alloc)]
     fn starts(text: &str) -> (r: Vec<u32>)
         requires small(text),

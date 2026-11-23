@@ -156,7 +156,7 @@ pub fn add(sm: &mut SourceMap, program: &mut Program, diags: &mut Diags) {
         name: ident(UNIT),
         attrs: vec![Attr {
             name: ident("summary"),
-            args: vec![AttrArg::Str("표준 라이브러리 (ADR-0092)".into(), span)],
+            args: vec![AttrArg::Str("Standard library (ADR-0092)".into(), span)],
             span,
         }],
         fns: Vec::new(),

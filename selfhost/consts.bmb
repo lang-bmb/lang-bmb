@@ -1,18 +1,18 @@
-#[summary("const 항목 (ADR-0052): 모으기, 평가, 그리고 이름으로 쓴 배열 길이와 반복 횟수를 값으로 고쳐 쓰기 (stage0 compiler/src/consts.rs의 포트, 백로그 4D-03c). 초기값은 상수 식이다: 호출도 루프도 없어 평가는 끝나고, Rust의 규칙을 따르며 실패(넘침, 0으로 나눔, 폭 이상의 시프트, 범위 밖 변환)는 E0260이다. 정수는 부호와 크기(Num)로 든다: 모든 정수 타입의 값이 거기 들고, 거기 들지 않는 결과는 어느 타입에서도 넘침이다")]
+#[summary("const items (ADR-0052): collection, evaluation, and rewriting array lengths and repeat counts written as names into values (port of stage0 compiler/src/consts.rs). An initializer is a constant expression: with no calls and no loops evaluation terminates, it follows Rust's rules, and failure (overflow, division by 0, shift by the width or more, out-of-range conversion) is E0260. An integer is held as sign and magnitude (Num): the values of every integer type fit there, and a result that does not fit there is overflow in any type")]
 mod consts {
-    #[summary("match 갈래가 묶은 이름과 값")]
+    #[summary("Name and value bound by a match arm")]
     struct Bind { name: String, v: CVal }
 
-    #[summary("variant의 결과: hit가 아니면 경로가 변형을 가리키지 않는다")]
+    #[summary("Result of variant: if not hit, the path does not refer to a variant")]
     struct Built { hit: bool, v: Option<CVal> }
 
-    #[summary("상수의 값")]
+    #[summary("Value of a constant")]
     enum CVal { Int(Num, ast::IntTy), Bool(bool), Char(u32), Array(Vec<CVal>), Data(Data) }
 
-    #[summary("const 항목: 단위, 선언한 타입, 값 (평가하지 못했으면 None: 오류는 보고했다)")]
+    #[summary("const item: unit, declared type, value (None if it could not be evaluated: the error was reported)")]
     struct Const { unit: String, ty: ast::TypeKind, value: Option<CVal> }
 
-    #[summary("반복 횟수 [e; N]의 N을 값으로 고쳐 쓰는 손님")]
+    #[summary("Visitor that rewrites the N of a repeat count [e; N] into a value")]
     struct Counts { at: Vec<source::Span>, n: Vec<u64> }
 
     impl ast::ExprFn for Counts {
@@ -58,20 +58,20 @@ mod consts {
         }
     }
 
-    #[summary("구조체(variant가 None, 필드는 선언 순서)나 열거형의 변형(페이로드는 필드 0, 1, ..). ty는 타입의 전체 경로, 또는 Option·Result")]
+    #[summary("Struct (variant is None, fields in declaration order) or enum variant (payload is fields 0, 1, ..). ty is the full path of the type, or Option·Result")]
     struct Data { ty: String, variant: Option<String>, fields: Vec<DataField> }
 
     struct DataField { name: String, v: CVal }
 
     struct Def { unit: String, c: ast::ConstDef }
 
-    #[summary("평가기. done은 평가한 것(None은 실패), stack은 평가 중인 const(바깥이 먼저), env는 match 갈래가 묶은 이름(안쪽이 뒤)")]
+    #[summary("Evaluator. done is what has been evaluated (None is failure), stack the consts being evaluated (outer first), env the names bound by match arms (inner last)")]
     struct Eval { defs: table::Table<Def>, tydefs: table::Table<TyDef>, named: Vec<LenAt>, done: table::Table<Option<CVal>>, stack: Vec<String>, env: Vec<Vec<Bind>>, diags: diag::Diags }
 
-    #[summary("이름으로 쓴 반복 횟수: 횟수의 자리, 이름, 단위")]
+    #[summary("Repeat count written as a name: position of the count, name, unit")]
     struct LenAt { at: source::Span, path: Vec<String>, unit: String }
 
-    #[summary("이름으로 쓴 배열 길이 [T; N]을 값으로 고쳐 쓰는 손님")]
+    #[summary("Visitor that rewrites an array length [T; N] written as a name into a value")]
     struct Lens { consts: table::Table<Const>, diags: Vec<diag::Diag> }
 
     impl ast::TypeFn for Lens {
@@ -83,20 +83,20 @@ mod consts {
 
     struct NamedTy { name: String, ty: ast::TypeKind }
 
-    #[summary("정수: 부호와 크기. 0은 neg가 아니다")]
+    #[summary("Integer: sign and magnitude. 0 is not neg")]
     struct Num { neg: bool, mag: u64 }
 
-    #[summary("타입 매개변수의 이름과 그 인자")]
+    #[summary("Name of a type parameter and its argument")]
     struct Subst { names: Vec<String>, tys: Vec<ast::TypeKind> }
 
-    #[summary("쓴 그대로의 구조체나 열거형 선언: 검사기 전에 초기값의 리터럴에 타입을 주려고")]
+    #[summary("Struct or enum declaration as written: to give types to literals in initializers before the checker")]
     struct TyDef { unit: String, generics: Vec<String>, kind: TyDefKind }
 
     enum TyDefKind { Struct(Vec<NamedTy>), Enum(Vec<VariantTy>) }
 
     struct VariantTy { name: String, tys: Vec<ast::TypeKind> }
 
-    #[summary("두 정수의 합. 부호와 크기에 들지 않으면 None")]
+    #[summary("Sum of two integers. None if it does not fit in sign and magnitude")]
     #[effects(pure)]
     fn add(a: Num, b: Num) -> Option<Num> {
         if a.neg == b.neg {
@@ -111,7 +111,7 @@ mod consts {
         Some(num(b.neg, b.mag - a.mag))
     }
 
-    #[summary("기대한 Option·Result의 k번째 인자")]
+    #[summary("k-th argument of the expected Option·Result")]
     #[effects(alloc)]
     fn arg(want: &Option<ast::TypeKind>, ty: &str, k: usize) -> Option<ast::TypeKind> {
         match want {
@@ -143,7 +143,7 @@ mod consts {
         }
     }
 
-    #[summary("같은 타입의 두 값의 산술·비트 연산")]
+    #[summary("Arithmetic·bitwise operation on two values of the same type")]
     #[effects(alloc)]
     fn arith(ev: &mut Eval, span: source::Span, op: &ast::BinOp, l: &CVal, r: &CVal) -> Option<CVal> {
         let mut sym: String = String::new();
@@ -163,7 +163,7 @@ mod consts {
         fail(ev, span, m2.as_str())
     }
 
-    #[summary("갈래의 패턴이 값의 필드에 묶는 이름들")]
+    #[summary("Names the arm's pattern binds to the fields of the value")]
     #[effects(alloc)]
     fn arm_binds(p: &ast::Pat, v: &CVal) -> Vec<Bind> {
         let mut out: Vec<Bind> = Vec::new();
@@ -177,7 +177,7 @@ mod consts {
         out
     }
 
-    #[summary("타입 t 안의 [T; N]을, 안쪽부터, 값으로")]
+    #[summary("Rewrites the [T; N] inside type t, innermost first, into values")]
     #[effects(alloc)]
     fn array_lens(v: &mut Lens, unit: &str, t: &mut ast::Type, f: usize) -> ()
         decreases f,
@@ -216,7 +216,7 @@ mod consts {
         }
     }
 
-    #[summary("이항 연산")]
+    #[summary("Binary operation")]
     #[effects(alloc)]
     fn binary(ev: &mut Eval, e: &ast::Expr, op: &ast::BinOp, a: &ast::Expr, b: &ast::Expr, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -312,7 +312,7 @@ mod consts {
         arith(ev, e.span, op, &l, &r)
     }
 
-    #[summary("&, |, ^ 의 차례: 1, 2, 3. 아니면 0")]
+    #[summary("Ordinal of &, |, ^ : 1, 2, 3. Otherwise 0")]
     #[effects(pure)]
     fn bit_class(op: &ast::BinOp) -> u8 {
         match op {
@@ -338,7 +338,7 @@ mod consts {
         }
     }
 
-    #[summary("한 마디 이름이 match가 묶은 것이거나 const인가")]
+    #[summary("Whether a single-segment name is one bound by match or a const")]
     #[effects(alloc)]
     fn bound(ev: &Eval, n: &str, unit: &str) -> bool {
         for i in 0..ev.env.len() {
@@ -356,7 +356,7 @@ mod consts {
         }
     }
 
-    #[summary("x as T: 범위 밖이면 E0260")]
+    #[summary("x as T: E0260 if out of range")]
     #[effects(alloc)]
     fn cast(ev: &mut Eval, e: &ast::Expr, x: &ast::Expr, t: ast::IntTy, unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -385,7 +385,7 @@ mod consts {
         fail(ev, e.span, txt.as_str())
     }
 
-    #[summary("코드 포인트 c를 문자 리터럴로 쓴 글 (정규형이 쓰는 꼴)")]
+    #[summary("Text of code point c written as a character literal (the form the normal form uses)")]
     #[effects(alloc)]
     fn char_text(c: u32) -> String {
         let mut s: String = String::new();
@@ -393,7 +393,7 @@ mod consts {
         lexer::str_text(s.as_str(), 39)
     }
 
-    #[summary("두 정수의 순서: -1, 0, 1")]
+    #[summary("Order of two integers: -1, 0, 1")]
     #[effects(pure)]
     fn cmp(a: Num, b: Num) -> i32 {
         if a.neg != b.neg {
@@ -411,7 +411,7 @@ mod consts {
         1
     }
 
-    #[summary("순서 o(-1, 0, 1)에서 비교 op가 참인가")]
+    #[summary("Whether comparison op is true for order o (-1, 0, 1)")]
     #[effects(pure)]
     fn cmp_holds(op: &ast::BinOp, o: i32) -> bool {
         match op {
@@ -437,7 +437,7 @@ mod consts {
         }
     }
 
-    #[summary("단위 m과 그 안 단위의 타입 선언, const, 이름으로 쓴 횟수를 모은다. 같은 이름의 const는 E0302")]
+    #[summary("Collects the type declarations, consts and counts written as names of unit m and the units inside it. consts of the same name are E0302")]
     #[effects(alloc)]
     fn collect(m: &ast::Mod, prefix: &str, ev: &mut Eval, f: usize) -> ()
         decreases f,
@@ -492,7 +492,7 @@ mod consts {
         }
     }
 
-    #[summary("같은 타입의 두 값의 비교")]
+    #[summary("Comparison of two values of the same type")]
     #[effects(alloc)]
     fn compare(ev: &mut Eval, span: source::Span, op: &ast::BinOp, l: &CVal, r: &CVal) -> Option<CVal> {
         let mut o: i32 = 2;
@@ -513,7 +513,7 @@ mod consts {
         Some(CVal::Bool(cmp_holds(op, o)))
     }
 
-    #[summary("스칼라 값의 타입 (배열과 자료 값은 Error)")]
+    #[summary("Type of a scalar value (arrays and data values are Error)")]
     #[effects(pure)]
     fn cval_ty(v: &CVal) -> ast::TypeKind {
         match v {
@@ -525,7 +525,7 @@ mod consts {
         }
     }
 
-    #[summary("전체 경로 full의 선언이 기대한 타입 want의 것이면 그 타입 매개변수의 인자들")]
+    #[summary("If the declaration of full path full is that of the expected type want, the arguments of its type parameters")]
     #[effects(alloc)]
     fn decl_sub(ev: &Eval, di: usize, full: &str, want: &Option<ast::TypeKind>) -> Subst {
         let mut sub: Subst = Subst { names: Vec::new(), tys: Vec::new() };
@@ -539,7 +539,7 @@ mod consts {
         sub
     }
 
-    #[summary("검사기가 보기 전에 const를 이 타입으로 선언할 수 있는가: 스칼라, 배열, 이름으로 쓴 타입")]
+    #[summary("Whether a const can be declared with this type before the checker sees it: scalar, array, type written as a name")]
     #[effects(pure)]
     fn declarable(t: &ast::TypeKind) -> bool {
         match t {
@@ -563,7 +563,7 @@ mod consts {
         }
     }
 
-    #[summary("고쳐 쓴 뒤의 선언 타입을 표에 ([T; N]이 그 길이를 든다)")]
+    #[summary("Puts the declared type after rewriting into the table ([T; N] holds its length)")]
     #[effects(alloc)]
     fn declared(m: &ast::Mod, prefix: &str, consts: &mut table::Table<Const>, f: usize) -> ()
         decreases f,
@@ -589,7 +589,7 @@ mod consts {
         }
     }
 
-    #[summary("나눗셈 (0이 아닌 b로): 0 쪽으로 자른다")]
+    #[summary("Division (by nonzero b): truncates toward 0")]
     #[effects(pure)]
     fn div(a: Num, b: Num) -> Num {
         if b.mag == 0 {
@@ -598,7 +598,7 @@ mod consts {
         num(a.neg != b.neg, a.mag / b.mag)
     }
 
-    #[summary("기대한 배열 타입의 원소 타입")]
+    #[summary("Element type of the expected array type")]
     #[effects(alloc)]
     fn elem(want: &Option<ast::TypeKind>) -> Option<ast::TypeKind> {
         match want {
@@ -630,7 +630,7 @@ mod consts {
         }
     }
 
-    #[summary("상수 식 하나를 평가한다. want는 문맥이 주는 타입: 리터럴은 그것으로 타입을 얻는다")]
+    #[summary("Evaluates one constant expression. want is the type given by the context: a literal gets its type from it")]
     #[effects(alloc)]
     fn expr(ev: &mut Eval, e: &ast::Expr, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -1082,7 +1082,7 @@ mod consts {
         name(ev, e, one.as_slice(), unit, f - 1)
     }
 
-    #[summary("E0260: 상수 평가의 실패")]
+    #[summary("E0260: failure of constant evaluation")]
     #[effects(alloc)]
     fn fail(ev: &mut Eval, span: source::Span, what: &str) -> Option<CVal> {
         let mut msg: String = String::from("constant evaluation failed: ");
@@ -1107,7 +1107,7 @@ mod consts {
         0
     }
 
-    #[summary("64비트 2의 보수 꼴 p의 아래 bits(t) 비트를 타입 t의 값으로")]
+    #[summary("The low bits(t) bits of the 64-bit two's complement form p as a value of type t")]
     #[effects(pure)]
     fn from_pattern(p: u64, t: ast::IntTy) -> Num {
         let m: u64 = mask(t);
@@ -1118,7 +1118,7 @@ mod consts {
         num(false, low)
     }
 
-    #[summary("xs에 s가 있는가")]
+    #[summary("Whether s is in xs")]
     #[effects(pure)]
     fn has(xs: &[String], s: &str) -> bool {
         for i in 0..xs.len() {
@@ -1145,7 +1145,7 @@ mod consts {
         }
     }
 
-    #[summary("비교의 피연산자에는 문맥의 타입을 주지 않는다")]
+    #[summary("Operands of a comparison are not given the context's type")]
     #[effects(alloc)]
     fn hinted(ev: &mut Eval, x: &ast::Expr, bare: bool, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -1160,7 +1160,7 @@ mod consts {
         expr(ev, x, want, unit, f - 1)
     }
 
-    #[summary("v가 타입 t의 범위 안이면 그 값, 아니면 op가 넘쳤다는 E0260")]
+    #[summary("v if it is within the range of type t, otherwise E0260 saying op overflowed")]
     #[effects(alloc)]
     fn int(ev: &mut Eval, v: Option<Num>, t: ast::IntTy, span: source::Span, op: &str) -> Option<CVal> {
         match v {
@@ -1174,7 +1174,7 @@ mod consts {
         fail(ev, span, what.as_str())
     }
 
-    #[summary("+ - * / % & | ^ 의 차례: 1..8. 아니면 0")]
+    #[summary("Ordinal of + - * / % & | ^ : 1..8. Otherwise 0")]
     #[effects(pure)]
     fn int_class(op: &ast::BinOp) -> u8 {
         match op {
@@ -1200,7 +1200,7 @@ mod consts {
         }
     }
 
-    #[summary("T::MIN, T::MAX (Rust의 연관 상수)")]
+    #[summary("T::MIN, T::MAX (Rust's associated constants)")]
     #[effects(pure)]
     fn int_const(path: &[ast::Ident]) -> Option<CVal> {
         if path.len() != 2 {
@@ -1212,7 +1212,7 @@ mod consts {
         }
     }
 
-    #[summary("정수 리터럴이면 그 값")]
+    #[summary("If an integer literal, its value")]
     #[effects(pure)]
     fn int_lit(e: &ast::Expr) -> Option<wide::U128> {
         match &e.kind {
@@ -1254,7 +1254,7 @@ mod consts {
         }
     }
 
-    #[summary("두 정수의 산술·비트 연산. sl과 sr은 두 값을 말하는 글")]
+    #[summary("Arithmetic·bitwise operation on two integers. sl and sr are the texts describing the two values")]
     #[effects(alloc)]
     fn int_op(ev: &mut Eval, span: source::Span, op: &ast::BinOp, p: Num, q: Num, t: ast::IntTy, sl: &str, sr: &str) -> Option<CVal> {
         let mut shown: String = String::from("`");
@@ -1397,7 +1397,7 @@ mod consts {
         }
     }
 
-    #[summary("타입의 글 (stage0 check::ty_str)")]
+    #[summary("Text of a type (stage0 check::ty_str)")]
     #[effects(alloc)]
     fn kind_text(t: &ast::TypeKind) -> String {
         let mut s: String = String::new();
@@ -1405,7 +1405,7 @@ mod consts {
         s
     }
 
-    #[summary("const 하나를 평가한다 (한 번만: done). 자기에게 닿으면 E0318")]
+    #[summary("Evaluates one const (only once: done). E0318 if it reaches itself")]
     #[effects(alloc)]
     fn konst(ev: &mut Eval, path: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -1466,7 +1466,7 @@ mod consts {
         kept
     }
 
-    #[summary("이름 path의 길이 값: usize인 const. 모르는 이름은 E0301, 너무 크면 E0406, usize가 아니면 E0401")]
+    #[summary("Length value of the name path: a const that is usize. An unknown name is E0301, too large is E0406, not usize is E0401")]
     #[effects(alloc)]
     fn length(lens: &mut Lens, path: &[String], unit: &str, span: source::Span) -> Option<u64> {
         let joined: String = ast::join_names(path);
@@ -1500,7 +1500,7 @@ mod consts {
         None
     }
 
-    #[summary("정수 리터럴: 타입은 문맥의 것, 없으면 i64 (검사기가 읽는 대로)")]
+    #[summary("Integer literal: the type is the context's, i64 if none (as the checker reads it)")]
     #[effects(alloc)]
     fn lit_int(ev: &mut Eval, v: wide::U128, want: &Option<ast::TypeKind>, span: source::Span) -> Option<CVal> {
         let t: ast::IntTy = want_int(want);
@@ -1514,7 +1514,7 @@ mod consts {
         int(ev, val, t, span, txt.as_str())
     }
 
-    #[summary("path가 unit에서 가리키는 const의 전체 경로: 그 단위의 N, 또는 전체 경로")]
+    #[summary("Full path of the const that path refers to in unit: N of that unit, or a full path")]
     #[effects(alloc)]
     fn lookup_defs(defs: &table::Table<Def>, path: &[String], unit: &str) -> Option<String> {
         let joined: String = ast::join_names(path);
@@ -1530,7 +1530,7 @@ mod consts {
         None
     }
 
-    #[summary("타입 t의 아래 비트를 고르는 값: 2^bits - 1")]
+    #[summary("Value selecting the low bits of type t: 2^bits - 1")]
     #[effects(pure)]
     fn mask(t: ast::IntTy) -> u64 {
         match t {
@@ -1547,7 +1547,7 @@ mod consts {
         }
     }
 
-    #[summary("타입 t의 가장 큰 값")]
+    #[summary("Largest value of type t")]
     #[effects(pure)]
     fn max_of(t: ast::IntTy) -> Num {
         if signed(t) {
@@ -1556,7 +1556,7 @@ mod consts {
         num(false, mask(t))
     }
 
-    #[summary("메서드: x as T (읽힌 꼴은 T::try_from(x).unwrap(), ADR-0095 A4)와 wrapping·saturating의 셋씩")]
+    #[summary("Methods: x as T (the parsed form is T::try_from(x).unwrap(), ADR-0095 A4) and three each of wrapping·saturating")]
     #[effects(alloc)]
     fn method(ev: &mut Eval, e: &ast::Expr, call: &ast::Method, want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -1691,7 +1691,7 @@ mod consts {
         Some(CVal::Int(r, t))
     }
 
-    #[summary("타입 t의 가장 작은 값")]
+    #[summary("Smallest value of type t")]
     #[effects(pure)]
     fn min_of(t: ast::IntTy) -> Num {
         if signed(t) {
@@ -1700,7 +1700,7 @@ mod consts {
         num(false, 0)
     }
 
-    #[summary("두 정수의 곱. 부호와 크기에 들지 않으면 None")]
+    #[summary("Product of two integers. None if it does not fit in sign and magnitude")]
     #[effects(pure)]
     fn mul(a: Num, b: Num) -> Option<Num> {
         match a.mag.checked_mul(b.mag) {
@@ -1709,7 +1709,7 @@ mod consts {
         }
     }
 
-    #[summary("한 마디 이름이 읽는 const나 match가 묶은 값")]
+    #[summary("The const read by, or the value bound by match to, a single-segment name")]
     #[effects(alloc)]
     fn name(ev: &mut Eval, e: &ast::Expr, path: &[String], unit: &str, f: usize) -> Option<CVal>
         decreases f,
@@ -1746,13 +1746,13 @@ mod consts {
         out
     }
 
-    #[summary("부호를 바꾼 값")]
+    #[summary("Value with the sign flipped")]
     #[effects(pure)]
     fn negate(a: Num) -> Num {
         num(!a.neg, a.mag)
     }
 
-    #[summary("t의 이름으로 쓴 타입을 전체 경로로 (Option과 Result는 그대로), 타입 매개변수를 sub의 인자로")]
+    #[summary("Rewrites types written as names in t into full paths (Option and Result unchanged), and type parameters into the arguments of sub")]
     #[effects(alloc)]
     fn norm(ev: &Eval, t: &ast::TypeKind, unit: &str, sub: &Subst, f: usize) -> ast::TypeKind
         decreases f,
@@ -1816,7 +1816,7 @@ mod consts {
         ast::TypeKind::Named(full, out)
     }
 
-    #[summary("E0259: 상수 식이 아니다")]
+    #[summary("E0259: not a constant expression")]
     #[effects(alloc)]
     fn not_const(ev: &mut Eval, e: &ast::Expr, what: &str) -> Option<CVal> {
         let mut msg: String = String::from("`");
@@ -1827,7 +1827,7 @@ mod consts {
         None
     }
 
-    #[summary("E0437: 값보다 많은 것을 드는 타입의 const")]
+    #[summary("E0437: const of a type that holds more than a value")]
     #[effects(alloc)]
     fn not_value(t: &ast::TypeKind, span: source::Span) -> diag::Diag {
         let mut msg: String = String::from("`");
@@ -1836,13 +1836,13 @@ mod consts {
         diag::fix(diag::new("E0437", span, msg.as_str()), "build the value where it is used (a `const` allocates nothing: no `Vec`, `String`, `Box` or reference)", None)
     }
 
-    #[summary("부호와 크기에서. 0은 음수가 아니다")]
+    #[summary("From sign and magnitude. 0 is not negative")]
     #[effects(pure)]
     fn num(neg: bool, mag: u64) -> Num {
         Num { neg: neg && mag != 0, mag: mag }
     }
 
-    #[summary("연산자의 갈래: 1 && ||, 2 ==>, 3 시프트, 4 비교, 0 나머지")]
+    #[summary("Class of an operator: 1 && ||, 2 ==>, 3 shifts, 4 comparisons, 0 the rest")]
     #[effects(pure)]
     fn op_class(op: &ast::BinOp) -> u8 {
         match op {
@@ -1888,7 +1888,7 @@ mod consts {
         out
     }
 
-    #[summary("값을 64비트 2의 보수 꼴로")]
+    #[summary("The value in 64-bit two's complement form")]
     #[effects(pure)]
     fn pattern(n: Num) -> u64 {
         if n.neg {
@@ -1897,7 +1897,7 @@ mod consts {
         n.mag
     }
 
-    #[summary("정수의 10진 글")]
+    #[summary("Decimal text of an integer")]
     #[effects(alloc)]
     fn push_num(out: &mut String, n: Num) -> () {
         if n.neg {
@@ -1922,7 +1922,7 @@ mod consts {
         }
     }
 
-    #[summary("나머지 (0이 아닌 b로): 부호는 나뉘는 수의 것")]
+    #[summary("Remainder (by nonzero b): the sign is that of the dividend")]
     #[effects(pure)]
     fn rem(a: Num, b: Num) -> Num {
         if b.mag == 0 {
@@ -1931,7 +1931,7 @@ mod consts {
         num(a.neg, a.mag % b.mag)
     }
 
-    #[summary("프로그램의 모든 const를 경로(unit::NAME)로, 평가해서. 이름으로 쓴 배열 길이와 반복 횟수는 그 뒤로 값을 든다")]
+    #[summary("All consts of the program by path (unit::NAME), evaluated. Array lengths and repeat counts written as names hold values afterwards")]
     #[effects(alloc)]
     fn resolve(p: &mut ast::Program, diags: &mut diag::Diags) -> table::Table<Const> {
         let taken: diag::Diags = std::mem::replace(diags, diag::Diags { items: Vec::new(), aliases: Vec::new() });
@@ -1973,7 +1973,7 @@ mod consts {
         out
     }
 
-    #[summary("const를 이 타입으로 선언하면 스칼라인가")]
+    #[summary("Whether a const declared with this type is a scalar")]
     #[effects(pure)]
     fn scalar(t: &ast::TypeKind) -> bool {
         match t {
@@ -1997,7 +1997,7 @@ mod consts {
         }
     }
 
-    #[summary("값이 스칼라인가")]
+    #[summary("Whether the value is a scalar")]
     #[effects(pure)]
     fn scalar_val(v: &CVal) -> bool {
         match v {
@@ -2009,7 +2009,7 @@ mod consts {
         }
     }
 
-    #[summary("반복 횟수의 자리가 표에 있으면 그 값으로")]
+    #[summary("If the position of a repeat count is in the table, rewrites it into that value")]
     #[effects(alloc)]
     fn set_count(rp: &mut ast::Repeat, at: &[source::Span], n: &[u64]) -> () {
         for i in 0..at.len() {
@@ -2022,7 +2022,7 @@ mod consts {
         }
     }
 
-    #[summary("정수의 시프트: 양은 폭보다 작아야 한다. <<는 타입의 폭에서 감긴다")]
+    #[summary("Shift of an integer: the amount must be less than the width. << wraps at the width of the type")]
     #[effects(alloc)]
     fn shift(ev: &mut Eval, span: source::Span, op: &ast::BinOp, x: &CVal, k: &CVal) -> Option<CVal> {
         let mut v: Num = num(false, 0);
@@ -2069,7 +2069,7 @@ mod consts {
         Some(CVal::Int(num(false, v.mag >> amount), t))
     }
 
-    #[summary("값을 말하는 글 (진단에 쓴다)")]
+    #[summary("Text describing a value (used in diagnostics)")]
     #[effects(alloc)]
     fn show(v: &CVal) -> String {
         let mut out: String = String::new();
@@ -2083,7 +2083,7 @@ mod consts {
         out
     }
 
-    #[summary("부호 있는 타입인가")]
+    #[summary("Whether it is a signed type")]
     #[effects(pure)]
     fn signed(t: ast::IntTy) -> bool {
         match t {
@@ -2100,7 +2100,7 @@ mod consts {
         }
     }
 
-    #[summary("[T; 이름]이던 타입을 길이 n의 [T; n]으로")]
+    #[summary("Turns a type that was [T; name] into [T; n] of length n")]
     #[effects(alloc)]
     fn sized(was: ast::TypeKind, n: u64) -> ast::TypeKind {
         match was {
@@ -2124,7 +2124,7 @@ mod consts {
         }
     }
 
-    #[summary("선언의 필드나 변형을 쓴 그대로")]
+    #[summary("Field or variant of a declaration as written")]
     #[effects(alloc)]
     fn tydef_kind(k: &ast::TypeDefKind) -> TyDefKind {
         match k {
@@ -2133,7 +2133,7 @@ mod consts {
         }
     }
 
-    #[summary("path가 unit에서 가리키는 구조체나 열거형의 전체 경로")]
+    #[summary("Full path of the struct or enum that path refers to in unit")]
     #[effects(alloc)]
     fn type_path(ev: &Eval, path: &[String], unit: &str) -> Option<String> {
         let joined: String = ast::join_names(path);
@@ -2149,7 +2149,7 @@ mod consts {
         None
     }
 
-    #[summary("리터럴은 문맥이 타입을 줄 때까지 타입이 없다: 정수 리터럴과 그것의 -")]
+    #[summary("A literal has no type until the context gives one: integer literals and their -")]
     #[effects(pure)]
     fn untyped(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -2191,7 +2191,7 @@ mod consts {
         }
     }
 
-    #[summary("값을 소스의 글로 (32개가 넘는 배열은 앞의 32개와 길이)")]
+    #[summary("The value as source text (an array of more than 32 gives the first 32 and the length)")]
     #[effects(alloc)]
     fn value_text(v: &CVal) -> String {
         let mut out: String = String::new();
@@ -2199,7 +2199,7 @@ mod consts {
         out
     }
 
-    #[summary("Option·Result나 선언한 열거형의 변형을 인자들로 짓는다. 경로가 변형을 가리키지 않으면 hit가 아니다")]
+    #[summary("Builds a variant of Option·Result or of a declared enum from the arguments. Not hit if the path does not refer to a variant")]
     #[effects(alloc)]
     fn variant(ev: &mut Eval, names: &[String], args: &[ast::Expr], want: &Option<ast::TypeKind>, unit: &str, f: usize) -> Built
         decreases f,
@@ -2279,7 +2279,7 @@ mod consts {
         Built { hit: true, v: Some(CVal::Data(Data { ty: ty, variant: Some(last), fields: fields })) }
     }
 
-    #[summary("문맥이 정수 타입이면 그것, 아니면 i64")]
+    #[summary("The context's type if it is an integer type, otherwise i64")]
     #[effects(pure)]
     fn want_int(want: &Option<ast::TypeKind>) -> ast::IntTy {
         match want {
@@ -2311,7 +2311,7 @@ mod consts {
         }
     }
 
-    #[summary("타입의 폭 (비트)")]
+    #[summary("Width of a type (bits)")]
     #[effects(pure)]
     fn width(t: ast::IntTy) -> u64 {
         match t {

@@ -1,4 +1,4 @@
-#[summary("SHA-256(T4-01): FIPS 180-4의 SHA-256. 결과가 명세(채우기 §5.1.1, 일정 §6.2.2, 라운드 §6.2.2, 상수 §4.2.2·§5.3.3)로 정의한 다이제스트와 같음이 증명된다. Python hashlib.sha256과 같은 값")]
+#[summary("SHA-256: the SHA-256 of FIPS 180-4. The result is proven the same as the digest defined by the specification (padding §5.1.1, schedule §6.2.2, rounds §6.2.2, constants §4.2.2·§5.3.3). Same values as Python hashlib.sha256")]
 mod sha256 {
     // The working variables and the hash value (FIPS 180-4 §6.2).
     struct State { a: u32, b: u32, c: u32, d: u32, e: u32, f: u32, g: u32, h: u32 }

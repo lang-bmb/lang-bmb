@@ -1,6 +1,6 @@
-#[summary("함수 값 (ADR-0053): 검사 전에 Rust가 밑에 두는 trait, 구조체, impl로 낮춘다 (stage0 compiler/src/closures.rs의 포트, 백로그 4D-03c). 경계 F: Fn(A) -> R은 그 단위의 trait, 넘긴 함수와 클로저는 구조체와 그 trait의 impl이다. 만든 항목은 글로 쓰고 제 파일 번호로 읽는다")]
+#[summary("Function values (ADR-0053): lowered before checking into the traits, structs, and impls that Rust puts underneath (port of stage0 compiler/src/closures.rs). A bound F: Fn(A) -> R is a trait of that unit, and passed functions and closures are structs and impls of that trait. Made items are written as text and read under their own file number")]
 mod closures {
-    #[summary("self를 old(self)로 바꾸는 손님")]
+    #[summary("Visitor that replaces self with old(self)")]
     struct Before { n: usize }
 
     impl ast::ExprFn for Before {
@@ -51,7 +51,7 @@ mod closures {
         }
     }
 
-    #[summary("블록이 묶는 이름을 모으는 손님: 안쪽 블록의 let과 for 변수, match가 묶는 이름, 한정자의 변수")]
+    #[summary("Visitor that collects the names a block binds: lets and for variables of inner blocks, names bound by match, variables of quantifiers")]
     struct Binds { names: Vec<String> }
 
     impl ast::ExprFn for Binds {
@@ -97,21 +97,21 @@ mod closures {
         }
     }
 
-    #[summary("클로저 하나: 식, 잡은 이름들, 그것을 쓴 함수의 #[uses]")]
+    #[summary("One closure: the expression, the captured names, the #[uses] of the function that wrote it")]
     struct Body { c: ast::Closure, caps: Vec<String>, uses: Vec<ast::Attr> }
 
-    #[summary("Fn 경계가 있는 타입 매개변수: 타입 매개변수 가운데 자리, 이름, 경계, F나 &F를 받는 값 매개변수들, 이름의 자리")]
+    #[summary("Type parameter with an Fn bound: position among the type parameters, name, bound, the value parameters that take F or &F, position of the name")]
     struct Bounded { k: usize, name: String, bound: ast::FnBound, at: Vec<Slot>, span: source::Span }
 
-    #[summary("Fn 경계가 있는 함수. order는 소스 순서의 번호: 만든 이름은 번호라서 사용자의 이름을 바꿔도 그대로다 (ADR-0059)")]
+    #[summary("Function with Fn bounds. order is its number in source order: made names are numbers, so they stay the same when the user's names change (ADR-0059)")]
     struct Generic { unit: String, order: usize, bounded: Vec<Bounded>, effects: String }
 
-    #[summary("함수를 값으로 만드는 데 드는 글")]
+    #[summary("Text needed to make a function into a value")]
     struct Item { unit: String, span: source::Span, params: Vec<ItemParam>, ret_name: String, ret: String, pre: Vec<String>, post: Vec<String>, effects: String }
 
     struct ItemParam { name: String, ty: String }
 
-    #[summary("안쪽 블록의 let과 그 타입을 모으는 손님")]
+    #[summary("Visitor that collects the lets of inner blocks and their types")]
     struct Lets { names: Vec<String>, tys: Vec<ast::Type> }
 
     impl ast::ExprFn for Lets {
@@ -157,15 +157,15 @@ mod closures {
         }
     }
 
-    #[summary("낮추기가 만든 것: 이미 보고한 진단을 되풀이할 파일들, 만든 구조체와 trait의 경로에서 읽는 이름으로, 함수 값을 넘긴 자리, 만든 정의를 쓴 자리")]
+    #[summary("What the lowering made: the files whose already reported diagnostics would be repeated, a map from the paths of made structs and traits to their readable names, the positions where function values were passed, the positions where made definitions were used")]
     struct Lowered { quiet: Vec<u32>, names: table::Table<String>, passes: Vec<Pass>, at: table::Table<source::Span> }
 
     struct Pass { span: source::Span, what: String }
 
-    #[summary("보고한 클로저: 타입 인자의 자리와 인자의 자리")]
+    #[summary("A reported closure: position of the type argument and position of the argument")]
     struct Rej { k: usize, j: usize }
 
-    #[summary("값 매개변수의 읽기를 고쳐 쓰는 손님: from[k]를 to[k]로")]
+    #[summary("Visitor that rewrites reads of value parameters: from[k] to to[k]")]
     struct Renamer { from: Vec<String>, to: Vec<String> }
 
     impl ast::ExprFn for Renamer {
@@ -211,7 +211,7 @@ mod closures {
         }
     }
 
-    #[summary("Fn 경계가 있는 함수의 몸을 고쳐 쓰는 손님: f(a)는 f.call(a), f.requires(..)는 f.pre(..), f.ensures(..)는 f.post(..)")]
+    #[summary("Visitor that rewrites the body of a function with Fn bounds: f(a) becomes f.call(a), f.requires(..) becomes f.pre(..), f.ensures(..) becomes f.post(..)")]
     struct Rewriter { values: Vec<String> }
 
     impl ast::ExprFn for Rewriter {
@@ -262,7 +262,7 @@ mod closures {
         }
     }
 
-    #[summary("잡은 값의 읽기 c를 self.c로 바꾸는 손님 (클로저의 구조체가 그것을 든다, ADR-0053 §2)")]
+    #[summary("Visitor that replaces a read c of a captured value with self.c (the closure's struct holds it, ADR-0053 §2)")]
     struct SelfThrough { caps: Vec<String> }
 
     impl ast::ExprFn for SelfThrough {
@@ -314,10 +314,10 @@ mod closures {
         }
     }
 
-    #[summary("값 매개변수의 자리와 참조로 받는지")]
+    #[summary("Position of a value parameter and whether it is taken by reference")]
     struct Slot { at: usize, by_ref: bool }
 
-    #[summary("클로저 식의 자리를 모으는 손님")]
+    #[summary("Visitor that collects the positions of closure expressions")]
     struct Spans { spans: Vec<source::Span> }
 
     impl ast::ExprFn for Spans {
@@ -363,11 +363,11 @@ mod closures {
         }
     }
 
-    #[summary("낮추기의 상태. unit부터는 지금 보는 함수의 것이다")]
+    #[summary("State of the lowering. From unit onward it belongs to the function currently being looked at")]
     struct State { generics: table::Table<Generic>, items: table::Table<Item>, pending: Vec<diag::Diag>, names: table::Table<String>, passes: Vec<Pass>, located: table::Table<source::Span>, written: table::Table<usize>, text: table::Table<Text>, made: table::Table<String>, items_made: usize, closures_made: usize, bodies: table::Table<Body>, unit: String, owner: String, owner_uses: Vec<ast::Attr>, decls: table::Table<Option<ast::Type>> }
 
     impl ast::ExprFn for State {
-        #[summary("클로저 밖의 호출 하나: Fn 경계의 자리에 넘긴 클로저와 함수를 구조체의 값으로")]
+        #[summary("One call outside closures: turns closures and functions passed at Fn bound positions into struct values")]
         #[effects(alloc)]
         fn expr(self: &mut State, e: &mut ast::Expr) -> () {
             let mut todo: Vec<Todo> = Vec::new();
@@ -415,19 +415,19 @@ mod closures {
         }
     }
 
-    #[summary("Fn 경계의 자리: 경계의 차례 b, 값 매개변수의 자리 j, 참조로 받는지")]
+    #[summary("Position of an Fn bound: index b of the bound, position j of the value parameter, whether it is taken by reference")]
     struct Target { b: usize, j: usize, by_ref: bool }
 
-    #[summary("단위에 만들어 넣을 글. reported는 이미 보고한 인자의 것")]
+    #[summary("Text to be made and inserted into a unit. reported is that of an argument already reported")]
     struct Text { unit: String, reported: bool, body: String }
 
-    #[summary("호출의 인자 j를 구조체 sname의 값으로, 타입 인자 k를 그 타입으로")]
+    #[summary("Turns argument j of a call into a value of struct sname, and type argument k into its type")]
     struct Todo { j: usize, sname: String, k: usize, by_ref: bool, caps: Vec<String> }
 
-    #[summary("경계의 trait 하나: 전체 경로, 읽는 이름, 자리, 그 글과 단위")]
+    #[summary("One trait of a bound: full path, readable name, position, its text and unit")]
     struct TraitRow { tr: String, read: String, span: source::Span, unit: String, text: String }
 
-    #[summary("읽은 변수의 이름을 처음 본 순서로 모으는 손님")]
+    #[summary("Visitor that collects the names of read variables in first-seen order")]
     struct Vars { used: Vec<String> }
 
     impl ast::ExprFn for Vars {
@@ -514,7 +514,7 @@ mod closures {
         }
     }
 
-    #[summary("호출의 고쳐 쓰기: 인자 j는 구조체 sname의 값(잡은 값이 필드, 매개변수가 &F면 그 참조), 타입 인자 k는 그 타입. 보고한 클로저는 오류 타입과 오류 식이 되어 다시 보고되지 않는다")]
+    #[summary("Rewrite of a call: argument j becomes a value of struct sname (captured values are the fields; a reference to it if the parameter is &F), type argument k becomes its type. A reported closure becomes an error type and an error expression and is not reported again")]
     #[effects(alloc)]
     fn apply_call(ca: &mut ast::Call, todo: &[Todo], rej: &[Rej]) -> () {
         if ca.path.len() == 0 {
@@ -579,7 +579,7 @@ mod closures {
         }
     }
 
-    #[summary("match의 갈래가 묶는 이름")]
+    #[summary("Names bound by an arm of a match")]
     #[effects(alloc)]
     fn arm_names(ma: &ast::Match, out: &mut Vec<String>) -> () {
         for a in 0..ma.arms.len() {
@@ -592,7 +592,7 @@ mod closures {
         }
     }
 
-    #[summary("블록이 그 안 어디서든 묶는 이름: let, for 변수, match가 묶는 이름, 한정자의 변수")]
+    #[summary("Names a block binds anywhere inside it: let, for variables, names bound by match, variables of quantifiers")]
     #[effects(alloc)]
     fn bound_names(b: &ast::Block, out: &mut Vec<String>) -> () {
         stmt_names(b, out, 1000000000);
@@ -602,7 +602,7 @@ mod closures {
         std::mem::replace(out, v.names);
     }
 
-    #[summary("경로 하나짜리 호출 f(a)가 값 매개변수의 것이면 f.call(a)")]
+    #[summary("If a single-path call f(a) is that of a value parameter, f.call(a)")]
     #[effects(alloc)]
     fn call_of(ca: &mut ast::Call, values: &[String]) -> Option<ast::ExprKind> {
         if ca.path.len() == 1 && has(values, ca.path[0].name.as_str()) {
@@ -614,7 +614,7 @@ mod closures {
         None
     }
 
-    #[summary("클로저가 이름으로 든, 그것을 쓴 함수의 지역 이름들 (잡은 값, ADR-0053 §2). 처음 든 순서")]
+    #[summary("Local names of the function that wrote the closure which the closure mentions by name (captured values, ADR-0053 §2). In order of first mention")]
     #[effects(alloc)]
     fn captures(c: &ast::Closure, decls: &table::Table<Option<ast::Type>>) -> Vec<String> {
         let mut own: Vec<String> = Vec::new();
@@ -640,7 +640,7 @@ mod closures {
         out
     }
 
-    #[summary("글들을 괄호로 싸서 &&로 이은 것. 없으면 true")]
+    #[summary("The texts parenthesized and joined with &&. true if there are none")]
     #[effects(alloc)]
     fn conj(xs: &[String]) -> String {
         if xs.len() == 0 {
@@ -658,7 +658,7 @@ mod closures {
         out
     }
 
-    #[summary("효과의 글을 원자들로: 빈 것과 pure는 뺀다")]
+    #[summary("Splits effect text into atoms: empty ones and pure are left out")]
     #[effects(alloc)]
     fn effect_set(e: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -680,7 +680,7 @@ mod closures {
         out
     }
 
-    #[summary("함수의 #[effects(..)]의 글. 없으면 pure")]
+    #[summary("Text of a function's #[effects(..)]. pure if absent")]
     #[effects(alloc)]
     fn effects_of(d: &ast::FnDef) -> String {
         for i in 0..d.attrs.len() {
@@ -702,7 +702,7 @@ mod closures {
         String::from("pure")
     }
 
-    #[summary("만든 단위 made의 trait, 타입, trait impl을 경로 segs의 단위에 더한다")]
+    #[summary("Adds the traits, types, and trait impls of made unit made to the unit at path segs")]
     #[effects(alloc)]
     fn extend_unit(mods: &mut Vec<ast::Mod>, segs: &[String], k: usize, m: &mut ast::Mod, f: usize) -> ()
         decreases f,
@@ -733,7 +733,7 @@ mod closures {
         }
     }
 
-    #[summary("true && true && .. 의 자리를 왼쪽부터 절 cs로 채운다 (제 자리를 지닌 채: 실패한 절이 쓴 곳을 가리킨다)")]
+    #[summary("Fills the slots of true && true && .. from the left with clauses cs (keeping their own positions: a failed clause points to where it was written)")]
     #[effects(alloc)]
     fn fill(e: &mut ast::Expr, cs: &[ast::Expr], next: &mut usize, f: usize) -> ()
         decreases f,
@@ -786,7 +786,7 @@ mod closures {
         }
     }
 
-    #[summary("xs에 s가 있는가")]
+    #[summary("Whether s is in xs")]
     #[effects(pure)]
     fn has(xs: &[String], s: &str) -> bool {
         for i in 0..xs.len() {
@@ -805,7 +805,7 @@ mod closures {
         }
     }
 
-    #[summary("만든 구조체와 그 trait impl의 글")]
+    #[summary("Text of a made struct and its trait impl")]
     #[effects(alloc)]
     fn impl_text(out: &mut String, sname: &str, fields: &str, tr: &str, typed: &str, rn: &str, ret: &str, pre: &str, post: &str, eff: &str, kind: &ast::FnTrait, a: &str, body: &str) -> () {
         out.push_str("struct ");
@@ -854,7 +854,7 @@ mod closures {
         out.push_str("\n    }\n}\n\n");
     }
 
-    #[summary("경계의 trait마다 읽는 이름과 자리를 적는다")]
+    #[summary("Records the readable name and position for each trait of a bound")]
     #[effects(alloc)]
     fn init_names(st: &mut State) -> () {
         let mut rows: Vec<TraitRow> = Vec::new();
@@ -871,7 +871,7 @@ mod closures {
         }
     }
 
-    #[summary("경계의 trait마다 그 글을 단위의 만들 글에")]
+    #[summary("Adds the text of each trait of a bound to the unit's text to be made")]
     #[effects(alloc)]
     fn init_traits(st: &mut State) -> () {
         let mut rows: Vec<TraitRow> = Vec::new();
@@ -887,7 +887,7 @@ mod closures {
         }
     }
 
-    #[summary("&&인가")]
+    #[summary("Whether it is &&")]
     #[effects(pure)]
     fn is_and(op: &ast::BinOp) -> bool {
         match op {
@@ -913,7 +913,7 @@ mod closures {
         }
     }
 
-    #[summary("실행 함수인가")]
+    #[summary("Whether it is an exec function")]
     #[effects(pure)]
     fn is_exec(k: &ast::FnKind) -> bool {
         match k {
@@ -923,7 +923,7 @@ mod closures {
         }
     }
 
-    #[summary("FnMut인가")]
+    #[summary("Whether it is FnMut")]
     #[effects(pure)]
     fn is_fn_mut(k: &ast::FnTrait) -> bool {
         match k {
@@ -933,7 +933,7 @@ mod closures {
         }
     }
 
-    #[summary("a::b::c의 마지막 마디")]
+    #[summary("Last segment of a::b::c")]
     #[effects(alloc)]
     fn last_seg(s: &str) -> String {
         let segs: Vec<String> = refs::split_path(s);
@@ -943,7 +943,7 @@ mod closures {
         String::new()
     }
 
-    #[summary("낮추기가 남긴 클로저마다 E0264: Fn 경계의 인자가 아닌 것 (ADR-0053 §3)")]
+    #[summary("E0264 for each closure the lowering left behind: one that is not an argument of an Fn bound (ADR-0053 §3)")]
     #[effects(alloc)]
     fn leftover_closures(p: &mut ast::Program, diags: &mut diag::Diags) -> () {
         let mut v: Spans = Spans { spans: Vec::new() };
@@ -953,7 +953,7 @@ mod closures {
         }
     }
 
-    #[summary("함수의 지역 이름마다 쓴 타입 (매개변수와 let). 타입을 쓰지 않은 것(for 변수, match가 묶은 이름)은 None")]
+    #[summary("Written type of each local name of a function (parameters and lets). None for those with no written type (for variables, names bound by match)")]
     #[effects(alloc)]
     fn local_types(d: &ast::FnDef) -> table::Table<Option<ast::Type>> {
         let mut out: table::Table<Option<ast::Type>> = table::new::<Option<ast::Type>>();
@@ -977,7 +977,7 @@ mod closures {
         out
     }
 
-    #[summary("만든 항목 path와 그 메서드 call, pre, post를 자리 sp에. head가 있으면 메서드는 <path as head>::m")]
+    #[summary("Records made item path and its methods call, pre, post at position sp. If there is a head, the methods are <path as head>::m")]
     #[effects(alloc)]
     fn locate(t: &mut table::Table<source::Span>, path: &str, head: &str, sp: source::Span) -> () {
         method_at(t, path, head, "call", sp);
@@ -986,13 +986,13 @@ mod closures {
         t.insert(path, sp);
     }
 
-    #[summary("아래 32비트 (Rust의 as u32)")]
+    #[summary("Low 32 bits (Rust's as u32)")]
     #[effects(pure)]
     fn low32(n: usize) -> u32 {
         (n % 4294967296) as u32
     }
 
-    #[summary("프로그램의 함수 값을 낮춘다. 진단은 diags에")]
+    #[summary("Lowers the function values of a program. Diagnostics go to diags")]
     #[effects(alloc)]
     fn lower(p: &mut ast::Program, diags: &mut diag::Diags) -> Lowered {
         let mut st: State = State { generics: table::new::<Generic>(), items: table::new::<Item>(), pending: Vec::new(), names: table::new::<String>(), passes: Vec::new(), located: table::new::<source::Span>(), written: table::new::<usize>(), text: table::new::<Text>(), made: table::new::<String>(), items_made: 0, closures_made: 0, bodies: table::new::<Body>(), unit: String::new(), owner: String::new(), owner_uses: Vec::new(), decls: table::new::<Option<ast::Type>>() };
@@ -1055,7 +1055,7 @@ mod closures {
         t.insert(k.as_str(), sp);
     }
 
-    #[summary("Fn 경계의 자리에 넘긴 클로저 하나: 구조체와 impl의 글을 만들고 할 일에 올린다. 잡을 수 없는 것은 E0262")]
+    #[summary("One closure passed at an Fn bound position: makes the text of the struct and impl and puts it on the work list. E0262 for what cannot be captured")]
     #[effects(alloc)]
     fn pass_closure(st: &mut State, cl: &ast::Closure, aspan: source::Span, gi: usize, b: usize, j: usize, by_ref: bool, todo: &mut Vec<Todo>, rej: &mut Vec<Rej>) -> () {
         if gi >= st.generics.items.len() || b >= st.generics.items[gi].bounded.len() {
@@ -1171,7 +1171,7 @@ mod closures {
         todo.push(Todo { j: j, sname: full, k: k, by_ref: by_ref, caps: caps });
     }
 
-    #[summary("Fn 경계의 자리에 넘긴 함수 하나: (함수, trait)마다 한 번 구조체와 impl의 글을 만들고 할 일에 올린다. 함수의 효과가 받는 쪽에 없으면 E0608")]
+    #[summary("One function passed at an Fn bound position: makes the text of the struct and impl once per (function, trait) and puts it on the work list. E0608 if the function's effects are not in the receiving side")]
     #[effects(alloc)]
     fn pass_item(st: &mut State, full: &str, single: bool, aspan: source::Span, gp: &str, gi: usize, b: usize, j: usize, by_ref: bool, todo: &mut Vec<Todo>) -> () {
         if gi >= st.generics.items.len() || b >= st.generics.items[gi].bounded.len() {
@@ -1233,7 +1233,7 @@ mod closures {
         todo.push(Todo { j: j, sname: sname, k: k, by_ref: by_ref, caps: Vec::new() });
     }
 
-    #[summary("호출 하나가 Fn 경계가 있는 함수의 것이면 그 자리의 인자마다 할 일을 정한다")]
+    #[summary("If a call is that of a function with Fn bounds, decides the work for each argument at those positions")]
     #[effects(alloc)]
     fn plan(st: &mut State, call: &ast::Call, todo: &mut Vec<Todo>, rej: &mut Vec<Rej>) -> () {
         let full: String = fmt::path_join(call.path.as_slice(), "::");
@@ -1298,7 +1298,7 @@ mod closures {
         }
     }
 
-    #[summary("f.requires(..)와 f.ensures(..)를 f.pre(..)와 f.post(..)로")]
+    #[summary("f.requires(..) and f.ensures(..) to f.pre(..) and f.post(..)")]
     #[effects(alloc)]
     fn pre_post(me: &mut ast::Method, values: &[String]) -> () {
         match ast::var_name(&*me.recv) {
@@ -1307,7 +1307,7 @@ mod closures {
         }
     }
 
-    #[summary("빈 것과 pure가 아니면 넣는다")]
+    #[summary("Inserts it unless it is empty or pure")]
     #[effects(alloc)]
     fn push_atom(out: &mut Vec<String>, s: &str) -> () {
         if s.len() > 0 && s != "pure" {
@@ -1343,7 +1343,7 @@ mod closures {
         }
     }
 
-    #[summary("글들을 sep로 이어 덧붙인다")]
+    #[summary("Appends the texts joined with sep")]
     #[effects(alloc)]
     fn push_joined(out: &mut String, xs: &[String], sep: &str) -> () {
         for i in 0..xs.len() {
@@ -1354,7 +1354,7 @@ mod closures {
         }
     }
 
-    #[summary("지역 이름의 쓴 타입의 글")]
+    #[summary("Text of a local name's written type")]
     #[effects(alloc)]
     fn push_local_type(out: &mut String, t: &Option<ast::Type>) -> () {
         match t {
@@ -1363,7 +1363,7 @@ mod closures {
         }
     }
 
-    #[summary("call의 수신자의 타입: Fn은 &T, FnMut은 &mut T, FnOnce는 T (ADR-0053 §2)")]
+    #[summary("Type of the receiver of call: &T for Fn, &mut T for FnMut, T for FnOnce (ADR-0053 §2)")]
     #[effects(alloc)]
     fn push_receiver(out: &mut String, kind: &ast::FnTrait, ty: &str) -> () {
         match kind {
@@ -1374,7 +1374,7 @@ mod closures {
         out.push_str(ty);
     }
 
-    #[summary("post가 읽는 상태: FnMut의 호출은 그것을 바꿀 수 있어 앞의 상태 old(self)다")]
+    #[summary("State that post reads: a call of FnMut can change it, so it is the earlier state old(self)")]
     #[effects(alloc)]
     fn push_state(out: &mut String, kind: &ast::FnTrait) -> () {
         match kind {
@@ -1384,7 +1384,7 @@ mod closures {
         }
     }
 
-    #[summary("단위 unit의 만들 글에 body를 덧붙인다")]
+    #[summary("Appends body to the text to be made of unit unit")]
     #[effects(alloc)]
     fn push_text(t: &mut table::Table<Text>, unit: &str, reported: bool, body: &str) -> () {
         let mut key: String = String::from(unit);
@@ -1399,7 +1399,7 @@ mod closures {
         }
     }
 
-    #[summary("번호 order인 함수의 k번째 Fn 경계의 trait 이름")]
+    #[summary("Trait name of the k-th Fn bound of the function numbered order")]
     #[effects(alloc)]
     fn push_trait_name(out: &mut String, order: usize, k: usize) -> () {
         out.push_str("__fn$");
@@ -1408,7 +1408,7 @@ mod closures {
         std::num::push_u64(out, k as u64);
     }
 
-    #[summary("한정자가 묶는 이름")]
+    #[summary("Names bound by a quantifier")]
     #[effects(alloc)]
     fn quant_names(qu: &ast::Quant, out: &mut Vec<String>) -> () {
         for i in 0..qu.binders.len() {
@@ -1416,7 +1416,7 @@ mod closures {
         }
     }
 
-    #[summary("이름이 from에 있으면 같은 자리의 to로")]
+    #[summary("If the name is in from, to at the same position")]
     #[effects(alloc)]
     fn rename(id: &mut ast::Ident, from: &[String], to: &[String]) -> () {
         for k in 0..from.len() {
@@ -1429,7 +1429,7 @@ mod closures {
         }
     }
 
-    #[summary("경로가 가리키는 Fn 경계 함수나 자유 함수의 전체 경로: 마디 하나면 단위의 것이 먼저")]
+    #[summary("Full path of the Fn-bound function or free function a path refers to: with a single segment, the unit's own comes first")]
     #[effects(alloc)]
     fn resolve(generics: &table::Table<Generic>, items: &table::Table<Item>, full: &str, single: bool, unit: &str) -> Option<String> {
         if single {
@@ -1446,7 +1446,7 @@ mod closures {
         None
     }
 
-    #[summary("Fn 경계가 있는 함수 자신: 경계는 trait이 되고 호출은 그 메서드가 된다. 값으로 받은 FnMut은 몸의 mut 지역 변수로 부른다")]
+    #[summary("A function with Fn bounds itself: the bounds become traits and the calls become their methods. An FnMut taken by value is called through a mut local variable of the body")]
     #[effects(alloc)]
     fn rewrite_generic(m: &mut ast::Mod, prefix: &str, generics: &table::Table<Generic>, f: usize) -> ()
         decreases f,
@@ -1543,7 +1543,7 @@ mod closures {
         d.body.stmts = stmts;
     }
 
-    #[summary("함수 하나의 클로저 밖 호출을 고쳐 쓴다. owner는 읽는 이가 아는 그 함수의 경로")]
+    #[summary("Rewrites the calls outside closures of one function. owner is that function's path as the reader knows it")]
     #[effects(alloc)]
     fn round_fn(d: &mut ast::FnDef, owner: String, st: &mut State) -> () {
         st.owner = owner;
@@ -1558,7 +1558,7 @@ mod closures {
         ast::fn_exprs_mut::<State>(d, st, false, 1000000000);
     }
 
-    #[summary("한 라운드에서 단위 m과 그 안 단위의 함수들: 클로저 밖의 호출을 고쳐 쓴다. 단위가 먼저, 안 단위가 다음")]
+    #[summary("The functions of unit m and its inner units in one round: rewrites the calls outside closures. The unit first, inner units next")]
     #[effects(alloc)]
     fn round_mod(m: &mut ast::Mod, prefix: &str, st: &mut State, f: usize) -> ()
         decreases f,
@@ -1639,7 +1639,7 @@ mod closures {
         }
     }
 
-    #[summary("Fn 경계가 있는 함수와 모든 자유 함수를 모은다: 단위의 함수가 먼저, 안 단위가 다음")]
+    #[summary("Collects the functions with Fn bounds and all free functions: the unit's functions first, inner units next")]
     #[effects(alloc)]
     fn scan(m: &ast::Mod, prefix: &str, st: &mut State, f: usize) -> ()
         decreases f,
@@ -1698,7 +1698,7 @@ mod closures {
         }
     }
 
-    #[summary("true를 n개 &&로 이은 자리. 0개면 true 하나")]
+    #[summary("Slot of n trues joined with &&. A single true if 0")]
     #[effects(alloc)]
     fn slots(n: usize) -> String {
         let mut out: String = String::from("true");
@@ -1708,7 +1708,7 @@ mod closures {
         out
     }
 
-    #[summary("몸의 꼬리 식의 true 자리들을 절들로")]
+    #[summary("Turns the true slots of the body's tail expression into the clauses")]
     #[effects(alloc)]
     fn splice(body: &mut ast::Block, cs: &[ast::Expr]) -> () {
         let mut next: usize = 0;
@@ -1718,7 +1718,7 @@ mod closures {
         }
     }
 
-    #[summary("이번 라운드에 만든 글을 단위마다 읽어 넣는다. 파일 번호는 made_files부터 내려가고, 다음 번호를 돌려준다")]
+    #[summary("Reads in, per unit, the text made in this round. File numbers go down from made_files, and the next number is returned")]
     #[effects(alloc)]
     fn splice_all(p: &mut ast::Program, diags: &mut diag::Diags, st: &mut State, from: usize, quiet: &mut Vec<u32>) -> usize {
         let mut made_files: usize = from;
@@ -1732,7 +1732,7 @@ mod closures {
         made_files
     }
 
-    #[summary("만든 trait impl 하나에 그 클로저의 몸과 계약을 잇는다")]
+    #[summary("Attaches to one made trait impl the body and contract of its closure")]
     #[effects(alloc)]
     fn splice_impl(ti: &mut ast::TraitImpl, bd: &Body, unit: &str) -> () {
         let mut c: ast::Closure = bd.c.clone();
@@ -1795,7 +1795,7 @@ mod closures {
         }
     }
 
-    #[summary("단위 unit에 만든 글 body를 제 파일 번호 id로 읽어 넣는다: 클로저의 impl에는 그 몸과 계약을 잇는다")]
+    #[summary("Reads made text body into unit unit under its own file number id: the closure's body and contract are attached to its impl")]
     #[effects(alloc)]
     fn splice_text(p: &mut ast::Program, diags: &mut diag::Diags, st: &State, unit: &str, body: &str, id: u32) -> () {
         let segs: Vec<String> = refs::split_path(unit);
@@ -1822,7 +1822,7 @@ mod closures {
         }
     }
 
-    #[summary("블록의 let과 그 타입: 그 블록과 while, for, proof의 몸의 것")]
+    #[summary("A block's lets and their types: those of that block and of the bodies of while, for, proof")]
     #[effects(alloc)]
     fn stmt_lets(b: &ast::Block, v: &mut Lets, f: usize) -> ()
         decreases f,
@@ -1845,7 +1845,7 @@ mod closures {
         }
     }
 
-    #[summary("블록의 let 이름과 for 변수: 그 블록과 while, for, proof의 몸의 것")]
+    #[summary("A block's let names and for variables: those of that block and of the bodies of while, for, proof")]
     #[effects(alloc)]
     fn stmt_names(b: &ast::Block, out: &mut Vec<String>, f: usize) -> ()
         decreases f,
@@ -1868,7 +1868,7 @@ mod closures {
         }
     }
 
-    #[summary("타입이 타입 매개변수 t이거나 그 참조인 값 매개변수들")]
+    #[summary("Value parameters whose type is type parameter t or a reference to it")]
     #[effects(alloc)]
     fn takes(d: &ast::FnDef, t: &str) -> Vec<Slot> {
         let mut out: Vec<Slot> = Vec::new();
@@ -1910,7 +1910,7 @@ mod closures {
         }
     }
 
-    #[summary("Fn 경계 하나의 trait의 글: spec 메서드 pre와 post, 그리고 그 둘을 계약으로 하는 call. call의 효과는 그 함수의 것이다 (ADR-0053 §5)")]
+    #[summary("Text of the trait of one Fn bound: the spec methods pre and post, and call with those two as its contract. The effects of call are those of that function (ADR-0053 §5)")]
     #[effects(alloc)]
     fn trait_text(out: &mut String, g: &Generic, b: &Bounded) -> () {
         let mut p: String = String::new();
@@ -1954,7 +1954,7 @@ mod closures {
         out.push_str("r);\n}\n\n");
     }
 
-    #[summary("타입을 쓴 지역 이름인가")]
+    #[summary("Whether it is a local name with a written type")]
     #[effects(pure)]
     fn typed_local(t: &Option<ast::Type>) -> bool {
         match t {

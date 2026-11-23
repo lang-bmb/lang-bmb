@@ -1,4 +1,4 @@
-#[summary("임의 길이의 부호 없는 정수: 2^32진 자리, 낮은 자리부터. 10진 글과 f64 사이의 정확한 변환(float)이 쓴다 (백로그 4D-18)")]
+#[summary("Arbitrary-length unsigned integer: base-2^32 digits, least significant first. Used by the exact conversion between decimal text and f64 (float)")]
 mod big {
     struct Big { limbs: Vec<u32> }
 
@@ -29,7 +29,7 @@ mod big {
         Big { limbs: v }
     }
 
-    #[summary("a의 비트 수(0은 0)")]
+    #[summary("Number of bits of a (0 for 0)")]
     #[effects(pure)]
     fn bits(a: &Big) -> usize {
         let n: usize = a.limbs.len();
@@ -50,7 +50,7 @@ mod big {
         (n - 1) * 32 + k
     }
 
-    #[summary("a와 b의 순서: a < b면 -1, 같으면 0, a > b면 1. 둘 다 맨 위 자리가 0이 아닌 꼴이어야 한다")]
+    #[summary("Order of a and b: -1 if a < b, 0 if equal, 1 if a > b. Both must be in the form whose top digit is nonzero")]
     #[effects(pure)]
     fn cmp(a: &Big, b: &Big) -> i32 {
         if a.limbs.len() < b.limbs.len() {
@@ -87,7 +87,7 @@ mod big {
         Big { limbs: v }
     }
 
-    #[summary("a / 2 (내림)")]
+    #[summary("a / 2 (rounded down)")]
     #[effects(alloc)]
     fn half(a: &Big) -> Big {
         let n: usize = a.limbs.len();
@@ -187,7 +187,7 @@ mod big {
         Big { limbs: v }
     }
 
-    #[summary("a - b. a >= b여야 한다(아니면 2^(32 * 자리 수)를 더한 값)")]
+    #[summary("a - b. Requires a >= b (otherwise the value plus 2^(32 * number of digits))")]
     #[effects(alloc)]
     fn sub(a: &Big, b: &Big) -> Big {
         let mut v: Vec<u32> = Vec::new();

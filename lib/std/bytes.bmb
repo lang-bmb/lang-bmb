@@ -1,4 +1,4 @@
-#[summary("바이트 문자열 라이브러리: 비교·접두사·검색·덧붙이기·10진 서식과 해석 (ADR-0044 §4). 쓰는 프로그램이 이 파일을 함께 넘긴다")]
+#[summary("Byte string library: comparison, prefix, search, appending, decimal formatting and parsing (ADR-0044 §4). A program that uses it passes this file along")]
 mod bytes {
     // ---------- comparison ----------
 

@@ -1,9 +1,9 @@
-#[summary("코드 생성이 읽는 표 (stage0 verify::Tables::lowered와 check::lower의 포트, 백로그 4D-05a): 글은 바이트이고 char는 u32다 (ADR-0050 §3·§4). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+#[summary("Tables that code generation reads (port of stage0 verify::Tables::lowered and check::lower): text is bytes and char is u32 (ADR-0050 §3·§4). The f of type-walking functions is the remaining depth (ADR-0140)")]
 mod lowered {
-    #[summary("낮춘 표. text는 값이 글인 식의 자리(body::span_key, 열쇠 순서): 바이트 뜻이 다른 연산을 이것으로 가른다")]
+    #[summary("Lowered tables. text is the places of expressions whose value is text (body::span_key, key order): operations whose byte meaning differs are told apart by this")]
     struct Tables { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, trait_impls: Vec<types::TraitImplInfo>, locals: table::Table<table::Table<ast::TypeKind>>, types: table::Table<ast::TypeKind>, targs: table::Table<Vec<ast::TypeKind>>, text: table::Table<bool> }
 
-    #[summary("열거형 t(참조를 지나)의 변형과 페이로드 타입을 선언 순서로 (stage0 verify::enum_variants). Option은 None·Some, Result는 Ok·Err. 제네릭이면 인스턴스 t의 타입")]
+    #[summary("Variants and payload types of enum t (through references) in declaration order (stage0 verify::enum_variants). Option is None·Some, Result is Ok·Err. If generic, the types of instance t")]
     #[effects(alloc)]
     fn enum_variants(t: &ast::TypeKind, tb: &Tables) -> Option<Vec<types::VariantSig>> {
         let v: ast::TypeKind = match body::ref_inner(t) {
@@ -38,7 +38,7 @@ mod lowered {
         ast::Type { kind: lower_in(&x.kind, f), span: x.span }
     }
 
-    #[summary("증명기와 코드 생성이 보는 t (stage0 check::lower): String은 Vec<u8>, str은 [u8], char는 u32")]
+    #[summary("t as the prover and code generation see it (stage0 check::lower): String is Vec<u8>, str is [u8], char is u32")]
     #[effects(alloc)]
     fn lower(t: &ast::TypeKind) -> ast::TypeKind {
         lower_in(t, 100000)
@@ -83,7 +83,7 @@ mod lowered {
         }
     }
 
-    #[summary("구조체 t(참조를 지나)의 필드를 선언 순서로 (stage0 verify::struct_fields). 제네릭이면 인스턴스 t의 타입")]
+    #[summary("Fields of struct t (through references) in declaration order (stage0 verify::struct_fields). If generic, the types of instance t")]
     #[effects(alloc)]
     fn struct_fields(t: &ast::TypeKind, tb: &Tables) -> Option<Vec<types::FieldSig>> {
         let v: ast::TypeKind = match body::ref_inner(t) {
@@ -111,7 +111,7 @@ mod lowered {
         }
     }
 
-    #[summary("검사한 프로그램의 표를 낮춘 것 (stage0 Tables::lowered): 시그니처, 필드와 페이로드, trait impl의 머리, 지역 변수, 식의 타입, 타입 인자")]
+    #[summary("The lowered tables of the checked program (stage0 Tables::lowered): signatures, fields and payloads, heads of trait impls, local variables, expression types, type arguments")]
     #[effects(alloc)]
     fn tables(ck: &body::Checked) -> Tables {
         let mut fns: table::Table<types::FnSig> = table::new::<types::FnSig>();
@@ -176,7 +176,7 @@ mod lowered {
         Tables { fns: fns, adts: adts, trait_impls: trait_impls, locals: locals, types: tys, targs: targs, text: text }
     }
 
-    #[summary("참조를 벗긴 타입 (stage0 verify::value_ty): 슬라이스의 참조는 그대로")]
+    #[summary("Type with references stripped (stage0 verify::value_ty): references to slices stay as is")]
     #[effects(alloc)]
     fn value_ty(t: &ast::TypeKind) -> ast::TypeKind {
         match body::ref_inner(t) {

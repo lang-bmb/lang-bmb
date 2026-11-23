@@ -1,4 +1,4 @@
-#[summary("JSON(RFC 8259) 읽기와 쓰기: 텍스트를 노드 배열(simdjson의 테이프)로 해석하고 쌓기로 중첩을 따라가며, 문자열을 serde_json과 같은 규칙으로 쓴다. JSONTestSuite의 y_·n_ 판정과 값이 Python json과 같다 (ADR-0092 §2, backlog 4B-02 (h)·T4-05)")]
+#[summary("JSON (RFC 8259) reading and writing: parses text into a node array (simdjson's tape), tracks nesting with a stack, and writes strings by the same rules as serde_json. The y_ and n_ verdicts of JSONTestSuite and the values are the same as Python json (ADR-0092 §2)")]
 mod json {
     spec fn upto(t: &[u8], i: usize) -> bool {
         i <= t.len()

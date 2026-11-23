@@ -1,16 +1,16 @@
-#[summary("토큰화. 주석은 //뿐이고 버린다 (stage0 compiler/src/lexer.rs의 포트, 백로그 4D-02)")]
+#[summary("Tokenization. Comments are only // and are discarded (port of stage0 compiler/src/lexer.rs)")]
 mod lexer {
-    #[summary("이스케이프 하나: ok면 값 ch와 소스에서의 길이 n, 아니면 건너뛸 길이 n")]
+    #[summary("One escape: if ok, value ch and length n in the source, otherwise length n to skip")]
     struct Esc { ok: bool, ch: u32, n: usize }
 
-    #[summary("부동소수 리터럴의 부분들(자리는 _ 없이): 점이 있었는지 point, 지수 표시가 있었는지 e, 지수의 부호 neg")]
+    #[summary("Parts of a float literal (digits without _): whether there was a point point, whether there was an exponent marker e, sign of the exponent neg")]
     struct FloatParts { int: String, frac: String, point: bool, exp: String, neg: bool, e: bool, end: usize }
 
     enum Tok { Ident(String), Int(wide::U128, ast::Radix), Float(u64), Str(String), Char(u32), Byte(u8), Bytes(Vec<u8>), P(String), Label(String), Eof }
 
     struct Token { tok: Tok, span: source::Span }
 
-    #[summary("i부터 공백과 // 주석을 지난 자리")]
+    #[summary("Position past whitespace and // comments from i")]
     #[effects(pure)]
     fn after_comments(text: &str, i: usize) -> usize {
         let n: usize = text.len();
@@ -37,7 +37,7 @@ mod lexer {
         j
     }
 
-    #[summary("마지막 토큰이 break나 continue인가")]
+    #[summary("Whether the last token is break or continue")]
     #[effects(pure)]
     fn after_jump(out: &[Token]) -> bool {
         if out.len() == 0 {
@@ -62,7 +62,7 @@ mod lexer {
         c >= 65 && c <= 90 || c >= 97 && c <= 122
     }
 
-    #[summary("text의 바이트 i + k. 끝을 넘으면 256")]
+    #[summary("Byte i + k of text. 256 past the end")]
     #[effects(pure)]
     fn at(text: &str, i: usize, k: usize) -> (r: u32)
         ensures r <= 256, (r == 256) == (i + k >= text.len()),
@@ -75,7 +75,7 @@ mod lexer {
         }
     }
 
-    #[summary("알 수 없는 이스케이프의 진단: 문자열과 문자 리터럴의 이스케이프 (ADR-0050 §1), Rust와 같다")]
+    #[summary("Diagnostic for an unknown escape: escapes of string and character literals (ADR-0050 §1), same as Rust")]
     #[effects(alloc)]
     fn bad_escape(s: source::Span) -> diag::Diag {
         diag::fix(diag::new("E0101", s, "unknown escape: string and character literals take \\n \\r \\t \\\\ \\' \\\" \\0 \\xHH (up to 7f) \\u{H..}"), "write the character itself, or one of those escapes (a code point is `\\u{e9}`)", None)
@@ -168,7 +168,7 @@ mod lexer {
         i
     }
 
-    #[summary("bytes를 따옴표 q(' 또는 \")의 바이트 리터럴로 쓴 글: 찍히는 ASCII는 그대로, 나머지는 이스케이프로. 정규형과 고침이 쓴다")]
+    #[summary("Text writing bytes as a byte literal with quote q (' or \"): printable ASCII as is, the rest as escapes. Used by the normal form and fixes")]
     #[effects(alloc)]
     fn byte_text(bytes: &[u8], q: u32) -> String {
         let mut s: String = String::from("b");
@@ -204,7 +204,7 @@ mod lexer {
         s
     }
 
-    #[summary("i에서 시작하는 글자의 스칼라 값. 글자가 시작하지 않으면 1114112")]
+    #[summary("Scalar value of the character starting at i. 1114112 if no character starts there")]
     #[effects(pure)]
     fn char_code(text: &str, i: usize) -> u32 {
         match std::str::decode_utf8(text, i) {
@@ -213,7 +213,7 @@ mod lexer {
         }
     }
 
-    #[summary("문자열이나 문자 리터럴의 이스케이프(i는 역슬래시): 그 글자와 길이, 이스케이프가 아니면 건너뛸 길이")]
+    #[summary("Escape of a string or character literal (i is the backslash): its character and length, or the length to skip if it is not an escape")]
     #[effects(pure)]
     fn char_escape(text: &str, i: usize) -> Esc {
         let n: usize = text.len();
@@ -280,7 +280,7 @@ mod lexer {
         Esc { ok: false, ch: 0, n: char_len(text, i.saturating_add(1)).saturating_add(1) }
     }
 
-    #[summary("i에서 시작하는 글자의 바이트 수. 글자가 시작하지 않으면 0")]
+    #[summary("Byte count of the character starting at i. 0 if no character starts there")]
     #[effects(pure)]
     fn char_len(text: &str, i: usize) -> usize {
         match std::str::decode_utf8(text, i) {
@@ -289,7 +289,7 @@ mod lexer {
         }
     }
 
-    #[summary("'a', '\\n', '\\u{e9}': 문자 리터럴 (ADR-0050 §1). 문자 리터럴이 아니면 start를 낸다")]
+    #[summary("'a', '\\n', '\\u{e9}': character literal (ADR-0050 §1). Returns start if it is not a character literal")]
     #[effects(alloc)]
     fn char_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
         requires start < text.len(),
@@ -324,7 +324,7 @@ mod lexer {
         start
     }
 
-    #[summary("// 주석을 버린다. /// 줄들은 한 묶음의 줄을 빈칸으로 이어 #[summary(..)]의 토큰 일곱으로 낸다")]
+    #[summary("Discards // comments. For /// lines, joins the lines of one group with spaces and emits them as the seven tokens of #[summary(..)]")]
     #[effects(alloc)]
     fn comment(file: u32, text: &str, start: usize, out: &mut Vec<Token>) -> usize
         requires start < text.len(),
@@ -399,7 +399,7 @@ mod lexer {
         i
     }
 
-    #[summary("text[a..b]의 사본. 글자 경계가 아니면 빈 글(닿지 않는 갈래: 자르는 자리는 모두 글자의 앞뒤다)")]
+    #[summary("Copy of text[a..b]. Empty text if not on character boundaries (unreachable arm: every cut position is before or after a character)")]
     #[effects(alloc)]
     fn cut(text: &str, a: usize, b: usize) -> String {
         if a <= b && b <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(b) {
@@ -414,13 +414,13 @@ mod lexer {
         c >= 48 && c <= 57
     }
 
-    #[summary("/// 글은 #[summary(\"글\")]의 입력 꼴이다 (ADR-0117). //와 ////는 주석으로 남는다")]
+    #[summary("/// text is the input form of #[summary(\"text\")] (ADR-0117). // and //// remain comments")]
     #[effects(pure)]
     fn doc(text: &str, i: usize) -> bool {
         at(text, i, 0) == 47 && at(text, i, 1) == 47 && at(text, i, 2) == 47 && at(text, i, 3) != 47
     }
 
-    #[summary("바이트 리터럴 안의 이스케이프(i는 역슬래시): 값과 길이 (ADR-0044 §2, Rust와 같다). \\xHH의 두 글자는 Rust의 u8::from_str_radix가 읽는 대로다: 16진 둘, 또는 +와 16진 하나")]
+    #[summary("Escape inside a byte literal (i is the backslash): value and length (ADR-0044 §2, same as Rust). The two characters of \\xHH are as Rust's u8::from_str_radix reads them: two hex digits, or + and one hex digit")]
     #[effects(pure)]
     fn escape(text: &str, i: usize) -> Esc {
         let e: u32 = at(text, i, 1);
@@ -452,7 +452,7 @@ mod lexer {
         Esc { ok: false, ch: 0, n: 0 }
     }
 
-    #[summary("빠진 자리를 채워 쓴 리터럴 (.5 -> 0.5, 1. -> 1.0, 1e5 -> 1.0e5)")]
+    #[summary("Literal written with the missing digits filled in (.5 -> 0.5, 1. -> 1.0, 1e5 -> 1.0e5)")]
     #[effects(alloc)]
     fn fixed(f: &FloatParts) -> String {
         let mut s: String = String::new();
@@ -477,7 +477,7 @@ mod lexer {
         s
     }
 
-    #[summary("부동소수 리터럴 (ADR-0061 §2), 또는 잘못 쓴 것: 필드 이름이 올 수 없는 자리의 .5, 1., 1e5 (E0109)")]
+    #[summary("Float literal (ADR-0061 §2), or a malformed one: .5 where a field name cannot come, 1., 1e5 (E0109)")]
     #[effects(alloc)]
     fn float_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize {
         let n: usize = text.len();
@@ -560,7 +560,7 @@ mod lexer {
         FloatParts { int: int, frac: frac, point: point, exp: exp, neg: neg, e: e, end: i }
     }
 
-    #[summary("i의 10진 자리들이 부동소수 리터럴을 시작하는가, 잘 쓴 것이든(1.5, 2.0e-3) 아니든(1., 1e5): 점과 숫자, 구간(0..n)도 메서드나 필드 이름(1.max(2))도 시작하지 않는 점, 또는 자리 바로 뒤의 지수")]
+    #[summary("Whether the decimal digits at i start a float literal, well-formed (1.5, 2.0e-3) or not (1., 1e5): a point and a digit, a point that starts neither a range (0..n) nor a method or field name (1.max(2)), or an exponent right after the digits")]
     #[effects(pure)]
     fn float_start(text: &str, i: usize) -> bool
         requires i < text.len(),
@@ -596,7 +596,7 @@ mod lexer {
         false
     }
 
-    #[summary("부동소수 리터럴 값의 정규형 (ADR-0061 §2): 같은 f64로 되읽히는 가장 짧은 글(Rust의 {:?}), 가수에 점을 넣어(1e-9는 1.0e-9로 쓴다) 다시 리터럴이 되게 한다")]
+    #[summary("Normal form of a float literal value (ADR-0061 §2): the shortest text that reads back as the same f64 (Rust's {:?}), with a point put in the mantissa (1e-9 is written 1.0e-9) so that it is a literal again")]
     #[effects(alloc)]
     fn float_text(bits: u64) -> String {
         let s: String = float::debug(bits);
@@ -625,7 +625,7 @@ mod lexer {
         out
     }
 
-    #[summary("i에서 k만큼 나아간 자리: 적어도 하나, 많아야 끝 n까지")]
+    #[summary("Position advanced by k from i: at least one, at most up to the end n")]
     #[effects(pure)]
     fn fwd(i: usize, k: usize, n: usize) -> (r: usize)
         requires i < n,
@@ -638,7 +638,7 @@ mod lexer {
         }
     }
 
-    #[summary("16진 자리의 값, 아니면 16")]
+    #[summary("Value of a hex digit, otherwise 16")]
     #[effects(pure)]
     fn hexval(c: u32) -> (r: u32)
         ensures r <= 16,
@@ -654,7 +654,7 @@ mod lexer {
         }
     }
 
-    #[summary("start에서 시작하는 이름의 끝")]
+    #[summary("End of the name starting at start")]
     #[effects(alloc)]
     fn ident_end(file: u32, text: &str, start: usize, diags: &mut diag::Diags, generated: bool) -> usize
         requires start < text.len(),
@@ -684,7 +684,7 @@ mod lexer {
         i
     }
 
-    #[summary("정수 리터럴: 0x, 0o, 0b와 _ 구분 (ADR-0048 §3), Rust와 같다. 자리는 0x 리터럴에서 16진, 그 밖에서는 10진이고(진법 밖의 10진 자리는 오류) 뒤따르는 것은 접미사다")]
+    #[summary("Integer literal: 0x, 0o, 0b and _ separators (ADR-0048 §3), same as Rust. Digits are hex in a 0x literal and decimal elsewhere (a decimal digit outside the radix is an error) and what follows is the suffix")]
     #[effects(alloc)]
     #[uses(wide::small)]
     fn int_lit(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
@@ -801,7 +801,7 @@ mod lexer {
         s == "i8" || s == "i16" || s == "i32" || s == "i64" || s == "i128" || s == "isize" || s == "u8" || s == "u16" || s == "u32" || s == "u64" || s == "u128" || s == "usize"
     }
 
-    #[summary("a, b, c를 이은 글")]
+    #[summary("Text joining a, b, c")]
     #[effects(alloc)]
     fn joined(a: &str, b: &str, c: &str) -> String {
         let mut s: String = String::from(a);
@@ -810,7 +810,7 @@ mod lexer {
         s
     }
 
-    #[summary("i에서 시작하는 ASCII 밖의 글자가 글자나 숫자면 그 바이트 수, 아니면 0. 그런 글자는 알린 뒤(E0101) 그것이 쓰인 이름의 일부로 읽는다: 파서는 이름 하나를 보고, 같은 잘못을 빠진 이름으로 다시 알리지 않는다")]
+    #[summary("If the non-ASCII character starting at i is a letter or digit, its byte count, otherwise 0. Such a character is reported (E0101) and then read as part of the name it is used in: the parser sees one name, and does not report the same mistake again as a missing name")]
     #[effects(pure)]
     fn letter_len(text: &str, i: usize) -> usize {
         let c: u32 = char_code(text, i);
@@ -841,13 +841,13 @@ mod lexer {
         out
     }
 
-    #[summary("컴파일러가 만든 글(closures::lower): 그 이름은 $를 가질 수 있고 소스의 이름은 그럴 수 없다. 만든 항목의 이름이 사용자가 쓴 이름과 겹치지 않는다 (백로그 2V-20j)")]
+    #[summary("Text made by the compiler (closures::lower): its names may contain $ and source names may not. Names of generated items do not collide with names the user wrote")]
     #[effects(alloc)]
     fn lex_generated(file: u32, text: &str, diags: &mut diag::Diags) -> Vec<Token> {
         lex_as(file, text, diags, true)
     }
 
-    #[summary("j가 i보다 뒤이고 끝 n 안이면 j, 아니면 i의 다음")]
+    #[summary("j if j is after i and within the end n, otherwise the next after i")]
     #[effects(pure)]
     fn past(i: usize, j: usize, n: usize) -> (r: usize)
         requires i < n,
@@ -865,7 +865,7 @@ mod lexer {
         out.push(Token { tok: Tok::P(String::from(p)), span: s });
     }
 
-    #[summary("구두점: 세 글자, 두 글자, 한 글자의 순서로. 아니면 뜻밖의 글자 (E0101)")]
+    #[summary("Punctuation: in the order three characters, two characters, one character. Otherwise an unexpected character (E0101)")]
     #[effects(alloc)]
     fn puncts(file: u32, text: &str, i: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
         requires i < text.len(),
@@ -909,7 +909,7 @@ mod lexer {
         }
     }
 
-    #[summary("'로 시작하고 문자 리터럴이 아닌 것. 레이블: break/continue 뒤, 또는 : 앞(루프 레이블; BMB의 수명은 :를 갖지 않는다). 사이에 주석이 올 수 있다. 그 밖은 여러 글자의 문자 리터럴이거나 수명이다")]
+    #[summary("Something that starts with ' and is not a character literal. Label: after break/continue, or before : (loop label; BMB lifetimes take no :). Comments may come in between. Anything else is a multi-character character literal or a lifetime")]
     #[effects(alloc)]
     fn quote(file: u32, text: &str, start: usize, out: &mut Vec<Token>, diags: &mut diag::Diags) -> usize
         requires start < text.len(),
@@ -939,7 +939,7 @@ mod lexer {
         i
     }
 
-    #[summary("구간. 4GiB를 넘는 자리는 없다(소스 파일의 크기 한도): 넘으면 한도에 맞춘다")]
+    #[summary("Span. No position exceeds 4GiB (the source file size limit): if exceeded, clamps to the limit")]
     #[effects(pure)]
     fn span(file: u32, lo: usize, hi: usize) -> source::Span {
         let mut a: u32 = 4294967295;
@@ -953,7 +953,7 @@ mod lexer {
         source::Span { file: file, lo: a, hi: b }
     }
 
-    #[summary("i에서 토큰 하나(또는 공백, 주석, 잘못된 글자)를 읽고 그 다음 자리를 낸다")]
+    #[summary("Reads one token (or whitespace, a comment, an invalid character) at i and returns the position after it")]
     #[effects(alloc)]
     fn step(file: u32, text: &str, i: usize, out: &mut Vec<Token>, diags: &mut diag::Diags, generated: bool) -> usize
         requires i < text.len(),
@@ -1001,7 +1001,7 @@ mod lexer {
         puncts(file, text, i, out, diags)
     }
 
-    #[summary("s를 문자열 리터럴(q는 \")이나 문자 리터럴(q는 ')로 쓴 글: 글자는 그대로, 따옴표와 \\와 제어 글자는 이스케이프로. 정규형이 쓴다")]
+    #[summary("Text writing s as a string literal (q is \") or a character literal (q is '): characters as is, quotes, \\ and control characters as escapes. Used by the normal form")]
     #[effects(alloc)]
     fn str_text(s: &str, q: u32) -> String {
         let n: usize = s.len();
@@ -1075,7 +1075,7 @@ mod lexer {
         i
     }
 
-    #[summary("i부터의 자리들을 _ 없이 out에 덧붙이고 그 끝을 낸다")]
+    #[summary("Appends the digits from i to out without _ and returns their end")]
     #[effects(alloc)]
     fn take_digits(text: &str, i: usize, out: &mut String) -> (r: usize)
         ensures r >= i,
@@ -1095,7 +1095,7 @@ mod lexer {
         j
     }
 
-    #[summary("a부터 b 앞까지에서 뒤의 공백을 뺀 끝")]
+    #[summary("End of a up to before b with trailing whitespace removed")]
     #[effects(pure)]
     fn trim_hi(text: &str, a: usize, b: usize) -> (r: usize)
         requires a <= b,
@@ -1123,7 +1123,7 @@ mod lexer {
         k
     }
 
-    #[summary("a부터 b 앞까지에서 앞의 공백(유니코드 White_Space)을 지난 자리")]
+    #[summary("Position past leading whitespace (Unicode White_Space) in a up to before b")]
     #[effects(pure)]
     fn trim_lo(text: &str, a: usize, b: usize) -> (r: usize)
         ensures r >= a,
@@ -1150,7 +1150,7 @@ mod lexer {
         diag::new("E0101", span(file, i, hi), joined("unexpected character `", cut(text, i, hi).as_str(), "`").as_str())
     }
 
-    #[summary("이름을 이루는 ASCII 글자: 글자, 숫자, _")]
+    #[summary("ASCII characters that make up a name: letters, digits, _")]
     #[effects(pure)]
     fn word(c: u32) -> bool {
         digit(c) || alpha(c) || c == 95

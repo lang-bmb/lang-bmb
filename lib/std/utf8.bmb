@@ -1,4 +1,4 @@
-#[summary("UTF-8 검증(T4-02): Unicode 표 3-7의 잘 짜인 바이트 시퀀스. 결과는 Rust str::from_utf8의 valid_up_to와 같다")]
+#[summary("UTF-8 validation: the well-formed byte sequences of Unicode Table 3-7. The result is the same as valid_up_to of Rust str::from_utf8")]
 mod utf8 {
     spec fn cont(b: u8) -> bool { 128 <= b && b <= 191 }
 

@@ -1,6 +1,6 @@
-#[summary("SHA-256 (FIPS 180-4) (stage0 compiler/src/sha256.rs의 포트, 백로그 4D-03f1). 정의의 해시가 쓴다 (ADR-0019, ADR-0059)")]
+#[summary("SHA-256 (FIPS 180-4) (port of stage0 compiler/src/sha256.rs). Used by the hash of a definition (ADR-0019, ADR-0059)")]
 mod sha256 {
-    #[summary("한 덩이(msg의 at부터 64바이트)를 상태 h에 섞은 새 상태")]
+    #[summary("New state from mixing one block (64 bytes of msg from at) into state h")]
     #[effects(alloc)]
     fn block(h: &[u32], msg: &[u8], at: usize) -> (r: Vec<u32>)
         requires h.len() == 8 && at <= msg.len() && msg.len() - at >= 64,
@@ -68,7 +68,7 @@ mod sha256 {
         out
     }
 
-    #[summary("data의 해시: 32비트 낱말 여덟")]
+    #[summary("Hash of data: eight 32-bit words")]
     #[effects(alloc)]
     fn digest(data: &[u8]) -> (r: Vec<u32>)
         ensures r.len() == 8,
@@ -118,7 +118,7 @@ mod sha256 {
         h
     }
 
-    #[summary("sha256:과 16진 자리 64개")]
+    #[summary("sha256: and 64 hex digits")]
     #[effects(alloc)]
     fn hex(data: &[u8]) -> String {
         let h: Vec<u32> = digest(data);
@@ -143,7 +143,7 @@ mod sha256 {
         s
     }
 
-    #[summary("FIPS 180-4의 상수 K")]
+    #[summary("The constant K of FIPS 180-4")]
     #[effects(pure)]
     fn k(i: usize) -> u32
         requires i < 64,
@@ -152,7 +152,7 @@ mod sha256 {
         ks[i]
     }
 
-    #[summary("16진 자리 d(0..15)를 붙인다")]
+    #[summary("Appends hex digit d (0..15)")]
     #[effects(alloc)]
     fn push_digit(out: &mut String, d: u32) -> () {
         let code: u32 = if d < 10 {
@@ -166,7 +166,7 @@ mod sha256 {
         }
     }
 
-    #[summary("바이트 넷을 큰 끝부터 읽은 낱말")]
+    #[summary("Word read from four bytes, big end first")]
     #[effects(pure)]
     fn word(b0: u8, b1: u8, b2: u8, b3: u8) -> u32 {
         (b0 as u32) << 24 | (b1 as u32) << 16 | (b2 as u32) << 8 | b3 as u32

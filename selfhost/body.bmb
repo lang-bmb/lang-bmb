@@ -1,13 +1,13 @@
-#[summary("검사기의 2패스: 몸을 검사한다 (stage0 compiler/src/check.rs의 check_mod부터의 포트, 백로그 4D-03e). 단위와 함수를 걷고, 매개변수와 계약의 자리를 보고, 이름을 범위에 넣고, 효과를 견주고, 문장과 자리, match·변형·구조체 리터럴을 본다. 식(expr)은 다음 조각이 채운다. f는 남은 깊이다 (ADR-0140)")]
+#[summary("Pass 2 of the checker: checks bodies (port of stage0 compiler/src/check.rs from check_mod on). Walks units and functions, looks at the positions of parameters and contracts, puts names into scope, compares effects, and looks at statements and places, match, variants and struct literals. Expressions (expr) are filled in by the next piece. f is the remaining depth (ADR-0140)")]
 mod body {
-    #[summary("settle_lets가 고른 타입: 가장 앞 자리의 것")]
+    #[summary("Type chosen by settle_lets: the one at the earliest position")]
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
-    #[summary("몸 검사의 표. c는 1패스가 모은 선언. types는 식마다의 타입(열쇠는 span_key), locals는 정의마다 이름의 타입, needs는 실행 정의마다 제 연산의 효과와 몸이 요구하는 효과")]
+    #[summary("Table of the body check. c is the declarations collected by pass 1. types is the type of each expression (the key is span_key), locals is the types of names per definition, needs is, per executable definition, the effects of its own operations and the effects its body requires")]
     struct Body { c: decls::Checker, recursive: table::Table<usize>, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
 
     impl Body {
-        #[summary("caller가 callee를 부른다고 적는다")]
+        #[summary("Records that caller calls callee")]
         #[effects(alloc)]
         fn add_call(self: &mut Body, caller: &str, callee: &str) -> () {
             let mut set: Vec<String> = match self.calls.find(caller) {
@@ -20,7 +20,7 @@ mod body {
             self.calls.insert(caller, set);
         }
 
-        #[summary("E0410: &mut으로 넘긴 변수를 다른 인자도 쓴다. 배열을 읽기만 하는 스칼라 인자는 호출 전에 계산된 값이라 겹칠 수 없다 (ADR-0024): fill(&mut a, a.len())")]
+        #[summary("E0410: a variable passed by &mut is also used by another argument. A scalar argument that only reads the array is a value computed before the call and cannot overlap (ADR-0024): fill(&mut a, a.len())")]
         #[effects(alloc)]
         fn alias_check(self: &mut Body, sig: &types::FnSig, args: &[ast::Expr], mut_roots: &[MutRoot]) -> () {
             for q in 0..mut_roots.len()
@@ -37,7 +37,7 @@ mod body {
             }
         }
 
-        #[summary("타입 인자를 추론하는 중의 인자 a (매개변수 타입 pt0에 아직 묶이지 않은 매개변수가 있다): 문맥의 타입을 받는 리터럴은 미루고, 값 인자는 검사한 타입에서, 참조 인자는 구문에서 읽은 타입에서 묶는다. 이 인자가 끝났는가 (참조 인자는 이어서 ref_arg가 본다)")]
+        #[summary("Argument a while type arguments are being inferred (parameter type pt0 has parameters not yet bound): literals that take their type from context are deferred, value arguments bind from the checked type, reference arguments from the type read from syntax. Whether this argument is finished (reference arguments are then looked at by ref_arg)")]
         #[effects(alloc)]
         fn arg_infer(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &mut types::Subst, a: &ast::Expr, i: usize, pt0: &ast::TypeKind, mode: Mode, deferred: &mut Vec<usize>, f: usize) -> bool
             decreases f * 3 + 1,
@@ -68,7 +68,7 @@ mod body {
             false
         }
 
-        #[summary("검사하기 전에 구문에서 읽은 인자 a의 타입: 지역 변수, 그것의 참조, 조각으로 본 Vec. 타입 인자를 추론하는 데 쓴다 (E0237)")]
+        #[summary("Type of argument a read from syntax before checking: a local variable, a reference to it, a Vec seen as a slice. Used to infer type arguments (E0237)")]
         #[effects(alloc)]
         fn arg_peek(self: &Body, cx: &FnCtx, a: &ast::Expr, f: usize) -> Option<ast::TypeKind>
             decreases f,
@@ -115,7 +115,7 @@ mod body {
             }
         }
 
-        #[summary("값 매개변수(타입 pt)의 인자 a: 그 타입을 기대하며 검사한다. 명세에서는 정수 타입이 섞인다 (ADR-0022)")]
+        #[summary("Argument a of a value parameter (type pt): checked expecting that type. In specifications integer types mix (ADR-0022)")]
         #[effects(alloc)]
         fn arg_value(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, pt: &ast::TypeKind, mode: Mode, f: usize) -> ()
             decreases f * 3 + 1,
@@ -133,7 +133,7 @@ mod body {
             }
         }
 
-        #[summary("인자들을 기대 없이 검사한다 (오류를 낸 호출의 나머지)")]
+        #[summary("Checks the arguments with no expectation (the rest of a call that raised an error)")]
         #[effects(alloc)]
         fn args_only(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -149,7 +149,7 @@ mod body {
             }
         }
 
-        #[summary("갈래의 패턴이 묶는 이름들의 타입: 변형 k의 페이로드 (참조를 match하면 그 참조). 자리 수가 어긋나면 E0427")]
+        #[summary("Types of the names bound by an arm's pattern: the payload of variant k (references to it when matching a reference). E0427 if the slot count does not match")]
         #[effects(alloc)]
         fn arm_binds(self: &mut Body, mp: &str, p: &ast::Pat, tp: &str, vs: &[types::VariantSig], k: usize, by_ref: bool, by_mut: bool) -> Vec<ast::TypeKind> {
             let mut tys: Vec<ast::TypeKind> = Vec::new();
@@ -176,7 +176,7 @@ mod body {
             tys
         }
 
-        #[summary("갈래의 패턴이 이름한 변형의 차례 (값은 열거형 tp). 변형 경로가 아니면 E0307, 다른 타입의 변형이면 E0401")]
+        #[summary("Ordinal of the variant named by an arm's pattern (the value is of enum tp). E0307 if not a variant path, E0401 if a variant of another type")]
         #[effects(alloc)]
         fn arm_variant(self: &mut Body, cx: &FnCtx, p: &ast::Pat, tp: &str, vs: &[types::VariantSig], st: &ast::TypeKind) -> (r: Option<usize>)
             ensures match r { None => true, Some(i) => i < vs.len(), },
@@ -234,7 +234,7 @@ mod body {
             }
         }
 
-        #[summary("배열 리터럴 [a, b]: 원소는 한 타입이고 배열의 원소가 될 수 있다. 기대한 배열 타입이 원소의 타입을 준다")]
+        #[summary("Array literal [a, b]: the elements have one type and can be array elements. The expected array type gives the element type")]
         #[effects(alloc)]
         fn array_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, items: &[ast::Expr], expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -267,7 +267,7 @@ mod body {
             }
         }
 
-        #[summary("&[u8] 매개변수에 주거나 색인한 s.as_bytes() (ADR-0050 §2): 글 값의 바이트, 읽기만")]
+        #[summary("s.as_bytes() given to a &[u8] parameter or indexed (ADR-0050 §2): the bytes of a text value, read only")]
         #[effects(alloc)]
         fn as_bytes_arg(self: &mut Body, cx: &mut FnCtx, base: &ast::Expr, recv: &ast::Expr, mode: Mode, f: usize) -> bool
             decreases f * 3,
@@ -284,7 +284,7 @@ mod body {
             true
         }
 
-        #[summary("assert(e); 와 assert(e) by (bit_vector); : 실행 코드, proof 블록, proof fn의 몸에 (ADR-0048 §4)")]
+        #[summary("assert(e); and assert(e) by (bit_vector); : in executable code, proof blocks, and proof fn bodies (ADR-0048 §4)")]
         #[effects(alloc)]
         fn assert_stmt(self: &mut Body, cx: &mut FnCtx, a: &ast::Assert, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -304,7 +304,7 @@ mod body {
             }
         }
 
-        #[summary("대입: 대상의 자리와 타입, 값의 타입. 대상의 타입은 놓는 자리의 검사(moves)가 읽도록 적어 둔다")]
+        #[summary("Assignment: place and type of the target, type of the value. The type of the target is recorded so that the drop-place check (moves) can read it")]
         #[effects(alloc)]
         fn assign_stmt(self: &mut Body, cx: &mut FnCtx, a: &ast::Assign, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -324,7 +324,7 @@ mod body {
             self.expect_ty(&vt, &tt, a.value.span);
         }
 
-        #[summary("assume(p(..)); (ADR-0029 §1): 실행 코드에서, 이름 붙은 술어 호출 하나(E1003), 앞에 근거(E1001, E1002). panic의 출처다")]
+        #[summary("assume(p(..)); (ADR-0029 §1): in executable code, a single named predicate call (E1003), preceded by a rationale (E1001, E1002). It is a source of panic")]
         #[effects(alloc)]
         fn assume_stmt(self: &mut Body, cx: &mut FnCtx, a: &ast::Assume, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -357,7 +357,7 @@ mod body {
             }
         }
 
-        #[summary("unwrap도 ok도 없는 변환 T::try_from(x) (ADR-0028 §1, E0412)과 T::from(x) (E0212). u32::from(c)는 글자의 스칼라 값이다 (ADR-0050 §2)")]
+        #[summary("Conversions T::try_from(x) with neither unwrap nor ok (ADR-0028 §1, E0412) and T::from(x) (E0212). u32::from(c) is the scalar value of a char (ADR-0050 §2)")]
         #[effects(alloc)]
         fn bare_conv(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, c: &ast::Call, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -398,7 +398,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("이항 연산 (시프트와 논리 연산은 따로): 리터럴은 다른 피연산자에서 타입을 받는다")]
+        #[summary("Binary operation (shifts and logical operations are separate): a literal takes its type from the other operand")]
         #[effects(alloc)]
         fn binary(self: &mut Body, cx: &mut FnCtx, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, span: source::Span, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -438,7 +438,7 @@ mod body {
             self.binary_types(op, l, r, &lt, &rt, mode, span)
         }
 
-        #[summary("두 피연산자가 한 타입 lt일 때: ==는 스칼라에(자료 타입·배열·조각의 ==는 명세에서만, E0425), 비트 연산은 정수와 bool에, 나머지는 정수와 f64에")]
+        #[summary("When both operands have one type lt: == on scalars (== of data types, arrays and slices only in specifications, E0425), bitwise operations on integers and bool, the rest on integers and f64")]
         #[effects(alloc)]
         fn binary_same(self: &mut Body, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, lt: &ast::TypeKind, mode: Mode, span: source::Span) -> ast::TypeKind {
             let valued: bool = is_arith(op) || is_bit(op);
@@ -504,7 +504,7 @@ mod body {
             }
         }
 
-        #[summary("피연산자의 타입 lt, rt로 이항 연산의 타입: char는 수가 아니고, 글은 글과 견주고, 명세에서는 정수 타입이 섞인다 (ADR-0022), 코드에서는 한 타입이다")]
+        #[summary("Type of a binary operation from the operand types lt, rt: char is not a number, text compares with text, in specifications integer types mix (ADR-0022), in code it is one type")]
         #[effects(alloc)]
         fn binary_types(self: &mut Body, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, lt: &ast::TypeKind, rt: &ast::TypeKind, mode: Mode, span: source::Span) -> ast::TypeKind {
             let valued: bool = is_arith(op) || is_bit(op);
@@ -566,7 +566,7 @@ mod body {
             self.binary_same(op, l, r, lt, mode, span)
         }
 
-        #[summary("owner의 함수 sig를 메서드로 부르는 길 (ADR-0051): 수신자를 넘기는 방식과 타입 인자. by_self면 trait의 메서드(수신자는 Self), 아니면 타입 owner의 impl. 메서드로 부를 수 없으면 E0314, 공유 참조로 &mut 메서드를 부르면 E0401")]
+        #[summary("The way to call function sig of owner as a method (ADR-0051): how the receiver is passed and the type arguments. If by_self, a method of the trait (the receiver is Self), otherwise the impl of type owner. E0314 if it cannot be called as a method, E0401 if a &mut method is called through a shared reference")]
         #[effects(alloc)]
         fn bind_method(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, value: &ast::TypeKind, owner: &str, by_self: bool, sig: &types::FnSig, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span) -> Found {
             let adjust: ast::Adjust = match receiver_adjust(sig.params.as_slice(), is_ref(rt), owner, by_self) {
@@ -612,7 +612,7 @@ mod body {
             Found::Target(MethodTarget { path: path, type_args: type_args, adjust: adjust })
         }
 
-        #[summary("블록 안의 by (bit_vector) 항: let의 초기값과 끝 식. let의 이름은 블록 안에서 묶인다")]
+        #[summary("by (bit_vector) term inside a block: the initializers of lets and the final expression. The names of lets are bound inside the block")]
         #[effects(alloc)]
         fn bit_vector_block(self: &mut Body, b: &ast::Block, bound: &mut Vec<String>, f: usize) -> ()
             decreases f,
@@ -643,7 +643,7 @@ mod body {
             bound.truncate(n);
         }
 
-        #[summary("assert(e) by (bit_vector)의 항 (ADR-0048 §4): 변수·리터럴·정수와 f64의 상수·연산자·if·let 블록·정수 메서드·spec fn 호출로 지은 정수·f64·bool 값. 다른 값의 스칼라 읽기(원소, 필드, 참조 뒤의 값, 스칼라 아닌 받는 값의 메서드)는 단언의 let을 말하지 않으면 부증명의 변수다 (백로그 2N-11). 나머지는 E0515")]
+        #[summary("Term of assert(e) by (bit_vector) (ADR-0048 §4): an integer, f64 or bool value built from variables, literals, integer and f64 constants, operators, if, let blocks, integer methods and spec fn calls. A scalar read of another value (element, field, value behind a reference, method of a non-scalar receiver) is a variable of the subproof unless it mentions a let of the assertion. The rest is E0515")]
         #[effects(alloc)]
         fn bit_vector_terms(self: &mut Body, e: &ast::Expr, bound: &mut Vec<String>, f: usize) -> ()
             decreases f,
@@ -715,7 +715,7 @@ mod body {
             self.c.help("E0515", e.span, types::cat4("`by (bit_vector)` takes integer, `f64` and `bool` terms: `", fmt::expr_text(e).as_str(), "` is ", text.as_str()).as_str(), "assert over integer and `bool` terms: an element, a field or a length is one when it names no `let` of the assertion; a quantified fact is a `proof fn` over one value");
         }
 
-        #[summary("블록: 새 범위에서 문장을 차례로, 끝 식의 타입. 끝 식이 없고 끝나지 않는 문장이 있으면 `!`")]
+        #[summary("Block: statements in order in a new scope, the type of the final expression. `!` if there is no final expression and there is a statement that does not terminate")]
         #[effects(alloc)]
         fn block(self: &mut Body, cx: &mut FnCtx, b: &ast::Block, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 2,
@@ -738,7 +738,7 @@ mod body {
             t
         }
 
-        #[summary("Box::new(v) (ADR-0047 §1): 담는 타입은 기대한 타입의 것, 없으면 v의 것")]
+        #[summary("Box::new(v) (ADR-0047 §1): the contained type is that of the expected type, or that of v if there is none")]
         #[effects(alloc)]
         fn box_new(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -776,7 +776,7 @@ mod body {
             ast::TypeKind::Box(types::boxed(t))
         }
 
-        #[summary("break와 break 값: 값은 loop만 떠난다 (E0251). loop의 break들은 한 타입의 값을 든다")]
+        #[summary("break and break with a value: a value leaves only a loop (E0251). The breaks of a loop carry values of one type")]
         #[effects(alloc)]
         fn break_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, b: &ast::Break, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -805,7 +805,7 @@ mod body {
             ast::TypeKind::Never
         }
 
-        #[summary("E0221: 내장 변형은 타입 없이 쓴다 (ADR-0026 §3)")]
+        #[summary("E0221: built-in variants are written without the type (ADR-0026 §3)")]
         #[effects(alloc)]
         fn builtin_by_path(self: &mut Body, segs: &[ast::Ident]) -> () {
             if segs.len() < 2 {
@@ -814,7 +814,7 @@ mod body {
             self.c.fixed("E0221", decls::span_to(segs[0].span, segs[1].span), types::cat5("write `", segs[1].name.as_str(), "`, not `", segs[0].name.as_str(), types::cat3("::", segs[1].name.as_str(), "`").as_str()).as_str(), types::cat3("`", segs[1].name.as_str(), "` is a built-in name").as_str(), segs[1].name.as_str());
         }
 
-        #[summary("rt 타입의 받는 값에 x.clone()이 내장 깊은 사본인가 (ADR-0141 §1): 메모리를 가진 타입(구조체·열거형·Box·배열)이고 제 clone이 없다 (제 함수나 trait의 메서드가 먼저다)")]
+        #[summary("Whether x.clone() on a receiver of type rt is the built-in deep copy (ADR-0141 §1): a type that owns memory (struct, enum, Box, array) with no clone of its own (its own function or a trait method comes first)")]
         #[effects(alloc)]
         fn builtin_clone(self: &Body, rt: &ast::TypeKind) -> bool {
             let value: ast::TypeKind = match ref_inner(rt) {
@@ -832,7 +832,7 @@ mod body {
             !own && types::is_move_in(&value, &self.c.adts, moving.as_slice())
         }
 
-        #[summary("Some(x), None, Ok(x), Err(e): 타입은 기대한 타입에서 온다 (Some(x)만은 Option<x의 타입>)")]
+        #[summary("Some(x), None, Ok(x), Err(e): the type comes from the expected type (only Some(x) is Option<type of x>)")]
         #[effects(alloc)]
         fn builtin_variant(self: &mut Body, cx: &mut FnCtx, name: &str, args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -877,7 +877,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("u8을 기대한 자리가 아니면 u8인 바이트 리터럴. 글자를 기대한 자리면 E0401, 고침은 글자 리터럴")]
+        #[summary("Byte literal: u8 whatever the position expects. Where a char is expected, E0401, and the fix is a char literal")]
         #[effects(alloc)]
         fn byte_lit(self: &mut Body, b: u8, expected: &Option<ast::TypeKind>, span: source::Span) -> ast::TypeKind {
             if opt_char(expected) {
@@ -892,7 +892,7 @@ mod body {
             ast::TypeKind::Int(ast::IntTy::U8)
         }
 
-        #[summary("경로로 부르는 호출 f(args): 가리키는 함수, 부르는 곳과 함수의 종류(실행·명세·증명), 효과, 인자 수, 쓰거나 추론한 타입 인자 (ADR-0046 §3, 추론하면 E0237이 써 준다), 인자마다의 타입, &mut 인자의 겹침 (E0410)")]
+        #[summary("Call by path f(args): the function referred to, the kinds of the call site and the function (executable, specification, proof), effects, argument count, written or inferred type arguments (ADR-0046 §3, if inferred E0237 writes them), the type of each argument, overlap of &mut arguments (E0410)")]
         #[effects(alloc)]
         fn call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -963,7 +963,7 @@ mod body {
             types::subst(&sig.ret, &tm)
         }
 
-        #[summary("호출의 i번째 인자 a: 타입 인자를 추론하는 중이면 그 인자에서 묶고(문맥의 타입을 받는 리터럴은 deferred로 미룬다), 참조 매개변수는 ref_arg로 (&mut 인자가 출발하는 변수는 mut_roots에), 값 매개변수는 그 타입을 기대하며 검사한다")]
+        #[summary("The i-th argument a of a call: while type arguments are being inferred, binds from that argument (literals that take their type from context are deferred to deferred), reference parameters go to ref_arg (the variable a &mut argument starts from goes to mut_roots), value parameters are checked expecting that type")]
         #[effects(alloc)]
         fn call_arg(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &mut types::Subst, a: &ast::Expr, i: usize, infer: bool, is_trait: bool, mode: Mode, deferred: &mut Vec<usize>, mut_roots: &mut Vec<MutRoot>, f: usize) -> ()
             decreases f * 3 + 2,
@@ -992,7 +992,7 @@ mod body {
             }
         }
 
-        #[summary("추론한 타입 인자의 마감: trait 메서드의 Self가 묶였는가 (아니면 E0237)와 그 경계, 빠뜨린 타입 인자가 모두 추론되어 경계를 지키는가, 그리고 써 넣는 E0237. 호출이 계속되는가")]
+        #[summary("Finishing of inferred type arguments: whether the Self of a trait method was bound (otherwise E0237) and its bounds, whether all omitted type arguments were inferred and keep their bounds, and the E0237 that writes them in. Whether the call continues")]
         #[effects(alloc)]
         fn call_bound(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, tm: &types::Subst, name: &str, missing: bool, span: source::Span) -> bool {
             let is_trait: bool = !no_text(&sig.trait_of);
@@ -1042,7 +1042,7 @@ mod body {
             true
         }
 
-        #[summary("미뤄 둔 인자(문맥의 타입을 받는 리터럴): 다른 인자가 타입 인자를 묶은 뒤에 그 타입을 기대하며 검사한다")]
+        #[summary("Deferred arguments (literals that take their type from context): checked expecting that type after other arguments have bound the type arguments")]
         #[effects(alloc)]
         fn call_deferred(self: &mut Body, cx: &mut FnCtx, sig: &types::FnSig, tm: &types::Subst, args: &[ast::Expr], deferred: &[usize], mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -1070,7 +1070,7 @@ mod body {
             }
         }
 
-        #[summary("호출 꼴의 식이 무엇인가: 바이트에서 온 정수, f64::from, 정수 변환, 내장 변형, 열거형의 변형, std::mem, Box::new, 글과 Vec의 내장 호출, 그리고 함수 호출")]
+        #[summary("What an expression of call form is: an integer from a byte, f64::from, integer conversion, built-in variant, enum variant, std::mem, Box::new, built-in calls of text and Vec, and function calls")]
         #[effects(alloc)]
         fn call_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, c: &ast::Call, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -1120,7 +1120,7 @@ mod body {
             self.call(cx, c.path.as_slice(), c.targs.as_slice(), c.args.as_slice(), expected, e.span, mode, f)
         }
 
-        #[summary("부르는 곳(실행·명세·유령)과 함수의 종류(실행·명세·증명)의 짝: 증명 함수는 유령 코드에서만 (ADR-0062 §1, E0258), 실행 함수는 실행 코드에서만 (E0504, 유령이면 E0257), 명세 함수는 명세에서만 (E0505). 맞는 짝이면 효과를 요구하고 호출을 적는다")]
+        #[summary("Pairing of the call site (executable, specification, ghost) and the kind of the function (executable, specification, proof): proof functions only in ghost code (ADR-0062 §1, E0258), executable functions only in executable code (E0504, E0257 if ghost), specification functions only in specifications (E0505). If the pairing fits, requires the effects and records the call")]
         #[effects(alloc)]
         fn call_kind(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], args: &[ast::Expr], sig: &types::FnSig, target: &str, quoted: &str, span: source::Span, mode: Mode) -> () {
             let caller: String = cx.path.clone();
@@ -1153,7 +1153,7 @@ mod body {
             }
         }
 
-        #[summary("타입 인자가 있는 호출을 적는다: 타입 인자(targs), 재귀 검사에 쓸 호출(gcalls), Self가 알려진 trait 호출이 돌리는 impl의 함수. 묶이지 않은 매개변수가 있으면 false")]
+        #[summary("Records a call that has type arguments: the type arguments (targs), the call used for the recursion check (gcalls), the impl function that a trait call with known Self dispatches to. false if there are unbound parameters")]
         #[effects(alloc)]
         fn call_record(self: &mut Body, cx: &FnCtx, sig: &types::FnSig, tm: &types::Subst, target: &str, span: source::Span) -> bool {
             let caller: String = cx.path.clone();
@@ -1177,7 +1177,7 @@ mod body {
             true
         }
 
-        #[summary("u8을 기대한 자리의 글자 리터럴: Rust의 버릇, BMB에서도 바이트는 b'a'다 (E0401)")]
+        #[summary("Char literal where u8 is expected: a Rust habit, in BMB too a byte is b'a' (E0401)")]
         #[effects(alloc)]
         fn char_lit(self: &mut Body, c: u32, expected: &Option<ast::TypeKind>, span: source::Span) -> ast::TypeKind {
             if opt_u8(expected) {
@@ -1193,7 +1193,7 @@ mod body {
             ast::TypeKind::Char
         }
 
-        #[summary("char의 메서드 (ADR-0050 §2): len_utf8")]
+        #[summary("Methods of char (ADR-0050 §2): len_utf8")]
         #[effects(alloc)]
         fn char_method(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -1224,7 +1224,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("const 하나 (ADR-0052): 타입은 값만 담고(E0437) 초기값은 그 타입이다. 평가기가 먼저 돌았으므로, 검사기가 초기값을 틀렸다고 하면 그 자리의 평가기 진단은 뺀다")]
+        #[summary("One const (ADR-0052): the type holds only values (E0437) and the initializer is of that type. Since the evaluator ran first, if the checker says the initializer is wrong, the evaluator diagnostics at that position are removed")]
         #[effects(alloc)]
         fn check_const(self: &mut Body, c: &ast::ConstDef, mp: &str) -> () {
             let saved: Vec<types::TParam> = self.c.tparams.clone();
@@ -1264,7 +1264,7 @@ mod body {
             self.c.tparams = saved;
         }
 
-        #[summary("계약의 절 하나: bool이고, 이름 붙은 술어면 공허하지 않으며(E0502), 한정자를 담으면 이름 붙은 술어다(E0501, ADR-0095 A2)")]
+        #[summary("One clause of a contract: it is bool, if a named predicate it is not vacuous (E0502), and if it contains a quantifier it is a named predicate (E0501, ADR-0095 A2)")]
         #[effects(alloc)]
         fn check_contract(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, post: bool) -> () {
             let want: Option<ast::TypeKind> = Some(ast::TypeKind::Bool);
@@ -1284,7 +1284,7 @@ mod body {
             }
         }
 
-        #[summary("선언한 효과가 몸이 요구하는 것을 담는가 (ADR-0030 §3). 빠진 효과는 정의에 하나의 E0606이고 고칠 글은 요구하는 효과를 모두 쓴 속성이다. pure가 io를 부르는 것뿐이면 호출 자리의 E0603으로 충분하다")]
+        #[summary("Whether the declared effects contain what the body requires (ADR-0030 §3). Missing effects are a single E0606 on the definition and the fix text is the attribute writing all required effects. If it is only pure calling io, the E0603 at the call site suffices")]
         #[effects(alloc)]
         fn check_effects(self: &mut Body, d: &ast::FnDef, cx: &FnCtx) -> () {
             let need: types::Effects = needed(cx);
@@ -1330,7 +1330,7 @@ mod body {
             }
         }
 
-        #[summary("함수 하나: #[uses], 매개변수와 결과의 타입, 계약, 측도, 몸, 그리고 실행 함수면 효과")]
+        #[summary("One function: #[uses], the types of parameters and result, contract, measure, body, and effects if an executable function")]
         #[effects(alloc)]
         fn check_fn(self: &mut Body, d: &ast::FnDef, mp: &str, path: &str) -> () {
             let at: usize = match self.c.fns.find(path) {
@@ -1435,7 +1435,7 @@ mod body {
             self.c.tparams = Vec::new();
         }
 
-        #[summary("프로그램의 main: 하나뿐이고 (E0702, 글의 순서로 뒤의 것이 남는 것) `#[effects(io)] fn main() -> ()` 꼴이다 (E0701)")]
+        #[summary("The program's main: there is only one (E0702, in text order the later ones are the surplus) and it has the form `#[effects(io)] fn main() -> ()` (E0701)")]
         #[effects(alloc)]
         fn check_main(self: &mut Body, p: &ast::Program) -> () {
             let mut found: Vec<ast::FnDef> = Vec::new();
@@ -1457,7 +1457,7 @@ mod body {
             }
         }
 
-        #[summary("단위 하나: 속성과 요약, 안의 단위, 상수, 함수, impl과 trait의 함수")]
+        #[summary("One unit: attributes and summary, inner units, constants, functions, functions of impls and traits")]
         #[effects(alloc)]
         fn check_mod(self: &mut Body, m: &ast::Mod, prefix: &str, f: usize) -> ()
             decreases f,
@@ -1543,7 +1543,7 @@ mod body {
             }
         }
 
-        #[summary("함수 d의 이동을 검사한다 (moves): 진단을 더하고 놓는 자리를 적는다. 식의 타입과 데이터 타입의 표는 그동안 빌려준다")]
+        #[summary("Checks the moves of function d (moves): adds diagnostics and records drop places. The tables of expression types and data types are lent for the duration")]
         #[effects(alloc)]
         fn check_moves(self: &mut Body, d: &ast::FnDef, path: &str) -> moves::MoveInfo {
             let locals: table::Table<ast::TypeKind> = match self.locals.find(path) {
@@ -1562,7 +1562,7 @@ mod body {
             r.info
         }
 
-        #[summary("매개변수의 타입이 가질 수 있는 꼴. resolved가 거짓이면 타입 안의 결함을 이미 알렸으므로 둘러싼 참조의 꼴을 다시 알리지 않는다 (백로그 2V-22)")]
+        #[summary("Forms a parameter's type may have. If resolved is false, a defect inside the type has already been reported, so the form of the enclosing reference is not reported again")]
         #[effects(alloc)]
         fn check_param_type(self: &mut Body, t: &ast::Type, kind: ast::FnKind, resolved: bool) -> () {
             match ref_inner(&t.kind) {
@@ -1571,7 +1571,7 @@ mod body {
             }
         }
 
-        #[summary("프로그램 전체: 선언을 모으고(1패스), 단위마다 몸을 검사하고(2패스), 재귀와 main을 본다")]
+        #[summary("The whole program: collects declarations (pass 1), checks bodies per unit (pass 2), and looks at recursion and main")]
         #[effects(alloc)]
         fn check_program(self: &mut Body, p: &ast::Program) -> () {
             self.c.collect(p);
@@ -1584,7 +1584,7 @@ mod body {
             self.check_main(p);
         }
 
-        #[summary("재귀: 호출 그래프의 순환마다 번호를 적고(recursive), 순환 위의 정의에 decreases가 없으면 E0507 (경계 있는 Self의 호출을 지나는 순환은 trait_cycles가 E0207로 알린다). 타입 매개변수를 더 큰 타입에 싸서 넘기는 재귀 호출은 E0430 (인스턴스가 끝나지 않는다)")]
+        #[summary("Recursion: records a number for each cycle of the call graph (recursive), and E0507 if a definition on a cycle has no decreases (cycles passing through a call on a bounded Self are reported by trait_cycles as E0207). A recursive call that passes a type parameter wrapped in a larger type is E0430 (instances do not terminate)")]
         #[effects(alloc)]
         fn check_recursion(self: &mut Body, p: &ast::Program) -> () {
             let rows: Vec<DefRow> = defs_of(p, &self.c.fns);
@@ -1637,7 +1637,7 @@ mod body {
             }
         }
 
-        #[summary("참조 매개변수 `&inner`의 꼴")]
+        #[summary("Form of a reference parameter `&inner`")]
         #[effects(alloc)]
         fn check_ref_param(self: &mut Body, span: source::Span, mutable: bool, inner: &ast::TypeKind, kind: ast::FnKind, resolved: bool) -> () {
             let slice_ok: bool = match slice_elem(inner) {
@@ -1680,7 +1680,7 @@ mod body {
             self.c.help("E0402", span, "references are `&[T]`, `&mut [T]`, `&T` or `&mut T` with `T` a scalar, struct or enum", "pass the value itself, or a reference to the scalar, struct, enum or slice that holds it");
         }
 
-        #[summary("필드나 페이로드의 값들을 선언된 타입에 견준다. 타입이 제네릭 데이터 타입의 매개변수 ps를 말하면, tm이 아직 묶지 않은 매개변수는 값에서 묶는다 (정수 리터럴은 마지막에: 다른 값이 그 타입을 정한다)")]
+        #[summary("Compares the values of fields or a payload against the declared types. If a type mentions the parameters ps of a generic data type, parameters that tm has not yet bound are bound from the values (integer literals last: the other values determine their type)")]
         #[effects(alloc)]
         fn check_slots(self: &mut Body, cx: &mut FnCtx, ps: &[types::TParam], tm: &mut types::Subst, args: &[ast::Expr], fields: &[ast::FieldInit], by_field: bool, slots: &[Slot], mode: Mode, f: usize) -> ()
             decreases f * 3 + 1,
@@ -1725,7 +1725,7 @@ mod body {
             }
         }
 
-        #[summary("#[uses(..)]의 인자는 spec fn의 이름이다 (E0509)")]
+        #[summary("The arguments of #[uses(..)] are names of spec fns (E0509)")]
         #[effects(alloc)]
         fn check_uses(self: &mut Body, a: &ast::Attr, mp: &str) -> () {
             for j in 0..a.args.len()
@@ -1739,7 +1739,7 @@ mod body {
             }
         }
 
-        #[summary("지역 변수와 결과의 타입: 참조도 맨 조각도 아니다")]
+        #[summary("Types of local variables and results: neither a reference nor a bare slice")]
         #[effects(alloc)]
         fn check_value_type(self: &mut Body, t: &ast::Type, what: &str) -> () {
             if is_ref(&t.kind) {
@@ -1751,13 +1751,13 @@ mod body {
             }
         }
 
-        #[summary("E0436: std::process::Child는 필드로 짓거나 읽지 않는다")]
+        #[summary("E0436: std::process::Child is not built or read by field")]
         #[effects(alloc)]
         fn child_by_hand(self: &mut Body, span: source::Span) -> () {
             self.c.help("E0436", span, "a `std::process::Child` is not built or read by its fields", "get one from `std::process::spawn(prog, args.as_slice(), std::process::Stdio::Inherit)` and use its methods: `write_all`, `read_line`, `id`, `wait`");
         }
 
-        #[summary("메모리를 가진 값의 내장 clone (ADR-0141): 받는 값과 같고 제 메모리를 가진 새 값")]
+        #[summary("Built-in clone of a value that owns memory (ADR-0141): a new value the same as the receiver and owning its own memory")]
         #[effects(alloc)]
         fn clone_method(self: &mut Body, cx: &mut FnCtx, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -1792,7 +1792,7 @@ mod body {
             value
         }
 
-        #[summary("타입 t의 값이 바로 담는 타입들")]
+        #[summary("Types that a value of type t directly contains")]
         #[effects(alloc)]
         fn components(self: &Body, t: &ast::TypeKind) -> Vec<ast::TypeKind> {
             let mut out: Vec<ast::TypeKind> = Vec::new();
@@ -1814,7 +1814,7 @@ mod body {
             out
         }
 
-        #[summary("const의 참조 (ADR-0052): 그 타입. 값은 해소된 프로그램을 위해 적어 둔다. 평가되지 않은 const는 이미 오류라 그 참조도 그렇다")]
+        #[summary("Reference to a const (ADR-0052): its type. The value is recorded for the resolved program. An unevaluated const is already an error, so its reference is too")]
         #[effects(alloc)]
         fn const_ref(self: &mut Body, from: &str, path: &[String], unit: &str, span: source::Span) -> Option<ast::TypeKind> {
             let full: String = match lookup_const(&self.consts, path, unit) {
@@ -1842,7 +1842,7 @@ mod body {
             Some(t)
         }
 
-        #[summary("const의 선언한 타입을 그 단위에서, 함수의 타입 매개변수 밖에서 푼 것. 값만 담지 않으면 Error")]
+        #[summary("The declared type of a const resolved in its unit, outside the type parameters of functions. Error if it does not hold only values")]
         #[effects(alloc)]
         fn const_type(self: &mut Body, c: &consts::Const) -> ast::TypeKind {
             if consts::scalar(&c.ty) {
@@ -1861,7 +1861,7 @@ mod body {
             }
         }
 
-        #[summary("T::try_from(x).unwrap() / .ok() (ADR-0028 §1): 정수 타입 T로 본 x의 값(범위는 증명기의 의무, E0815), 또는 Option<T>")]
+        #[summary("T::try_from(x).unwrap() / .ok() (ADR-0028 §1): the value of x seen as integer type T (the range is the prover's obligation, E0815), or Option<T>")]
         #[effects(alloc)]
         fn conversion(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, margs: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -1934,7 +1934,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("a.copy_within(lo..hi, dest) (ADR-0083): 배열, &mut [T], Vec<T>에서 T가 Copy일 때 a[lo..hi]를 a[dest..]로 제자리에서 옮긴다. 경계는 증명 의무다 (E0805)")]
+        #[summary("a.copy_within(lo..hi, dest) (ADR-0083): on arrays, &mut [T] and Vec<T> when T is Copy, moves a[lo..hi] to a[dest..] in place. The bounds are a proof obligation (E0805)")]
         #[effects(alloc)]
         fn copy_within(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, et: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -1975,7 +1975,7 @@ mod body {
             ast::TypeKind::Unit
         }
 
-        #[summary("구조체나 열거형 T의 &T / &mut T 매개변수의 인자 (ADR-0026 §2): T 값의 &e, 쓸 수 있는 자리의 &mut p, 넘겨받은 참조 매개변수. &mut 인자가 출발하는 변수를 돌려준다 (겹침 검사 E0410에 쓴다)")]
+        #[summary("Argument of a &T / &mut T parameter of struct or enum T (ADR-0026 §2): &e of a T value, &mut p of a writable place, a reference parameter passed on. Returns the variable the &mut argument starts from (used for the overlap check E0410)")]
         #[effects(alloc)]
         fn data_ref_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, pm: bool, want_ty: &ast::TypeKind, want: &str, mode: Mode, f: usize) -> Option<String>
             decreases f * 3,
@@ -2021,7 +2021,7 @@ mod body {
             None
         }
 
-        #[summary("이름을 지금 범위에 넣는다. 보이는 이름을 가리면 E0303, 이 함수의 다른 자리에서 다른 타입으로 묶였어도 E0303 (ADR-0095 A3: 이름 하나에 타입 하나)")]
+        #[summary("Puts a name into the current scope. E0303 if it shadows a visible name, and E0303 also if it was bound with another type elsewhere in this function (ADR-0095 A3: one type per name)")]
         #[effects(alloc)]
         fn declare(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, ty: ast::TypeKind, mutable: bool, is_param: bool) -> () {
             let one: Vec<String> = single(name.name.as_str());
@@ -2055,7 +2055,7 @@ mod body {
             }
         }
 
-        #[summary("path의 함수가 span에 선언된 그것인가 (같은 이름의 다른 선언은 1패스가 알렸다)")]
+        #[summary("Whether the function of path is the one declared at span (other declarations of the same name were reported by pass 1)")]
         #[effects(alloc)]
         fn declared_at(self: &Body, path: &str, span: source::Span) -> bool {
             match self.c.fns.find(path) {
@@ -2064,7 +2064,7 @@ mod body {
             }
         }
 
-        #[summary("*x: x는 참조 &T, &mut T(조각의 참조는 아니다)나 Box<T>")]
+        #[summary("*x: x is a reference &T, &mut T (not a reference to a slice) or Box<T>")]
         #[effects(alloc)]
         fn deref_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2089,7 +2089,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("E0231: (*p).x는 p.x로 쓴다 (필드는 참조를 지나 읽힌다)")]
+        #[summary("E0231: (*p).x is written p.x (fields are read through references)")]
         #[effects(alloc)]
         fn deref_field(self: &mut Body, e: &ast::Expr, base: &ast::Expr, name: &ast::Ident) -> () {
             match deref_inner(base) {
@@ -2098,7 +2098,7 @@ mod body {
             }
         }
 
-        #[summary("E0401과 고칠 글 `*e`: 구조체나 열거형 T를 기대하는 자리에 &T나 &mut T인 e를 줬다 (백로그 2B-16). 알렸는가")]
+        #[summary("E0401 and the fix text `*e`: an e that is &T or &mut T was given where struct or enum T is expected. Whether it was reported")]
         #[effects(alloc)]
         fn deref_fix(self: &mut Body, found: &ast::TypeKind, want: &ast::TypeKind, e: &ast::Expr) -> bool {
             match ref_inner(found) {
@@ -2107,7 +2107,7 @@ mod body {
             }
         }
 
-        #[summary("*x의 자리: x가 &T(조각 아님)나 Box<T>면 T")]
+        #[summary("Place of *x: T if x is &T (not a slice) or Box<T>")]
         #[effects(alloc)]
         fn deref_place(self: &mut Body, span: source::Span, p: Place) -> Place {
             match ref_inner(&p.ty) {
@@ -2124,7 +2124,7 @@ mod body {
             Place { ty: ast::TypeKind::Error, writable: false }
         }
 
-        #[summary("블록에 끝나지 않는 문장(타입이 `!`인 식)이 있는가")]
+        #[summary("Whether a block has a statement that does not terminate (an expression of type `!`)")]
         #[effects(alloc)]
         fn diverges(self: &Body, b: &ast::Block) -> bool {
             for i in 0..b.stmts.len()
@@ -2138,7 +2138,7 @@ mod body {
             false
         }
 
-        #[summary("before번째 앞의 진단 가운데 span 안에서 난 평가기의 것(E0259, E0260, E0401)을 뺀다")]
+        #[summary("Removes, among the diagnostics before the before-th, the evaluator's ones (E0259, E0260, E0401) raised inside span")]
         #[effects(alloc)]
         fn drop_evaluator(self: &mut Body, span: source::Span, before: usize) -> () {
             let mut kept: Vec<diag::Diag> = Vec::new();
@@ -2155,7 +2155,7 @@ mod body {
             self.c.diags = kept;
         }
 
-        #[summary("E0218: 조각을 기대한 곳에 준 Vec (Rust의 Deref 강제)")]
+        #[summary("E0218: a Vec given where a slice is expected (Rust's Deref coercion)")]
         #[effects(alloc)]
         fn e0218(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, v: &ast::Expr, want_m: &str, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -2169,7 +2169,7 @@ mod body {
             self.c.fixed("E0218", a.span, "a `Vec` is not a slice", types::cat3("pass `", r.as_str(), "`").as_str(), r.as_str());
         }
 
-        #[summary("타입 인자 a로 부른 호출 e가 닿는 인스턴스: trait 메서드면 그 Self의 impl의 함수 (정해지지 않으면 없음), 아니면 그 함수 자신")]
+        #[summary("Instance reached by call e called with type arguments a: if a trait method, the function of the impl of that Self (none if undetermined), otherwise the function itself")]
         #[effects(alloc)]
         fn edge_target(self: &Body, e: &Edge, a: Vec<ast::TypeKind>) -> Option<Edge> {
             if self.trait_method(e.callee.as_str()) {
@@ -2182,7 +2182,7 @@ mod body {
             }
         }
 
-        #[summary("색인한 자리: 원소의 타입, 색인할 수 없으면 E0407")]
+        #[summary("Indexed place: the element type, E0407 if it cannot be indexed")]
         #[effects(alloc)]
         fn elem_place(self: &mut Body, span: source::Span, p: Place) -> Place {
             match elem_of(&p.ty) {
@@ -2191,7 +2191,7 @@ mod body {
             }
         }
 
-        #[summary("path가 열거형인가")]
+        #[summary("Whether path is an enum")]
         #[effects(alloc)]
         fn enum_adt(self: &Body, path: &str) -> bool {
             match self.c.adts.find(path) {
@@ -2200,7 +2200,7 @@ mod body {
             }
         }
 
-        #[summary("경로의 마지막 마디를 뺀 앞이 열거형을 가리키는가")]
+        #[summary("Whether the path minus its last segment refers to an enum")]
         #[effects(alloc)]
         fn enum_prefix(self: &Body, segs: &[ast::Ident], mp: &str) -> bool {
             if segs.len() < 2 {
@@ -2213,7 +2213,7 @@ mod body {
             }
         }
 
-        #[summary("found가 want인가. 아니면 E0401, 고칠 길은 꼴에 따라 (참조의 값 읽기, 정수 변환, f64)")]
+        #[summary("Whether found is want. Otherwise E0401, with the fix depending on the form (reading the value of a reference, integer conversion, f64)")]
         #[effects(alloc)]
         fn expect_ty(self: &mut Body, found: &ast::TypeKind, want: &ast::TypeKind, span: source::Span) -> () {
             if self.spec_widen && widens(found, want) {
@@ -2249,7 +2249,7 @@ mod body {
             }
         }
 
-        #[summary("제네릭 데이터 타입 tp의 매개변수를 기대한 타입에서 묶는다 (기대한 타입이 그 타입의 인스턴스일 때)")]
+        #[summary("Binds the parameters of generic data type tp from the expected type (when the expected type is an instance of that type)")]
         #[effects(alloc)]
         fn expected_args(self: &Body, tp: &str, expected: &Option<ast::TypeKind>) -> types::Subst {
             match expected {
@@ -2258,7 +2258,7 @@ mod body {
             }
         }
 
-        #[summary("식 하나의 타입: 타입을 표에 적고(types), 명세 안의 자리와 타입 없는 let이 타입을 받은 자리를 적어 둔다 (2N-13, settle_lets)")]
+        #[summary("Type of one expression: records the type in the table (types), and records positions inside specifications and positions where an untyped let received a type (settle_lets)")]
         #[effects(alloc)]
         fn expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 2,
@@ -2283,7 +2283,7 @@ mod body {
             t
         }
 
-        #[summary("식의 갈래 가운데 앞 묶음 (리터럴부터 배열까지): expr_inner가 early_kind로 가른다. 한 match에 서른다섯 갈래를 두면 증명기의 한도를 넘는다")]
+        #[summary("The first group of expression arms (from literals to arrays): expr_inner splits by early_kind. Putting thirty-five arms in one match exceeds the prover's limit")]
         #[effects(alloc)]
         fn expr_early(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2331,7 +2331,7 @@ mod body {
             }
         }
 
-        #[summary("식의 꼴마다의 검사. 유령 코드(ADR-0062 §1)에서 if·match·블록·loop는 유령 문장을 담고 호출은 종류로 보며, 나머지는 명세다")]
+        #[summary("Check for each form of expression. In ghost code (ADR-0062 §1) if, match, blocks and loop contain ghost statements and calls are judged by kind; the rest is specification")]
         #[effects(alloc)]
         fn expr_inner(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, written: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -2351,7 +2351,7 @@ mod body {
             }
         }
 
-        #[summary("식의 갈래 가운데 뒤 묶음 (반복부터 범위까지)")]
+        #[summary("The later group of expression arms (from repeat to range)")]
         #[effects(alloc)]
         fn expr_late(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2399,7 +2399,7 @@ mod body {
             }
         }
 
-        #[summary("f64::from(x) (ADR-0061 §4): x는 어느 정수 타입이든, 또는 f64")]
+        #[summary("f64::from(x) (ADR-0061 §4): x is any integer type, or f64")]
         #[effects(alloc)]
         fn f64_from(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2425,7 +2425,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("f64의 메서드 (ADR-0061 §3): sqrt·abs·is_nan·is_finite는 인자가 없고 min·max는 f64 하나, Rust와 같다")]
+        #[summary("Methods of f64 (ADR-0061 §3): sqrt·abs·is_nan·is_finite take no argument and min·max take one f64, same as Rust")]
         #[effects(alloc)]
         fn f64_method(self: &mut Body, cx: &mut FnCtx, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2474,7 +2474,7 @@ mod body {
             }
         }
 
-        #[summary("구조체(나 그 참조) bt의 필드 name의 타입")]
+        #[summary("Type of field name of struct (or a reference to it) bt")]
         #[effects(alloc)]
         fn field_type_of(self: &mut Body, bt: &ast::TypeKind, name: &ast::Ident) -> ast::TypeKind {
             if types::is_error(bt) {
@@ -2511,7 +2511,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("for: 두 끝은 한 정수 타입이고(리터럴은 다른 끝의 것을 받는다) 루프 앞에서 한 번 계산된다. 변수는 루프 안에서만 살고 대입되지 않는다")]
+        #[summary("for: both ends are one integer type (a literal takes the other end's) and are computed once before the loop. The variable lives only inside the loop and is not assigned")]
         #[effects(alloc)]
         fn for_stmt(self: &mut Body, cx: &mut FnCtx, x: &ast::For, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -2564,7 +2564,7 @@ mod body {
             self.expect_ty(&bt, &ast::TypeKind::Unit, x.body.span);
         }
 
-        #[summary("T::from_be_bytes(b), T::from_le_bytes(b): 바이트에서 온 정수 (백로그 2N-09c)")]
+        #[summary("T::from_be_bytes(b), T::from_le_bytes(b): an integer from bytes")]
         #[effects(alloc)]
         fn from_bytes(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, c: &ast::Call, i: ast::IntTy, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2587,7 +2587,7 @@ mod body {
             ast::TypeKind::Int(i)
         }
 
-        #[summary("유령 코드에서 유령으로 남는 식인가: if·match·블록·loop, 그리고 spec fn이 아닌 함수의 호출")]
+        #[summary("Whether the expression stays ghost in ghost code: if·match·block·loop, and a call to a function that is not a spec fn")]
         #[effects(alloc)]
         fn ghost_keeps(self: &Body, cx: &FnCtx, e: &ast::Expr) -> bool {
             if ghost_shape(&e.kind) {
@@ -2599,13 +2599,13 @@ mod body {
             }
         }
 
-        #[summary("E0257: 유령 코드의 루프")]
+        #[summary("E0257: a loop in ghost code")]
         #[effects(alloc)]
         fn ghost_loop(self: &mut Body, span: source::Span) -> () {
             self.ghost_violation(span, "a loop", "prove by induction: a recursive `proof fn` with `decreases`");
         }
 
-        #[summary("유령 코드의 &mut 매개변수: spec fn은 E0402, proof fn은 E0257 (ADR-0062 §1)")]
+        #[summary("&mut parameter in ghost code: E0402 for a spec fn, E0257 for a proof fn (ADR-0062 §1)")]
         #[effects(alloc)]
         fn ghost_mut_param(self: &mut Body, span: source::Span, kind: ast::FnKind) -> () {
             if is_proof(kind) {
@@ -2615,13 +2615,13 @@ mod body {
             }
         }
 
-        #[summary("E0257: 유령 코드는 실행 상태를 읽기만 한다 (ADR-0062 §1)")]
+        #[summary("E0257: ghost code only reads execution state (ADR-0062 §1)")]
         #[effects(alloc)]
         fn ghost_violation(self: &mut Body, span: source::Span, what: &str, fix: &str) -> () {
             self.c.help("E0257", span, types::cat2(what, " is not allowed in ghost code (a `proof fn` body or a `proof { .. }` block)").as_str(), fix);
         }
 
-        #[summary("t가 값만 담는가 (ADR-0052 §2): 정수, bool, char, 그리고 그것들의 배열·구조체·열거형")]
+        #[summary("Whether t holds only values (ADR-0052 §2): integers, bool, char, and arrays·structs·enums of them")]
         #[effects(alloc)]
         fn holds_values(self: &Body, t: &ast::TypeKind, seen: &mut Vec<String>, f: usize) -> bool
             decreases f,
@@ -2650,7 +2650,7 @@ mod body {
             }
         }
 
-        #[summary("if c { a } else { b }: 조건은 bool, 가지들은 한 타입. 리터럴 가지는 다른 가지에서 타입을 받고, 끝나지 않는 가지는 다른 가지의 타입을 받는다. 명세에서는 넓은 정수 타입으로 합친다 (ADR-0099)")]
+        #[summary("if c { a } else { b }: the condition is bool, the branches are one type. A literal branch takes its type from the other branch, and a branch that does not terminate takes the other branch's type. In specifications they are joined to the wide integer type (ADR-0099)")]
         #[effects(alloc)]
         fn if_expr(self: &mut Body, cx: &mut FnCtx, ife: &ast::If, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2669,7 +2669,7 @@ mod body {
             }
         }
 
-        #[summary("list의 impl 가운데 value에 맞고 그 trait에 메서드 m이 있는 것이 있는가")]
+        #[summary("Whether some impl in list matches value and its trait has method m")]
         #[effects(alloc)]
         fn impls_have(self: &Body, value: &ast::TypeKind, list: &[types::TraitImplInfo], m: &str) -> bool {
             for i in 0..list.len()
@@ -2689,7 +2689,7 @@ mod body {
             false
         }
 
-        #[summary("a[i]: i는 usize, a는 배열·Vec·조각. s.as_bytes()[i]는 글의 바이트다 (ADR-0050 §2)")]
+        #[summary("a[i]: i is usize, a is an array·Vec·slice. s.as_bytes()[i] is a byte of the text (ADR-0050 §2)")]
         #[effects(alloc)]
         fn index_expr(self: &mut Body, cx: &mut FnCtx, base: &ast::Expr, index: &ast::Expr, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2712,7 +2712,7 @@ mod body {
             }
         }
 
-        #[summary("색인은 usize다")]
+        #[summary("The index is usize")]
         #[effects(alloc)]
         fn index_usize(self: &mut Body, cx: &mut FnCtx, index: &ast::Expr, f: usize) -> ()
             decreases f * 3 + 2,
@@ -2725,7 +2725,7 @@ mod body {
             self.expect_ty(&it, &ast::TypeKind::Int(ast::IntTy::Usize), index.span);
         }
 
-        #[summary("묶음 tm이 주는 제네릭 데이터 타입 tp의 인스턴스. 매개변수가 아직 모르는 것이면 E0424")]
+        #[summary("Instance of generic data type tp given by the bindings tm. E0424 if a parameter is still unknown")]
         #[effects(alloc)]
         fn instance(self: &mut Body, tp: &str, tm: &types::Subst, what: &str, span: source::Span) -> ast::TypeKind {
             let at: usize = match self.c.adts.find(tp) {
@@ -2755,7 +2755,7 @@ mod body {
             ast::TypeKind::Named(path, targs)
         }
 
-        #[summary("인스턴스 w(정의와 타입 인자)가 부르는 인스턴스들을 그래프에 넣는다: trait 메서드의 호출은 Self가 알려지면 impl의 함수로 가고(호출에서 Self가 타입 매개변수였으면 경계 있는 호출로 적는다), 깊이가 한도를 넘는 타입 인자의 호출은 버린다")]
+        #[summary("Puts the instances called by instance w (definition and type arguments) into the graph: a call to a trait method goes to the impl's function once Self is known (recorded as a bounded call if Self was a type parameter at the call), and calls whose type arguments exceed the depth limit are dropped")]
         #[effects(alloc)]
         fn instance_edges(self: &Body, w: &Edge, edges: &table::Table<Vec<Edge>>, graph: &mut table::Table<Vec<String>>, bound_edges: &mut Vec<Pair>, base_of: &mut table::Table<String>, work: &mut Vec<Edge>) -> () {
             let k: String = inst_key(w.callee.as_str(), w.args.as_slice());
@@ -2776,14 +2776,14 @@ mod body {
             graph.insert(k.as_str(), to);
         }
 
-        #[summary("f64를 기대한 자리의 정수 리터럴 (let x: f64 = 1;): E0401, 고침은 실수 리터럴. 검사는 f64로 이어 간다")]
+        #[summary("Integer literal where f64 is expected (let x: f64 = 1;): E0401, the fix is a float literal. Checking continues as f64")]
         #[effects(alloc)]
         fn int_for_float(self: &mut Body, text: &str, span: source::Span) -> ast::TypeKind {
             self.c.fixed("E0401", span, types::cat3("expected `f64`, found integer literal `", text, "`").as_str(), "write a float literal (ADR-0061 §2)", types::cat2(text, ".0").as_str());
             ast::TypeKind::F64
         }
 
-        #[summary("정수 리터럴: 타입은 기대한 정수 타입, 없으면 i64. 코드에서는 그 타입에 들어야 한다 (E0406); 명세의 정수는 끝이 없다 (ADR-0017, ADR-0024)")]
+        #[summary("Integer literal: the type is the expected integer type, i64 if none. In code it must fit that type (E0406); integers in specifications are unbounded (ADR-0017, ADR-0024)")]
         #[effects(alloc)]
         fn int_lit(self: &mut Body, v: wide::U128, negative: bool, expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode) -> ast::TypeKind {
             let mut t: ast::TypeKind = ast::TypeKind::Int(ast::IntTy::I64);
@@ -2818,7 +2818,7 @@ mod body {
             t
         }
 
-        #[summary("정수와 그 밖의 내장 메서드: len, wrapping_*·saturating_*·checked_*, 바이트(to_be_bytes·to_le_bytes), 비트 메서드 (ADR-0028 §3, ADR-0048 §2). 모르는 이름은 E0404")]
+        #[summary("Built-in methods of integers and others: len, wrapping_*·saturating_*·checked_*, bytes (to_be_bytes·to_le_bytes), bit methods (ADR-0028 §3, ADR-0048 §2). An unknown name is E0404")]
         #[effects(alloc)]
         fn int_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -2926,7 +2926,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("span의 break나 continue가 떠나는 루프: 레이블이 가리키는 것이나 가장 안쪽 것의 cx.loops 자리 (없으면 E0250, E0317)")]
+        #[summary("The loop that the break or continue at span leaves: the cx.loops slot of the one the label names or of the innermost one (E0250, E0317 if none)")]
         #[effects(alloc)]
         fn jump_target(self: &mut Body, cx: &FnCtx, label: &Option<ast::Ident>, span: source::Span, what: &str) -> Option<usize> {
             if cx.loops.len() == 0 {
@@ -2939,7 +2939,7 @@ mod body {
             }
         }
 
-        #[summary("풀어 쓰는 let (Rust의 습관, E0230): 필드의 타입으로 고칠 글을 만든다")]
+        #[summary("Destructuring let (Rust habit, E0230): builds the fix text from the types of the fields")]
         #[effects(alloc)]
         fn let_fields(self: &mut Body, cx: &mut FnCtx, l: &ast::LetFields, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -2981,7 +2981,7 @@ mod body {
             }
         }
 
-        #[summary("타입을 쓴 let")]
+        #[summary("let with a written type")]
         #[effects(alloc)]
         fn let_typed(self: &mut Body, cx: &mut FnCtx, l: &ast::Let, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -3009,7 +3009,7 @@ mod body {
             self.declare(cx, &l.name, lty, l.mutable, false);
         }
 
-        #[summary("타입 없는 let (Rust의 습관, E0201): 타입을 미루어 고칠 글로 준다. 맨 정수 리터럴과 Vec::new()는 말하는 것이 적어 처음 쓰이는 자리에서 정한다 (settle_lets)")]
+        #[summary("let without a type (Rust habit, E0201): infers the type and gives it as the fix text. A bare integer literal and Vec::new() say too little and are settled at the place of first use (settle_lets)")]
         #[effects(alloc)]
         fn let_untyped(self: &mut Body, cx: &mut FnCtx, l: &ast::Let, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -3033,7 +3033,7 @@ mod body {
             self.declare(cx, &l.name, t, l.mutable, false);
         }
 
-        #[summary("배열 리터럴이나 반복의 원소: 배열 타입의 원소 규칙 (백로그 1B-35, 2B-14, 2V-04b, 2V-22), 반복은 Copy까지. 원소가 못 되면 false: 리터럴이 보고된 타입을 가져, 감싼 리터럴이 다시 보고하지 않는다")]
+        #[summary("Element of an array literal or repeat: the element rule of array types, and Copy as well for a repeat. false if it cannot be an element: the literal takes the reported type, so an enclosing literal does not report again")]
         #[effects(alloc)]
         fn literal_elem(self: &mut Body, t: &ast::TypeKind, span: source::Span, repeat: bool) -> bool {
             if !types::array_elem_ok(t, 100000) {
@@ -3049,7 +3049,7 @@ mod body {
             true
         }
 
-        #[summary("while이나 loop의 invariant와 decreases: invariant의 old(a)는 함수에 들어올 때의 a, decreases는 있어야 한다 (E0506, missing에). 밖의 입력이 끝을 정하는 nondet 함수의 loop는 없어도 된다 (ADR-0094)")]
+        #[summary("invariant and decreases of a while or loop: old(a) in an invariant is a at function entry, decreases must be present (E0506, into missing). A loop of a nondet function whose end is decided by outside input may omit it (ADR-0094)")]
         #[effects(alloc)]
         fn loop_clauses(self: &mut Body, cx: &mut FnCtx, invariants: &[ast::Expr], measure: &Option<ast::Expr>, missing: source::Span, kw: &str, f: usize) -> ()
             decreases f * 3 + 2,
@@ -3070,7 +3070,7 @@ mod body {
             }
         }
 
-        #[summary("loop { .. }: 값은 break들의 값, 없으면 끝나지 않는다. 기대한 타입을 알면 그것이 모든 break의 타입이다")]
+        #[summary("loop { .. }: the value is the value of its breaks, and it does not terminate if there are none. If the expected type is known, it is the type of every break")]
         #[effects(alloc)]
         fn loop_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, lp: &ast::Loop, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -3101,7 +3101,7 @@ mod body {
             }
         }
 
-        #[summary("갈래 하나의 몸: 패턴의 이름을 새 범위에 넣고 몸을 본다. ty는 지금까지의 갈래들의 타입")]
+        #[summary("Body of one arm: puts the pattern's names into a new scope and checks the body. ty is the type of the arms so far")]
         #[effects(alloc)]
         fn match_arm(self: &mut Body, cx: &mut FnCtx, a: &ast::Arm, binds: &[ast::TypeKind], ty: &Option<ast::TypeKind>, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> Option<ast::TypeKind>
             decreases f * 3,
@@ -3133,7 +3133,7 @@ mod body {
             out
         }
 
-        #[summary("갈래들이 변형을 덮는가: 변형마다 갈래 하나(E0426), 와일드카드 없이(E0224·E0225), 빠진 변형 없이, 선언 순서로")]
+        #[summary("Whether the arms cover the variants: one arm per variant (E0426), without a wildcard (E0224·E0225), with no variant missing, in declaration order")]
         #[effects(alloc)]
         fn match_cover(self: &mut Body, cx: &FnCtx, scrut: &ast::Expr, arms: &[ast::Arm], kinds: &[Option<usize>], tp: &str, vs: &[types::VariantSig], span: source::Span, wildcard: bool, unresolved: bool) -> () {
             let mut seen: Vec<usize> = Vec::new();
@@ -3171,7 +3171,7 @@ mod body {
             }
         }
 
-        #[summary("match s { E::A => e0, E::B(x, _) => e1 }: 변형마다 갈래 하나를 선언 순서로, 페이로드 자리마다 새 이름이나 `_`, 갈래들은 한 타입 (ADR-0026 §3). 참조를 match하면 묶는 이름은 페이로드의 참조다 (ADR-0055)")]
+        #[summary("match s { E::A => e0, E::B(x, _) => e1 }: one arm per variant in declaration order, a new name or `_` for each payload slot, the arms are one type (ADR-0026 §3). When a reference is matched, the bound names are references to the payload (ADR-0055)")]
         #[effects(alloc)]
         fn match_expr(self: &mut Body, cx: &mut FnCtx, scrut: &ast::Expr, arms: &[ast::Arm], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -3272,7 +3272,7 @@ mod body {
             }
         }
 
-        #[summary("t 값의 match가 덮을 변형들 (선언 순서)")]
+        #[summary("The variants a match on a value of t must cover (declaration order)")]
         #[effects(alloc)]
         fn match_variants(self: &Body, t: &ast::TypeKind) -> Variants {
             let path: String = match types::named_path(t) {
@@ -3301,7 +3301,7 @@ mod body {
             Variants { found: is_enum, path: self.c.adts.items[at].path.clone(), vs: vs }
         }
 
-        #[summary("탈출이 있는 정의들(제 효과에 panic, ADR-0029)을 부르는 쪽으로, 그리고 그런 impl 함수가 있는 trait 메서드로 닫은 것. 이름의 순서로")]
+        #[summary("The definitions with an escape (panic in their own effects, ADR-0029), closed over their callers and over trait methods that have such an impl function. In name order")]
         #[effects(alloc)]
         fn may_untrusted(self: &Body) -> Vec<String> {
             let mut out: Vec<String> = Vec::new();
@@ -3350,7 +3350,7 @@ mod body {
             decls::sorted(out.as_slice())
         }
 
-        #[summary("decreases의 타입: 정수, 재귀 열거형, 또는 자기를 담는 구조체")]
+        #[summary("Type of decreases: an integer, a recursive enum, or a struct that contains itself")]
         #[effects(alloc)]
         fn measure_type(self: &mut Body, t: &ast::TypeKind, span: source::Span) -> () {
             if types::is_int(t) || types::is_error(t) {
@@ -3380,7 +3380,7 @@ mod body {
             }
         }
 
-        #[summary("std::mem::replace(&mut p, v) (p의 옛 값, p는 이제 v를 든다)와 std::mem::swap(&mut a, &mut b) (ADR-0047 §2): 쓸 수 있게 남는 자리에서 가진 값을 꺼내는 길")]
+        #[summary("std::mem::replace(&mut p, v) (the old value of p, p now holds v) and std::mem::swap(&mut a, &mut b) (ADR-0047 §2): the way to take an owned value out of a place that stays writable")]
         #[effects(alloc)]
         fn mem_call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -3414,7 +3414,7 @@ mod body {
             ast::TypeKind::Unit
         }
 
-        #[summary("std::mem의 자리 인자: &mut place, 또는 넘겨받은 &mut T 매개변수. 그 자리의 타입")]
+        #[summary("Place argument of std::mem: &mut place, or a &mut T parameter passed in. The type of that place")]
         #[effects(alloc)]
         fn mem_place(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, op: &str, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -3442,7 +3442,7 @@ mod body {
             t
         }
 
-        #[summary("메서드 호출 x.f(..)의 타입. 쓴 사람의 함수면 경로 호출 T::f(adjust(x), ..)로 검사하고 그 길을 methods에 적는다 (ADR-0051); 아니면 내장 메서드. 글 리터럴 수신자는 표준 라이브러리의 글 함수에서만 &str이다 (ADR-0092 §2)")]
+        #[summary("Type of the method call x.f(..). If it is a user-written function, checks it as the path call T::f(adjust(x), ..) and records that route in methods (ADR-0051); otherwise a built-in method. A text literal receiver is &str only for the text functions of the standard library (ADR-0092 §2)")]
         #[effects(alloc)]
         fn method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -3517,7 +3517,7 @@ mod body {
             self.int_method(cx, recv, &rt, name, args, mode, f)
         }
 
-        #[summary("x.f(..)가 이름하는 쓴 사람의 함수 (ADR-0051): x의 타입(참조 하나 뒤)의 impl의 f, 없으면 표준 라이브러리의 글 함수, 없으면 타입 매개변수의 경계나 타입이 구현한 trait 가운데 f를 가진 단 하나. No는 이름하는 것이 없음(내장이거나 모르는 메서드), Reported는 여기서 알림 (E0313, E0314)")]
+        #[summary("The user-written function that x.f(..) names (ADR-0051): f of the impl of x's type (behind one reference), else a text function of the standard library, else the single one having f among the bounds of the type parameter or the traits the type implements. No means it names nothing (a built-in or an unknown method), Reported means reported here (E0313, E0314)")]
         #[effects(alloc)]
         fn method_target(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span) -> Found {
             let value: ast::TypeKind = match ref_inner(rt) {
@@ -3582,13 +3582,13 @@ mod body {
             Found::Reported
         }
 
-        #[summary("언어가 짓지 않는 clone의 E0404 (ADR-0141 §2)")]
+        #[summary("E0404 for a clone that the language does not build (ADR-0141 §2)")]
         #[effects(alloc)]
         fn no_clone(self: &mut Body, at: source::Span, t: &ast::TypeKind, why: &str) -> () {
             self.c.help("E0404", at, types::cat3("`clone` is not defined for `", types::text(t).as_str(), "`").as_str(), why);
         }
 
-        #[summary("E0314: x.f(..)가 owner의 함수를 이름하지만 메서드로 부르지 않는다. 고침은 경로 호출. 수신자가 없는 함수(no_receiver)는 x를 받지 않고, 제 타입 매개변수가 있는 함수는 그것을 써서 부른다")]
+        #[summary("E0314: x.f(..) names a function of owner but it is not called as a method. The fix is a path call. A function without a receiver (no_receiver) does not take x, and a function with its own type parameters is called with them written")]
         #[effects(alloc)]
         fn not_a_method(self: &mut Body, cx: &FnCtx, owner: &str, recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], span: source::Span, no_receiver: bool, adjust: Option<ast::Adjust>) -> () {
             let callee: String = variant_text(owner, name.name.as_str(), cx.mod_path.as_str());
@@ -3611,7 +3611,7 @@ mod body {
             }
         }
 
-        #[summary("old(x): ensures·루프 불변식·assert에서, &mut 매개변수 x에만")]
+        #[summary("old(x): in ensures·loop invariants·assert, only on a &mut parameter x")]
         #[effects(alloc)]
         fn old_expr(self: &mut Body, cx: &FnCtx, e: &ast::Expr, x: &ast::Expr, mode: Mode) -> ast::TypeKind {
             match ast::var_name(x) {
@@ -3626,7 +3626,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("타입 없는 let으로 아직 열려 있는 이름인가")]
+        #[summary("Whether the name is still open as a let without a type")]
         #[effects(pure)]
         fn open_let(self: &Body, name: &str) -> bool {
             for i in 0..self.open_lets.len()
@@ -3639,7 +3639,7 @@ mod body {
             false
         }
 
-        #[summary("인자 없이 쓴 경로: 정수와 f64의 상수, 인자 없는 함수 이름(E0301), 내장 변형, const, 그리고 페이로드 없는 변형")]
+        #[summary("Path written without arguments: constants of integers and f64, the name of a function without arguments (E0301), built-in variants, const, and variants without a payload")]
         #[effects(alloc)]
         fn path_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, path: &[ast::Ident], expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -3682,7 +3682,7 @@ mod body {
             self.variant_value(cx, path, noargs.as_slice(), expected, e.span, mode, f)
         }
 
-        #[summary("Vec인 지역 변수 v의 v.as_slice() / v.as_mut_slice()를 조각의 참조로 읽는다")]
+        #[summary("Reads v.as_slice() / v.as_mut_slice() of a Vec local variable v as a reference to a slice")]
         #[effects(alloc)]
         fn peek_slice(self: &Body, cx: &FnCtx, m: &ast::Method) -> Option<ast::TypeKind> {
             let is_mut: bool = m.name.name == "as_mut_slice";
@@ -3695,7 +3695,7 @@ mod body {
             }
         }
 
-        #[summary("타입 매개변수가 없는 구조체의 리터럴 &Point { .. }는 제 타입을 이름한다")]
+        #[summary("A literal &Point { .. } of a struct without type parameters names its own type")]
         #[effects(alloc)]
         fn peek_struct(self: &Body, cx: &FnCtx, path: &[ast::Ident]) -> Option<ast::TypeKind> {
             match self.c.type_path(path, cx.mod_path.as_str()) {
@@ -3704,7 +3704,7 @@ mod body {
             }
         }
 
-        #[summary("대입의 대상을 검사하고 그 타입을 낸다")]
+        #[summary("Checks the target of an assignment and yields its type")]
         #[effects(alloc)]
         fn place(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, f: usize) -> ast::TypeKind
             decreases f * 3 + 2,
@@ -3751,7 +3751,7 @@ mod body {
             }
         }
 
-        #[summary("원소에의 대입 base[index] = v. base가 필드·원소·`*`면 그 자리를 따라가고(s.w[i], g[i][j], (*b)[i]), 아니면 변수여야 한다")]
+        #[summary("Assignment to an element base[index] = v. If base is a field·element·`*`, follows that place (s.w[i], g[i][j], (*b)[i]); otherwise it must be a variable")]
         #[effects(alloc)]
         fn place_index(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, base: &ast::Expr, index: &ast::Expr, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -3795,7 +3795,7 @@ mod body {
             }
         }
 
-        #[summary("필드나 `*` 대상 아래의 자리의 타입과 쓸 수 있는가: let mut 지역 변수, &mut 매개변수, 쓸 수 있는 원소. 뒤 단계가 자리의 타입도 읽으므로 적어 둔다")]
+        #[summary("Type of the place under a field or `*` target and whether it is writable: a let mut local variable, a &mut parameter, a writable element. Recorded because later stages also read the type of the place")]
         #[effects(alloc)]
         fn place_of(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, f: usize) -> Place
             decreases f * 3 + 1,
@@ -3857,7 +3857,7 @@ mod body {
             }
         }
 
-        #[summary("필드나 `*`인 대입의 대상")]
+        #[summary("Assignment target that is a field or `*`")]
         #[effects(alloc)]
         fn place_path(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -3872,7 +3872,7 @@ mod body {
             p.ty
         }
 
-        #[summary("자리 x, x.f.g, *p의 타입을 지역 변수의 타입에서")]
+        #[summary("Type of the place x, x.f.g, *p from the types of the local variables")]
         #[effects(alloc)]
         fn place_peek(self: &Body, cx: &FnCtx, e: &ast::Expr, f: usize) -> Option<ast::TypeKind>
             decreases f,
@@ -3919,7 +3919,7 @@ mod body {
             }
         }
 
-        #[summary("변수에의 대입: 바꿀 수 있는 지역 변수여야 한다 (E0408)")]
+        #[summary("Assignment to a variable: it must be a mutable local variable (E0408)")]
         #[effects(alloc)]
         fn place_var(self: &mut Body, cx: &mut FnCtx, target: &ast::Expr, id: &ast::Ident) -> ast::TypeKind {
             match lookup(cx, id.name.as_str()) {
@@ -3928,7 +3928,7 @@ mod body {
             }
         }
 
-        #[summary("타입 매개변수가 없는 함수인가")]
+        #[summary("Whether the function has no type parameters")]
         #[effects(alloc)]
         fn plain_fn(self: &Body, path: &str) -> bool {
             match self.c.fns.find(path) {
@@ -3937,7 +3937,7 @@ mod body {
             }
         }
 
-        #[summary("proof { .. } (ADR-0062 §1): 실행 코드 안의 유령 문장. 그 let은 블록 안의 것이라 유령 값이 실행 코드에 닿지 않는다")]
+        #[summary("proof { .. } (ADR-0062 §1): a ghost statement inside executable code. Its lets are local to the block, so ghost values do not reach executable code")]
         #[effects(alloc)]
         fn proof_stmt(self: &mut Body, cx: &mut FnCtx, p: &ast::ProofBlock, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -3958,7 +3958,7 @@ mod body {
             self.expect_ty(&t, &ast::TypeKind::Unit, p.body.span);
         }
 
-        #[summary("forall과 exists (ADR-0079): 명세에서만, 묶는 변수는 정수, 몸은 bool. 트리거가 있어야 하고(E0511) 묶는 변수마다 트리거가 말해야 한다(E0512)")]
+        #[summary("forall and exists (ADR-0079): only in specifications, the bound variables are integers, the body is bool. A trigger is required (E0511) and the triggers must mention every bound variable (E0512)")]
         #[effects(alloc)]
         fn quant_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, q: &ast::Quant, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4016,7 +4016,7 @@ mod body {
             ast::TypeKind::Bool
         }
 
-        #[summary("범위 lo..hi는 식이 아니다: copy_within의 원본이나 &s[lo..hi]의 경계로만 쓴다 (E0435). lo..=hi는 파서가 보고했다 (E0438)")]
+        #[summary("A range lo..hi is not an expression: it is used only as the source of copy_within or the bounds of &s[lo..hi] (E0435). lo..=hi was reported by the parser (E0438)")]
         #[effects(alloc)]
         fn range_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, r: &ast::Range, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4034,7 +4034,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("from에서 닿는 타입들 (from도)")]
+        #[summary("The types reachable from from (from included)")]
         #[effects(alloc)]
         fn reachable(self: &Body, from: &ast::TypeKind) -> Vec<ast::TypeKind> {
             let mut seen: Vec<String> = Vec::new();
@@ -4054,7 +4054,7 @@ mod body {
             out
         }
 
-        #[summary("t가 자기 자신에 닿는가 (값이 담는 타입을 따라)")]
+        #[summary("Whether t reaches itself (following the types its value holds)")]
         #[effects(alloc)]
         fn reaches_itself(self: &Body, t: &ast::TypeKind) -> bool {
             let target: String = types::text(t);
@@ -4073,7 +4073,7 @@ mod body {
             false
         }
 
-        #[summary("t에서 닿는 타입(t도) 가운데 저를 담고 Vec이나 배열을 드는 것: 그 명세의 ==는 끝없는 깊이의 값을 원소마다 견줘야 해서 증명기의 ==가 펼 수 없다")]
+        #[summary("Among the types reachable from t (t included), those that contain themselves and hold a Vec or an array: == in their specification would have to compare values of unbounded depth element by element, which the prover's == cannot unfold")]
         #[effects(alloc)]
         fn recursive_with_vec(self: &Body, t: &ast::TypeKind) -> Option<ast::TypeKind> {
             let all: Vec<ast::TypeKind> = self.reachable(t);
@@ -4094,7 +4094,7 @@ mod body {
             None
         }
 
-        #[summary("참조 매개변수(안의 타입 inner, pm이면 &mut)의 인자를 검사하고, 출발하는 변수의 이름을 돌려준다")]
+        #[summary("Checks the argument of a reference parameter (inner type inner, &mut if pm) and returns the name of the variable it starts from")]
         #[effects(alloc)]
         fn ref_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, pm: bool, inner: &ast::TypeKind, mode: Mode, f: usize) -> Option<String>
             decreases f * 3 + 1,
@@ -4194,7 +4194,7 @@ mod body {
             Some(var)
         }
 
-        #[summary("[v; N]: v는 배열의 원소가 될 수 있고 Copy다. N은 u32에 든다")]
+        #[summary("[v; N]: v can be an array element and is Copy. N fits in u32")]
         #[effects(alloc)]
         fn repeat_expr(self: &mut Body, cx: &mut FnCtx, rp: &ast::Repeat, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4214,7 +4214,7 @@ mod body {
             ast::TypeKind::Array(types::boxed(t), rp.count.lo)
         }
 
-        #[summary("호출의 경로가 가리키는 함수: 이 단위의 타입이나 trait의 함수 `T::f`, 이 단위의 함수나 내장 함수 `f`, 온 경로")]
+        #[summary("The function that the path of a call names: a function `T::f` of a type or trait of this unit, a function of this unit or a built-in function `f`, a full path")]
         #[effects(alloc)]
         fn resolve(self: &Body, path: &[ast::Ident], mp: &str) -> Option<String> {
             if path.len() == 2 {
@@ -4252,7 +4252,7 @@ mod body {
             None
         }
 
-        #[summary("return과 return 값: 값은 함수가 내는 타입이다. 명세에는 없다 (E0503)")]
+        #[summary("return and return value: the value is the type the function returns. Not in specifications (E0503)")]
         #[effects(alloc)]
         fn return_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &Option<Box<ast::Expr>>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4272,7 +4272,7 @@ mod body {
             ast::TypeKind::Never
         }
 
-        #[summary("타입 없는 let의 E0201을 고친다 (백로그 2N-12): 타입은 그 변수가 뒤에서 처음 쓰이는 자리에서 온다. 산술·비교·비트 연산의 다른 쪽(리터럴이 아닌 것), 색인(usize), 함수의 인자(매개변수의 타입), Vec이면 첫 push(원소의 타입). 그런 자리가 없으면 초기값의 타입을 둔다")]
+        #[summary("Fixes the E0201 of a let without a type: the type comes from the place where the variable is first used afterwards. The other side of an arithmetic·comparison·bit operation (one that is not a literal), an index (usize), a function argument (the parameter's type), the first push if it is a Vec (the element's type). If there is no such place, the type of the initial value is used")]
         #[effects(alloc)]
         fn settle_lets(self: &mut Body, d: &ast::FnDef, mp: &str) -> () {
             let open: Vec<OpenLet> = self.open_lets.clone();
@@ -4334,7 +4334,7 @@ mod body {
             }
         }
 
-        #[summary("공유 참조 수신자(x: &T)로 self: &mut T 메서드를 부르면 E0401: 참조는 그대로 넘기므로(한 걸음, ADR-0051) &를 지나 쓰게 된다. 알렸는가")]
+        #[summary("E0401 when a self: &mut T method is called with a shared reference receiver (x: &T): the reference is passed as is (one step, ADR-0051), so it would write through &. Whether it was reported")]
         #[effects(alloc)]
         fn shared_receiver(self: &mut Body, cx: &FnCtx, rt: &ast::TypeKind, sig: &types::FnSig, owner: &str, recv: &ast::Expr, name: &ast::Ident) -> bool {
             let shared: bool = is_ref(rt) && !types::is_ref_mut(rt);
@@ -4351,7 +4351,7 @@ mod body {
             true
         }
 
-        #[summary("a << s, a >> s (ADR-0048 §2): a는 정수, 양 s도 어느 정수 타입이든 (리터럴 양은 u32). 값은 a의 타입. 양의 범위는 증명 의무다 (E0803)")]
+        #[summary("a << s, a >> s (ADR-0048 §2): a is an integer, the amount s is also any integer type (a literal amount is u32). The value is the type of a. The range of the amount is a proof obligation (E0803)")]
         #[effects(alloc)]
         fn shift(self: &mut Body, cx: &mut FnCtx, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, span: source::Span, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4384,7 +4384,7 @@ mod body {
             lt
         }
 
-        #[summary("Vec으로 만든 &[T] / &mut [T] 인자 (ADR-0031 §1): v.as_slice(), v.as_mut_slice(), 그리고 Rust의 버릇인 &v, &mut v, 넘겨받은 &Vec<T> (E0218). about이 거짓이면 Vec에 관한 인자가 아니고, 참이면 root가 ref_arg의 결과다")]
+        #[summary("A &[T] / &mut [T] argument made from a Vec (ADR-0031 §1): v.as_slice(), v.as_mut_slice(), and the Rust habits &v, &mut v, a &Vec<T> passed in (E0218). If about is false it is not an argument about a Vec; if true, root is the result of ref_arg")]
         #[effects(alloc)]
         fn slice_of_vec(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, pm: bool, pe: &ast::TypeKind, want: &str, mode: Mode, f: usize) -> VecSlice
             decreases f * 3,
@@ -4418,7 +4418,7 @@ mod body {
             VecSlice { about: false, root: none }
         }
 
-        #[summary("check_slots의 한 자리의 값을 본다: 인자 at, 또는 필드 at의 값")]
+        #[summary("Checks the value of one slot of check_slots: argument at, or the value of field at")]
         #[effects(alloc)]
         fn slot_expr(self: &mut Body, cx: &mut FnCtx, args: &[ast::Expr], fields: &[ast::FieldInit], by_field: bool, at: usize, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4438,25 +4438,25 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("E0503: 명세는 식 하나이고 루프가 없다")]
+        #[summary("E0503: a specification is a single expression and has no loops")]
         #[effects(alloc)]
         fn spec_loop(self: &mut Body, span: source::Span) -> () {
             self.c.help("E0503", span, "loops are not allowed in a specification", "state the property with `forall`, or with a recursive spec fn and `decreases`");
         }
 
-        #[summary("E0402: 명세는 String을 그 &str로 본다 (ADR-0050 §3)")]
+        #[summary("E0402: a specification sees a String as its &str (ADR-0050 §3)")]
         #[effects(alloc)]
         fn spec_string(self: &mut Body, span: source::Span) -> () {
             self.c.help("E0402", span, "a spec function cannot take or return a `String`", "take `&str` and pass `s.as_str()`");
         }
 
-        #[summary("E0402: 명세는 Vec을 조각으로 본다 (ADR-0031 §3)")]
+        #[summary("E0402: a specification sees a Vec as a slice (ADR-0031 §3)")]
         #[effects(alloc)]
         fn spec_vec(self: &mut Body, span: source::Span) -> () {
             self.c.help("E0402", span, "a spec function cannot take or return a `Vec`", "take `&[T]` and pass `v.as_slice()`");
         }
 
-        #[summary("문장 하나")]
+        #[summary("One statement")]
         #[effects(alloc)]
         fn stmt(self: &mut Body, cx: &mut FnCtx, s: &ast::Stmt, mode: Mode, f: usize) -> ()
             decreases f * 3 + 1,
@@ -4477,14 +4477,14 @@ mod body {
             }
         }
 
-        #[summary("문자열 리터럴은 &str, 곧 참조다: 호출의 인자로만 쓴다 (E0409, ADR-0015, ADR-0050 §1)")]
+        #[summary("A string literal is &str, that is, a reference: it is used only as the argument of a call (E0409, ADR-0015, ADR-0050 §1)")]
         #[effects(alloc)]
         fn str_lit(self: &mut Body, s: &str, span: source::Span) -> ast::TypeKind {
             self.c.fixed("E0409", span, "a string literal may only appear directly as a call argument", "pass it to a `&str` parameter, or own it: `String::from(\"..\")`", types::cat3("String::from(", lexer::str_text(s, 34).as_str(), ")").as_str());
             ast::TypeKind::Error
         }
 
-        #[summary("구조체 값 t가 구조체만을 지나(필드, Vec, 배열, Box) 자기를 담는가 (ADR-0047 §3)")]
+        #[summary("Whether struct value t contains itself through structs only (fields, Vec, arrays, Box) (ADR-0047 §3)")]
         #[effects(alloc)]
         fn struct_cycle(self: &Body, t: &ast::TypeKind) -> bool {
             let v: ast::TypeKind = match ref_inner(t) {
@@ -4507,7 +4507,7 @@ mod body {
             false
         }
 
-        #[summary("구조체 리터럴 식: 자식 구조체는 손으로 짓지 않고, 재귀 구조체의 값은 명세에서 짓지 않는다 (E0432, ADR-0047 §3)")]
+        #[summary("Struct literal expression: a child struct is not built by hand, and a value of a recursive struct is not built in specifications (E0432, ADR-0047 §3)")]
         #[effects(alloc)]
         fn struct_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, sl: &ast::StructLit, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -4523,7 +4523,7 @@ mod body {
             t
         }
 
-        #[summary("타입 t가 가리키는 구조체의 경로와 필드 (참조 하나와 Box들을 지나: p: &Point나 p: &Box<Point>의 p.x). 구조체가 아니면 found가 거짓")]
+        #[summary("Path and fields of the struct that type t names (through one reference and Boxes: p.x of p: &Point or p: &Box<Point>). found is false if it is not a struct")]
         #[effects(alloc)]
         fn struct_fields(self: &Body, t: &ast::TypeKind) -> Fields {
             let mut out: Vec<types::FieldSig> = Vec::new();
@@ -4559,7 +4559,7 @@ mod body {
             Fields { found: is_struct, path: self.c.adts.items[at].path.clone(), fields: out }
         }
 
-        #[summary("t가 구조체면 그 필드 (참조나 Box를 지나지 않는다)")]
+        #[summary("The fields of t if it is a struct (does not go through references or Box)")]
         #[effects(alloc)]
         fn struct_fields_of(self: &Body, t: &ast::TypeKind) -> Fields {
             if is_ref(t) || is_box(t) {
@@ -4569,7 +4569,7 @@ mod body {
             self.struct_fields(t)
         }
 
-        #[summary("T { f: e, .. }: 필드마다 한 번(E0422), 선언 순서로(E0434), `..base`는 없다(E0223)")]
+        #[summary("T { f: e, .. }: each field once (E0422), in declaration order (E0434), no `..base` (E0223)")]
         #[effects(alloc)]
         fn struct_lit(self: &mut Body, cx: &mut FnCtx, sl: &ast::StructLit, expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -4656,7 +4656,7 @@ mod body {
             whole
         }
 
-        #[summary("구조체 t의 필드가 Vec·배열·Box·조각·참조를 지나 담는 구조체들")]
+        #[summary("The structs that the fields of struct t contain through Vec·array·Box·slice·reference")]
         #[effects(alloc)]
         fn struct_parts(self: &Body, t: &ast::TypeKind) -> Vec<ast::TypeKind> {
             let mut out: Vec<ast::TypeKind> = Vec::new();
@@ -4669,7 +4669,7 @@ mod body {
             out
         }
 
-        #[summary("t 아래의 구조체를 out에: t가 구조체면 그것, Vec·배열·Box·조각·참조면 그 안")]
+        #[summary("The structs under t into out: t itself if it is a struct, what is inside if it is a Vec·array·Box·slice·reference")]
         #[effects(alloc)]
         fn struct_under(self: &Body, t: &ast::TypeKind, out: &mut Vec<ast::TypeKind>, f: usize) -> ()
             decreases f,
@@ -4683,7 +4683,7 @@ mod body {
             }
         }
 
-        #[summary("&[T] 매개변수의 &v[lo..hi] (백로그 4C-05): v는 정수 타입 T의 배열·Vec·조각(읽기만), lo와 hi는 usize. 범위는 의무(E0805)이고, 조각은 lo부터 hi까지의 원소다")]
+        #[summary("&v[lo..hi] for a &[T] parameter: v is an array·Vec·slice of integer type T (read only), lo and hi are usize. The range is an obligation (E0805), and the slice is the elements from lo to hi")]
         #[effects(alloc)]
         fn sub_slice_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, pm: bool, want_elem: &ast::TypeKind, want: &str, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -4721,7 +4721,7 @@ mod body {
             self.types.insert(span_key(a.span).as_str(), ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(et)))));
         }
 
-        #[summary("E0237: 추론한 m으로 타입 인자를 써 넣은 호출 (하나라도 추론하지 못했으면 false)")]
+        #[summary("E0237: the call with the type arguments written in from the inferred m (false if any could not be inferred)")]
         #[effects(alloc)]
         fn targs_fix(self: &mut Body, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, m: &types::Subst, mp: &str) -> bool {
             let n: usize = path.len();
@@ -4790,7 +4790,7 @@ mod body {
             true
         }
 
-        #[summary("경로의 마디 seg 뒤에 쓴 타입 인자를 매개변수 ps에 묶는다 (has_seg가 거짓이면 그런 마디가 없다). 쓰지 않았는데 매개변수가 있으면 true")]
+        #[summary("Binds the type arguments written after path segment seg to the parameters ps (if has_seg is false there is no such segment). true if none were written but there are parameters")]
         #[effects(alloc)]
         fn targs_level(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], is_trait: bool, m: &mut types::Subst, has_seg: bool, seg: usize, ps: &[types::TParam], of_type: bool) -> bool {
             let mut written: usize = 0;
@@ -4844,7 +4844,7 @@ mod body {
             false
         }
 
-        #[summary("&str 매개변수의 인자 (ADR-0050 §2): 문자열 리터럴, String의 s.as_str(), 넘겨받은 &str, 둘 가운데 하나의 &s[a..b]. Rust의 버릇인 String의 &s와 s는 E0218")]
+        #[summary("Argument of a &str parameter (ADR-0050 §2): a string literal, s.as_str() of a String, a &str passed in, &s[a..b] of either one. The Rust habits &s and s of a String are E0218")]
         #[effects(alloc)]
         fn text_arg(self: &mut Body, cx: &mut FnCtx, a: &ast::Expr, mode: Mode, f: usize) -> ()
             decreases f * 3,
@@ -4948,7 +4948,7 @@ mod body {
             option_of(ast::TypeKind::Char)
         }
 
-        #[summary("글의 메서드 (ADR-0050 §2): len, is_char_boundary, String의 push_str·push·clone. as_str과 as_bytes는 인자다 (또는 색인, s.as_bytes()[i])")]
+        #[summary("Methods of text (ADR-0050 §2): len, is_char_boundary, and String's push_str·push·clone. as_str and as_bytes are arguments (or an index, s.as_bytes()[i])")]
         #[effects(alloc)]
         fn text_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5047,7 +5047,7 @@ mod body {
             ret
         }
 
-        #[summary("견줌의 글 피연산자: 문자열 리터럴은 거기서 &str다 (Rust의 버릇 s == \"abc\", ADR-0050 §2)")]
+        #[summary("Text operand of a comparison: a string literal is &str there (the Rust habit s == \"abc\", ADR-0050 §2)")]
         #[effects(alloc)]
         fn text_operand(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, hint: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5067,7 +5067,7 @@ mod body {
             self.expr(cx, e, hint, mode, f - 1)
         }
 
-        #[summary("경계 있는 Self의 호출을 지나는 재귀 (ADR-0046 §2): 타입 매개변수 없는 정의에서 닿는 인스턴스의 그래프에서 그런 호출을 지나는 순환. 제네릭 정의는 한 번 증명되고 거기서 그 호출은 trait의 계약만 이름하는데, 계약에는 척도가 없다. 그런 순환의 정의에 E0207을 내고 그 정의들을 돌려준다. 구조를 따라 맡기는 것(impl<T: Shape> Shape for Wrap<T>가 T의 것을 부름)은 순환이 아니다")]
+        #[summary("Recursion through a bounded Self call (ADR-0046 §2): a cycle through such a call in the graph of instances reachable from definitions without type parameters. A generic definition is proved once, and there the call names only the trait's contract, and a contract has no measure. Emits E0207 on the definitions of such a cycle and returns those definitions. Delegating along the structure (impl<T: Shape> Shape for Wrap<T> calling T's) is not a cycle")]
         #[effects(alloc)]
         fn trait_cycles(self: &mut Body, defs: &table::Table<DefRow>) -> Vec<String> {
             let mut edges: table::Table<Vec<Edge>> = table::new::<Vec<Edge>>();
@@ -5123,7 +5123,7 @@ mod body {
             out
         }
 
-        #[summary("trait의 메서드인가")]
+        #[summary("Whether it is a method of a trait")]
         #[effects(alloc)]
         fn trait_method(self: &Body, path: &str) -> bool {
             match self.c.fns.find(path) {
@@ -5132,7 +5132,7 @@ mod body {
             }
         }
 
-        #[summary("#[trigger] 항: 명세의 forall·exists 몸 안에서만")]
+        #[summary("#[trigger] term: only inside the body of a forall·exists in a specification")]
         #[effects(alloc)]
         fn trigger_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5148,7 +5148,7 @@ mod body {
             self.expr(cx, x, expected, mode, f - 1)
         }
 
-        #[summary("x? (ADR-0049 §1): x는 Option을 내는 함수 안의 Option, 또는 같은 오류 타입의 Result를 내는 함수 안의 Result (암묵 변환 없음, E0241). 타입은 페이로드")]
+        #[summary("x? (ADR-0049 §1): x is an Option inside a function returning Option, or a Result inside a function returning a Result of the same error type (no implicit conversion, E0241). The type is the payload")]
         #[effects(alloc)]
         fn try_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, x: &ast::Expr, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -5209,7 +5209,7 @@ mod body {
             payload
         }
 
-        #[summary("그 자리의 식에 적힌 타입 (없으면 오류 타입)")]
+        #[summary("The type recorded for the expression at that position (the error type if none)")]
         #[effects(alloc)]
         fn type_at(self: &Body, span: source::Span) -> ast::TypeKind {
             match self.types.find(span_key(span).as_str()) {
@@ -5218,7 +5218,7 @@ mod body {
             }
         }
 
-        #[summary("-x와 !x: 음수는 부호 있는 정수와 f64에 (명세의 정수는 수학의 정수다, ADR-0024), !는 bool의 논리 부정이자 정수의 비트 부정이다 (ADR-0048 §2)")]
+        #[summary("-x and !x: negation is for signed integers and f64 (integers in specifications are mathematical integers, ADR-0024), ! is logical negation of bool and bitwise negation of integers (ADR-0048 §2)")]
         #[effects(alloc)]
         fn unary_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, op: ast::UnOp, x: &ast::Expr, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5254,7 +5254,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("E0301: 범위에 없는 이름. 보이는 이름 가운데 가장 가까운 하나(편집 거리 2 이하)를 고칠 글로 (백로그 2D-18)")]
+        #[summary("E0301: a name not in scope. The closest one among the visible names (edit distance 2 or less) as the fix text")]
         #[effects(alloc)]
         fn unknown_local(self: &mut Body, cx: &FnCtx, name: &str, span: source::Span) -> () {
             let msg: String = types::cat3("unknown name `", name, "`");
@@ -5281,7 +5281,7 @@ mod body {
             }
         }
 
-        #[summary("타입의 impl에도 그 trait들(경계나 구현한 trait)에도 없는 메서드 이름의 E0404, 가진 메서드들과 함께")]
+        #[summary("E0404 for a method name found neither in the type's impls nor in its traits (bounds or implemented traits), together with the methods it has")]
         #[effects(alloc)]
         fn unknown_method(self: &mut Body, cx: &FnCtx, value: &ast::TypeKind, name: &ast::Ident, traits: &[String]) -> () {
             let mut have: Vec<String> = Vec::new();
@@ -5324,7 +5324,7 @@ mod body {
             self.c.help("E0404", name.span, types::cat5("unknown method `", name.name.as_str(), "` of `", ty.as_str(), "`").as_str(), fix.as_str());
         }
 
-        #[summary("경로가 변형이 아닐 때의 진단: 그런 변형이 없는 열거형(E0307), 또는 모르는 타입(E0305)")]
+        #[summary("Diagnostic when a path is not a variant: an enum without such a variant (E0307), or an unknown type (E0305)")]
         #[effects(alloc)]
         fn unknown_variant(self: &mut Body, cx: &FnCtx, segs: &[ast::Ident]) -> () {
             let n: usize = segs.len();
@@ -5338,13 +5338,13 @@ mod body {
             }
         }
 
-        #[summary("E0411: 부호 없는 값에는 음수가 없다")]
+        #[summary("E0411: an unsigned value has no negation")]
         #[effects(alloc)]
         fn unsigned_negation(self: &mut Body, span: source::Span, t: &ast::TypeKind) -> () {
             self.c.help("E0411", span, types::cat3("cannot negate a value of type `", types::text(t).as_str(), "`").as_str(), "an unsigned type has no negative values: use a signed type, or subtract from a larger value");
         }
 
-        #[summary("변수: 지역 변수, 아니면 const, 아니면 모르는 이름 (E0301). 가려지지 않은 None은 내장 변형이다")]
+        #[summary("Variable: a local variable, else a const, else an unknown name (E0301). An unshadowed None is the built-in variant")]
         #[effects(alloc)]
         fn var_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, id: &ast::Ident, expected: &Option<ast::TypeKind>, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3 + 1,
@@ -5371,7 +5371,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("변수인 자리: 참조면 그 참조가 &mut인가, 아니면 let mut인가")]
+        #[summary("A place that is a variable: if a reference, whether that reference is &mut; otherwise whether it is let mut")]
         #[effects(alloc)]
         fn var_place(self: &mut Body, cx: &mut FnCtx, id: &ast::Ident) -> Place {
             match lookup(cx, id.name.as_str()) {
@@ -5380,7 +5380,7 @@ mod body {
             }
         }
 
-        #[summary("T::V, unit::T::V: 열거형의 경로, 변형의 차례, 페이로드의 타입")]
+        #[summary("T::V, unit::T::V: path of the enum, index of the variant, types of the payload")]
         #[effects(alloc)]
         fn variant(self: &Body, segs: &[ast::Ident], mp: &str) -> VariantAt {
             let n: usize = segs.len();
@@ -5402,7 +5402,7 @@ mod body {
             }
         }
 
-        #[summary("변형 값: T::V (페이로드 없음) 또는 T::V(a, ..)")]
+        #[summary("Variant value: T::V (no payload) or T::V(a, ..)")]
         #[effects(alloc)]
         fn variant_value(self: &mut Body, cx: &mut FnCtx, segs: &[ast::Ident], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5453,7 +5453,7 @@ mod body {
             self.instance(va.tp.as_str(), &tm, types::cat3("`", decls::path_text(segs).as_str(), "`").as_str(), span)
         }
 
-        #[summary("Vec::new(), Vec::with_capacity(n) (원소 타입은 기대한 타입의 것), 그리고 Rust의 버릇 drop(v), mem::take (E0219)")]
+        #[summary("Vec::new(), Vec::with_capacity(n) (the element type is that of the expected type), and the Rust habits drop(v), mem::take (E0219)")]
         #[effects(alloc)]
         fn vec_call(self: &mut Body, cx: &mut FnCtx, path: &[ast::Ident], args: &[ast::Expr], expected: &Option<ast::TypeKind>, span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5503,7 +5503,7 @@ mod body {
             ast::TypeKind::Error
         }
 
-        #[summary("Vec<T>의 내장 메서드 (ADR-0031 §1): push, pop, len, truncate, clone, copy_within. as_slice와 as_mut_slice는 인자로만")]
+        #[summary("Built-in methods of Vec<T> (ADR-0031 §1): push, pop, len, truncate, clone, copy_within. as_slice and as_mut_slice only as arguments")]
         #[effects(alloc)]
         fn vec_method(self: &mut Body, cx: &mut FnCtx, recv: &ast::Expr, rt: &ast::TypeKind, et: &ast::TypeKind, name: &ast::Ident, args: &[ast::Expr], span: source::Span, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -5621,7 +5621,7 @@ mod body {
             self.expect_ty(&bt, &ast::TypeKind::Unit, w.body.span);
         }
 
-        #[summary("`_ =>` 갈래의 E0224와 if let의 E0225: 고침은 match 전체다. 변형마다 갈래 하나를 선언 순서로, 와일드카드의 몸은 그것이 덮던 변형마다")]
+        #[summary("E0224 for a `_ =>` arm and E0225 for if let: the fix is the whole match. One arm per variant in declaration order, with the wildcard's body for each variant it covered")]
         #[effects(alloc)]
         fn wildcard_arms(self: &mut Body, cx: &FnCtx, scrut: &ast::Expr, arms: &[ast::Arm], kinds: &[Option<usize>], tp: &str, vs: &[types::VariantSig], span: source::Span) -> () {
             let mut w: usize = arms.len();
@@ -5679,7 +5679,7 @@ mod body {
             }
         }
 
-        #[summary("sig의 호출에 쓴 타입 인자 (ADR-0046 §3): impl의 것은 타입 마디 뒤, 함수의 것은 제 이름 뒤. m에 묶고, 빠뜨린 단이 있는가를 돌려준다")]
+        #[summary("Type arguments written at a call of sig (ADR-0046 §3): the impl's after the type segment, the function's after its own name. Binds them into m and returns whether some level was omitted")]
         #[effects(alloc)]
         fn written_targs(self: &mut Body, cx: &FnCtx, path: &[ast::Ident], targs: &[ast::TArgs], sig: &types::FnSig, m: &mut types::Subst) -> bool {
             let n: usize = path.len();
@@ -5722,17 +5722,17 @@ mod body {
         }
     }
 
-    #[summary("변수가 인자로 쓰인 호출: 자리, 호출의 경로, 몇 번째 인자인가")]
+    #[summary("A call where the variable is used as an argument: position, path of the call, which argument it is")]
     struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
 
-    #[summary("검사를 마친 프로그램: 메서드 호출이 경로 호출로 풀리고 상수의 쓰임이 리터럴 나무가 된 프로그램, 검사기의 표, 신뢰되지 않을 수 있는 정의들, 값이 글인 식의 자리(stage0 Tables::text: 상수의 리터럴 나무를 짓기 전의 types에서, 열쇠 순서)")]
+    #[summary("A checked program: the program with method calls resolved to path calls and uses of constants turned into literal trees, the checker's tables, the definitions that may be untrusted, the positions of expressions whose value is text (stage0 Tables::text: from types before the constants' literal trees are built, in key order)")]
     struct Checked { program: ast::Program, b: Body, untrusted: Vec<String>, text: Vec<String> }
 
-    #[summary("const의 쓰임마다 그 값의 리터럴 나무로 고쳐 쓰는 손님 (stage0 consts::literal_tree): 마디마다 제 자리(파일 source::CONST_VALUES, next부터)와 타입을 types에 적는다")]
+    #[summary("Visitor that rewrites each use of a const into the literal tree of its value (stage0 consts::literal_tree): records for each node its own position (file source::CONST_VALUES, from next) and type in types")]
     struct ConstTrees { uses: table::Table<ConstUse>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, next: u32 }
 
     impl ConstTrees {
-        #[summary("구조체나 변형의 값 d를 타입 ty의 식으로: 필드나 페이로드를 먼저 짓고, 이어서 경로와 필드 이름의 자리를 센다")]
+        #[summary("Value d of a struct or variant as an expression of type ty: builds the fields or payload first, then counts the positions of the path and the field names")]
         #[effects(alloc)]
         fn data_tree(self: &mut ConstTrees, d: &consts::Data, ty: &ast::TypeKind, f: usize) -> ast::ExprKind
             decreases f,
@@ -5803,7 +5803,7 @@ mod body {
             ast::ExprKind::Call(ast::Call { path: whole, targs: no_targs, args: parts, method: None })
         }
 
-        #[summary("새 자리 하나")]
+        #[summary("One new position")]
         #[effects(pure)]
         fn fresh(self: &mut ConstTrees) -> source::Span {
             if self.next < 4294967295 {
@@ -5812,7 +5812,7 @@ mod body {
             source::Span { file: source::CONST_VALUES, lo: self.next, hi: self.next }
         }
 
-        #[summary("경로 a::b의 마디마다 새 자리의 이름으로, extra가 있으면 그것을 끝에")]
+        #[summary("Each segment of path a::b as a name at a new position, with extra at the end if present")]
         #[effects(alloc)]
         fn segs(self: &mut ConstTrees, path: &str, extra: &str) -> Vec<ast::Ident> {
             let parts: Vec<String> = refs::split_path(path);
@@ -5830,7 +5830,7 @@ mod body {
             out
         }
 
-        #[summary("검사된 타입 ty의 값 v를 자리 at의 식으로: 리터럴, 배열, 구조체 리터럴과 변형. 검사기가 붙였을 타입을 마디마다 적는다")]
+        #[summary("Value v of checked type ty as an expression at position at: literals, arrays, struct literals and variants. Records for each node the type the checker would have attached")]
         #[effects(alloc)]
         fn tree(self: &mut ConstTrees, v: &consts::CVal, ty: &ast::TypeKind, at: source::Span, f: usize) -> ast::Expr
             decreases f,
@@ -5860,25 +5860,25 @@ mod body {
         }
     }
 
-    #[summary("해소된 프로그램이 읽을 const의 참조: 값과 타입")]
+    #[summary("Reference to a const that the resolved program will read: value and type")]
     struct ConstUse { v: consts::CVal, ty: ast::TypeKind }
 
-    #[summary("몸이 있는 정의 하나: 경로, 단위, 이름의 자리, decreases가 있는가")]
+    #[summary("One definition with a body: path, unit, position of the name, whether it has decreases")]
     struct DefRow { path: String, unit: String, span: source::Span, has_dec: bool }
 
-    #[summary("trait 메서드의 호출이 돌리는 함수: impl의 함수와 그 타입 인자 (impl의 것, 이어서 메서드의 것)")]
+    #[summary("The function that a call to a trait method dispatches to: the impl's function and its type arguments (the impl's, then the method's)")]
     struct Dispatched { path: String, args: Vec<ast::TypeKind> }
 
-    #[summary("인스턴스 그래프의 호출 하나, 또는 인스턴스 하나: 정의와 타입 인자")]
+    #[summary("One call in the instance graph, or one instance: definition and type arguments")]
     struct Edge { callee: String, args: Vec<ast::TypeKind> }
 
-    #[summary("변수가 쓰인 자리 하나. kind 0은 연산의 한 쪽(other는 다른 쪽, literal은 그것이 리터럴인가), 1은 색인, 2는 push의 받는 쪽(other는 넣는 값)")]
+    #[summary("One place where the variable is used. kind 0 is one side of an operation (other is the other side, literal is whether it is a literal), 1 is an index, 2 is the receiving side of a push (other is the pushed value)")]
     struct Fact { kind: u8, lo: u32, other: source::Span, literal: bool }
 
-    #[summary("struct_fields의 답")]
+    #[summary("Answer of struct_fields")]
     struct Fields { found: bool, path: String, fields: Vec<types::FieldSig> }
 
-    #[summary("first_index_on의 손님: 가장 앞 자리의 name[var]")]
+    #[summary("Visitor of first_index_on: the name[var] at the earliest position")]
     struct FirstIndex { var: String, found: bool, at: source::Span }
 
     impl ast::ExprFn for FirstIndex {
@@ -5891,25 +5891,25 @@ mod body {
         }
     }
 
-    #[summary("함수 하나를 검사하는 동안의 문맥. scopes는 안쪽이 뒤, all_names는 지금까지 묶은 이름, reserved는 몸이 묶을 수 없는 이름(ensures의 결과 이름), loops는 둘러싼 루프(안쪽이 뒤), needs는 효과마다 처음 요구한 자리")]
+    #[summary("Context while checking one function. scopes has the innermost last, all_names is the names bound so far, reserved is the names the body may not bind (the result name of ensures), loops is the enclosing loops (innermost last), needs is the position that first required each effect")]
     struct FnCtx { path: String, mod_path: String, effect: types::Effects, scopes: Vec<Vec<Local>>, all_names: Vec<String>, reserved: Vec<String>, forall_depth: usize, ret: ast::TypeKind, loops: Vec<LoopCx>, for_vars: Vec<String>, ghost: bool, needs: Vec<Need>, own: types::Effects }
 
-    #[summary("method_target의 결과: 이름하는 함수가 없음, 여기서 알림, 찾은 함수")]
+    #[summary("Result of method_target: names no function, reported here, the function found")]
     enum Found { No, Reported, Target(MethodTarget) }
 
-    #[summary("타입 인자가 있는 호출 하나: 부르는 함수, 불리는 함수, 자리, 타입 인자")]
+    #[summary("One call with type arguments: calling function, called function, position, type arguments")]
     struct GCall { caller: String, callee: String, span: source::Span, args: Vec<ast::TypeKind> }
 
-    #[summary("범위의 이름 하나")]
+    #[summary("One name in a scope")]
     struct Local { name: String, ty: ast::TypeKind, mutable: bool, is_param: bool }
 
-    #[summary("break나 continue가 가리킬 수 있는 루프. is_loop는 값을 낼 수 있는 loop, value는 본 break 값의 타입")]
+    #[summary("A loop that a break or continue can target. is_loop is a loop that can yield a value, value is the type of the break values seen")]
     struct LoopCx { label: Option<String>, is_loop: bool, value: Option<ast::TypeKind> }
 
-    #[summary("메서드 호출이 이름하는 함수 (ADR-0051), 뒤 단계가 읽는 경로 호출의 꼴로: path::<type_args>::f(adjust(x), ..). type_args는 타입의 매개변수의 인자(제네릭 타입의 impl)로, 이름 앞 마디 뒤에 쓴다")]
+    #[summary("The function that a method call names (ADR-0051), in the form of the path call that later stages read: path::<type_args>::f(adjust(x), ..). type_args is the arguments of the type's parameters (impl of a generic type), written after the segment before the name")]
     struct MethodTarget { path: Vec<String>, type_args: Vec<ast::TypeKind>, adjust: ast::Adjust }
 
-    #[summary("메서드 호출 x.f(..)를 그것이 뜻하는 경로 호출로 고쳐 쓰는 손님 (ADR-0051)")]
+    #[summary("Visitor that rewrites a method call x.f(..) into the path call it means (ADR-0051)")]
     struct Methodize { methods: table::Table<MethodTarget> }
 
     impl ast::ExprFn for Methodize {
@@ -5922,27 +5922,27 @@ mod body {
         }
     }
 
-    #[summary("검사하는 자리: 실행 코드, 명세(Spec의 값은 old를 쓸 수 있는가), 유령 코드")]
+    #[summary("Where the check takes place: executable code, specification (the value of Spec is whether old may be used), ghost code")]
     enum Mode { Exec, Spec(bool), Ghost }
 
-    #[summary("&mut 인자가 출발하는 변수와 그 인자의 차례")]
+    #[summary("The variable a &mut argument starts from and the index of that argument")]
     struct MutRoot { root: String, at: usize }
 
-    #[summary("효과 e를 처음 요구한 것")]
+    #[summary("What first required effect e")]
     struct Need { e: types::Effects, what: String }
 
-    #[summary("실행 정의의 효과: 제 연산의 것과 몸이 요구하는 것")]
+    #[summary("Effects of an executable definition: those of its own operations and those its body requires")]
     struct Needs { own: types::Effects, body: types::Effects, moves: moves::MoveInfo }
 
-    #[summary("타입 없는 let: 이름과, 초기값이 Vec::new()인가")]
+    #[summary("let without a type: the name, and whether the initial value is Vec::new()")]
     struct OpenLet { name: ast::Ident, vec_new: bool }
 
     struct Pair { from: String, to: String }
 
-    #[summary("자리의 타입과 쓸 수 있는가")]
+    #[summary("Type of a place and whether it is writable")]
     struct Place { ty: ast::TypeKind, writable: bool }
 
-    #[summary("한정자를 찾는 손님")]
+    #[summary("Visitor that finds quantifiers")]
     struct Quants { found: bool }
 
     impl ast::ExprFn for Quants {
@@ -5954,23 +5954,23 @@ mod body {
         }
     }
 
-    #[summary("강한 연결 성분을 찾는 걸음의 상태 (Tarjan)")]
+    #[summary("State of the walk that finds strongly connected components (Tarjan)")]
     struct Scc { index: table::Table<usize>, low: table::Table<usize>, on: Vec<String>, stack: Vec<String>, next: usize, out: Vec<Vec<String>> }
 
-    #[summary("&s[a..b]의 글과 두 끝")]
+    #[summary("The text and both ends of &s[a..b]")]
     struct SliceOf { base: ast::Expr, lo: ast::Expr, hi: ast::Expr }
 
-    #[summary("check_slots의 한 자리: at은 인자(또는 필드)의 차례, ty는 선언된 타입")]
+    #[summary("One slot of check_slots: at is the index of the argument (or field), ty is the declared type")]
     struct Slot { at: usize, ty: ast::TypeKind }
 
-    #[summary("타입을 쓴 let의 초기값 전체로 쓰인 지역 변수: 이름, 자리, 선언한 타입")]
+    #[summary("Local variable used as the whole initial value of a let with a written type: name, position, declared type")]
     struct TypedUse { name: String, lo: u32, ty: ast::TypeKind }
 
-    #[summary("타입 없는 let의 변수 name이 after 뒤에서 쓰인 자리를 모으는 손님. spec_at은 명세로 검사한 식의 자리(그 정수는 수학의 것이라 타입을 말하지 않는다)")]
+    #[summary("Visitor that collects the places where variable name of a let without a type is used after after. spec_at is the positions of expressions checked as specification (their integers are mathematical and say nothing about the type)")]
     struct Uses { name: String, after: u32, vec_new: bool, spec_at: Vec<source::Span>, facts: Vec<Fact>, calls: Vec<CallUse> }
 
     impl Uses {
-        #[summary("e가 그 변수를 쓴 자리인가")]
+        #[summary("Whether e is a use of that variable")]
         #[effects(alloc)]
         fn is_var(self: &Uses, e: &ast::Expr) -> bool {
             match ast::var_name(e) {
@@ -6023,13 +6023,13 @@ mod body {
         }
     }
 
-    #[summary("경로가 가리킨 변형: 열거형의 경로, 변형의 차례, 페이로드의 타입")]
+    #[summary("The variant a path names: path of the enum, index of the variant, types of the payload")]
     struct VariantAt { found: bool, tp: String, k: usize, payload: Vec<ast::TypeKind> }
 
-    #[summary("match가 덮을 변형들: 타입의 경로와 선언 순서의 변형 (Option은 None, Some; Result는 Ok, Err)")]
+    #[summary("The variants a match must cover: path of the type and the variants in declaration order (None, Some for Option; Ok, Err for Result)")]
     struct Variants { found: bool, path: String, vs: Vec<types::VariantSig> }
 
-    #[summary("slice_of_vec의 결과: Vec에 관한 인자인가, 그렇다면 출발하는 변수")]
+    #[summary("Result of slice_of_vec: whether it is an argument about a Vec, and if so the variable it starts from")]
     struct VecSlice { about: bool, root: Option<String> }
 
     #[effects(alloc)]
@@ -6042,7 +6042,7 @@ mod body {
         edges.insert(from, es);
     }
 
-    #[summary("구조체의 필드 타입들이나 열거형의 페이로드 타입들")]
+    #[summary("Field types of a struct or payload types of an enum")]
     #[effects(alloc)]
     fn adt_parts(k: &types::AdtKind) -> Vec<ast::TypeKind> {
         let mut out: Vec<ast::TypeKind> = Vec::new();
@@ -6053,7 +6053,7 @@ mod body {
         out
     }
 
-    #[summary("lo + 4 (loop 낱말의 끝)")]
+    #[summary("lo + 4 (end of the word loop)")]
     #[effects(pure)]
     fn after4(lo: u32) -> u32 {
         if lo < 4294967291 {
@@ -6063,7 +6063,7 @@ mod body {
         }
     }
 
-    #[summary("ps의 매개변수가 모두 tm에 오류 아닌 타입으로 묶였는가")]
+    #[summary("Whether every parameter of ps is bound in tm to a non-error type")]
     #[effects(alloc)]
     fn all_bound(ps: &[types::TParam], tm: &types::Subst) -> bool {
         for i in 0..ps.len()
@@ -6081,7 +6081,7 @@ mod body {
         types::Effects { alloc: true, io: false, nondet: false, panic: false }
     }
 
-    #[summary("bound의 이름 가운데 e가 말하는 것이 있는가")]
+    #[summary("Whether e mentions any of the names in bound")]
     #[effects(pure)]
     fn any_bound(e: &ast::Expr, bound: &[String]) -> bool {
         for i in 0..bound.len()
@@ -6094,7 +6094,7 @@ mod body {
         false
     }
 
-    #[summary("xs 가운데 ys에 든 것이 있는가")]
+    #[summary("Whether any of xs is in ys")]
     #[effects(pure)]
     fn any_in(xs: &[String], ys: &[String]) -> bool {
         for i in 0..xs.len()
@@ -6107,7 +6107,7 @@ mod body {
         false
     }
 
-    #[summary("xs 가운데 하나가 name을 말하는가 (strict면 mentions_strict로)")]
+    #[summary("Whether one of xs mentions name (by mentions_strict if strict)")]
     #[effects(pure)]
     fn any_mentions(xs: &[ast::Expr], name: &str, strict: bool, f: usize) -> bool
         decreases f,
@@ -6131,13 +6131,13 @@ mod body {
         false
     }
 
-    #[summary("정수의 산술 메서드: wrapping_*, saturating_*, checked_* (ADR-0028 §3)")]
+    #[summary("Arithmetic methods of integers: wrapping_*, saturating_*, checked_* (ADR-0028 §3)")]
     #[effects(pure)]
     fn arith_method(m: &str) -> bool {
         m == "wrapping_add" || m == "wrapping_sub" || m == "wrapping_mul" || m == "saturating_add" || m == "saturating_sub" || m == "saturating_mul" || checked_arith(m)
     }
 
-    #[summary("배열 타입이면 그 원소의 타입")]
+    #[summary("The element type if it is an array type")]
     #[effects(alloc)]
     fn array_elem(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -6161,7 +6161,7 @@ mod body {
         }
     }
 
-    #[summary("s.as_bytes() (인자 없음)면 s")]
+    #[summary("s if it is s.as_bytes() (no arguments)")]
     #[effects(alloc)]
     fn as_bytes_of(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -6203,7 +6203,7 @@ mod body {
         }
     }
 
-    #[summary("x.as_str() 꼴인가")]
+    #[summary("Whether it has the form x.as_str()")]
     #[effects(pure)]
     fn as_str_call(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -6245,7 +6245,7 @@ mod body {
         }
     }
 
-    #[summary("e가 x.as_str(..)면 그 메서드 호출")]
+    #[summary("The method call if e is x.as_str(..)")]
     #[effects(alloc)]
     fn as_str_of(e: &ast::Expr) -> Option<ast::Method> {
         match &e.kind {
@@ -6287,7 +6287,7 @@ mod body {
         }
     }
 
-    #[summary("표에서 k의 수, 없으면 0")]
+    #[summary("The number for k in the table, 0 if absent")]
     #[effects(alloc)]
     fn at_or_zero(t: &table::Table<usize>, k: &str) -> usize {
         match t.find(k) {
@@ -6296,7 +6296,7 @@ mod body {
         }
     }
 
-    #[summary("lo가 더 앞이면 고른 것을 바꾼다")]
+    #[summary("Replaces the chosen one if lo is earlier")]
     #[effects(alloc)]
     fn better(best: &mut Best, lo: u32, t: &ast::TypeKind) -> () {
         if !best.found || lo < best.lo {
@@ -6306,7 +6306,7 @@ mod body {
         }
     }
 
-    #[summary("값을 내는 연산이 틀렸으면 오류 타입, 견줌이면 bool")]
+    #[summary("The error type if an operation yielding a value is wrong, bool if it is a comparison")]
     #[effects(pure)]
     fn bin_fail(valued: bool) -> ast::TypeKind {
         if valued {
@@ -6316,13 +6316,13 @@ mod body {
         }
     }
 
-    #[summary("비트 메서드 m이 세는 것인가 (0..=w의 u32)")]
+    #[summary("Whether bit method m is a counting one (u32 in 0..=w)")]
     #[effects(pure)]
     fn bit_count(m: &str) -> bool {
         m == "count_ones" || m == "count_zeros" || m == "leading_zeros" || m == "trailing_zeros" || m == "leading_ones" || m == "trailing_ones"
     }
 
-    #[summary("정수의 비트 메서드 m (ADR-0048 §2): 0은 아님, 1은 인자 없음(세기, swap_bytes, reverse_bits, is_power_of_two), 2는 u32 양 하나(회전, wrapping·checked 밀기)")]
+    #[summary("Bit method m of integers (ADR-0048 §2): 0 is none, 1 is no argument (counting, swap_bytes, reverse_bits, is_power_of_two), 2 is one u32 amount (rotation, wrapping·checked shifts)")]
     #[effects(pure)]
     fn bit_method(m: &str) -> u8 {
         if m == "rotate_left" || m == "rotate_right" || m == "wrapping_shl" || m == "wrapping_shr" || m == "checked_shl" || m == "checked_shr" {
@@ -6334,7 +6334,7 @@ mod body {
         }
     }
 
-    #[summary("정수 타입의 비트 수")]
+    #[summary("Number of bits of an integer type")]
     #[effects(pure)]
     fn bits(t: ast::IntTy) -> u32 {
         match t {
@@ -6351,7 +6351,7 @@ mod body {
         }
     }
 
-    #[summary("블록의 문장이나 꼬리가 name을 말하는가")]
+    #[summary("Whether a statement or the tail of the block mentions name")]
     #[effects(pure)]
     fn block_mentions(b: &ast::Block, name: &str, f: usize) -> bool
         decreases f,
@@ -6369,7 +6369,7 @@ mod body {
         opt_mentions(&b.tail, name, true, f - 1)
     }
 
-    #[summary("tm이 n에 묶은 타입, 없으면 Error")]
+    #[summary("The type tm binds to n, Error if none")]
     #[effects(alloc)]
     fn bound_or_error(tm: &types::Subst, n: &str) -> ast::TypeKind {
         match types::sub_get(tm, n) {
@@ -6378,7 +6378,7 @@ mod body {
         }
     }
 
-    #[summary("t가 Box면 담은 타입")]
+    #[summary("The contained type if t is a Box")]
     #[effects(alloc)]
     fn box_inner(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -6402,19 +6402,19 @@ mod body {
         }
     }
 
-    #[summary("m이 어떤 내장 타입의 내장 메서드 이름인가: 내장 타입에서 그 이름의 trait 메서드는 경로로 부른다")]
+    #[summary("Whether m is the name of a built-in method of some built-in type: on a built-in type, a trait method of that name is called by path")]
     #[effects(pure)]
     fn builtin_method_name(m: &str) -> bool {
         m == "len" || m == "is_char_boundary" || m == "push_str" || m == "push" || m == "pop" || m == "truncate" || m == "clone" || m == "as_str" || m == "as_bytes" || m == "as_slice" || m == "as_mut_slice" || m == "copy_within" || m == "len_utf8" || m == "unwrap" || m == "expect" || m == "ok" || m == "to_be_bytes" || m == "to_le_bytes" || arith_method(m) || bit_method(m) > 0 || f64_sig(m) > 0
     }
 
-    #[summary("Option::Some, Option::None, Result::Ok, Result::Err: 내장 변형을 타입과 함께 쓴 경로인가")]
+    #[summary("Option::Some, Option::None, Result::Ok, Result::Err: whether the path writes a built-in variant together with its type")]
     #[effects(pure)]
     fn builtin_path(segs: &[ast::Ident]) -> bool {
         segs.len() == 2 && (segs[0].name == "Option" && (segs[1].name == "Some" || segs[1].name == "None") || segs[0].name == "Result" && (segs[1].name == "Ok" || segs[1].name == "Err"))
     }
 
-    #[summary("성분들을 첫 원소의 순서로 (성분은 서로 겹치지 않고 저마다 정렬되어 있어, 이것이 stage0의 Vec<Vec<String>> 정렬이다)")]
+    #[summary("The components in order of their first element (components are disjoint and each is sorted, so this is stage0's Vec<Vec<String>> sort)")]
     #[effects(alloc)]
     fn by_first(xs: &[Vec<String>]) -> Vec<Vec<String>> {
         let mut out: Vec<Vec<String>> = Vec::new();
@@ -6446,7 +6446,7 @@ mod body {
         out
     }
 
-    #[summary("main들을 글의 순서(파일, 시작)로. 같은 자리는 온 순서를 지킨다")]
+    #[summary("The mains in text order (file, start). Those at the same position keep their arrival order")]
     #[effects(alloc)]
     fn by_place(xs: &[ast::FnDef]) -> Vec<ast::FnDef> {
         let mut out: Vec<ast::FnDef> = Vec::new();
@@ -6484,13 +6484,13 @@ mod body {
         ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Slice(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)))))
     }
 
-    #[summary("정수의 바이트들의 타입: [u8; w / 8]")]
+    #[summary("Type of an integer's bytes: [u8; w / 8]")]
     #[effects(alloc)]
     fn bytes_ty(i: ast::IntTy) -> ast::TypeKind {
         ast::TypeKind::Array(types::boxed(ast::TypeKind::Int(ast::IntTy::U8)), (bits(i) / 8) as u64)
     }
 
-    #[summary("e가 호출이면 그 호출")]
+    #[summary("If e is a call, that call")]
     #[effects(alloc)]
     fn call_of(e: &ast::Expr) -> Option<ast::Call> {
         match &e.kind {
@@ -6532,7 +6532,7 @@ mod body {
         }
     }
 
-    #[summary("x as t의 글: x가 변환보다 느슨하게 묶이면 괄호로 싼다 (stage0 fmt::cast_text)")]
+    #[summary("Text of x as t: parenthesized if x binds more loosely than the cast (stage0 fmt::cast_text)")]
     #[effects(alloc)]
     fn cast_text(x: &ast::Expr, t: &str) -> String {
         let xs: String = fmt::expr_text(x);
@@ -6543,7 +6543,7 @@ mod body {
         }
     }
 
-    #[summary("모르는 char 메서드 m의 고침 글 (없으면 빈 글)")]
+    #[summary("Fix text for unknown char method m (empty text if none)")]
     #[effects(alloc)]
     fn char_missing(m: &str) -> String {
         if m == "to_digit" || m == "is_digit" || m == "is_ascii_digit" || m == "is_alphabetic" || m == "is_whitespace" {
@@ -6555,7 +6555,7 @@ mod body {
         String::new()
     }
 
-    #[summary("프로그램 p를 검사한다 (stage0 check::check_resolved): 함수 값을 낮추고 상수를 푼 뒤, 쓴 사람의 함수의 메서드 호출(ADR-0051)을 경로 호출로 고쳐 쓰며 하나도 남지 않을 때까지 다시 검사한다. 진단은 마지막 검사의 것이다")]
+    #[summary("Checks program p (stage0 check::check_resolved): after lowering function values and resolving constants, rewrites method calls of user-written functions (ADR-0051) into path calls and checks again until none remain. The diagnostics are those of the last check")]
     #[effects(alloc)]
     fn check_resolved(p: ast::Program, diags: &mut diag::Diags) -> Checked {
         let mut program: ast::Program = p;
@@ -6595,7 +6595,7 @@ mod body {
         Checked { program: program, b: b, untrusted: untrusted, text: text }
     }
 
-    #[summary("프로그램을 한 번 검사한 검사기. 진단은 그 앞 단계의 것(base)에서 시작한다: 상수의 검사가 평가기의 진단을 거기서 뺀다")]
+    #[summary("Checker that has checked the program once. Diagnostics start from those of the preceding stage (base): the check of constants removes the evaluator's diagnostics from there")]
     #[effects(alloc)]
     fn checked(p: &ast::Program, consts: &table::Table<consts::Const>, base: &[diag::Diag]) -> Body {
         let mut c: decls::Checker = decls::new();
@@ -6609,13 +6609,13 @@ mod body {
         b
     }
 
-    #[summary("checked_add, checked_sub, checked_mul, checked_div, checked_rem: 결과가 범위 안일 때만 Some")]
+    #[summary("checked_add, checked_sub, checked_mul, checked_div, checked_rem: Some only when the result is in range")]
     #[effects(pure)]
     fn checked_arith(m: &str) -> bool {
         m == "checked_add" || m == "checked_sub" || m == "checked_mul" || m == "checked_div" || m == "checked_rem"
     }
 
-    #[summary("언어가 t의 clone을 짓지 않는 까닭 (ADR-0141 §2), 지으면 빈 글: Copy 없는 타입 매개변수를 말하거나 자식 프로세스를 든다")]
+    #[summary("Why the language does not build a clone of t (ADR-0141 §2), empty text if it does: it mentions a type parameter without Copy or holds a child process")]
     #[effects(alloc)]
     fn clone_blocked(t: &ast::TypeKind, adts: &table::Table<types::Adt>, moving: &[String]) -> String {
         if names_moving(t, moving, 100000) {
@@ -6628,7 +6628,7 @@ mod body {
         String::new()
     }
 
-    #[summary("한정의 몸에서 #[trigger] 항들을 모은다 (안쪽 한정으로는 들어가지 않는다)")]
+    #[summary("Collects the #[trigger] terms in a quantifier's body (does not enter inner quantifiers)")]
     #[effects(alloc)]
     fn collect_triggers(e: &ast::Expr, out: &mut Vec<ast::Expr>, f: usize) -> ()
         decreases f,
@@ -6675,7 +6675,7 @@ mod body {
         }
     }
 
-    #[summary("글의 목록 a가 b보다 앞인가 (사전 순서)")]
+    #[summary("Whether text list a comes before b (lexicographic order)")]
     #[effects(pure)]
     fn comp_lt(a: &[String], b: &[String]) -> bool {
         for i in 0..a.len()
@@ -6694,7 +6694,7 @@ mod body {
         a.len() < b.len()
     }
 
-    #[summary("T::try_from(x) 꼴인가 (T는 정수 타입)")]
+    #[summary("Whether it has the form T::try_from(x) (T is an integer type)")]
     #[effects(pure)]
     fn conv_call(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -6736,7 +6736,7 @@ mod body {
         }
     }
 
-    #[summary("source에서 target으로의 변환에 범위 의무가 있는가: 정수가 아니거나 source의 값이 모두 target의 값이지는 않다")]
+    #[summary("Whether the conversion from source to target has a range obligation: not integers, or not every value of source is a value of target")]
     #[effects(pure)]
     fn conv_obligation(source: &ast::TypeKind, target: &ast::TypeKind) -> bool {
         match int_of(source) {
@@ -6745,7 +6745,7 @@ mod body {
         }
     }
 
-    #[summary("선언의 필드나 페이로드의 타입들: 구조체의 필드, 또는 변형 var의 페이로드")]
+    #[summary("Types of a declaration's fields or payload: the fields of a struct, or the payload of variant var")]
     #[effects(alloc)]
     fn decl_types(k: &types::AdtKind, is_variant: bool, var: &str) -> Vec<ast::TypeKind> {
         let mut out: Vec<ast::TypeKind> = Vec::new();
@@ -6756,7 +6756,7 @@ mod body {
         out
     }
 
-    #[summary("#[effects(..)]에 io가 있는가")]
+    #[summary("Whether #[effects(..)] has io")]
     #[effects(pure)]
     fn declares_io(attrs: &[ast::Attr]) -> bool {
         for i in 0..attrs.len()
@@ -6784,7 +6784,7 @@ mod body {
         DefRow { path: path, unit: String::from(unit), span: d.name.span, has_dec: has_dec }
     }
 
-    #[summary("몸이 있는 모든 정의를 걷는 순서로 (단위마다 안의 단위 먼저, 이어서 함수, impl T의 함수, trait impl의 함수, 기본 메서드의 몸). trait impl의 함수는 검사기가 준 경로(<T as Trait>::f)를 갖고, 거절된 것은 빠진다")]
+    #[summary("All definitions with a body, in walk order (per unit, inner units first, then functions, functions of impl T, functions of trait impls, bodies of default methods). A trait impl's function has the path the checker gave it (<T as Trait>::f), and rejected ones are left out")]
     #[effects(alloc)]
     fn defs_of(p: &ast::Program, fns: &table::Table<types::FnSig>) -> Vec<DefRow> {
         let mut by_span: table::Table<String> = table::new::<String>();
@@ -6859,7 +6859,7 @@ mod body {
         }
     }
 
-    #[summary("e가 *x면 x")]
+    #[summary("If e is *x, x")]
     #[effects(alloc)]
     fn deref_inner(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -6901,7 +6901,7 @@ mod body {
         }
     }
 
-    #[summary("타입 인자 args(Self가 처음)로 부른 trait 메서드 target이 돌리는 함수: impl의 함수와 그 타입 인자. target이 trait 메서드가 아니거나 Self가 타입 매개변수면(trait의 시그니처가 대신한다) None")]
+    #[summary("Function that trait method target dispatches to when called with type arguments args (Self first): the impl's function and its type arguments. None if target is not a trait method or Self is a type parameter (the trait's signature stands in)")]
     #[effects(alloc)]
     fn dispatch(fns: &table::Table<types::FnSig>, impls: &[types::TraitImplInfo], target: &str, args: &[ast::TypeKind]) -> Option<Dispatched> {
         let at: usize = match fns.find(target) {
@@ -6929,7 +6929,7 @@ mod body {
         None
     }
 
-    #[summary("expr_inner의 앞 묶음인가: 리터럴부터 배열까지")]
+    #[summary("Whether it is in the first group of expr_inner: from literals through arrays")]
     #[effects(pure)]
     fn early_kind(k: &ast::ExprKind) -> bool {
         match k {
@@ -6971,7 +6971,7 @@ mod body {
         }
     }
 
-    #[summary("색인한 원소의 타입: 배열, Vec, 그리고 조각이나 Vec의 참조")]
+    #[summary("Type of an indexed element: arrays, Vec, and references to slices or Vec")]
     #[effects(alloc)]
     fn elem_of(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -7020,13 +7020,13 @@ mod body {
         out
     }
 
-    #[summary("f64::NAN, f64::MAX 같은 f64의 연관 상수인가 (ADR-0061 §2)")]
+    #[summary("Whether it is an associated constant of f64 such as f64::NAN, f64::MAX (ADR-0061 §2)")]
     #[effects(pure)]
     fn f64_const(path: &[ast::Ident]) -> bool {
         path.len() == 2 && path[0].name == "f64" && (path[1].name == "INFINITY" || path[1].name == "NEG_INFINITY" || path[1].name == "NAN" || path[1].name == "MAX" || path[1].name == "MIN" || path[1].name == "MIN_POSITIVE" || path[1].name == "EPSILON")
     }
 
-    #[summary("모르는 f64 메서드 m의 고침 글")]
+    #[summary("Fix text for unknown f64 method m")]
     #[effects(alloc)]
     fn f64_missing(m: &str) -> String {
         if m == "to_bits" || m == "from_bits" || m == "to_be_bytes" || m == "to_le_bytes" || m == "to_ne_bytes" {
@@ -7041,7 +7041,7 @@ mod body {
         String::from("the `f64` methods are `sqrt`, `abs`, `min`, `max`, `is_nan` and `is_finite` (ADR-0061 §3); libm functions (`sin`, `exp`, `ln`, `powf`, ..) are not available (open question 2)")
     }
 
-    #[summary("f64의 메서드 m (ADR-0061 §3): 0은 없음, 1은 인자 없이 f64(sqrt, abs), 2는 인자 없이 bool(is_nan, is_finite), 3은 f64 하나를 받아 f64(min, max)")]
+    #[summary("f64 method m (ADR-0061 §3): 0 is none, 1 is no arguments to f64 (sqrt, abs), 2 is no arguments to bool (is_nan, is_finite), 3 takes one f64 to f64 (min, max)")]
     #[effects(pure)]
     fn f64_sig(m: &str) -> u8 {
         if m == "sqrt" || m == "abs" {
@@ -7055,7 +7055,7 @@ mod body {
         }
     }
 
-    #[summary("이름이 name인 첫 필드 값의 차례")]
+    #[summary("Index of the first field value named name")]
     #[effects(pure)]
     fn field_at(xs: &[ast::FieldInit], name: &str) -> (r: Option<usize>)
         ensures match r { None => true, Some(i) => i < xs.len(), },
@@ -7081,7 +7081,7 @@ mod body {
         out
     }
 
-    #[summary("필드 n의 타입")]
+    #[summary("Type of field n")]
     #[effects(alloc)]
     fn field_ty(fs: &[types::FieldSig], n: &str) -> Option<ast::TypeKind> {
         for i in 0..fs.len()
@@ -7094,7 +7094,7 @@ mod body {
         None
     }
 
-    #[summary("필드 값 가운데 하나가 name을 말하는가")]
+    #[summary("Whether one of the field values mentions name")]
     #[effects(pure)]
     fn fields_mention(xs: &[ast::FieldInit], name: &str, f: usize) -> bool
         decreases f,
@@ -7112,7 +7112,7 @@ mod body {
         false
     }
 
-    #[summary("성분 comp 안의 경계 있는 호출 가운데 순서로 첫 것이 닿는 인스턴스")]
+    #[summary("Instance reached by the first, in order, of the bounded calls in component comp")]
     #[effects(alloc)]
     fn first_bound(pairs: &[Pair], comp: &[String]) -> Option<String> {
         let mut found: bool = false;
@@ -7134,7 +7134,7 @@ mod body {
         }
     }
 
-    #[summary("몸에서 가장 앞에 있는 name[var]의 자리: E0511의 고침이 표시할 트리거")]
+    #[summary("Position of the frontmost name[var] in the body: the trigger the fix of E0511 will mark")]
     #[effects(alloc)]
     fn first_index_on(body: &ast::Expr, var: &str) -> Option<source::Span> {
         let mut copy: ast::Expr = body.clone();
@@ -7147,7 +7147,7 @@ mod body {
         }
     }
 
-    #[summary("s의 값이 모두 t의 값인가")]
+    #[summary("Whether every value of s is a value of t")]
     #[effects(pure)]
     fn fits(s: ast::IntTy, t: ast::IntTy) -> bool {
         if signed(s) == signed(t) {
@@ -7156,7 +7156,7 @@ mod body {
         !signed(s) && bits(s) < bits(t)
     }
 
-    #[summary("타입 없는 let에 맞는 타입인가: Vec::new()면 Vec, 아니면 정수")]
+    #[summary("Whether the type fits an untyped let: Vec if Vec::new(), otherwise an integer")]
     #[effects(pure)]
     fn fits_let(t: &ast::TypeKind, vec_new: bool) -> bool {
         if vec_new {
@@ -7165,7 +7165,7 @@ mod body {
         types::is_int(t)
     }
 
-    #[summary("T::from_be_bytes, T::from_le_bytes면 정수 타입 T (ADR-0048 §2, 백로그 2N-09c)")]
+    #[summary("If T::from_be_bytes or T::from_le_bytes, the integer type T (ADR-0048 §2)")]
     #[effects(pure)]
     fn from_bytes_int(path: &[ast::Ident]) -> Option<ast::IntTy> {
         if path.len() == 2 && (path[1].name == "from_be_bytes" || path[1].name == "from_le_bytes") {
@@ -7175,7 +7175,7 @@ mod body {
         }
     }
 
-    #[summary("T::from 꼴인가 (T는 정수 타입; Rust의 버릇, E0212)")]
+    #[summary("Whether it has the form T::from (T is an integer type; a Rust habit, E0212)")]
     #[effects(pure)]
     fn from_call(path: &[ast::Ident]) -> bool {
         path.len() == 2 && path[1].name == "from" && types::int_name(path[0].name.as_str())
@@ -7190,7 +7190,7 @@ mod body {
         }
     }
 
-    #[summary("if·match·블록·loop인가")]
+    #[summary("Whether it is an if·match·block·loop")]
     #[effects(pure)]
     fn ghost_shape(k: &ast::ExprKind) -> bool {
         match k {
@@ -7244,7 +7244,7 @@ mod body {
         false
     }
 
-    #[summary("글에 $가 있는가: 컴파일러가 지은 타입의 이름 (closures::lower)")]
+    #[summary("Whether the text has $: the name of a type built by the compiler (closures::lower)")]
     #[effects(pure)]
     fn has_dollar(s: &str) -> bool {
         for i in 0..s.len()
@@ -7269,7 +7269,7 @@ mod body {
         false
     }
 
-    #[summary("t가 타입 매개변수를 말하는가")]
+    #[summary("Whether t mentions a type parameter")]
     #[effects(pure)]
     fn has_param(t: &ast::TypeKind, f: usize) -> bool
         decreases f,
@@ -7298,7 +7298,7 @@ mod body {
         }
     }
 
-    #[summary("t가 ps의 매개변수 가운데 tm이 아직 묶지 않은 것을 말하는가")]
+    #[summary("Whether t mentions one of the parameters of ps that tm has not yet bound")]
     #[effects(pure)]
     fn has_param_of(t: &ast::TypeKind, ps: &[types::TParam], tm: &types::Subst) -> bool {
         for i in 0..ps.len()
@@ -7319,7 +7319,7 @@ mod body {
         }
     }
 
-    #[summary("e 안에 한정자가 있는가")]
+    #[summary("Whether there is a quantifier inside e")]
     #[effects(alloc)]
     fn has_quant(e: &ast::Expr) -> bool {
         let mut copy: ast::Expr = e.clone();
@@ -7360,7 +7360,7 @@ mod body {
         false
     }
 
-    #[summary("x가 Vec(또는 그 참조)인 지역 변수인가")]
+    #[summary("Whether x is a local variable that is a Vec (or a reference to one)")]
     #[effects(alloc)]
     fn has_vec_var(cx: &FnCtx, x: &ast::Expr) -> bool {
         match vec_var(cx, x) {
@@ -7369,7 +7369,7 @@ mod body {
         }
     }
 
-    #[summary("경로의 마지막 마디를 뺀 앞")]
+    #[summary("The front of a path without its last segment")]
     #[effects(alloc)]
     fn head(segs: &[ast::Ident]) -> Vec<ast::Ident> {
         let mut out: Vec<ast::Ident> = Vec::new();
@@ -7384,7 +7384,7 @@ mod body {
         out
     }
 
-    #[summary("배열, Box, Vec이 담는 타입")]
+    #[summary("Type contained by an array, Box, or Vec")]
     #[effects(alloc)]
     fn held(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -7408,7 +7408,7 @@ mod body {
         }
     }
 
-    #[summary("t가 자식 프로세스를 드는가 (배열·Vec·Box·구조체·열거형을 지나)")]
+    #[summary("Whether t holds a child process (through arrays·Vec·Box·structs·enums)")]
     #[effects(alloc)]
     fn holds_child(t: &ast::TypeKind, adts: &table::Table<types::Adt>, seen: &mut Vec<String>, f: usize) -> bool
         decreases f,
@@ -7437,7 +7437,7 @@ mod body {
         }
     }
 
-    #[summary("`_`를 n개: `_, _`")]
+    #[summary("n copies of `_`: `_, _`")]
     #[effects(alloc)]
     fn holes(n: usize) -> String {
         let mut s: String = String::new();
@@ -7463,7 +7463,7 @@ mod body {
         out
     }
 
-    #[summary("else가 if let의 것인 갈래인가 (E0225)")]
+    #[summary("Whether the arm is one whose else is that of an if let (E0225)")]
     #[effects(pure)]
     fn if_let_else(p: &ast::Pat) -> bool {
         match &p.origin {
@@ -7473,7 +7473,7 @@ mod body {
         }
     }
 
-    #[summary("impl i의 머리가 t에 맞는가")]
+    #[summary("Whether the head of impl i fits t")]
     #[effects(alloc)]
     fn impl_matches(i: &types::TraitImplInfo, t: &ast::TypeKind) -> bool {
         match types::matches(i, t) {
@@ -7482,13 +7482,13 @@ mod body {
         }
     }
 
-    #[summary("인스턴스가 아닌 trait impl 함수의 경로인가: <로 시작하고 >로 끝나지 않는다 (<..>::f<i64>는 인코더의 표가 넣는 인스턴스)")]
+    #[summary("Whether it is the path of a trait impl function that is not an instance: starts with < and does not end with > (<..>::f<i64> is an instance inserted by the encoder's table)")]
     #[effects(pure)]
     fn impl_path(p: &str) -> bool {
         p.len() > 0 && p.as_bytes()[0] == 60 && p.as_bytes()[p.len() - 1] != 62
     }
 
-    #[summary("name[var] 꼴인가 (name은 변수나 그 필드 경로)")]
+    #[summary("Whether it has the form name[var] (name is a variable or a field path of one)")]
     #[effects(alloc)]
     fn index_on(e: &ast::Expr, var: &str) -> bool {
         match &e.kind {
@@ -7530,7 +7530,7 @@ mod body {
         }
     }
 
-    #[summary("s[a..b] 꼴인가")]
+    #[summary("Whether it has the form s[a..b]")]
     #[effects(pure)]
     fn index_range(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -7572,7 +7572,7 @@ mod body {
         }
     }
 
-    #[summary("제네릭 정의 path의 인스턴스의 열쇠 (타입 인자가 없으면 경로 자신)")]
+    #[summary("Key of an instance of generic definition path (the path itself if there are no type arguments)")]
     #[effects(alloc)]
     fn inst_key(path: &str, args: &[ast::TypeKind]) -> String {
         if args.len() == 0 {
@@ -7587,7 +7587,7 @@ mod body {
         types::cat4(path, "<", types::join(texts.as_slice(), ", ").as_str(), ">")
     }
 
-    #[summary("T::MIN, T::MAX인가")]
+    #[summary("Whether it is T::MIN, T::MAX")]
     #[effects(pure)]
     fn int_const(path: &[ast::Ident]) -> bool {
         match consts::int_const(path) {
@@ -7596,7 +7596,7 @@ mod body {
         }
     }
 
-    #[summary("초기값이 맨 정수 리터럴이나 그 음수인가")]
+    #[summary("Whether the initializer is a bare integer literal or its negation")]
     #[effects(pure)]
     fn int_literal(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -7638,7 +7638,7 @@ mod body {
         }
     }
 
-    #[summary("t가 정수 타입이면 그 종류")]
+    #[summary("If t is an integer type, its kind")]
     #[effects(pure)]
     fn int_of(t: &ast::TypeKind) -> Option<ast::IntTy> {
         match t {
@@ -7669,7 +7669,7 @@ mod body {
         s
     }
 
-    #[summary("t가 정수 타입이면 문맥의 타입으로 준다")]
+    #[summary("If t is an integer type, gives it as the type of the context")]
     #[effects(alloc)]
     fn int_want(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         if types::is_int(t) {
@@ -7901,7 +7901,7 @@ mod body {
         }
     }
 
-    #[summary("t가 std::process::Child(나 그 참조)인가")]
+    #[summary("Whether t is std::process::Child (or a reference to it)")]
     #[effects(alloc)]
     fn is_child(t: &ast::TypeKind) -> bool {
         let v: ast::TypeKind = match ref_inner(t) {
@@ -7939,7 +7939,7 @@ mod body {
         }
     }
 
-    #[summary("== 또는 !=")]
+    #[summary("== or !=")]
     #[effects(pure)]
     fn is_eq(op: ast::BinOp) -> bool {
         match op {
@@ -8190,7 +8190,7 @@ mod body {
         }
     }
 
-    #[summary("변수, 또는 그 위의 필드 경로 (a, m.keys, (*s).v)")]
+    #[summary("A variable, or a field path on top of it (a, m.keys, (*s).v)")]
     #[effects(pure)]
     fn is_place_path(e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -8554,7 +8554,7 @@ mod body {
         }
     }
 
-    #[summary("t가 String인가")]
+    #[summary("Whether t is String")]
     #[effects(pure)]
     fn is_string(t: &ast::TypeKind) -> bool {
         match t {
@@ -8578,7 +8578,7 @@ mod body {
         }
     }
 
-    #[summary("글인가: String, str, 또는 그것의 참조")]
+    #[summary("Whether it is text: String, str, or a reference to one")]
     #[effects(alloc)]
     fn is_text(t: &ast::TypeKind) -> bool {
         if text_kind(t) {
@@ -8618,7 +8618,7 @@ mod body {
         }
     }
 
-    #[summary("열쇠의 from부터 열 자리 수")]
+    #[summary("Ten-digit number starting at from in the key")]
     #[effects(pure)]
     fn key_part(k: &str, from: usize) -> u32 {
         if from > 20 {
@@ -8640,13 +8640,13 @@ mod body {
         }
     }
 
-    #[summary("span_key가 지은 열쇠의 자리")]
+    #[summary("Place of a key built by span_key")]
     #[effects(pure)]
     fn key_span(k: &str) -> source::Span {
         source::Span { file: key_part(k, 0), lo: key_part(k, 10), hi: key_part(k, 20) }
     }
 
-    #[summary("변형 k를 이름한 첫 갈래의 차례")]
+    #[summary("Index of the first arm that names variant k")]
     #[effects(pure)]
     fn kind_at(kinds: &[Option<usize>], k: usize) -> (r: Option<usize>)
         ensures match r { None => true, Some(i) => i < kinds.len(), },
@@ -8688,7 +8688,7 @@ mod body {
         }
     }
 
-    #[summary("s의 처음부터 upto 앞까지에서 pat이 마지막으로 시작하는 자리 (첫 바이트는 건너뛴다)")]
+    #[summary("Position where pat last starts within s from the beginning up to before upto (the first byte is skipped)")]
     #[effects(pure)]
     fn last_of(s: &str, pat: &str, upto: usize) -> (r: Option<usize>)
         ensures match r { None => true, Some(i) => i + pat.len() <= s.len() && i < upto, },
@@ -8725,7 +8725,7 @@ mod body {
         }
     }
 
-    #[summary("범위를 안쪽부터 보아 이름 name")]
+    #[summary("Name name, looking through the scopes from the innermost")]
     #[effects(alloc)]
     fn lookup(cx: &FnCtx, name: &str) -> Option<Local> {
         let mut i: usize = cx.scopes.len();
@@ -8748,7 +8748,7 @@ mod body {
         None
     }
 
-    #[summary("경로 path가 가리키는 const: 이 단위의 것(이름 하나일 때)이 먼저, 그다음 온 경로")]
+    #[summary("The const that path path refers to: this unit's own (when it is a single name) first, then the full path")]
     #[effects(alloc)]
     fn lookup_const(consts: &table::Table<consts::Const>, path: &[String], unit: &str) -> Option<String> {
         let joined: String = types::join(path, "::");
@@ -8762,7 +8762,7 @@ mod body {
         None
     }
 
-    #[summary("가장 뒤의 진단에 고침이 없으면 msg를 고침으로")]
+    #[summary("If the last diagnostic has no fix, sets msg as its fix")]
     #[effects(alloc)]
     fn loop_fix(diags: &mut Vec<diag::Diag>, msg: &str) -> () {
         let n: usize = diags.len();
@@ -8778,7 +8778,7 @@ mod body {
         }
     }
 
-    #[summary("표에서 k의 수를 n보다 크지 않게")]
+    #[summary("Keeps the count of k in the table no greater than n")]
     #[effects(alloc)]
     fn lower_to(t: &mut table::Table<usize>, k: &str, n: usize) -> () {
         if n < at_or_zero(t, k) {
@@ -8786,7 +8786,7 @@ mod body {
         }
     }
 
-    #[summary("단위 m과 그 안의 단위들의 실행 함수 main (안의 단위 먼저)")]
+    #[summary("The exec functions main of unit m and the units inside it (inner units first)")]
     #[effects(alloc)]
     fn mains_of(m: &ast::Mod, out: &mut Vec<ast::FnDef>, f: usize) -> ()
         decreases f,
@@ -8814,7 +8814,7 @@ mod body {
         path.len() == 3 && path[0].name == "std" && path[1].name == "mem" && (path[2].name == "replace" || path[2].name == "swap")
     }
 
-    #[summary("식 e가 변수 name을 말하는가 (stage0 mentions): if·블록·한정·match·loop은 그렇다고 본다")]
+    #[summary("Whether expression e mentions variable name (stage0 mentions): if·block·quantifier·match·loop are taken to do so")]
     #[effects(pure)]
     fn mentions(e: &ast::Expr, name: &str, f: usize) -> bool
         decreases f,
@@ -8861,7 +8861,7 @@ mod body {
         }
     }
 
-    #[summary("mentions와 같되 if·블록·한정의 안을 본다 (stage0 mentions_strict)")]
+    #[summary("Same as mentions, but looks inside if·block·quantifier (stage0 mentions_strict)")]
     #[effects(pure)]
     fn mentions_strict(e: &ast::Expr, name: &str, f: usize) -> bool
         decreases f,
@@ -8908,7 +8908,7 @@ mod body {
         }
     }
 
-    #[summary("x.f(args)가 뜻하는 경로 호출 (ADR-0051): t의 함수에 수신자를 맞춰 넘긴다. 메서드 호출의 자리를 지니고, 수신자에 붙인 빌림은 x.f의 자리다 (다른 식에는 없는 자리)")]
+    #[summary("Path call that x.f(args) means (ADR-0051): passes the receiver, adjusted, to t's function. It carries the position of the method call, and the borrow attached to the receiver has the position of x.f (a position no other expression has)")]
     #[effects(alloc)]
     fn method_call(recv: &ast::Expr, name: &ast::Ident, args: &[ast::Expr], t: &MethodTarget, span: source::Span) -> ast::Expr {
         let mut path: Vec<ast::Ident> = Vec::new();
@@ -8945,7 +8945,7 @@ mod body {
         ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: path, targs: targs, args: all, method: Some(t.adjust) }), span: span }
     }
 
-    #[summary("모르는 메서드 m의 고침 글 (없으면 빈 글)")]
+    #[summary("Fix text for unknown method m (empty text if none)")]
     #[effects(alloc)]
     fn method_missing(m: &str) -> String {
         if m == "unwrap" || m == "expect" {
@@ -8963,7 +8963,7 @@ mod body {
         String::new()
     }
 
-    #[summary("e가 메서드 호출이면 그것")]
+    #[summary("If e is a method call, that call")]
     #[effects(alloc)]
     fn method_of(e: &ast::Expr) -> Option<ast::Method> {
         match &e.kind {
@@ -9005,7 +9005,7 @@ mod body {
         }
     }
 
-    #[summary("t가 이름 하나짜리 타입 name인가 (쓴 그대로의 Vec, String)")]
+    #[summary("Whether t is the single-name type name (Vec, String exactly as written)")]
     #[effects(pure)]
     fn named_one(t: &ast::TypeKind, name: &str) -> bool {
         match t {
@@ -9029,7 +9029,7 @@ mod body {
         }
     }
 
-    #[summary("t가 moving의 타입 매개변수를 말하는가")]
+    #[summary("Whether t mentions a type parameter of moving")]
     #[effects(pure)]
     fn names_moving(t: &ast::TypeKind, moving: &[String], f: usize) -> bool
         decreases f,
@@ -9069,7 +9069,7 @@ mod body {
         out
     }
 
-    #[summary("효과 e의 원자마다, 아직 없으면 처음 요구한 것으로 what을 적는다")]
+    #[summary("For each atom of effect e, records what as the first thing that required it, if not there yet")]
     #[effects(alloc)]
     fn need(cx: &mut FnCtx, e: types::Effects, what: &str) -> () {
         if e.alloc {
@@ -9098,14 +9098,14 @@ mod body {
         cx.needs.push(Need { e: atom, what: String::from(what) });
     }
 
-    #[summary("몸 자신의 연산이 효과 e를 낸다")]
+    #[summary("The body's own operation produces effect e")]
     #[effects(alloc)]
     fn need_own(cx: &mut FnCtx, e: types::Effects, what: &str) -> () {
         cx.own = types::e_union(cx.own, e);
         need(cx, e, what);
     }
 
-    #[summary("몸이 요구하는 효과의 합")]
+    #[summary("Union of the effects the body requires")]
     #[effects(pure)]
     fn needed(cx: &FnCtx) -> types::Effects {
         let mut acc: types::Effects = types::pure();
@@ -9117,7 +9117,7 @@ mod body {
         acc
     }
 
-    #[summary("필드, 원소, `*`인가")]
+    #[summary("Whether it is a field, element, or `*`")]
     #[effects(pure)]
     fn nested_place(k: &ast::ExprKind) -> bool {
         match k {
@@ -9159,7 +9159,7 @@ mod body {
         }
     }
 
-    #[summary("빈 표의 검사기: c는 1패스를 마친 것, consts는 평가한 상수")]
+    #[summary("Checker with empty tables: c is one that has finished pass 1, consts are the evaluated constants")]
     #[effects(alloc)]
     fn new(c: decls::Checker, consts: table::Table<consts::Const>) -> Body {
         let external: Vec<String> = Vec::new();
@@ -9171,7 +9171,7 @@ mod body {
         Body { c: c, recursive: table::new::<usize>(), gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
     }
 
-    #[summary("함수 하나의 빈 문맥: 범위 하나")]
+    #[summary("Empty context of one function: one scope")]
     #[effects(alloc)]
     fn new_ctx(path: &str, mp: &str, effect: types::Effects, ghost: bool) -> FnCtx {
         let mut scopes: Vec<Vec<Local>> = Vec::new();
@@ -9193,7 +9193,7 @@ mod body {
         }
     }
 
-    #[summary("글이 없는가")]
+    #[summary("Whether there is no text")]
     #[effects(pure)]
     fn no_text(o: &Option<String>) -> bool {
         match o {
@@ -9212,7 +9212,7 @@ mod body {
         Variants { found: false, path: String::new(), vs: Vec::new() }
     }
 
-    #[summary("e가 old(x)면 x")]
+    #[summary("If e is old(x), x")]
     #[effects(alloc)]
     fn old_of(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -9254,7 +9254,7 @@ mod body {
         }
     }
 
-    #[summary("e가 old(x)이고 x가 변수면 그 이름")]
+    #[summary("If e is old(x) and x is a variable, its name")]
     #[effects(alloc)]
     fn old_var(e: &ast::Expr) -> Option<String> {
         match old_of(e) {
@@ -9263,7 +9263,7 @@ mod body {
         }
     }
 
-    #[summary("진단들에서 낮추기가 조용히 하라고 한 파일의 것을 빼고(이미 알린 E0608의 인자), 같은 발견은 한 번만 (코드·자리·글이 같은 것: 클로저의 절은 낮춘 자리마다 검사된다, 백로그 2V-20f)")]
+    #[summary("From the diagnostics, removes those of files the lowering said to keep quiet (arguments of an already reported E0608), and keeps the same finding only once (same code·position·text: a closure's clauses are checked at every lowered position)")]
     #[effects(alloc)]
     fn once_each(items: &[diag::Diag], quiet: &[u32]) -> Vec<diag::Diag> {
         let mut seen: table::Table<bool> = table::new::<bool>();
@@ -9289,7 +9289,7 @@ mod body {
         out
     }
 
-    #[summary("빠진 효과가 io뿐인가")]
+    #[summary("Whether the only missing effect is io")]
     #[effects(pure)]
     fn only_io(e: types::Effects) -> bool {
         e.io && !e.alloc && !e.nondet && !e.panic
@@ -9302,7 +9302,7 @@ mod body {
         s
     }
 
-    #[summary("조건이나 살피는 값의 자리: 유령 코드에서는 old를 쓸 수 있는 명세")]
+    #[summary("Position of a condition or scrutinee: a specification where old may be used in ghost code")]
     #[effects(pure)]
     fn operand(m: Mode) -> Mode {
         match m {
@@ -9328,7 +9328,7 @@ mod body {
         }
     }
 
-    #[summary("o가 타입 없는 리터럴인 식을 담는가")]
+    #[summary("Whether o contains an expression that is an untyped literal")]
     #[effects(pure)]
     fn opt_literal(o: &Option<Box<ast::Expr>>, f: usize) -> bool
         decreases f * 2,
@@ -9342,7 +9342,7 @@ mod body {
         }
     }
 
-    #[summary("o가 담은 식이 name을 말하는가")]
+    #[summary("Whether the expression o contains mentions name")]
     #[effects(pure)]
     fn opt_mentions(o: &Option<Box<ast::Expr>>, name: &str, strict: bool, f: usize) -> bool
         decreases f,
@@ -9372,7 +9372,7 @@ mod body {
         ast::TypeKind::Named(single("Option"), targs)
     }
 
-    #[summary("t가 가진 글인가: String, 또는 그것의 참조")]
+    #[summary("Whether t is owned text: String, or a reference to it")]
     #[effects(alloc)]
     fn owned_text(t: &ast::TypeKind) -> bool {
         match ref_inner(t) {
@@ -9381,7 +9381,7 @@ mod body {
         }
     }
 
-    #[summary("t가 수신자의 타입인가: by_self면 Self, 아니면 타입 owner")]
+    #[summary("Whether t is the receiver's type: Self if by_self, otherwise type owner")]
     #[effects(alloc)]
     fn owns(t: &ast::TypeKind, owner: &str, by_self: bool) -> bool {
         if by_self {
@@ -9397,7 +9397,7 @@ mod body {
         }
     }
 
-    #[summary("n을 열 자리 10진수로 out에: 글의 순서가 수의 순서다")]
+    #[summary("Writes n as a ten-digit decimal number to out: the order of the texts is the order of the numbers")]
     #[effects(alloc)]
     fn pad10(out: &mut String, n: u32) -> () {
         let x: u64 = n as u64;
@@ -9427,7 +9427,7 @@ mod body {
         a.file < b.file || a.file == b.file && a.lo < b.lo
     }
 
-    #[summary("참조나 Box가 가리키는 타입")]
+    #[summary("Type that a reference or Box points to")]
     #[effects(alloc)]
     fn pointee(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -9477,7 +9477,7 @@ mod body {
         }
     }
 
-    #[summary("e가 lo..hi면 그 범위")]
+    #[summary("If e is lo..hi, that range")]
     #[effects(alloc)]
     fn range_of(e: &ast::Expr) -> Option<ast::Range> {
         match &e.kind {
@@ -9519,7 +9519,7 @@ mod body {
         }
     }
 
-    #[summary("아무것도 쓸 수 없는 식: 호출이 없고(호출은 &mut을 받을 수 있다) &mut 빌림이 없다. 내장 메서드(len, wrapping_*)는 읽기만 한다")]
+    #[summary("Expression that cannot write anything: no calls (a call can take &mut) and no &mut borrows. Built-in methods (len, wrapping_*) only read")]
     #[effects(pure)]
     fn reads_only(e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -9566,7 +9566,7 @@ mod body {
         }
     }
 
-    #[summary("첫 매개변수가 수신자인 함수에 수신자를 넘기는 방식: 수신자가 아니면 None. 이미 참조인 수신자(by_ref)는 그대로 넘긴다 (한 걸음, ADR-0051)")]
+    #[summary("How the receiver is passed to a function whose first parameter is the receiver: None if it is not a receiver. A receiver that is already a reference (by_ref) is passed as is (one step, ADR-0051)")]
     #[effects(alloc)]
     fn receiver_adjust(params: &[ast::TypeKind], by_ref: bool, owner: &str, by_self: bool) -> Option<ast::Adjust> {
         if params.len() == 0 {
@@ -9601,7 +9601,7 @@ mod body {
         }
     }
 
-    #[summary("t가 참조면 가리키는 타입")]
+    #[summary("If t is a reference, the type it points to")]
     #[effects(alloc)]
     fn ref_inner(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -9625,7 +9625,7 @@ mod body {
         }
     }
 
-    #[summary("e가 &mut x인가")]
+    #[summary("Whether e is &mut x")]
     #[effects(pure)]
     fn ref_mutable(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -9667,7 +9667,7 @@ mod body {
         }
     }
 
-    #[summary("e가 &x나 &mut x면 x")]
+    #[summary("If e is &x or &mut x, x")]
     #[effects(alloc)]
     fn ref_of(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -9709,7 +9709,7 @@ mod body {
         }
     }
 
-    #[summary("e가 &x나 &mut x(x는 변수)면 x")]
+    #[summary("If e is &x or &mut x (x is a variable), x")]
     #[effects(alloc)]
     fn ref_var(e: &ast::Expr) -> Option<ast::Expr> {
         match &e.kind {
@@ -9751,7 +9751,7 @@ mod body {
         }
     }
 
-    #[summary("자리 식이 출발하는 변수: p.a.x, *p, a[i]의 p")]
+    #[summary("Variable a place expression starts from: the p of p.a.x, *p, a[i]")]
     #[effects(alloc)]
     fn root_name(e: &ast::Expr, f: usize) -> Option<String>
         decreases f,
@@ -9803,7 +9803,7 @@ mod body {
         a.file == b.file && a.lo == b.lo && a.hi == b.hi
     }
 
-    #[summary("v에서 닿는 성분들을 찾는다 (Tarjan). 이웃은 이름의 순서로 본다")]
+    #[summary("Finds the components reachable from v (Tarjan). Neighbors are visited in name order")]
     #[effects(alloc)]
     fn scc_visit(t: &mut Scc, g: &table::Table<Vec<String>>, v: &str, f: usize) -> ()
         decreases f,
@@ -9855,7 +9855,7 @@ mod body {
         }
     }
 
-    #[summary("그래프 g의 순환이 있는 강한 연결 성분들 (둘 이상이거나 저를 부르는 하나): 성분은 이름의 순서로, 성분들도 그 순서로")]
+    #[summary("Strongly connected components of graph g that have a cycle (two or more, or one that calls itself): each component in name order, and the components in that order too")]
     #[effects(alloc)]
     fn sccs_with_cycles(g: &table::Table<Vec<String>>) -> Vec<Vec<String>> {
         let on: Vec<String> = Vec::new();
@@ -9874,7 +9874,7 @@ mod body {
         by_first(t.out.as_slice())
     }
 
-    #[summary("이름 name의 첫 E0201을 고칠 글 r을 단 것으로 바꾼다")]
+    #[summary("Replaces the first E0201 of name name with one carrying fix text r")]
     #[effects(alloc)]
     fn settle_diag(diags: &mut Vec<diag::Diag>, name: &ast::Ident, r: &str) -> () {
         let mut at: usize = diags.len();
@@ -9890,7 +9890,7 @@ mod body {
         }
     }
 
-    #[summary("t가 타입 매개변수 ps를 가진 정의 안에서 쓴 타입인가: 오류도, 다른 정의의 매개변수도 없다")]
+    #[summary("Whether t is a type written inside a definition with type parameters ps: no error, and no parameter of another definition")]
     #[effects(pure)]
     fn settled(t: &ast::TypeKind, ps: &[types::TParam], f: usize) -> bool
         decreases f,
@@ -9942,7 +9942,7 @@ mod body {
         v
     }
 
-    #[summary("t가 조각이면 원소의 타입")]
+    #[summary("If t is a slice, the element type")]
     #[effects(alloc)]
     fn slice_elem(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -9966,7 +9966,7 @@ mod body {
         }
     }
 
-    #[summary("x[lo..hi]면 그 셋")]
+    #[summary("If x[lo..hi], those three")]
     #[effects(alloc)]
     fn slice_index(e: &ast::Expr) -> Option<SliceOf> {
         match &e.kind {
@@ -10008,7 +10008,7 @@ mod body {
         }
     }
 
-    #[summary("&s[a..b]면 글과 두 끝")]
+    #[summary("If &s[a..b], the text and the two ends")]
     #[effects(alloc)]
     fn slice_of(e: &ast::Expr) -> Option<SliceOf> {
         match &e.kind {
@@ -10073,7 +10073,7 @@ mod body {
         source::Span { file: 0, lo: 0, hi: 0 }
     }
 
-    #[summary("xs를 바이트 순서로, 같은 것은 하나만")]
+    #[summary("xs in byte order, with equal ones kept once")]
     #[effects(alloc)]
     fn sorted_set(xs: &[String]) -> Vec<String> {
         let s: Vec<String> = decls::sorted(xs);
@@ -10088,7 +10088,7 @@ mod body {
         out
     }
 
-    #[summary("자리 s의 열쇠: 파일, 시작, 끝을 열 자리씩. 표의 열쇠 순서가 stage0의 (file, lo, hi) 순서다")]
+    #[summary("Key of position s: file, start, end, ten digits each. The key order of the table is the (file, lo, hi) order of stage0")]
     #[effects(alloc)]
     fn span_key(s: source::Span) -> String {
         let mut out: String = String::new();
@@ -10098,7 +10098,7 @@ mod body {
         out
     }
 
-    #[summary("old가 허락되는 명세인가")]
+    #[summary("Whether it is a specification where old is allowed")]
     #[effects(pure)]
     fn spec_old(m: Mode) -> bool {
         match m {
@@ -10108,19 +10108,19 @@ mod body {
         }
     }
 
-    #[summary("진단 코드가 오류인가 (E로 시작)")]
+    #[summary("Whether the diagnostic code is an error (starts with E)")]
     #[effects(pure)]
     fn starts_e(code: &str) -> bool {
         code.len() > 0 && code.as_bytes()[0] == 69
     }
 
-    #[summary("ASCII 소문자로 시작하는가")]
+    #[summary("Whether it starts with an ASCII lowercase letter")]
     #[effects(pure)]
     fn starts_lower(s: &str) -> bool {
         s.len() > 0 && s.as_bytes()[0] >= 97 && s.as_bytes()[0] <= 122
     }
 
-    #[summary("문장이 식이면 그 자리")]
+    #[summary("If the statement is an expression, its position")]
     #[effects(pure)]
     fn stmt_expr(st: &ast::Stmt) -> Option<source::Span> {
         match st {
@@ -10136,7 +10136,7 @@ mod body {
         }
     }
 
-    #[summary("문장이 name을 말하는가")]
+    #[summary("Whether the statement mentions name")]
     #[effects(pure)]
     fn stmt_mentions(s: &ast::Stmt, name: &str, f: usize) -> bool
         decreases f,
@@ -10166,7 +10166,7 @@ mod body {
         }
     }
 
-    #[summary("e가 문자열 리터럴이면 그 글")]
+    #[summary("If e is a string literal, its text")]
     #[effects(alloc)]
     fn str_lit_of(e: &ast::Expr) -> Option<String> {
         match &e.kind {
@@ -10214,7 +10214,7 @@ mod body {
         ast::TypeKind::Ref(false, types::boxed(ast::TypeKind::Str))
     }
 
-    #[summary("&s[a..b] 꼴인가")]
+    #[summary("Whether it has the form &s[a..b]")]
     #[effects(pure)]
     fn str_slice(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -10264,7 +10264,7 @@ mod body {
         }
     }
 
-    #[summary("m에서 n을 t로 (있던 이름이면 바꾼다)")]
+    #[summary("Sets n to t in m (replaces it if the name was already there)")]
     #[effects(alloc)]
     fn sub_put(m: &mut types::Subst, n: &str, t: ast::TypeKind) -> () {
         match types::sub_at(m, n) {
@@ -10273,7 +10273,7 @@ mod body {
         }
     }
 
-    #[summary("&place나 &mut place가 출발하는 변수")]
+    #[summary("Variable that &place or &mut place starts from")]
     #[effects(alloc)]
     fn swap_root(a: &ast::Expr) -> Option<String> {
         match ref_of(a) {
@@ -10293,13 +10293,13 @@ mod body {
         out
     }
 
-    #[summary("ADR-0050 §2의 내장 호출인가: String::new, String::with_capacity, String::from, String::from_utf8, char::from_u32")]
+    #[summary("Whether it is a built-in call of ADR-0050 §2: String::new, String::with_capacity, String::from, String::from_utf8, char::from_u32")]
     #[effects(pure)]
     fn text_builtin(path: &[ast::Ident]) -> bool {
         path.len() == 2 && (path[0].name == "String" && (path[1].name == "new" || path[1].name == "with_capacity" || path[1].name == "from" || path[1].name == "from_utf8") || path[0].name == "char" && path[1].name == "from_u32")
     }
 
-    #[summary("String 또는 str")]
+    #[summary("String or str")]
     #[effects(pure)]
     fn text_kind(t: &ast::TypeKind) -> bool {
         match t {
@@ -10323,7 +10323,7 @@ mod body {
         }
     }
 
-    #[summary("모르는 글 메서드 m의 고침 글")]
+    #[summary("Fix text for unknown text method m")]
     #[effects(alloc)]
     fn text_missing(m: &str) -> String {
         let std: String = String::from("the text methods are the built-in `len`, `as_bytes`, `as_str`, `is_char_boundary`, `push`, `push_str`, `clone`, and `std::str`'s `starts_with`, `ends_with`, `find`, `strip_prefix`, `strip_suffix`, `trim_ascii_start`, `trim_ascii_end`, `decode_utf8`");
@@ -10354,7 +10354,7 @@ mod body {
         std
     }
 
-    #[summary("<T as unit::Trait>::m이면 unit::Trait::m")]
+    #[summary("If <T as unit::Trait>::m, unit::Trait::m")]
     #[effects(alloc)]
     fn trait_decl_of(p: &str) -> Option<String> {
         if p.len() == 0 || p.as_bytes()[0] != 60 {
@@ -10401,7 +10401,7 @@ mod body {
         }
     }
 
-    #[summary("`?`를 받는 타입인가: 0 아님, 1 Option<T>, 2 Result<T, E>")]
+    #[summary("Whether it is a type that accepts `?`: 0 no, 1 Option<T>, 2 Result<T, E>")]
     #[effects(alloc)]
     fn try_variants(t: &ast::TypeKind) -> u8 {
         match types::named_path(t) {
@@ -10418,7 +10418,7 @@ mod body {
         out
     }
 
-    #[summary("t 안에 Error가 있는가: 그 결함은 난 자리에서 알렸다")]
+    #[summary("Whether there is an Error inside t: that defect was reported where it arose")]
     #[effects(pure)]
     fn ty_has_error(t: &ast::TypeKind, f: usize) -> bool
         decreases f,
@@ -10447,7 +10447,7 @@ mod body {
         }
     }
 
-    #[summary("타입의 깊이: 배열·조각·Vec·Box·참조·이름 붙은 타입이 한 겹씩")]
+    #[summary("Depth of a type: arrays·slices·Vec·Box·references·named types add one layer each")]
     #[effects(pure)]
     fn type_depth(t: &ast::TypeKind, f: usize) -> (r: usize)
         ensures r <= f,
@@ -10477,7 +10477,7 @@ mod body {
         }
     }
 
-    #[summary("t에 아직 묶이지 않은 ps의 매개변수가 남는가: tm으로 바꾼 뒤에도 매개변수를 말하고, t가 말하는 ps의 매개변수 가운데 tm에 없는 것이 있다")]
+    #[summary("Whether parameters of ps not yet bound remain in t: it still mentions a parameter after substituting with tm, and some parameter of ps that t mentions is not in tm")]
     #[effects(alloc)]
     fn unbound(ps: &[types::TParam], tm: &types::Subst, t: &ast::TypeKind) -> bool {
         if !has_param(&types::subst(t, tm), 100000) {
@@ -10501,7 +10501,7 @@ mod body {
         }
     }
 
-    #[summary("Vec, 배열, Box, 조각, 참조의 안쪽 타입")]
+    #[summary("Inner type of a Vec, array, Box, slice, or reference")]
     #[effects(alloc)]
     fn under(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         match t {
@@ -10525,7 +10525,7 @@ mod body {
         }
     }
 
-    #[summary("이웃한 두 값이 내려가는 자리가 있는가")]
+    #[summary("Whether there is a position where two adjacent values descend")]
     #[effects(pure)]
     fn unsorted(xs: &[usize]) -> bool {
         for i in 0..xs.len()
@@ -10538,7 +10538,7 @@ mod body {
         false
     }
 
-    #[summary("문맥의 타입을 받는 리터럴 식인가: 정수 리터럴과 그것들의 산술·비트 연산, 시프트의 왼쪽, 그런 식 하나뿐인 블록과 if")]
+    #[summary("Whether it is a literal expression that takes the type of the context: integer literals and their arithmetic·bitwise operations, the left side of a shift, and blocks and ifs holding just one such expression")]
     #[effects(pure)]
     fn untyped_literal(e: &ast::Expr, f: usize) -> bool
         decreases f * 2 + 1,
@@ -10593,7 +10593,7 @@ mod body {
         }
     }
 
-    #[summary("값이 변수나 필드인가")]
+    #[summary("Whether the value is a variable or a field")]
     #[effects(pure)]
     fn var_or_field(k: &ast::ExprKind) -> bool {
         match k {
@@ -10646,7 +10646,7 @@ mod body {
         out
     }
 
-    #[summary("페이로드가 n개인 변형의 패턴: vt 또는 vt(_, _)")]
+    #[summary("Pattern of a variant with n payloads: vt or vt(_, _)")]
     #[effects(alloc)]
     fn variant_pat(vt: &str, n: usize) -> String {
         if n == 0 {
@@ -10655,7 +10655,7 @@ mod body {
         types::cat4(vt, "(", holes(n).as_str(), ")")
     }
 
-    #[summary("단위 mp에서 변형을 쓰는 글: Some, Shape::Dot, geo::Shape::Dot")]
+    #[summary("Text for using a variant in unit mp: Some, Shape::Dot, geo::Shape::Dot")]
     #[effects(alloc)]
     fn variant_text(tp: &str, v: &str, mp: &str) -> String {
         if tp == "Option" || tp == "Result" {
@@ -10665,7 +10665,7 @@ mod body {
         types::cat3(types::local(path.as_slice(), mp).as_str(), "::", v)
     }
 
-    #[summary("Vec::new, Vec::with_capacity, 그리고 drop과 mem::take 따위 (Rust의 버릇, E0219)")]
+    #[summary("Vec::new, Vec::with_capacity, and the likes of drop and mem::take (a Rust habit, E0219)")]
     #[effects(pure)]
     fn vec_builtin(path: &[ast::Ident]) -> bool {
         if path.len() == 1 {
@@ -10677,7 +10677,7 @@ mod body {
         path.len() == 3 && path[0].name == "std" && path[1].name == "mem" && path[2].name == "take"
     }
 
-    #[summary("Vec<T> 또는 그것의 참조면 T")]
+    #[summary("If Vec<T> or a reference to it, T")]
     #[effects(alloc)]
     fn vec_elem(t: &ast::TypeKind) -> Option<ast::TypeKind> {
         let v: ast::TypeKind = match ref_inner(t) {
@@ -10705,7 +10705,7 @@ mod body {
         }
     }
 
-    #[summary("모르는 Vec 메서드 m의 고침 글 (없으면 빈 글)")]
+    #[summary("Fix text for unknown Vec method m (empty text if none)")]
     #[effects(alloc)]
     fn vec_missing(m: &str) -> String {
         if m == "get" || m == "first" || m == "last" {
@@ -10723,7 +10723,7 @@ mod body {
         String::new()
     }
 
-    #[summary("초기값이 Vec::new()나 Vec::with_capacity(n)인가")]
+    #[summary("Whether the initializer is Vec::new() or Vec::with_capacity(n)")]
     #[effects(alloc)]
     fn vec_new_call(e: &ast::Expr) -> bool {
         match call_of(e) {
@@ -10732,7 +10732,7 @@ mod body {
         }
     }
 
-    #[summary("x가 Vec(또는 그 참조)인 지역 변수면 그 변수")]
+    #[summary("If x is a local variable that is a Vec (or a reference to one), that variable")]
     #[effects(alloc)]
     fn vec_var(cx: &FnCtx, x: &ast::Expr) -> Option<Local> {
         match ast::var_name(x) {
@@ -10741,7 +10741,7 @@ mod body {
         }
     }
 
-    #[summary("배열 리터럴의 원소에 기대하는 타입: 기대한 배열 타입의 원소. 쓴 타입이 틀려 보고됐으면 원소도 그렇다")]
+    #[summary("Type expected of an array literal's elements: the element of the expected array type. If the written type was wrong and reported, so is the element")]
     #[effects(alloc)]
     fn want_elem(expected: &Option<ast::TypeKind>) -> Option<ast::TypeKind> {
         match expected {
@@ -10750,19 +10750,19 @@ mod body {
         }
     }
 
-    #[summary("정수 타입 from이 다른 정수 타입 to로 넓어지는가: from의 값이 모두 to의 값이다 (ADR-0099)")]
+    #[summary("Whether integer type from widens to another integer type to: every value of from is a value of to (ADR-0099)")]
     #[effects(alloc)]
     fn widens(from: &ast::TypeKind, to: &ast::TypeKind) -> bool {
         !types::same(from, to) && types::is_int(from) && types::is_int(to) && !conv_obligation(from, to)
     }
 
-    #[summary("`_` 하나인 패턴인가")]
+    #[summary("Whether it is a pattern that is a single `_`")]
     #[effects(pure)]
     fn wild_name(p: &ast::Pat) -> bool {
         p.path.len() == 1 && p.path[0].name == "_"
     }
 
-    #[summary("xs에서 s를 뺀 것")]
+    #[summary("xs without s")]
     #[effects(alloc)]
     fn without(xs: &[String], s: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
@@ -10776,7 +10776,7 @@ mod body {
         out
     }
 
-    #[summary("tm에서 Error로 묶인 것을 뺀 것")]
+    #[summary("tm without those bound to Error")]
     #[effects(alloc)]
     fn without_errors(tm: &types::Subst) -> types::Subst {
         let mut out: types::Subst = empty_subst();
@@ -10791,7 +10791,7 @@ mod body {
         out
     }
 
-    #[summary("타입 매개변수를 더 큰 타입에 싼 첫 타입 인자")]
+    #[summary("First type argument that wraps a type parameter in a larger type")]
     #[effects(alloc)]
     fn wrapped_param(args: &[ast::TypeKind]) -> Option<ast::TypeKind> {
         for i in 0..args.len()
@@ -10804,7 +10804,7 @@ mod body {
         None
     }
 
-    #[summary("자리 e에 쓸 수 있는가: let mut 지역 변수나 &mut 매개변수 아래, 필드·Box·원소를 지나 (s.buf, b.v, (*b).w)")]
+    #[summary("Whether place e can be written to: under a let mut local variable or a &mut parameter, through fields·Box·elements (s.buf, b.v, (*b).w)")]
     #[effects(alloc)]
     fn writable(cx: &FnCtx, e: &ast::Expr, f: usize) -> bool
         decreases f,
@@ -10851,7 +10851,7 @@ mod body {
         }
     }
 
-    #[summary("쓴 그대로의 패턴인가 (if let의 else도, 파서가 물리친 것도 아니다)")]
+    #[summary("Whether it is a pattern exactly as written (neither the else of an if let nor one the parser rejected)")]
     #[effects(pure)]
     fn written(p: &ast::Pat) -> bool {
         match &p.origin {

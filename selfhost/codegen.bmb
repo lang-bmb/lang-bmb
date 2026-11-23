@@ -1,43 +1,43 @@
-#[summary("코드 생성 (stage0 compiler/src/codegen.rs의 포트, 백로그 4D-05). 전체 검사 모드: 증명된 의무가 없다고 보고 검사를 모두 남긴다. 타입의 배치와 LLVM 타입 정의 (4D-05b), 스칼라 프로그램 (4D-05c), 스칼라 원소의 배열과 슬라이스 (4D-05d1), 구조체와 메모리 값 (4D-05d2), 열거형·match·? (4D-05d3), 힙의 값과 그 해제·복제 (4D-05e). 옮기지 않은 구문은 Gen.todo에 까닭을 남긴다. 타입은 낮춘 것이다 (lowered). 타입을 걷는 함수의 f는 남은 깊이다 (ADR-0140)")]
+#[summary("Code generation (port of stage0 compiler/src/codegen.rs). All-checks mode: assumes no obligation is proven and keeps every check. Type layout and LLVM type definitions, scalar programs, arrays and slices of scalar elements, structs and memory values, enums·match·?, heap values and their drop·clone. For constructs not ported, the reason is left in Gen.todo. Types are lowered ones (lowered). The f of functions that walk types is the remaining depth (ADR-0140)")]
 mod codegen {
-    #[summary("어떤 타입이든의 자리 (stage0 any_place의 결과): 주소, 타입, 스칼라 자리면 그 레지스터 타입 (아니면 빈 글: 메모리 꼴), ok가 거짓이면 옮기지 않은 자리")]
+    #[summary("Place of any type (result of stage0 any_place): address, type, its register type if a scalar place (otherwise empty text: memory form), and if ok is false a place not ported")]
     struct AnyPlace { ptr: String, ty: ast::TypeKind, reg: String, ok: bool }
 
-    #[summary("배열이나 슬라이스인 지역 이름의 자리 (stage0 Slot::Arr): 첫 원소의 주소, 길이의 글, 원소 종류, 원소 타입")]
+    #[summary("Place of a local name that is an array or slice (stage0 Slot::Arr): address of the first element, text of the length, element kind, element type")]
     struct ArrSlot { ptr: String, len: String, elem: String, ety: ast::TypeKind }
 
-    #[summary("스칼라 참조 인자의 임시 자리를 호출 뒤에 원소로 되돌려 쓸 곳 (stage0 Back): 임시 자리, 원소 종류, 원소나 자리의 주소, 레지스터 타입, 메모리 꼴의 자리인가 (필드 따위), 그 타입")]
+    #[summary("Where the temporary slot of a scalar reference argument is written back to the element after the call (stage0 Back): temporary slot, element kind, address of the element or place, register type, whether it is a memory-form place (fields and the like), its type")]
     struct Back { tmp: String, elem: String, ptr: String, lt: String, mem: bool, ty: ast::TypeKind }
 
-    #[summary("식의 값 (stage0 CVal): 레지스터 값이나 상수의 글, 배열이나 슬라이스(첫 원소의 주소와 길이의 글), 메모리에 사는 구조체나 열거형의 값(주소와 타입: 간직하는 쪽이 옮긴다), 단위 값, 끝나지 않는 식의 값")]
+    #[summary("Value of an expression (stage0 CVal): text of a register value or constant, an array or slice (address of the first element and text of the length), a struct or enum value living in memory (address and type: the side that keeps it moves it), the unit value, the value of an expression that does not terminate")]
     enum CVal { Imm(String), Arr(String, String), Ptr(String, ast::TypeKind), Unit, Never }
 
-    #[summary("배열 리터럴의 상수 원소: 부호와 크기")]
+    #[summary("Constant element of an array literal: sign and size")]
     struct ConstElem { neg: bool, mag: u64 }
 
-    #[summary("정수 변환 T::try_from(x)의 대상 타입과 인자")]
+    #[summary("Target type and argument of the integer conversion T::try_from(x)")]
     struct Conv { target: ast::IntTy, arg: ast::Expr }
 
-    #[summary("구조체나 열거형인 지역 이름의 자리 (stage0 Slot::Data): 주소와 타입")]
+    #[summary("Place of a local name that is a struct or enum (stage0 Slot::Data): address and type")]
     struct DataSlot { ptr: String, ty: ast::TypeKind }
 
-    #[summary("낮출 정의 하나: 경로, 단위, 구문")]
+    #[summary("One definition to lower: path, unit, syntax")]
     struct Def { path: String, unit: String, d: ast::FnDef }
 
-    #[summary("원소의 주소와 원소 종류 (stage0 elem_ptr의 결과)")]
+    #[summary("Address of an element and the element kind (result of stage0 elem_ptr)")]
     struct ElemPtr { ptr: String, elem: String }
 
-    #[summary("구조체의 필드: 차례와 타입")]
+    #[summary("Field of a struct: index and type")]
     struct FieldAt { k: usize, ty: ast::TypeKind }
 
-    #[summary("break나 continue가 떠날 수 있는 루프 (stage0 GLoop): 레이블(없으면 빈 글), continue가 가는 곳, break가 가는 곳, loop의 break e가 값을 두는 자리와 그 타입, 루프가 시작할 때의 pending의 길이 (그 뒤의 임시값은 루프 안의 구역의 것이다)")]
+    #[summary("Loop that break or continue can leave (stage0 GLoop): label (empty text if none), where continue goes, where break goes, the slot where break e of a loop puts its value and its type, the length of pending when the loop starts (temporaries after that belong to the region inside the loop)")]
     struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
-    #[summary("함수 하나를 낮추는 상태 (stage0 Gen). out은 몸의 글, allocas는 entry의 자리들, tmp와 label은 %tN과 레이블의 번호, slots는 지역 이름의 자리, todo는 아직 옮기지 않은 구문을 만난 까닭들 (비어 있지 않으면 모듈을 내지 않는다), print_f64는 print_f64를 불렀는가 (그 런타임 조각을 모듈에 붙인다), loops는 지금 낮추는 코드를 둘러싼 루프들 (안쪽이 뒤), globals는 이 함수의 상수들이고 consts는 그 줄 수, pending은 힙 메모리를 가진 임시값들 (구역이 끝날 때 놓는다), clones는 복제 코드를 부른 타입의 글들")]
+    #[summary("State of lowering one function (stage0 Gen). out is the text of the body, allocas are the slots of entry, tmp and label are the numbers of %tN and labels, slots are the places of local names, todo holds the reasons for constructs met that are not yet ported (if not empty, no module is emitted), print_f64 is whether print_f64 was called (that runtime fragment is attached to the module), loops are the loops enclosing the code being lowered (innermost last), globals are this function's constants and consts is their line count, pending are the temporaries that own heap memory (released when the region ends), clones are the texts of the types whose clone code was called")]
     struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind> }
 
     impl Gen {
-        #[summary("entry에 ty의 자리를 하나 두고 그 이름을 준다")]
+        #[summary("Puts one slot of ty in entry and gives its name")]
         #[effects(alloc)]
         fn alloca(self: &mut Gen, ty: &str) -> String {
             let p: String = self.t();
@@ -49,7 +49,7 @@ mod codegen {
             p
         }
 
-        #[summary("any_place의 변수 아닌 갈래: place의 자리 (메모리 꼴)")]
+        #[summary("The non-variable arm of any_place: the place of place (memory form)")]
         #[effects(alloc)]
         fn any_other(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
             decreases f,
@@ -62,7 +62,7 @@ mod codegen {
             AnyPlace { ptr: pl.ptr, ty: pl.ty, reg: String::new(), ok: pl.ok }
         }
 
-        #[summary("어떤 타입이든의 자리 (stage0 any_place): 변수와 스칼라 참조를 지난 *x는 제 자리 (스칼라면 레지스터 꼴), 나머지는 place. &는 벗긴다")]
+        #[summary("Place of a value of any type (stage0 any_place): a variable, and *x through a scalar reference, are their own place (register form if scalar), the rest go to place. & is stripped")]
         #[effects(alloc)]
         fn any_place(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
             decreases f,
@@ -110,7 +110,7 @@ mod codegen {
             }
         }
 
-        #[summary("any_place의 변수 갈래: 스칼라 자리는 레지스터 꼴, 배열과 메모리 값은 제 자리")]
+        #[summary("Variable arm of any_place: a scalar place is in register form, arrays and memory values are their own place")]
         #[effects(alloc)]
         fn any_var(self: &mut Gen, e: &ast::Expr, name: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> AnyPlace
             decreases f,
@@ -135,7 +135,7 @@ mod codegen {
             AnyPlace { ptr: String::from("undef"), ty: ast::TypeKind::Error, reg: String::new(), ok: false }
         }
 
-        #[summary("산술 (stage0 arith): 넘침을 재고 넘치면 멈춘다 (전체 검사 모드: 증명된 의무가 없다)")]
+        #[summary("Arithmetic (stage0 arith): checks for overflow and stops on overflow (all-checks mode: there are no proved obligations)")]
         #[effects(alloc)]
         fn arith(self: &mut Gen, inst: &str, a: &str, b: &str, signed: bool) -> CVal {
             let r: String = self.t();
@@ -160,7 +160,7 @@ mod codegen {
             CVal::Imm(r)
         }
 
-        #[summary("갈래의 몸 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.arm_drops)")]
+        #[summary("Whether any value is dropped at arm body position s (the checker's MoveInfo.arm_drops)")]
         #[effects(alloc)]
         fn arm_drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -169,7 +169,7 @@ mod codegen {
             }
         }
 
-        #[summary("배열이나 슬라이스인 지역 변수 name의 자리")]
+        #[summary("Place of local variable name that is an array or slice")]
         #[effects(alloc)]
         fn arr_slot(self: &Gen, name: &str) -> Option<ArrSlot> {
             match self.slots.find(name) {
@@ -178,7 +178,7 @@ mod codegen {
             }
         }
 
-        #[summary("배열 리터럴과 반복 (stage0 expr의 Array·Repeat): 배열을 entry의 자리에 두고 채운다. 원소가 메모리 값이면 init_data_array")]
+        #[summary("Array literal and repeat (stage0 expr's Array·Repeat): puts the array in entry's place and fills it. init_data_array if the elements are memory values")]
         #[effects(alloc)]
         fn array_lit(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -206,7 +206,7 @@ mod codegen {
             CVal::Arr(ptr, n)
         }
 
-        #[summary("배열이나 슬라이스의 값, 또는 Vec의 원소들 (stage0 array_of): 임시 Vec은 구역이 끝날 때 놓는다")]
+        #[summary("Value of an array or slice, or the elements of a Vec (stage0 array_of): a temporary Vec is dropped when the region ends")]
         #[effects(alloc)]
         fn array_of(self: &mut Gen, base: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -224,7 +224,7 @@ mod codegen {
             self.vec_view(hdr.as_str())
         }
 
-        #[summary("대입 (stage0 stmt의 Assign): 스칼라 지역 변수, 단위 값의 지역 변수, 배열 지역 변수 전체, 메모리 값의 지역 변수, 스칼라 원소, 스칼라 참조 매개변수를 지나는 *x, 그 밖의 자리 (필드, 메모리 원소, 참조를 지난 자리)는 값을 먼저 셈하고 자리에 쓴다")]
+        #[summary("Assignment (stage0 stmt's Assign): scalar local variable, unit-valued local variable, whole array local variable, memory-valued local variable, scalar element, *x through a scalar reference parameter, any other place (field, memory element, place through a reference) evaluates the value first and writes it to the place")]
         #[effects(alloc)]
         fn assign(self: &mut Gen, a: &ast::Assign, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -272,7 +272,7 @@ mod codegen {
             }
         }
 
-        #[summary("자리로의 대입 (stage0 stmt의 Assign의 마지막 갈래들): 값을 먼저 셈하고, 자리를 셈하고, 갈아치우는 옛 값을 놓고 (partial이면 일부가 옮겨진 자리의 남은 필드도), 쓴다 (Rust의 차례)")]
+        #[summary("Assignment to a place (the last arms of stage0 stmt's Assign): evaluates the value first, evaluates the place, drops the old value being replaced (if partial, also the remaining fields of a partly moved place), and writes (Rust's order)")]
         #[effects(alloc)]
         fn assign_place(self: &mut Gen, a: &ast::Assign, partial: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -294,7 +294,7 @@ mod codegen {
             }
         }
 
-        #[summary("이항 연산 (stage0 expr의 Binary 갈래들): 짧은 회로, f64, 정수의 비교·비트·시프트·산술·나눗셈")]
+        #[summary("Binary operation (stage0 expr's Binary arms): short circuit, f64, integer comparison·bitwise·shift·arithmetic·division")]
         #[effects(alloc)]
         fn binary(self: &mut Gen, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -366,7 +366,7 @@ mod codegen {
             }
         }
 
-        #[summary("새 지역 변수 name에 src에 있는 타입 t의 값의 사본 (stage0 bind): 단위 값은 자리가 없다")]
+        #[summary("Copy of the value of type t at src into new local variable name (stage0 bind): a unit value has no place")]
         #[effects(alloc)]
         fn bind(self: &mut Gen, name: &str, src: &str, t: &ast::TypeKind) -> () {
             let vt: ast::TypeKind = lowered::value_ty(t);
@@ -393,7 +393,7 @@ mod codegen {
             self.slots.insert(name, Slot::Scalar(ptr, lt));
         }
 
-        #[summary("비트 메서드 (stage0 bit_method): 제 폭으로 잘라 LLVM의 내장 함수를 부르고 다시 넓힌다. 세는 메서드의 결과는 0으로 넓힌다")]
+        #[summary("Bit methods (stage0 bit_method): truncates to its own width, calls LLVM's built-in function and widens again. The result of the counting methods is zero-extended")]
         #[effects(alloc)]
         fn bit_method(self: &mut Gen, m: &str, i: ast::IntTy, a: &str, n: &str) -> CVal {
             let w: u32 = body::bits(i);
@@ -475,14 +475,14 @@ mod codegen {
             CVal::Imm(back)
         }
 
-        #[summary("레이블 한 줄")]
+        #[summary("One label line")]
         #[effects(alloc)]
         fn block(self: &mut Gen, label: &str) -> () {
             self.out.push_str(label);
             self.out.push_str(":\n");
         }
 
-        #[summary("블록의 값 (stage0 block_expr): 문장들 (문장마다 그 임시값을 놓는다), 이어서 꼬리 식. 블록 끝에서 아직 가진 지역 변수를 놓는다 (값은 먼저 제 메모리로 옮긴다)")]
+        #[summary("Value of a block (stage0 block_expr): the statements (each statement drops its temporaries), then the tail expression. At block end drops the local variables still owned (the value is first moved to its own memory)")]
         #[effects(alloc)]
         fn block_expr(self: &mut Gen, b: &ast::Block, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -510,7 +510,7 @@ mod codegen {
             kept
         }
 
-        #[summary("글의 n바이트 p에서 i가 글자의 경계인가 (stage0 boundary, Rust의 is_char_boundary): i1. 바이트는 n 아래에서만 읽는다")]
+        #[summary("Whether i is a character boundary in the n bytes at p of a text (stage0 boundary, Rust's is_char_boundary): i1. Bytes are read only below n")]
         #[effects(alloc)]
         fn boundary(self: &mut Gen, p: &str, n: &str, i: &str) -> String {
             let inside: String = self.l("bnd");
@@ -542,7 +542,7 @@ mod codegen {
             r
         }
 
-        #[summary("Box::new(v) (stage0 box_new): v를 셈하고, malloc의 메모리에 옮기고, 그 주소를 담은 칸이 값이다")]
+        #[summary("Box::new(v) (stage0 box_new): evaluates v, moves it into malloc's memory, and the cell holding that address is the value")]
         #[effects(alloc)]
         fn box_new(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -557,7 +557,7 @@ mod codegen {
             }
         }
 
-        #[summary("갈래 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.branch_drops)")]
+        #[summary("Whether any value is dropped at branch position s (the checker's MoveInfo.branch_drops)")]
         #[effects(alloc)]
         fn branch_drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -566,7 +566,7 @@ mod codegen {
             }
         }
 
-        #[summary("바이트열의 상수 (stage0 byte_const): 이 함수의 비공개 상수로 두고 그 주소와 길이를 준다")]
+        #[summary("Byte string constant (stage0 byte_const): kept as a private constant of this function, gives its address and length")]
         #[effects(alloc)]
         fn byte_const(self: &mut Gen, v: &[u8]) -> CVal {
             let mut name: String = types::cat3("@\"", self.path.as_str(), ".bytes.");
@@ -600,7 +600,7 @@ mod codegen {
             CVal::Arr(name, n)
         }
 
-        #[summary("호출 (stage0 call): 변환과 내장의 꼴을 가르고, 함수는 call_fn이 부른다. 인자: 스칼라, 스칼라 원소의 슬라이스(주소와 길이)와 값으로 넘기는 배열(주소), 스칼라 참조(자리의 주소). 결과: 스칼라, 스칼라 원소의 배열(부른 쪽의 메모리). 내장은 print_i64·print_u64·print_f64·print_str·print_bytes")]
+        #[summary("Call (stage0 call): tells apart the conversion and built-in forms, functions are called by call_fn. Arguments: scalars, slices of scalar elements (address and length) and arrays passed by value (address), scalar references (address of the place). Results: scalars, arrays of scalar elements (the caller's memory). The built-ins are print_i64·print_u64·print_f64·print_str·print_bytes")]
         #[effects(alloc)]
         fn call(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -646,7 +646,7 @@ mod codegen {
             }
         }
 
-        #[summary("함수의 호출 (stage0 call의 뒤쪽). 제네릭 함수는 호출의 타입 인자의 인스턴스를 부르고 그것을 wants에 적는다. trait 메서드는 Self의 impl의 함수를 부른다 (ADR-0046 §5)")]
+        #[summary("Call of a function (the latter part of stage0 call). A generic function calls the instance for the call's type arguments and records it in wants. A trait method calls the function of Self's impl (ADR-0046 §5)")]
         #[effects(alloc)]
         fn call_fn(self: &mut Gen, e: &ast::Expr, c: &ast::Call, target0: &str, at0: usize, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -782,7 +782,7 @@ mod codegen {
             res
         }
 
-        #[summary("char::from_u32(x) (stage0 char_from_u32): 스칼라 값이면 Some(x)")]
+        #[summary("char::from_u32(x) (stage0 char_from_u32): Some(x) if it is a scalar value")]
         #[effects(alloc)]
         fn char_from_u32(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -804,7 +804,7 @@ mod codegen {
             self.option(e, ok.as_str(), x.as_str(), tb)
         }
 
-        #[summary("실행 중 검사 (stage0 check): cond가 거짓이면 멈춘다")]
+        #[summary("Runtime check (stage0 check): stops if cond is false")]
         #[effects(alloc)]
         fn check(self: &mut Gen, cond: &str, what: &str) -> () {
             self.checks = self.checks.wrapping_add(1);
@@ -819,7 +819,7 @@ mod codegen {
             self.block(ok.as_str());
         }
 
-        #[summary("checked_* (stage0 int_method의 checked 갈래들과 narrow_method의 마지막 갈래): 덧셈·뺄셈·곱셈은 넘치지 않을 때 Some, 나눗셈·나머지는 나누는 수가 0이 아니고 MIN / -1이 아닐 때 Some. 좁은 타입은 값이 제 범위 안일 때만 Some")]
+        #[summary("checked_* (the checked arms of stage0 int_method and the last arm of narrow_method): addition·subtraction·multiplication are Some when they do not overflow, division·remainder are Some when the divisor is not 0 and it is not MIN / -1. Narrow types are Some only when the value is within their own range")]
         #[effects(alloc)]
         fn checked_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy, tb: &lowered::Tables) -> CVal {
             let signed: bool = body::signed(i);
@@ -902,7 +902,7 @@ mod codegen {
             res
         }
 
-        #[summary("match나 ?가 그 값을 옮기는가 (검사기의 MoveInfo.consumed)")]
+        #[summary("Whether match or ? moves that value (the checker's MoveInfo.consumed)")]
         #[effects(alloc)]
         fn consumed_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -911,7 +911,7 @@ mod codegen {
             }
         }
 
-        #[summary("값을 옮긴다 (stage0 copy): memmove라 x = x도 된다")]
+        #[summary("Copies a value (stage0 copy): it is memmove, so x = x works too")]
         #[effects(alloc)]
         fn copy(self: &mut Gen, dst: &str, src: &str, t: &ast::TypeKind) -> () {
             let mut line: String = types::cat5("call void @llvm.memmove.p0.p0.i64(ptr ", dst, ", ptr ", src, ", i64 ");
@@ -920,7 +920,7 @@ mod codegen {
             self.emit(line.as_str());
         }
 
-        #[summary("a.copy_within(lo..hi, dest) (stage0 copy_within, ADR-0083): 범위들을 재고 memmove 한 번 (겹쳐도 된다)")]
+        #[summary("a.copy_within(lo..hi, dest) (stage0 copy_within, ADR-0083): checks the ranges and does one memmove (overlap is fine)")]
         #[effects(alloc)]
         fn copy_within(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -941,7 +941,7 @@ mod codegen {
             }
         }
 
-        #[summary("메모리 값의 원소의 주소 (stage0 data_elem): 색인이 길이 안인지 잰다")]
+        #[summary("Address of an element of memory values (stage0 data_elem): checks that the index is within the length")]
         #[effects(alloc)]
         fn data_elem(self: &mut Gen, ptr: &str, len: &str, i: &str, ety: &ast::TypeKind) -> String {
             let c: String = self.t();
@@ -952,7 +952,7 @@ mod codegen {
             p
         }
 
-        #[summary("구조체나 열거형인 지역 변수 name의 자리")]
+        #[summary("Place of local variable name that is a struct or enum")]
         #[effects(alloc)]
         fn data_slot(self: &Gen, name: &str) -> Option<DataSlot> {
             match self.slots.find(name) {
@@ -961,7 +961,7 @@ mod codegen {
             }
         }
 
-        #[summary("*b (stage0 expr의 Deref, Box의 것): 그 주소에 있는 값. 임시 Box에서 읽은 배열은 옮겨 둔다")]
+        #[summary("*b (stage0 expr's Deref, the Box one): the value at that address. An array read from a temporary Box is moved aside")]
         #[effects(alloc)]
         fn deref_box(self: &mut Gen, e: &ast::Expr, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -984,7 +984,7 @@ mod codegen {
             }
         }
 
-        #[summary("구조체나 열거형의 값을 제 메모리로 옮긴다 (stage0 detach)")]
+        #[summary("Copies a struct or enum value to its own memory (stage0 detach)")]
         #[effects(alloc)]
         fn detach(self: &mut Gen, v: CVal) -> CVal {
             match &v {
@@ -997,7 +997,7 @@ mod codegen {
             v
         }
 
-        #[summary("나눗셈과 나머지 (stage0 expr의 Div·Rem): 0으로 나눔과 부호 있는 타입의 MIN / -1을 잰다")]
+        #[summary("Division and remainder (stage0 expr's Div·Rem): checks division by 0 and MIN / -1 of signed types")]
         #[effects(alloc)]
         fn div_rem(self: &mut Gen, div: bool, i: ast::IntTy, a: &str, b: &str) -> CVal {
             let c: String = self.t();
@@ -1031,7 +1031,7 @@ mod codegen {
             CVal::Imm(res)
         }
 
-        #[summary("ptr에 있는 타입 t의 값이 힙 메모리를 가지면 놓는다 (stage0 drop_at)")]
+        #[summary("Drops the value of type t at ptr if it owns heap memory (stage0 drop_at)")]
         #[effects(alloc)]
         fn drop_at(self: &mut Gen, ptr: &str, t: &ast::TypeKind, tb: &lowered::Tables) -> () {
             let vt: ast::TypeKind = lowered::value_ty(t);
@@ -1040,7 +1040,7 @@ mod codegen {
             }
         }
 
-        #[summary("자리 s에 적힌 경로들을 놓는다 (stage0 drop_block·drop_branch와 exits·partial_replaces의 루프). kind: 0 블록 끝, 1 갈래 끝, 2 함수나 루프를 떠남, 3 match의 갈래, 4 일부가 옮겨진 자리의 대입")]
+        #[summary("Drops the paths recorded at position s (stage0 drop_block·drop_branch and the loops over exits·partial_replaces). kind: 0 block end, 1 branch end, 2 leaving a function or loop, 3 match arm, 4 assignment to a partly moved place")]
         #[effects(alloc)]
         fn drop_moves(self: &mut Gen, kind: u8, s: source::Span, ck: &body::Checked, tb: &lowered::Tables) -> () {
             let names: Vec<String> = self.move_names(kind, s, ck);
@@ -1051,7 +1051,7 @@ mod codegen {
             }
         }
 
-        #[summary("지역 변수나 필드의 경로 p (s, s.buf)를 놓는다 (stage0 drop_path)")]
+        #[summary("Drops path p of a local variable or field (s, s.buf) (stage0 drop_path)")]
         #[effects(alloc)]
         fn drop_path(self: &mut Gen, p: &str, tb: &lowered::Tables) -> () {
             let parts: Vec<String> = moves::split_dots(p);
@@ -1075,7 +1075,7 @@ mod codegen {
             self.drop_at(ptr.as_str(), &ty, tb);
         }
 
-        #[summary("mark부터의 임시값을 놓는다 (지우지는 않는다: return과 break의 길에서, 그 구역은 다른 길에서 끝난다)")]
+        #[summary("Drops the temporaries since mark (does not clear them: on the return and break paths, that region ends on another path)")]
         #[effects(alloc)]
         fn drop_pending_from(self: &mut Gen, mark: usize, tb: &lowered::Tables) -> () {
             for i in mark..self.pending.len()
@@ -1089,7 +1089,7 @@ mod codegen {
             }
         }
 
-        #[summary("블록 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.drops)")]
+        #[summary("Whether any value is dropped at block position s (the checker's MoveInfo.drops)")]
         #[effects(alloc)]
         fn drops_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -1098,7 +1098,7 @@ mod codegen {
             }
         }
 
-        #[summary("원소의 주소 (stage0 elem_ptr): 색인이 길이 안인지 재고 (전체 검사 모드) 그 원소를 가리킨다. 대입의 대상은 타입의 기록이 없어 변수의 자리에서 원소 종류를 읽는다")]
+        #[summary("Address of an element (stage0 elem_ptr): checks that the index is within the length (all-checks mode) and points at that element. An assignment target has no type record, so the element kind is read from the variable's place")]
         #[effects(alloc)]
         fn elem_ptr(self: &mut Gen, e: &ast::Expr, base: &ast::Expr, index: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ElemPtr
             decreases f,
@@ -1127,7 +1127,7 @@ mod codegen {
             ElemPtr { ptr: p, elem: elem }
         }
 
-        #[summary("&v[a..b] (stage0 elem_slice): 범위가 길이 안인지 재고 그 조각의 주소와 길이를 준다")]
+        #[summary("&v[a..b] (stage0 elem_slice): checks that the range is within the length and gives the address and length of that slice")]
         #[effects(alloc)]
         fn elem_slice(self: &mut Gen, idx: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1167,7 +1167,7 @@ mod codegen {
             CVal::Arr(ptr, len)
         }
 
-        #[summary("몸에 명령 한 줄")]
+        #[summary("One instruction line in the body")]
         #[effects(alloc)]
         fn emit(self: &mut Gen, line: &str) -> () {
             self.out.push_str("  ");
@@ -1175,7 +1175,7 @@ mod codegen {
             self.out.push_str("\n");
         }
 
-        #[summary("함수를 끝낸다 (stage0 emit_return): ()는 ret void, 스칼라는 그 값, 배열과 메모리 값은 부른 쪽의 메모리에 옮기고 ret void")]
+        #[summary("Ends the function (stage0 emit_return): () is ret void, a scalar is its value, arrays and memory values are copied to the caller's memory and ret void")]
         #[effects(alloc)]
         fn emit_return(self: &mut Gen, rv: &CVal) -> () {
             if ret_in_memory(&self.ret) {
@@ -1192,7 +1192,7 @@ mod codegen {
             }
         }
 
-        #[summary("자리 s에서 함수나 루프를 떠나며 놓는 값이 있는가 (검사기의 MoveInfo.exits)")]
+        #[summary("Whether any value is dropped on leaving a function or loop at position s (the checker's MoveInfo.exits)")]
         #[effects(alloc)]
         fn exits_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -1201,7 +1201,7 @@ mod codegen {
             }
         }
 
-        #[summary("식의 값 (stage0 expr). 지금은 리터럴, 스칼라 지역 변수, 단항·이항 연산, 블록, 스칼라의 if, 제네릭 아닌 함수의 호출")]
+        #[summary("Value of an expression (stage0 expr). For now literals, scalar local variables, unary·binary operations, blocks, scalar if, calls of non-generic functions")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
         fn expr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -1249,7 +1249,7 @@ mod codegen {
             }
         }
 
-        #[summary("f64::from(x) (stage0 f64_from): 64비트 정수는 정확히 옮겨지는 범위(2^53까지)를 잰다")]
+        #[summary("f64::from(x) (stage0 f64_from): a 64-bit integer is checked against the range that converts exactly (up to 2^53)")]
         #[effects(alloc)]
         fn f64_from(self: &mut Gen, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1265,7 +1265,7 @@ mod codegen {
             }
         }
 
-        #[summary("f64의 메서드 (stage0 f64_method): sqrt, abs, min, max, is_nan, is_finite")]
+        #[summary("f64 methods (stage0 f64_method): sqrt, abs, min, max, is_nan, is_finite")]
         #[effects(alloc)]
         fn f64_method(self: &mut Gen, m: &str, a: &str, b: &str, has_b: bool) -> CVal {
             let r: String = self.t();
@@ -1296,7 +1296,7 @@ mod codegen {
             CVal::Imm(r)
         }
 
-        #[summary("필드 읽기 (stage0 expr의 Field): 구조체 값의 주소에서 (Box를 지나) 필드를 가리켜 읽는다. 임시값에서 읽은 배열은 그 임시값이 놓이기 전에 옮겨 둔다")]
+        #[summary("Field read (stage0 expr's Field): from the address of the struct value (through Box) points at the field and reads it. An array read from a temporary is moved aside before that temporary is dropped")]
         #[effects(alloc)]
         fn field_expr(self: &mut Gen, e: &ast::Expr, base: &ast::Expr, name: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1331,7 +1331,7 @@ mod codegen {
             }
         }
 
-        #[summary("구조체 t의 필드 name의 차례와 타입 (stage0 field_of)")]
+        #[summary("Order and type of field name of struct t (stage0 field_of)")]
         #[effects(alloc)]
         fn field_of(self: &Gen, t: &ast::TypeKind, name: &str, tb: &lowered::Tables) -> Option<FieldAt> {
             match lowered::struct_fields(t, tb) {
@@ -1340,7 +1340,7 @@ mod codegen {
             }
         }
 
-        #[summary("base에 있는 구조체 t의 k째 필드의 주소 (stage0 field_ptr)")]
+        #[summary("Address of the k-th field of struct t at base (stage0 field_ptr)")]
         #[effects(alloc)]
         fn field_ptr(self: &mut Gen, base: &str, t: &ast::TypeKind, k: usize) -> String {
             let p: String = self.t();
@@ -1350,13 +1350,13 @@ mod codegen {
             p
         }
 
-        #[summary("값 v가 정수 타입 i의 범위 안인가 (stage0 fits): 그 판정의 레지스터")]
+        #[summary("Whether value v is within the range of integer type i (stage0 fits): the register of that verdict")]
         #[effects(alloc)]
         fn fits(self: &mut Gen, v: &str, i: ast::IntTy) -> String {
             self.in_range_of(v, body::signed(i), i)
         }
 
-        #[summary("for 문장 (stage0 stmt의 For): 끝 값을 한 번 재고, i를 lo부터 i < hi(<=)인 동안. continue는 걸음으로 간다. lo..=hi는 i == hi에서 떠나 i + 1이 타입의 끝을 넘지 않는다")]
+        #[summary("for statement (stage0 stmt's For): evaluates the end value once, i from lo while i < hi(<=). continue goes to the step. lo..=hi leaves at i == hi, so i + 1 does not pass the end of the type")]
         #[effects(alloc)]
         fn for_stmt(self: &mut Gen, x: &ast::For, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -1371,7 +1371,7 @@ mod codegen {
             }
         }
 
-        #[summary("바이트들에서 정수 (stage0 expr의 from_bytes_call, 백로그 2N-09c): 바이트마다 읽어 제자리로 밀고 합친다. 좁은 부호 있는 타입은 제 폭의 부호를 넓힌다")]
+        #[summary("Integer from bytes (stage0 expr's from_bytes_call): reads each byte, shifts it into position and combines them. A narrow signed type sign-extends from its own width")]
         #[effects(alloc)]
         fn from_bytes(self: &mut Gen, e: &ast::Expr, c: &ast::Call, i: ast::IntTy, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1431,7 +1431,7 @@ mod codegen {
             CVal::Imm(acc)
         }
 
-        #[summary("배열 값의 if (stage0 expr의 If, 백로그 1B-25): 두 갈래가 제 배열을 한 자리에 옮긴다")]
+        #[summary("if of an array value (stage0 expr's If): both arms move their own array into one place")]
         #[effects(alloc)]
         fn if_array(self: &mut Gen, e: &ast::Expr, x: &ast::If, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1446,7 +1446,7 @@ mod codegen {
             }
         }
 
-        #[summary("if (stage0 expr의 If): 결과의 자리에 두 갈래가 쓰고 끝에서 읽는다. 배열 값은 if_array")]
+        #[summary("if (stage0 expr's If): both arms write to the result's place and it is read at the end. Array values are if_array")]
         #[effects(alloc)]
         fn if_expr(self: &mut Gen, e: &ast::Expr, x: &ast::If, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1482,7 +1482,7 @@ mod codegen {
             self.load_result(&slot, &ty)
         }
 
-        #[summary("값 v가 정수 타입 i의 범위 안인가 (stage0 in_range_of). from_signed는 v가 부호 있는 값인가")]
+        #[summary("Whether value v is within the range of integer type i (stage0 in_range_of). from_signed is whether v is a signed value")]
         #[effects(alloc)]
         fn in_range_of(self: &mut Gen, v: &str, from_signed: bool, i: ast::IntTy) -> String {
             let c: String = self.t();
@@ -1502,7 +1502,7 @@ mod codegen {
             c
         }
 
-        #[summary("색인 식 (stage0 expr의 Index 갈래들): 범위면 조각, 아니면 스칼라 원소를 읽는다")]
+        #[summary("Index expression (stage0 expr's Index arms): a slice if a range, otherwise reads a scalar element")]
         #[effects(alloc)]
         fn index_expr(self: &mut Gen, e: &ast::Expr, base: &ast::Expr, index: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1541,7 +1541,7 @@ mod codegen {
             CVal::Imm(self.load_elem(ep.elem.as_str(), ep.ptr.as_str()))
         }
 
-        #[summary("스칼라 원소의 배열을 ptr에 채운다 (stage0 init_array): 리터럴, 반복, 다른 배열 값의 복사")]
+        #[summary("Fills an array of scalar elements at ptr (stage0 init_array): literal, repeat, copy of another array value")]
         #[effects(alloc)]
         fn init_array(self: &mut Gen, e: &ast::Expr, ptr: &str, elem: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -1589,7 +1589,7 @@ mod codegen {
             }
         }
 
-        #[summary("다른 배열 값에서 옮겨 채운다 (stage0 init_array의 마지막 갈래)")]
+        #[summary("Fills by copying from another array value (the last arm of stage0 init_array)")]
         #[effects(alloc)]
         fn init_copy(self: &mut Gen, e: &ast::Expr, ptr: &str, elem: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -1607,7 +1607,7 @@ mod codegen {
             }
         }
 
-        #[summary("메모리 값의 배열을 ptr에 채운다 (stage0 init_data_array): 리터럴은 원소를 모두 셈해 제 메모리로 옮긴 뒤에 쓰고, 반복은 값을 한 번 셈하고, 다른 배열 값은 통째로 옮긴다")]
+        #[summary("Fills an array of memory values at ptr (stage0 init_data_array): a literal evaluates all elements and copies them to their own memory before writing, a repeat evaluates the value once, another array value is copied whole")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
         fn init_data_array(self: &mut Gen, e: &ast::Expr, ptr: &str, t: &ast::TypeKind, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
@@ -1658,7 +1658,7 @@ mod codegen {
             }
         }
 
-        #[summary("배열 리터럴로 채운다 (stage0 init_array의 Array 갈래들). 원소가 모두 리터럴이고 둘 이상이면 비공개 상수 하나와 그 복사다. 아니면 원소를 모두 셈한 뒤에 쓴다 (a = [a[1], a[0]]의 오른쪽은 옛 a를 읽는다)")]
+        #[summary("Fills with an array literal (stage0 init_array's Array arms). If the elements are all literals and there are two or more, it is one private constant and a copy of it. Otherwise writes after evaluating all elements (the right side of a = [a[1], a[0]] reads the old a)")]
         #[effects(alloc)]
         fn init_items(self: &mut Gen, items: &[ast::Expr], ptr: &str, elem: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -1691,7 +1691,7 @@ mod codegen {
             }
         }
 
-        #[summary("반복으로 채운다 (stage0 init_array의 Repeat 갈래): 값을 한 번 셈하고 루프로 쓴다")]
+        #[summary("Fills with a repeat (stage0 init_array's Repeat arm): evaluates the value once and writes in a loop")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
         fn init_repeat(self: &mut Gen, rp: &ast::Repeat, ptr: &str, elem: &str, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
@@ -1727,7 +1727,7 @@ mod codegen {
             self.block(end.as_str());
         }
 
-        #[summary("인스턴스를 낮출 때의 타입 t (stage0 inst): 타입 인자를 넣고, 그 타입을 used에 적는다")]
+        #[summary("Type t when lowering an instance (stage0 inst): substitutes the type arguments, and records that type in used")]
         #[effects(alloc)]
         fn inst(self: &mut Gen, t: &ast::TypeKind) -> ast::TypeKind {
             if self.tsub.names.len() == 0 {
@@ -1738,7 +1738,7 @@ mod codegen {
             it
         }
 
-        #[summary("정수 메서드 (stage0 int_method, narrow_method): wrapping_*은 64비트에서 셈하고 제 폭으로 자르고, saturating_*은 내장 함수나 넘침 깃발로 끝 값에 붙인다. checked_*은 checked_method")]
+        #[summary("Integer methods (stage0 int_method, narrow_method): wrapping_* computes in 64 bits and truncates to its own width, saturating_* clamps to the end value with a built-in function or the overflow flag. checked_* is checked_method")]
         #[effects(alloc)]
         fn int_method(self: &mut Gen, e: &ast::Expr, op: &str, a: &str, b: &str, i: ast::IntTy, tb: &lowered::Tables) -> CVal {
             let signed: bool = body::signed(i);
@@ -1826,13 +1826,13 @@ mod codegen {
             CVal::Imm(w2)
         }
 
-        #[summary("식 e의 값이 글인가 (stage0 is_text_expr): 낮추기 전의 타입으로")]
+        #[summary("Whether the value of expression e is a text (stage0 is_text_expr): by its type before lowering")]
         #[effects(alloc)]
         fn is_text_expr(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
             tb.text.has(body::span_key(e.span).as_str()) || self.text_targ(e, tb)
         }
 
-        #[summary("break와 continue (stage0 jump): 레이블의 루프(없으면 가장 안쪽)로. break e는 값을 루프의 자리에 둔다")]
+        #[summary("break and continue (stage0 jump): to the label's loop (the innermost if none). break e puts the value in the loop's place")]
         #[effects(alloc)]
         fn jump(self: &mut Gen, e: &ast::Expr, label: &Option<ast::Ident>, value: &Option<Box<ast::Expr>>, brk: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1882,7 +1882,7 @@ mod codegen {
             CVal::Never
         }
 
-        #[summary("놓일지도 모르는 메모리에서 읽은 값 v를 간직한다 (stage0 keep): 배열은 지금 옮겨 둔다 (메모리 값은 detach가 옮긴다)")]
+        #[summary("Keeps value v read from memory that may be dropped (stage0 keep): an array is moved aside now (memory values are moved by detach)")]
         #[effects(alloc)]
         fn keep(self: &mut Gen, v: CVal, t: &ast::TypeKind) -> CVal {
             if is_arr(&v) {
@@ -1893,7 +1893,7 @@ mod codegen {
             v
         }
 
-        #[summary("다음 레이블: base와 번호")]
+        #[summary("Next label: base and number")]
         #[effects(alloc)]
         fn l(self: &mut Gen, base: &str) -> String {
             self.label = self.label.wrapping_add(1);
@@ -1902,7 +1902,7 @@ mod codegen {
             s
         }
 
-        #[summary("let 문장 (stage0 stmt의 Let): 스칼라, 단위 값, 스칼라 원소의 배열인 지역 변수")]
+        #[summary("let statement (stage0 stmt's Let): local variables that are scalars, unit values, arrays of scalar elements")]
         #[effects(alloc)]
         fn let_stmt(self: &mut Gen, x: &ast::Let, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -1955,7 +1955,7 @@ mod codegen {
             self.slots.insert(x.name.name.as_str(), Slot::Scalar(ptr, lt));
         }
 
-        #[summary("원소를 읽는다 (stage0 load_elem): bool과 좁은 정수는 메모리에서 제 폭이고 레지스터로 넓힌다. 넓히지 않아도 번호 하나를 쓴다 (stage0과 같은 번호)")]
+        #[summary("Reads an element (stage0 load_elem): bool and narrow integers have their own width in memory and are widened to the register. Uses one number even when not widening (the same numbers as stage0)")]
         #[effects(alloc)]
         fn load_elem(self: &mut Gen, elem: &str, ptr: &str) -> String {
             let r: String = self.t();
@@ -1982,7 +1982,7 @@ mod codegen {
             b
         }
 
-        #[summary("메모리의 스칼라를 읽는다 (stage0 load_mem): bool은 한 바이트, 좁은 정수는 제 폭이고 레지스터로 넓힌다")]
+        #[summary("Reads a scalar from memory (stage0 load_mem): bool is one byte, narrow integers have their own width and are widened to the register")]
         #[effects(alloc)]
         fn load_mem(self: &mut Gen, ptr: &str, t: &ast::TypeKind) -> String {
             let r: String = self.t();
@@ -2004,7 +2004,7 @@ mod codegen {
             r
         }
 
-        #[summary("if나 loop의 결과를 자리에서 읽는다 (stage0 load_result): 메모리 값은 그 자리가 값이다")]
+        #[summary("Reads the result of an if or loop from its place (stage0 load_result): for a memory value the place is the value")]
         #[effects(alloc)]
         fn load_result(self: &mut Gen, slot: &Option<String>, t: &ast::TypeKind) -> CVal {
             match slot {
@@ -2013,7 +2013,7 @@ mod codegen {
             }
         }
 
-        #[summary("지역 변수 name의 타입 (낮춘 표에서)")]
+        #[summary("Type of local variable name (from the lowered table)")]
         #[effects(alloc)]
         fn local_ty(self: &mut Gen, name: &str, tb: &lowered::Tables) -> Option<ast::TypeKind> {
             match tb.locals.find(self.base.as_str()) {
@@ -2022,7 +2022,7 @@ mod codegen {
             }
         }
 
-        #[summary("loop 식 (stage0 loop_expr): break e의 값은 결과의 자리로. 끝나지 않는 loop의 값은 없다")]
+        #[summary("loop expression (stage0 loop_expr): the value of break e goes to the result's place. A loop that does not terminate has no value")]
         #[effects(alloc)]
         fn loop_expr(self: &mut Gen, e: &ast::Expr, x: &ast::Loop, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2056,7 +2056,7 @@ mod codegen {
             self.load_result(&slot, &ty)
         }
 
-        #[summary("match (stage0 match_expr): 꼬리표가 갈래를 고르고, 묶는 이름은 페이로드 자리의 사본이고 (&mut의 match에서는 그 자리 자체: 스칼라는 레지스터 자리로 읽고 갈래 끝에 되돌려 쓴다), 갈래들의 값은 한 자리에서 만난다")]
+        #[summary("match (stage0 match_expr): the tag selects the arm, a bound name is a copy of the payload place (in a match on &mut it is that place itself: a scalar is read into a register place and written back at arm end), and the arms' values meet in one place")]
         #[effects(alloc)]
         fn match_expr(self: &mut Gen, e: &ast::Expr, mx: &ast::Match, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2091,7 +2091,7 @@ mod codegen {
             }
         }
 
-        #[summary("std::mem::replace(&mut p, v)와 std::mem::swap(&mut a, &mut b) (stage0 mem_call): 값이 자리 사이를 옮겨 다닌다. 옛 값이 덩어리면 제 메모리에 둔다")]
+        #[summary("std::mem::replace(&mut p, v) and std::mem::swap(&mut a, &mut b) (stage0 mem_call): values move between places. If the old value is an aggregate it is put in its own memory")]
         #[effects(alloc)]
         fn mem_call(self: &mut Gen, e: &ast::Expr, c: &ast::Call, replace: bool, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2127,7 +2127,7 @@ mod codegen {
             CVal::Unit
         }
 
-        #[summary("바이트 bytes개를 옮긴다 (겹치지 않는 자리 사이)")]
+        #[summary("Copies bytes many bytes (between places that do not overlap)")]
         #[effects(alloc)]
         fn memcpy(self: &mut Gen, dst: &str, src: &str, bytes: u64) -> () {
             let mut line: String = types::cat5("call void @llvm.memcpy.p0.p0.i64(ptr ", dst, ", ptr ", src, ", i64 ");
@@ -2136,7 +2136,7 @@ mod codegen {
             self.emit(line.as_str());
         }
 
-        #[summary("메서드 호출 (stage0 expr의 Method 갈래들). 지금은 정수 변환의 unwrap, f64의 메서드, 정수의 비트·wrapping·saturating 메서드")]
+        #[summary("Method call (stage0 expr's Method arms). For now unwrap of integer conversions, f64 methods, integer bit·wrapping·saturating methods")]
         #[effects(alloc)]
         fn method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2202,7 +2202,7 @@ mod codegen {
             }
         }
 
-        #[summary("자리 s에 적힌 경로들 (검사기의 MoveInfo). kind는 drop_moves의 것")]
+        #[summary("Paths recorded at position s (the checker's MoveInfo). kind is that of drop_moves")]
         #[effects(alloc)]
         fn move_names(self: &Gen, kind: u8, s: source::Span, ck: &body::Checked) -> Vec<String> {
             let none: Vec<String> = Vec::new();
@@ -2213,7 +2213,7 @@ mod codegen {
             }
         }
 
-        #[summary("64비트보다 좁은 정수의 산술 (stage0 narrow_arith): 64비트에서 셈하고 타입의 범위를 잰다")]
+        #[summary("Arithmetic of integers narrower than 64 bits (stage0 narrow_arith): computes in 64 bits and checks the type's range")]
         #[effects(alloc)]
         fn narrow_arith(self: &mut Gen, inst: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
             let r: String = self.t();
@@ -2233,7 +2233,7 @@ mod codegen {
             CVal::Imm(r)
         }
 
-        #[summary("v를 제 폭 it로 자른 값 (stage0 bit_method의 narrow): 64비트면 그대로")]
+        #[summary("v truncated to its own width it (stage0 bit_method's narrow): unchanged if 64 bits")]
         #[effects(alloc)]
         fn narrowed(self: &mut Gen, v: &str, w: u32, it: &str) -> String {
             if w == 64 {
@@ -2244,7 +2244,7 @@ mod codegen {
             t
         }
 
-        #[summary("ok면 Some(v), 아니면 None인 e의 Option 값 (stage0 option)")]
+        #[summary("Option value of e that is Some(v) if ok, otherwise None (stage0 option)")]
         #[effects(alloc)]
         fn option(self: &mut Gen, e: &ast::Expr, ok: &str, v: &str, tb: &lowered::Tables) -> CVal {
             let t: ast::TypeKind = self.ty(e, tb);
@@ -2262,14 +2262,14 @@ mod codegen {
             CVal::Ptr(tmp, t)
         }
 
-        #[summary("타입 t의 값이 힙 메모리를 갖는가 (stage0 check::is_move)")]
+        #[summary("Whether a value of type t owns heap memory (stage0 check::is_move)")]
         #[effects(alloc)]
         fn owns(self: &Gen, t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
             let none: Vec<String> = Vec::new();
             types::is_move_in(t, &tb.adts, none.as_slice())
         }
 
-        #[summary("경로 식 (stage0 expr의 Path 갈래들): 정수 타입의 MIN·MAX, f64의 상수, 아니면 페이로드 없는 변형")]
+        #[summary("Path expression (stage0 expr's Path arms): MIN·MAX of an integer type, f64 constants, otherwise a variant without payload")]
         #[effects(alloc)]
         fn path_expr(self: &mut Gen, e: &ast::Expr, segs: &[ast::Ident], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2294,7 +2294,7 @@ mod codegen {
             self.variant(e, &t, segs[segs.len() - 1].name.as_str(), no_args.as_slice(), ck, tb, f - 1)
         }
 
-        #[summary("자리의 주소와 타입 (stage0 place): 메모리 값의 변수, 필드, *p, &p, 메모리 값의 원소. Box와 Vec을 지나는 자리는 아직 옮기지 않았다")]
+        #[summary("Address and type of a place (stage0 place): memory-valued variable, field, *p, &p, element of memory values. Places through Box and Vec are not ported yet")]
         #[effects(alloc)]
         fn place(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> Place
             decreases f,
@@ -2342,7 +2342,7 @@ mod codegen {
             }
         }
 
-        #[summary("값 v를 메모리 ptr에 쓴다 (stage0 put): 스칼라는 메모리 꼴로 (bool은 한 바이트, 좁은 정수는 제 폭), 배열과 메모리 값은 옮긴다")]
+        #[summary("Writes value v to memory ptr (stage0 put): a scalar in memory form (bool is one byte, narrow integers their own width), arrays and memory values are copied")]
         #[effects(alloc)]
         fn put(self: &mut Gen, v: &CVal, ptr: &str, t: &ast::TypeKind) -> () {
             match v {
@@ -2354,7 +2354,7 @@ mod codegen {
             }
         }
 
-        #[summary("ptr에 있는 타입 t의 값 (stage0 read): 스칼라는 읽고, 배열과 메모리 값은 그 주소다")]
+        #[summary("Value of type t at ptr (stage0 read): a scalar is read, arrays and memory values are that address")]
         #[effects(alloc)]
         fn read(self: &mut Gen, ptr: &str, t: &ast::TypeKind) -> CVal {
             let vt: ast::TypeKind = lowered::value_ty(t);
@@ -2370,7 +2370,7 @@ mod codegen {
             CVal::Imm(self.load_mem(ptr, &vt))
         }
 
-        #[summary("any_place의 자리의 값 (stage0 read_any)")]
+        #[summary("Value of any_place's place (stage0 read_any)")]
         #[effects(alloc)]
         fn read_any(self: &mut Gen, p: &AnyPlace) -> CVal {
             if p.reg.len() > 0 {
@@ -2381,7 +2381,7 @@ mod codegen {
             self.read(p.ptr.as_str(), &p.ty)
         }
 
-        #[summary("식 e에서 나온, 읽히기만 하는 임시값 v (stage0 read_temp): 힙 메모리를 가지면 구역이 끝날 때 놓게 적는다. 적었으면 참")]
+        #[summary("Temporary v that came from expression e and is only read (stage0 read_temp): if it owns heap memory, records it to be dropped when the region ends. True if recorded")]
         #[effects(alloc)]
         fn read_temp(self: &mut Gen, e: &ast::Expr, v: &CVal, t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
             if is_ptr(v) && fresh(e) && self.owns(t, tb) {
@@ -2391,7 +2391,7 @@ mod codegen {
             false
         }
 
-        #[summary("&e (stage0 expr의 Ref): 임시값은 구역이 끝날 때까지 산다")]
+        #[summary("&e (stage0 expr's Ref): a temporary lives until the region ends")]
         #[effects(alloc)]
         fn ref_expr(self: &mut Gen, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2405,7 +2405,7 @@ mod codegen {
             v
         }
 
-        #[summary("구역 하나로서의 식 (stage0 region): 그 안에서 남긴 임시값을 끝에서 놓는다")]
+        #[summary("Expression as one region (stage0 region): drops at the end the temporaries left inside it")]
         #[effects(alloc)]
         fn region_expr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2418,7 +2418,7 @@ mod codegen {
             self.release(mark, v, tb)
         }
 
-        #[summary("mark부터의 임시값을 놓고 지운다 (stage0 release). 놓이는 메모리를 가리킬지 모르는 메모리 값은 먼저 제 메모리로 옮긴다")]
+        #[summary("Drops and clears the temporaries since mark (stage0 release). A memory value that may point into memory being dropped is first moved to its own memory")]
         #[effects(alloc)]
         fn release(self: &mut Gen, mark: usize, v: CVal, tb: &lowered::Tables) -> CVal {
             if self.pending.len() <= mark {
@@ -2430,7 +2430,7 @@ mod codegen {
             kept
         }
 
-        #[summary("대입 자리 s가 가진 옛 값을 갈아치우는가 (검사기의 MoveInfo.replaces)")]
+        #[summary("Whether the assignment at position s replaces an old value the place owns (the checker's MoveInfo.replaces)")]
         #[effects(alloc)]
         fn replaces(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -2439,7 +2439,7 @@ mod codegen {
             }
         }
 
-        #[summary("대입 자리 s에서 놓는 값이 있는가 (검사기의 MoveInfo.replaces와 partial_replaces)")]
+        #[summary("Whether any value is dropped at assignment position s (the checker's MoveInfo.replaces and partial_replaces)")]
         #[effects(alloc)]
         fn replaces_at(self: &Gen, s: source::Span, ck: &body::Checked) -> bool {
             match ck.b.needs.find(self.base.as_str()) {
@@ -2448,7 +2448,7 @@ mod codegen {
             }
         }
 
-        #[summary("호출의 경로가 가리키는 함수 (stage0 resolve): 제 단위의 것이 먼저")]
+        #[summary("Function that the call's path refers to (stage0 resolve): those of its own unit come first")]
         #[effects(alloc)]
         fn resolve(self: &Gen, path: &[ast::Ident], tb: &lowered::Tables) -> String {
             let mut names: Vec<String> = Vec::new();
@@ -2465,7 +2465,7 @@ mod codegen {
             }
         }
 
-        #[summary("if나 loop의 갈래들이 값을 두는 자리 (stage0 result_slot): 단위 값은 자리가 없고, 메모리 값은 그 타입의 자리, 스칼라는 레지스터 타입의 자리")]
+        #[summary("Place where the arms of an if or loop put their value (stage0 result_slot): a unit value has no place, a memory value has a place of that type, a scalar a place of the register type")]
         #[effects(alloc)]
         fn result_slot(self: &mut Gen, t: &ast::TypeKind) -> Option<String> {
             if decls::is_unit(t) || types::is_error(t) {
@@ -2477,7 +2477,7 @@ mod codegen {
             Some(self.alloca(llty(t).as_str()))
         }
 
-        #[summary("return (stage0 return_expr): 값을 돌려주고, 뒤의 코드는 닿지 않는 블록에 둔다")]
+        #[summary("return (stage0 return_expr): returns the value, and puts the code after it in an unreachable block")]
         #[effects(alloc)]
         fn return_expr(self: &mut Gen, e: &ast::Expr, x: &Option<Box<ast::Expr>>, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2498,7 +2498,7 @@ mod codegen {
             CVal::Never
         }
 
-        #[summary("스칼라 참조 인자로 넘길 주소 (stage0 scalar_ref, 백로그 2T-08): 지역 변수나 참조 매개변수는 제 자리, 원소는 그 값을 담은 임시 자리이고 mutable이면 호출 뒤에 되돌려 쓴다, 값은 임시 자리. 필드는 아직 옮기지 않았다")]
+        #[summary("Address to pass as a scalar reference argument (stage0 scalar_ref): a local variable or reference parameter is its own place, an element is a temporary place holding its value and is written back after the call if mutable, a value is a temporary place. Fields are not ported yet")]
         #[effects(alloc)]
         fn scalar_ref(self: &mut Gen, a: &ast::Expr, t: &ast::TypeKind, mutable: bool, backs: &mut Vec<Back>, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> String
             decreases f,
@@ -2546,7 +2546,7 @@ mod codegen {
             }
         }
 
-        #[summary("scalar_ref의 &를 벗긴 식")]
+        #[summary("Expression of scalar_ref with & stripped")]
         #[effects(alloc)]
         fn scalar_ref_of(self: &mut Gen, inner: &ast::Expr, t: &ast::TypeKind, mutable: bool, backs: &mut Vec<Back>, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> String
             decreases f,
@@ -2600,7 +2600,7 @@ mod codegen {
             }
         }
 
-        #[summary("scalar_ref의 자리 갈래: 메모리 꼴의 자리(필드, 메모리 값의 원소, 참조를 지난 자리)의 값을 임시 자리 tmp에 담고, mutable이면 호출 뒤에 되돌려 쓴다")]
+        #[summary("Place arm of scalar_ref: puts the value of a memory-form place (field, element of memory values, place through a reference) into temporary place tmp, and writes it back after the call if mutable")]
         #[effects(alloc)]
         fn scalar_ref_place(self: &mut Gen, inner: &ast::Expr, t: &ast::TypeKind, mutable: bool, tmp: String, backs: &mut Vec<Back>, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> String
             decreases f,
@@ -2622,7 +2622,7 @@ mod codegen {
             tmp
         }
 
-        #[summary("스칼라 지역 변수 name의 자리와 레지스터 타입")]
+        #[summary("Place and register type of scalar local variable name")]
         #[effects(alloc)]
         fn scalar_slot(self: &Gen, name: &str) -> Option<ScalarSlot> {
             match self.slots.find(name) {
@@ -2631,7 +2631,7 @@ mod codegen {
             }
         }
 
-        #[summary("시프트 (stage0 shift, shift_inst): 양이 폭보다 작은 리터럴이 아니면 잰다. 좁은 타입의 왼쪽 시프트는 제 폭으로 자르고 다시 넓힌다")]
+        #[summary("Shift (stage0 shift, shift_inst): checks unless the amount is a literal smaller than the width. A left shift of a narrow type truncates to its own width and widens again")]
         #[effects(alloc)]
         fn shift(self: &mut Gen, op: ast::BinOp, i: ast::IntTy, a: &str, r: &ast::Expr, b: &str) -> CVal {
             let w: u32 = body::bits(i);
@@ -2649,7 +2649,7 @@ mod codegen {
             self.shift_inst(op, i, a, b)
         }
 
-        #[summary("시프트의 명령 (stage0 shift_inst): 좁은 타입의 왼쪽 시프트는 제 폭으로 자르고 다시 넓힌다")]
+        #[summary("Shift instruction (stage0 shift_inst): a left shift of a narrow type truncates to its own width and widens again")]
         #[effects(alloc)]
         fn shift_inst(self: &mut Gen, op: ast::BinOp, i: ast::IntTy, a: &str, b: &str) -> CVal {
             let w: u32 = body::bits(i);
@@ -2684,7 +2684,7 @@ mod codegen {
             CVal::Imm(res)
         }
 
-        #[summary("문장 (stage0 stmt). 지금은 let, 대입, 식 문장, 코드가 없는 증명 문장")]
+        #[summary("Statement (stage0 stmt). For now let, assignment, expression statement, proof statement without code")]
         #[effects(alloc)]
         fn stmt(self: &mut Gen, st: &ast::Stmt, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -2706,7 +2706,7 @@ mod codegen {
             }
         }
 
-        #[summary("원소를 쓴다 (stage0 store_elem): bool과 좁은 정수는 제 폭으로 줄여 쓴다")]
+        #[summary("Writes an element (stage0 store_elem): bool and narrow integers are narrowed to their own width and written")]
         #[effects(alloc)]
         fn store_elem(self: &mut Gen, elem: &str, v: &str, ptr: &str) -> () {
             let mut al: String = String::new();
@@ -2726,7 +2726,7 @@ mod codegen {
             }
         }
 
-        #[summary("갈래의 값을 결과의 자리에 (stage0 store_result): 끝나지 않는 값과 자리 없는 결과는 쓰지 않는다. 메모리 값은 옮긴다")]
+        #[summary("Value of an arm into the result's place (stage0 store_result): non-terminating values and results without a place are not written. Memory values are moved")]
         #[effects(alloc)]
         fn store_result(self: &mut Gen, slot: &Option<String>, v: &CVal, t: &ast::TypeKind) -> () {
             if is_never(v) {
@@ -2738,7 +2738,7 @@ mod codegen {
             }
         }
 
-        #[summary("&s[lo..hi] (stage0 str_slice): 그 사이의 바이트. 범위가 글자의 경계에 놓이는지 잰다 (E0820)")]
+        #[summary("&s[lo..hi] (stage0 str_slice): the bytes in between. Checks that the range lies on character boundaries (E0820)")]
         #[effects(alloc)]
         fn str_slice(self: &mut Gen, idx: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2767,7 +2767,7 @@ mod codegen {
             CVal::Arr(ptr, len)
         }
 
-        #[summary("String::from(t) (stage0 string_from): t의 길이의 새 버퍼에 그 바이트를 담는다")]
+        #[summary("String::from(t) (stage0 string_from): puts its bytes into a new buffer of t's length")]
         #[effects(alloc)]
         fn string_from(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2783,7 +2783,7 @@ mod codegen {
             CVal::Ptr(hdr, t)
         }
 
-        #[summary("String::from_utf8(v) (stage0 string_from_utf8): 바이트가 UTF-8이면 그것의 Ok, 아니면 Err. 버퍼는 어느 쪽이든 결과로 옮겨진다")]
+        #[summary("String::from_utf8(v) (stage0 string_from_utf8): Ok of it if the bytes are UTF-8, otherwise Err. The buffer is moved into the result either way")]
         #[effects(alloc)]
         fn string_from_utf8(self: &mut Gen, e: &ast::Expr, arg: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2817,7 +2817,7 @@ mod codegen {
             CVal::Ptr(out, t)
         }
 
-        #[summary("구조체 리터럴 (stage0 expr의 StructLit): 필드를 쓴 차례로 셈하고 옮긴다")]
+        #[summary("Struct literal (stage0 expr's StructLit): evaluates and moves the fields in the order written")]
         #[effects(alloc)]
         fn struct_lit(self: &mut Gen, e: &ast::Expr, lit: &ast::StructLit, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2846,7 +2846,7 @@ mod codegen {
             CVal::Ptr(tmp, t)
         }
 
-        #[summary("다음 %tN")]
+        #[summary("Next %tN")]
         #[effects(alloc)]
         fn t(self: &mut Gen) -> String {
             self.tmp = self.tmp.wrapping_add(1);
@@ -2855,13 +2855,13 @@ mod codegen {
             s
         }
 
-        #[summary("t의 값 하나의 자리 (stage0 temp)")]
+        #[summary("Place for one value of t (stage0 temp)")]
         #[effects(alloc)]
         fn temp(self: &mut Gen, t: &ast::TypeKind) -> String {
             self.alloca(mem_ty(t).as_str())
         }
 
-        #[summary("글의 비교 l op r (stage0 text_cmp): Rust의 바이트 사전 순서")]
+        #[summary("Text comparison l op r (stage0 text_cmp): Rust's bytewise lexicographic order")]
         #[effects(alloc)]
         fn text_cmp(self: &mut Gen, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2880,7 +2880,7 @@ mod codegen {
             CVal::Imm(out)
         }
 
-        #[summary("글의 메서드 (stage0 text_method): push_str, push, as_str, as_bytes, is_char_boundary. len과 clone은 Vec의 것이다")]
+        #[summary("Text methods (stage0 text_method): push_str, push, as_str, as_bytes, is_char_boundary. len and clone are Vec's")]
         #[effects(alloc)]
         fn text_method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2912,7 +2912,7 @@ mod codegen {
             CVal::Imm(self.boundary(arr_ptr(&rv).as_str(), arr_len(&rv).as_str(), bi.as_str()))
         }
 
-        #[summary("e의 타입이 타입 매개변수이고 이 인스턴스가 그것에 글 타입을 주는가 (stage0 text_targ): 그 비교는 글의 것이다")]
+        #[summary("Whether e's type is a type parameter and this instance gives it a text type (stage0 text_targ): that comparison is the text one")]
         #[effects(alloc)]
         fn text_targ(self: &Gen, e: &ast::Expr, tb: &lowered::Tables) -> bool {
             if self.tsub.names.len() == 0 {
@@ -2924,7 +2924,7 @@ mod codegen {
             }
         }
 
-        #[summary("글인 식 e의 바이트 (stage0 text_view): 주소와 길이")]
+        #[summary("Bytes of text expression e (stage0 text_view): address and length")]
         #[effects(alloc)]
         fn text_view(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -2944,7 +2944,7 @@ mod codegen {
             v
         }
 
-        #[summary("정수의 바이트들 (stage0 expr의 to_be_bytes·to_le_bytes, 백로그 2N-09c): 바이트마다 레지스터를 오른쪽으로 밀어 잘라 쓴다")]
+        #[summary("Bytes of an integer (stage0 expr's to_be_bytes·to_le_bytes): for each byte shifts the register right, truncates and writes")]
         #[effects(alloc)]
         fn to_bytes(self: &mut Gen, a: &str, i: ast::IntTy, le: bool) -> CVal {
             let n: u32 = body::bits(i) / 8;
@@ -2977,7 +2977,7 @@ mod codegen {
             CVal::Arr(ptr, nt)
         }
 
-        #[summary("옮기지 않은 구문 what을 자리 s에서 만났다고 적는다")]
+        #[summary("Records that unported construct what was met at position s")]
         #[effects(alloc)]
         fn todo_at(self: &mut Gen, what: &str, s: source::Span) -> () {
             let mut m: String = String::from(what);
@@ -2990,14 +2990,14 @@ mod codegen {
             self.todo.push(m);
         }
 
-        #[summary("옮기지 않은 식: 까닭을 적고 끝나지 않는 값으로 둔다")]
+        #[summary("Unported expression: records the reason and leaves it as a non-terminating value")]
         #[effects(alloc)]
         fn todo_expr(self: &mut Gen, what: &str, e: &ast::Expr) -> CVal {
             self.todo_at(what, e.span);
             CVal::Never
         }
 
-        #[summary("x? (stage0 try_expr): 꼬리표를 재고, None이나 Err면 그것을 (Err의 값은 옮겨) 돌려주고, 아니면 값은 페이로드다")]
+        #[summary("x? (stage0 try_expr): checks the tag, if None or Err returns it (moving Err's value), otherwise the value is the payload")]
         #[effects(alloc)]
         fn try_expr(self: &mut Gen, e: &ast::Expr, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -3038,7 +3038,7 @@ mod codegen {
             }
         }
 
-        #[summary("식 e의 타입 (낮춘 표에서)")]
+        #[summary("Type of expression e (from the lowered table)")]
         #[effects(alloc)]
         fn ty(self: &mut Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
             match tb.types.find(body::span_key(e.span).as_str()) {
@@ -3047,7 +3047,7 @@ mod codegen {
             }
         }
 
-        #[summary("단항 연산 (stage0 expr의 Unary 갈래들): 부호 바꿈은 리터럴이면 그 글, f64면 fneg, 정수면 0에서 뺀다. !는 bool이면 뒤집고 정수면 제 폭의 비트를 뒤집는다")]
+        #[summary("Unary operation (stage0 expr's Unary arms): negation is that text if a literal, fneg if f64, subtraction from 0 if an integer. ! inverts if bool and inverts the bits of its own width if an integer")]
         #[effects(alloc)]
         #[uses(wide::divisor)]
         fn unary(self: &mut Gen, e: &ast::Expr, op: ast::UnOp, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
@@ -3084,7 +3084,7 @@ mod codegen {
             CVal::Imm(r)
         }
 
-        #[summary("Box의 칸 cell이 가리키는 값의 주소 (stage0 unbox)")]
+        #[summary("Address of the value that Box cell cell points to (stage0 unbox)")]
         #[effects(alloc)]
         fn unbox(self: &mut Gen, cell: &str) -> String {
             let h: String = self.t();
@@ -3092,7 +3092,7 @@ mod codegen {
             h
         }
 
-        #[summary("레지스터 c의 스칼라 값의 UTF-8 길이 (stage0 utf8_len)")]
+        #[summary("UTF-8 length of the scalar value in register c (stage0 utf8_len)")]
         #[effects(alloc)]
         fn utf8_len(self: &mut Gen, c: &str) -> String {
             let a: String = self.t();
@@ -3110,7 +3110,7 @@ mod codegen {
             z
         }
 
-        #[summary("열거형 t의 변형 vname을 인자들로 짓는다 (stage0 variant): 페이로드는 셈하는 차례로 옮긴다")]
+        #[summary("Builds variant vname of enum t from the arguments (stage0 variant): payloads are moved in evaluation order")]
         #[effects(alloc)]
         fn variant(self: &mut Gen, e: &ast::Expr, t: &ast::TypeKind, vname: &str, args: &[ast::Expr], ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -3124,7 +3124,7 @@ mod codegen {
             }
         }
 
-        #[summary("Vec의 머리 hdr의 k째 칸의 주소 (stage0 vec_field): 0 버퍼, 1 길이, 2 용량")]
+        #[summary("Address of the k-th cell of Vec header hdr (stage0 vec_field): 0 buffer, 1 length, 2 capacity")]
         #[effects(alloc)]
         fn vec_field(self: &mut Gen, hdr: &str, k: u32) -> String {
             let p: String = self.t();
@@ -3134,7 +3134,7 @@ mod codegen {
             p
         }
 
-        #[summary("읽히기만 하는 Vec 식의 머리 (stage0 vec_hdr): 자리면 제 머리, 임시값이면 구역이 끝날 때 놓는다. 옮기지 못하면 undef")]
+        #[summary("Header of a Vec expression that is only read (stage0 vec_hdr): its own header if a place, a temporary is dropped when the region ends. undef if it cannot be ported")]
         #[effects(alloc)]
         fn vec_hdr(self: &mut Gen, e: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> String
             decreases f,
@@ -3156,7 +3156,7 @@ mod codegen {
             ptr_of(&v)
         }
 
-        #[summary("Vec의 메서드 (stage0 vec_method): len, as_slice, as_mut_slice, clone (원소가 힙을 갖지 않는 것), truncate, push, pop")]
+        #[summary("Vec methods (stage0 vec_method): len, as_slice, as_mut_slice, clone (elements that own no heap), truncate, push, pop")]
         #[effects(alloc)]
         fn vec_method(self: &mut Gen, e: &ast::Expr, mc: &ast::Method, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -3284,7 +3284,7 @@ mod codegen {
             self.todo_expr("a `Vec` method that is not ported", e)
         }
 
-        #[summary("Vec::new()와 Vec::with_capacity(n), String의 것도 (stage0 vec_new): 용량이 최대 길이 안인지 재고 버퍼를 잡는다")]
+        #[summary("Vec::new() and Vec::with_capacity(n), String's too (stage0 vec_new): checks that the capacity is within the maximum length and allocates the buffer")]
         #[effects(alloc)]
         fn vec_new(self: &mut Gen, e: &ast::Expr, c: &ast::Call, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -3311,7 +3311,7 @@ mod codegen {
             CVal::Ptr(hdr, t)
         }
 
-        #[summary("e가 Vec인 지역 변수나 매개변수를 이름하는가 (stage0 vec_var): 대입의 대상은 타입의 기록이 없다")]
+        #[summary("Whether e names a local variable or parameter that is a Vec (stage0 vec_var): an assignment target has no type record")]
         #[effects(alloc)]
         fn vec_var(self: &Gen, e: &ast::Expr) -> bool {
             match var_name(e) {
@@ -3320,7 +3320,7 @@ mod codegen {
             }
         }
 
-        #[summary("Vec의 머리 hdr의 버퍼와 길이를 지금 읽는다 (stage0 vec_view): push가 버퍼를 옮길 수 있다")]
+        #[summary("Reads the buffer and length of Vec header hdr now (stage0 vec_view): push may move the buffer")]
         #[effects(alloc)]
         fn vec_view(self: &mut Gen, hdr: &str) -> CVal {
             let buf: String = self.t();
@@ -3331,7 +3331,7 @@ mod codegen {
             CVal::Arr(buf, len)
         }
 
-        #[summary("while 문장 (stage0 stmt의 While)")]
+        #[summary("while statement (stage0 stmt's While)")]
         #[effects(alloc)]
         fn while_stmt(self: &mut Gen, x: &ast::While, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ()
             decreases f,
@@ -3356,7 +3356,7 @@ mod codegen {
             self.block(end.as_str());
         }
 
-        #[summary("any_place의 자리에 값을 쓴다 (stage0 write_any): 덩어리는 옮긴다")]
+        #[summary("Writes a value to any_place's place (stage0 write_any): aggregates are copied")]
         #[effects(alloc)]
         fn write_any(self: &mut Gen, p: &AnyPlace, v: &CVal) -> () {
             if p.reg.len() > 0 {
@@ -3367,41 +3367,41 @@ mod codegen {
         }
     }
 
-    #[summary("입출력 내장 하나 (stage0 IO_BUILTINS의 행): 경로, 런타임 함수, 펼친 매개변수(p는 ptr, i는 i64), 성공의 값(0 세는 수, 1 런타임이 쓰는 값, 2 (), 3 i32인 수)")]
+    #[summary("One I/O built-in (a row of stage0 IO_BUILTINS): path, runtime function, flattened parameters (p is ptr, i is i64), success value (0 a count, 1 the value the runtime writes, 2 (), 3 a number that is i32)")]
     struct IoRow { path: String, runtime: String, params: String, payload: u8 }
 
-    #[summary("메모리에서의 크기와 정렬 (x86-64의 C 배치)")]
+    #[summary("Size and alignment in memory (x86-64's C layout)")]
     struct Lay { size: u64, align: u64 }
 
-    #[summary("낮출 함수 하나 (stage0 Lowering): 정의나 인스턴스의 경로, 정의의 차례, 인스턴스의 타입 인자")]
+    #[summary("One function to lower (stage0 Lowering): path of the definition or instance, order of the definition, type arguments of the instance")]
     struct Low { path: String, def: usize, sub: types::Subst }
 
-    #[summary("모듈 (stage0 Module): IR의 글, 진입점, 옮기지 않은 구문을 만난 까닭들")]
+    #[summary("Module (stage0 Module): IR text, entry point, reasons unported constructs were met")]
     struct Module { ir: String, main: Option<String>, todo: Vec<String> }
 
-    #[summary("힙 메모리를 가진 임시값 (stage0 Gen.pending의 한 칸): 주소와 타입. 읽히기만 하고 옮겨지지 않았으니 그 구역이 끝날 때 놓는다")]
+    #[summary("Temporary owning heap memory (one cell of stage0 Gen.pending): address and type. It was only read and not moved, so it is dropped when its region ends")]
     struct Pend { ptr: String, ty: ast::TypeKind }
 
-    #[summary("자리 (stage0 place의 결과): 주소와 타입. ok가 거짓이면 옮기지 않은 자리다")]
+    #[summary("Place (the result of stage0 place): address and type. If ok is false it is an unported place")]
     struct Place { ptr: String, ty: ast::TypeKind, ok: bool }
 
-    #[summary("스칼라 지역 변수의 자리: 자리의 이름과 레지스터 타입")]
+    #[summary("Place of a scalar local variable: the place's name and register type")]
     struct ScalarSlot { ptr: String, ty: String }
 
-    #[summary("지역 이름의 자리 (stage0 Slot). 스칼라: 자리의 이름과 레지스터 타입. 배열과 슬라이스: ArrSlot. 구조체와 열거형: DataSlot")]
+    #[summary("Place of a local name (stage0 Slot). Scalar: the place's name and register type. Arrays and slices: ArrSlot. Structs and enums: DataSlot")]
     enum Slot { Scalar(String, String), Arr(ArrSlot), Data(DataSlot) }
 
-    #[summary("낮추는 함수가 부르는 제네릭 함수의 인스턴스 (stage0 Gen::wants의 항목): 열쇠, 정의, 타입 인자")]
+    #[summary("Instance of a generic function called by the function being lowered (an entry of stage0 Gen::wants): key, definition, type arguments")]
     struct Want { key: String, callee: String, sub: types::Subst }
 
-    #[summary("IR에 text를 붙이고 그 글이 부르는 이름을 called에 더한다")]
+    #[summary("Appends text to the IR and adds the names that text calls to called")]
     #[effects(alloc)]
     fn add_text(ir: &mut String, called: &mut table::Table<bool>, text: &str) -> () {
         note_calls(called, text);
         ir.push_str(text);
     }
 
-    #[summary("원소 종류 elem의 메모리 정렬 (stage0 align): i1은 1, 좁은 정수는 제 폭, 나머지는 8")]
+    #[summary("Memory alignment of element kind elem (stage0 align): i1 is 1, narrow integers their own width, the rest 8")]
     #[effects(pure)]
     fn align(elem: &str) -> u32 {
         if elem == "i1" {
@@ -3415,7 +3415,7 @@ mod codegen {
         }
     }
 
-    #[summary("bits 비트가 모두 1인 수의 글 (2^bits - 1)")]
+    #[summary("Text of the number whose bits bits are all 1 (2^bits - 1)")]
     #[effects(alloc)]
     fn all_ones(bits: u32) -> String {
         if bits == 8 {
@@ -3430,7 +3430,7 @@ mod codegen {
         String::from("18446744073709551615")
     }
 
-    #[summary("프로그램의 값들의 타입 (stage0 all_types): 식, 지역 변수, 내장이 아닌 함수의 시그니처에 나오는 타입을 한 번씩, 타입의 글 순서로 (소스의 자리 순서가 아니다: fmt 전후의 IR이 같다, 백로그 4D-38)")]
+    #[summary("Types of the program's values (stage0 all_types): the types appearing in expressions, local variables, and signatures of non-built-in functions, once each, in order of the type's text (not in source position order: the IR is the same before and after fmt)")]
     #[effects(alloc)]
     fn all_types(tb: &lowered::Tables, extra: &[ast::TypeKind]) -> Vec<ast::TypeKind> {
         let mut by_text: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
@@ -3475,7 +3475,7 @@ mod codegen {
         all
     }
 
-    #[summary("배열 값의 길이의 글. 배열 값이 아니면 undef")]
+    #[summary("Text of the length of an array value. undef if not an array value")]
     #[effects(alloc)]
     fn arr_len(v: &CVal) -> String {
         match v {
@@ -3487,7 +3487,7 @@ mod codegen {
         }
     }
 
-    #[summary("배열 값의 첫 원소의 주소. 배열 값이 아니면 undef")]
+    #[summary("Address of the first element of an array value. undef if not an array value")]
     #[effects(alloc)]
     fn arr_ptr(v: &CVal) -> String {
         match v {
@@ -3499,7 +3499,7 @@ mod codegen {
         }
     }
 
-    #[summary("배열 타입의 길이의 글. 배열 타입이 아니면 0")]
+    #[summary("Text of the length of an array type. 0 if not an array type")]
     #[effects(alloc)]
     fn array_len_text(t: &ast::TypeKind) -> String {
         let mut s: String = String::new();
@@ -3525,7 +3525,7 @@ mod codegen {
         s
     }
 
-    #[summary("전역 이름 w(`@이름`)에서 `@`를 뗀 것")]
+    #[summary("Global name w (`@name`) with the `@` removed")]
     #[effects(alloc)]
     fn bare(w: &str) -> String {
         if w.len() > 0 && w.as_bytes()[0] == 64 {
@@ -3534,7 +3534,7 @@ mod codegen {
         String::from(w)
     }
 
-    #[summary("재귀가 있는 프로그램의 스택 (stage0 sys::big_stack, ADR-0091 §5): main을 256 MiB 스택의 스레드에서 돌리고 기다린다. 스레드가 뜨지 않으면 프로세스의 스택에서 돌린다")]
+    #[summary("Stack of a program with recursion (stage0 sys::big_stack, ADR-0091 §5): runs main on a thread with a 256 MiB stack and waits. If the thread does not start, runs it on the process's stack")]
     #[effects(alloc)]
     fn big_stack(main: &str) -> String {
         let mut s: String = String::from("declare i32 @pthread_attr_init(ptr)\ndeclare i32 @pthread_attr_setstacksize(ptr, i64)\ndeclare i32 @pthread_create(ptr, ptr, ptr, ptr)\ndeclare i32 @pthread_join(i64, ptr)\ndefine internal ptr @bmb_main_thread(ptr %u) {\n  call void ");
@@ -3545,7 +3545,7 @@ mod codegen {
         s
     }
 
-    #[summary("비트 연산의 명령: and, or, xor")]
+    #[summary("Bitwise operation instructions: and, or, xor")]
     #[effects(alloc)]
     fn bit_inst(op: ast::BinOp) -> String {
         match op {
@@ -3571,7 +3571,7 @@ mod codegen {
         }
     }
 
-    #[summary("복제 코드의 원소마다 도는 루프 (stage0 clone_glue의 each): n개의 원소를 dp와 sp에서 가리켜 e의 복제 코드를 부른다")]
+    #[summary("Per-element loop of the clone code (each of stage0 clone_glue): points at the n elements from dp and sp and calls e's clone code")]
     #[effects(alloc)]
     fn clone_each(n: &str, dp: &str, sp: &str, e: &ast::TypeKind) -> String {
         let mut s: String = String::from("  br label %head\nhead:\n  %i = phi i64 [ 0, %entry ], [ %j, %body ]\n  %more = icmp ult i64 %i, ");
@@ -3586,7 +3586,7 @@ mod codegen {
         s
     }
 
-    #[summary("프로그램이 복제하는 타입과 그것이 든 타입의 복제 코드 (stage0 clone_glue, ADR-0141 §4): @\"bmb_clone.<타입>\"(ptr %dst, ptr %src)가 %src의 값과 같고 제 메모리를 가진 값을 %dst에 짓는다. called는 함수들이 복제 코드를 부른 타입의 글들")]
+    #[summary("Clone code for the types the program clones and the types they contain (stage0 clone_glue, ADR-0141 §4): @\"bmb_clone.<type>\"(ptr %dst, ptr %src) builds in %dst a value equal to the value at %src and owning its own memory. called is the texts of the types whose clone code the functions called")]
     #[effects(alloc)]
     fn clone_glue(tb: &lowered::Tables, extra: &[ast::TypeKind], called: &[String]) -> String {
         let mut seen: Vec<String> = Vec::new();
@@ -3606,13 +3606,13 @@ mod codegen {
         out
     }
 
-    #[summary("타입 t의 복제 코드의 이름 (stage0 clone_glue_name)")]
+    #[summary("Name of the clone code of type t (stage0 clone_glue_name)")]
     #[effects(alloc)]
     fn clone_name(t: &ast::TypeKind) -> String {
         types::cat3("@\"bmb_clone.", types::text(t).as_str(), "\"")
     }
 
-    #[summary("clone_glue의 한 타입: 바이트를 옮기고, 메모리를 가진 부분을 다시 짓는다. 그것이 부르는 타입들로 내려간다")]
+    #[summary("One type of clone_glue: copies the bytes and rebuilds the parts that own memory. Descends into the types it calls")]
     #[effects(alloc)]
     fn clone_visit(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, f: usize) -> ()
         decreases f,
@@ -3659,7 +3659,7 @@ mod codegen {
         }
     }
 
-    #[summary("상수 원소 하나 (stage0 const_elems의 한 원소): 정수 리터럴과 그 부호 바꿈 (i128에 드는 것), bool, char, 바이트 리터럴. 아니면 None")]
+    #[summary("One constant element (one element of stage0 const_elems): integer literals and their negation (those that fit in i128), bool, char, byte literals. Otherwise None")]
     #[effects(alloc)]
     fn const_elem(e: &ast::Expr) -> Option<ConstElem> {
         match &e.kind {
@@ -3701,7 +3701,7 @@ mod codegen {
         }
     }
 
-    #[summary("배열 리터럴의 원소가 모두 상수면 그 값들 (stage0 const_elems)")]
+    #[summary("The values of an array literal's elements if all are constants (stage0 const_elems)")]
     #[effects(alloc)]
     fn const_elems(items: &[ast::Expr]) -> Option<Vec<ConstElem>> {
         let mut out: Vec<ConstElem> = Vec::new();
@@ -3716,7 +3716,7 @@ mod codegen {
         Some(out)
     }
 
-    #[summary("상수 원소의 글 (stage0 init_array의 상수 갈래): bits 비트로 감은 값을 부호 있는 수로 적는다")]
+    #[summary("Text of a constant element (constant arm of stage0 init_array): writes the value wrapped to bits bits as a signed number")]
     #[effects(alloc)]
     fn const_text(c: &ConstElem, bits: u32) -> String {
         let raw: u64 = if c.neg {
@@ -3752,7 +3752,7 @@ mod codegen {
         s
     }
 
-    #[summary("e가 T::try_from(x)면 (T는 정수 타입) T와 x (stage0 check::conv_call)")]
+    #[summary("If e is T::try_from(x) (T an integer type), T and x (stage0 check::conv_call)")]
     #[effects(alloc)]
     fn conv_parts(e: &ast::Expr) -> Option<Conv> {
         match &e.kind {
@@ -3794,13 +3794,13 @@ mod codegen {
         }
     }
 
-    #[summary("구조체나 열거형의 LLVM 타입 (stage0 data_ty): %\"geo::Point\"")]
+    #[summary("LLVM type of a struct or enum (stage0 data_ty): %\"geo::Point\"")]
     #[effects(alloc)]
     fn data_ty(t: &ast::TypeKind) -> String {
         types::cat3("%\"", types::text(&lowered::value_ty(t)).as_str(), "\"")
     }
 
-    #[summary("십진수의 글의 값 (넘치면 감긴다). 숫자가 아닌 글자가 있으면 0 (stage0의 parse().unwrap_or(0))")]
+    #[summary("Value of the text of a decimal number (wraps on overflow). 0 if there is a non-digit character (stage0's parse().unwrap_or(0))")]
     #[effects(pure)]
     fn dec(s: &str) -> u64 {
         let mut v: u64 = 0;
@@ -3816,7 +3816,7 @@ mod codegen {
         v
     }
 
-    #[summary("힙 메모리를 가진 모든 타입의 놓는 코드 (stage0 drop_glue, ADR-0047 §4): @\"bmb_drop.<타입>\"(ptr %p)가 %p의 값을 놓는다. Vec은 원소들과 버퍼, Box는 값과 메모리, 구조체는 필드를 선언 순서로, 열거형은 제 변형의 페이로드를 차례로")]
+    #[summary("Drop code of every type that owns heap memory (stage0 drop_glue, ADR-0047 §4): @\"bmb_drop.<type>\"(ptr %p) drops the value at %p. Vec: the elements and the buffer, Box: the value and the memory, struct: the fields in declaration order, enum: the payload of its variant in turn")]
     #[effects(alloc)]
     fn drop_glue(tb: &lowered::Tables, extra: &[ast::TypeKind], todo: &mut Vec<String>) -> String {
         let mut seen: Vec<String> = Vec::new();
@@ -3830,7 +3830,7 @@ mod codegen {
         out
     }
 
-    #[summary("drop_glue의 한 타입: 제 코드를 내고, 그것이 부르는 타입들로 내려간다")]
+    #[summary("One type of drop_glue: emits its code and descends into the types it calls")]
     #[effects(alloc)]
     fn drop_visit(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, todo: &mut Vec<String>, f: usize) -> ()
         decreases f,
@@ -3898,7 +3898,7 @@ mod codegen {
         }
     }
 
-    #[summary("원소 종류 (stage0 elem_kind): 64비트보다 좁은 정수는 제 이름, 나머지는 레지스터 타입")]
+    #[summary("Element kind (stage0 elem_kind): integers narrower than 64 bits are their own name, the rest the register type")]
     #[effects(alloc)]
     fn elem_kind(t: &ast::TypeKind) -> String {
         match t {
@@ -3922,7 +3922,7 @@ mod codegen {
         }
     }
 
-    #[summary("배열, 슬라이스, Vec의 원소 타입 (stage0 elem_of). 다른 참조는 가리키는 타입, 나머지는 그대로")]
+    #[summary("Element type of an array, slice or Vec (stage0 elem_of). Other references give the pointed-to type, the rest are unchanged")]
     #[effects(alloc)]
     fn elem_of(t: &ast::TypeKind) -> ast::TypeKind {
         match t {
@@ -3946,7 +3946,7 @@ mod codegen {
         }
     }
 
-    #[summary("프로그램의 모듈 (stage0 emit_with, 전체 검사 모드): 머리, 타입 정의, 제네릭 아닌 실행 함수를 경로 순서로, 그 뒤에 제네릭 함수의 인스턴스를 닿는 순서로 한 번씩, @main. 옮기지 않은 구문을 만나면 todo에 까닭이 남는다")]
+    #[summary("Module of the program (stage0 emit_with, all-checks mode): header, type definitions, non-generic executable functions in path order, then instances of generic functions once each in the order reached, @main. On a construct not yet ported, the reason is left in todo")]
     #[effects(alloc)]
     fn emit(ck: &body::Checked, tb: &lowered::Tables) -> Module {
         let mut todo: Vec<String> = Vec::new();
@@ -4054,7 +4054,7 @@ mod codegen {
         Module { ir: whole, main: main, todo: todo }
     }
 
-    #[summary("진입점 (stage0 emit_with의 main): 단위의 main인 제네릭 아닌 실행 함수. 여럿이면 경로가 가장 뒤인 것")]
+    #[summary("Entry point (main of stage0 emit_with): the non-generic executable function that is a unit's main. If several, the one whose path is last")]
     #[effects(alloc)]
     fn entry(p: &ast::Program, tb: &lowered::Tables) -> Option<String> {
         let rows: Vec<body::DefRow> = body::defs_of(p, &tb.fns);
@@ -4072,7 +4072,7 @@ mod codegen {
         found
     }
 
-    #[summary("std::env::var의 런타임과 시계 (stage0 sys::env_runtime): 프로그램의 Option<String>의 LLVM 이름으로")]
+    #[summary("Runtime of std::env::var and the clock (stage0 sys::env_runtime): with the LLVM name of the program's Option<String>")]
     #[effects(alloc)]
     fn env_runtime(called: &table::Table<bool>, tb: &lowered::Tables) -> String {
         let mut out: String = String::new();
@@ -4106,7 +4106,7 @@ mod codegen {
         out
     }
 
-    #[summary("f64 상수의 LLVM 16진 꼴 (stage0 f64_const): 0x와 대문자 16진 열여섯 자리")]
+    #[summary("LLVM hex form of an f64 constant (stage0 f64_const): 0x and sixteen uppercase hex digits")]
     #[effects(alloc)]
     fn f64_const(bits: u64) -> String {
         let mut s: String = String::from("0x");
@@ -4126,7 +4126,7 @@ mod codegen {
         s
     }
 
-    #[summary("f64의 이름 붙은 상수의 비트 (stage0 check::F64_CONSTS). 모르는 이름이면 0")]
+    #[summary("Bits of a named f64 constant (stage0 check::F64_CONSTS). 0 if the name is unknown")]
     #[effects(pure)]
     fn f64_named(name: &str) -> u64 {
         if name == "INFINITY" {
@@ -4153,7 +4153,7 @@ mod codegen {
         0
     }
 
-    #[summary("e가 실수 리터럴이면 그 비트")]
+    #[summary("If e is a float literal, its bits")]
     #[effects(pure)]
     fn float_lit(e: &ast::Expr) -> Option<u64> {
         match &e.kind {
@@ -4195,7 +4195,7 @@ mod codegen {
         }
     }
 
-    #[summary("f64의 연산 (stage0 expr의 f64 갈래): 산술은 명령, 비교는 fcmp와 술어. 다른 연산이면 빈 글")]
+    #[summary("f64 operation (f64 arm of stage0 expr): arithmetic is an instruction, comparison is fcmp and a predicate. Empty text for any other operation")]
     #[effects(alloc)]
     fn float_op(op: ast::BinOp) -> String {
         match op {
@@ -4221,7 +4221,7 @@ mod codegen {
         }
     }
 
-    #[summary("m의 몸 있는 함수를 이름의 자리로 모은다 (body::defs_walk와 같은 것을 걷는다)")]
+    #[summary("Collects the functions of m that have a body by position of the name (walks the same as body::defs_walk)")]
     #[effects(alloc)]
     fn fn_defs(m: &ast::Mod, out: &mut table::Table<ast::FnDef>, f: usize) -> ()
         decreases f,
@@ -4270,13 +4270,13 @@ mod codegen {
         }
     }
 
-    #[summary("함수의 LLVM 이름 (stage0 fn_sym): @\"경로\"")]
+    #[summary("LLVM name of a function (stage0 fn_sym): @\"path\"")]
     #[effects(alloc)]
     fn fn_sym(path: &str) -> String {
         types::cat3("@\"", path, "\"")
     }
 
-    #[summary("식이 제 값을 내는가 (stage0 fresh): 호출, 리터럴, 블록 따위. 자리나 그 일부(변수, 필드, *, 색인, &)가 아니다")]
+    #[summary("Whether the expression yields its own value (stage0 fresh): calls, literals, blocks and so on. Not a place or part of one (variable, field, *, index, &)")]
     #[effects(pure)]
     fn fresh(e: &ast::Expr) -> bool {
         match &e.kind {
@@ -4318,13 +4318,13 @@ mod codegen {
         }
     }
 
-    #[summary("타입 t의 놓는 코드의 이름 (stage0 glue)")]
+    #[summary("Name of the drop code of type t (stage0 glue)")]
     #[effects(alloc)]
     fn glue(t: &ast::TypeKind) -> String {
         types::cat3("@\"bmb_drop.", types::text(t).as_str(), "\"")
     }
 
-    #[summary("경로에 점이 있는가 (필드의 경로)")]
+    #[summary("Whether the path has a dot (path of a field)")]
     #[effects(pure)]
     fn has_dot(p: &str) -> bool {
         for i in 0..p.len()
@@ -4337,7 +4337,7 @@ mod codegen {
         false
     }
 
-    #[summary("재귀하는 실행 함수가 있는가 (stage0 emit_with의 deep)")]
+    #[summary("Whether there is a recursive executable function (deep of stage0 emit_with)")]
     #[effects(alloc)]
     fn has_recursive_exec(ck: &body::Checked, tb: &lowered::Tables) -> bool {
         for n in 0..ck.b.recursive.len()
@@ -4351,7 +4351,7 @@ mod codegen {
         false
     }
 
-    #[summary("trait의 메서드인가")]
+    #[summary("Whether it is a method of a trait")]
     #[effects(pure)]
     fn has_trait(sig: &types::FnSig) -> bool {
         match &sig.trait_of {
@@ -4360,7 +4360,7 @@ mod codegen {
         }
     }
 
-    #[summary("값이 Vec을 어디엔가 드는가 (stage0 holds_vec): 참조, 필드, 페이로드, Box, 배열, 타입 인자를 지나")]
+    #[summary("Whether the value holds a Vec anywhere (stage0 holds_vec): through references, fields, payloads, Box, arrays, type arguments")]
     #[effects(alloc)]
     fn holds_vec(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
         let mut seen: Vec<String> = Vec::new();
@@ -4395,7 +4395,7 @@ mod codegen {
         }
     }
 
-    #[summary("스칼라로 쓰는 값의 글 (stage0 CVal::imm): 단위 값은 0, 끝나지 않는 값은 undef")]
+    #[summary("Text of a value used as a scalar (stage0 CVal::imm): the unit value is 0, a non-terminating value is undef")]
     #[effects(alloc)]
     fn imm(v: &CVal) -> String {
         match v {
@@ -4407,7 +4407,7 @@ mod codegen {
         }
     }
 
-    #[summary("IR의 글 ir에 pat이 나오는가 (stage0 emit_with의 ir.contains): 런타임 조각을 넣을지를 IR의 글에서 정한다. 프로그램의 바이트 문자열 상수에 그 이름이 있어도 넣는다 (stage0과 같다)")]
+    #[summary("Whether pat occurs in the IR text ir (ir.contains of stage0 emit_with): whether to include a runtime fragment is decided from the IR text. Included even if the name is only in a byte string constant of the program (same as stage0)")]
     #[effects(pure)]
     fn in_ir(ir: &str, pat: &str) -> bool {
         match std::str::find(ir, pat) {
@@ -4416,7 +4416,7 @@ mod codegen {
         }
     }
 
-    #[summary("정수 비교의 술어 (stage0 expr의 cmp): 부호에 따라. 비교가 아니면 빈 글")]
+    #[summary("Predicate of an integer comparison (cmp of stage0 expr): according to signedness. Empty text if not a comparison")]
     #[effects(alloc)]
     fn int_cmp(op: ast::BinOp, signed: bool) -> String {
         match op {
@@ -4442,7 +4442,7 @@ mod codegen {
         }
     }
 
-    #[summary("e가 정수 리터럴이면 그 값")]
+    #[summary("If e is an integer literal, its value")]
     #[effects(pure)]
     fn int_lit(e: &ast::Expr) -> Option<wide::U128> {
         match &e.kind {
@@ -4484,7 +4484,7 @@ mod codegen {
         }
     }
 
-    #[summary("정수 타입의 가장 큰 값의 글")]
+    #[summary("Text of the largest value of an integer type")]
     #[effects(alloc)]
     fn int_max(i: ast::IntTy) -> String {
         match i {
@@ -4501,7 +4501,7 @@ mod codegen {
         }
     }
 
-    #[summary("정수 타입의 가장 작은 값의 글")]
+    #[summary("Text of the smallest value of an integer type")]
     #[effects(alloc)]
     fn int_min(i: ast::IntTy) -> String {
         match i {
@@ -4523,7 +4523,7 @@ mod codegen {
         IoRow { path: String::from(path), runtime: String::from(runtime), params: String::from(params), payload: payload }
     }
 
-    #[summary("결과가 Result<T, std::io::Error>인 내장들 (stage0 IO_BUILTINS, 그 순서로)")]
+    #[summary("Built-ins whose result is Result<T, std::io::Error> (stage0 IO_BUILTINS, in that order)")]
     #[effects(alloc)]
     fn io_rows() -> Vec<IoRow> {
         let mut out: Vec<IoRow> = Vec::new();
@@ -4547,7 +4547,7 @@ mod codegen {
         out
     }
 
-    #[summary("ir이 부르는 입출력 런타임 (stage0 sys::io_runtime): 래퍼마다 런타임이 돌려준 것(n, 또는 -1 - code)에서 프로그램의 타입 이름으로 Result를 짓는다. 그 뒤에 쓰인 조각들")]
+    #[summary("I/O runtime that ir calls (stage0 sys::io_runtime): each wrapper builds a Result, with the program's type names, from what the runtime returned (n, or -1 - code). Then the fragments used")]
     #[effects(alloc)]
     fn io_runtime(called: &table::Table<bool>, tb: &lowered::Tables) -> String {
         let rows: Vec<IoRow> = io_rows();
@@ -4608,7 +4608,7 @@ mod codegen {
         out
     }
 
-    #[summary("입출력 내장 path의 호출이 부르는 함수 (stage0 sys::wrapper): @bmb_io_read_line, @bmb_fs_read 따위. 입출력 내장이 아니어도 이름은 같은 꼴이다")]
+    #[summary("Function called by a call of I/O built-in path (stage0 sys::wrapper): @bmb_io_read_line, @bmb_fs_read and so on. The name has the same form even if it is not an I/O built-in")]
     #[effects(alloc)]
     fn io_wrapper(path: &str) -> String {
         let segs: Vec<String> = refs::split_path(path);
@@ -4626,7 +4626,7 @@ mod codegen {
         out
     }
 
-    #[summary("io_runtime의 래퍼 하나의 글")]
+    #[summary("Text of one wrapper of io_runtime")]
     #[effects(alloc)]
     fn io_wrapper_text(out: &mut String, row: &IoRow, w: &str, tb: &lowered::Tables) -> () {
         let at: usize = match tb.fns.find(row.path.as_str()) {
@@ -4714,7 +4714,7 @@ mod codegen {
         }
     }
 
-    #[summary("배열 값인가")]
+    #[summary("Whether it is an array value")]
     #[effects(pure)]
     fn is_arr(v: &CVal) -> bool {
         match v {
@@ -4726,7 +4726,7 @@ mod codegen {
         }
     }
 
-    #[summary("슬라이스의 참조인가 (stage0 is_array)")]
+    #[summary("Whether it is a reference to a slice (stage0 is_array)")]
     #[effects(alloc)]
     fn is_array(t: &ast::TypeKind) -> bool {
         match body::ref_inner(t) {
@@ -4735,13 +4735,13 @@ mod codegen {
         }
     }
 
-    #[summary("Box인가 (참조를 지나)")]
+    #[summary("Whether it is a Box (through references)")]
     #[effects(alloc)]
     fn is_box(t: &ast::TypeKind) -> bool {
         body::is_box(&lowered::value_ty(t))
     }
 
-    #[summary("구조체나 열거형인가 (참조를 지나)")]
+    #[summary("Whether it is a struct or enum (through references)")]
     #[effects(alloc)]
     fn is_data(t: &ast::TypeKind) -> bool {
         body::is_named(&lowered::value_ty(t))
@@ -4756,13 +4756,13 @@ mod codegen {
         }
     }
 
-    #[summary("값이 메모리에 살고 주소로 넘겨지는가: 구조체, 열거형, Vec의 머리, Box")]
+    #[summary("Whether the value lives in memory and is passed by address: struct, enum, Vec header, Box")]
     #[effects(alloc)]
     fn is_mem(t: &ast::TypeKind) -> bool {
         is_data(t) || is_vec(t) || is_box(t)
     }
 
-    #[summary("배열의 원소로서 메모리에 덩어리로 사는가: is_mem이거나 고정 길이 배열")]
+    #[summary("Whether it lives in memory as a block when an array element: is_mem or a fixed-length array")]
     #[effects(alloc)]
     fn is_mem_elem(t: &ast::TypeKind) -> bool {
         is_mem(t) || body::is_array(&lowered::value_ty(t))
@@ -4776,7 +4776,7 @@ mod codegen {
         }
     }
 
-    #[summary("끝나지 않는 식의 값인가")]
+    #[summary("Whether it is the value of a non-terminating expression")]
     #[effects(pure)]
     fn is_never(v: &CVal) -> bool {
         match v {
@@ -4813,7 +4813,7 @@ mod codegen {
         }
     }
 
-    #[summary("메모리에 사는 값인가")]
+    #[summary("Whether it is a value that lives in memory")]
     #[effects(pure)]
     fn is_ptr(v: &CVal) -> bool {
         match v {
@@ -4825,7 +4825,7 @@ mod codegen {
         }
     }
 
-    #[summary("정수, bool, f64인가")]
+    #[summary("Whether it is an integer, bool or f64")]
     #[effects(pure)]
     fn is_scalar_ty(t: &ast::TypeKind) -> bool {
         match t {
@@ -4874,7 +4874,7 @@ mod codegen {
         }
     }
 
-    #[summary("부호 있는 정수 타입인가")]
+    #[summary("Whether it is a signed integer type")]
     #[effects(pure)]
     fn is_signed(t: &ast::TypeKind) -> bool {
         match body::int_of(t) {
@@ -4883,13 +4883,13 @@ mod codegen {
         }
     }
 
-    #[summary("Vec인가 (참조를 지나)")]
+    #[summary("Whether it is a Vec (through references)")]
     #[effects(alloc)]
     fn is_vec(t: &ast::TypeKind) -> bool {
         body::is_vec(&lowered::value_ty(t))
     }
 
-    #[summary("루프의 레이블의 이름. 없으면 빈 글")]
+    #[summary("Name of the loop's label. Empty text if none")]
     #[effects(alloc)]
     fn label_name(l: &Option<ast::Ident>) -> String {
         match l {
@@ -4898,7 +4898,7 @@ mod codegen {
         }
     }
 
-    #[summary("ts를 차례로 놓은 구조체의 배치 (stage0 layout의 fields). tag이면 i64 꼬리표가 앞에 온다")]
+    #[summary("Layout of a struct with ts placed in order (fields of stage0 layout). If tag, an i64 tag comes first")]
     #[effects(alloc)]
     fn lay_fields(ts: &[ast::TypeKind], tag: bool, tb: &lowered::Tables, f: usize) -> Lay
         decreases f * 2 + 1,
@@ -4921,7 +4921,7 @@ mod codegen {
         Lay { size: round_up(size, al), align: al }
     }
 
-    #[summary("t의 메모리에서의 크기와 정렬 (stage0 layout): 열거형의 페이로드 자리를 재는 데만 쓴다")]
+    #[summary("Size and alignment of t in memory (stage0 layout): used only to measure the payload slot of an enum")]
     #[effects(alloc)]
     fn layout(t: &ast::TypeKind, tb: &lowered::Tables) -> Lay {
         layout_in(t, tb, 100000)
@@ -4957,7 +4957,7 @@ mod codegen {
         }
     }
 
-    #[summary("스칼라의 레지스터 타입 (stage0 llty): bool은 i1, f64는 double, ()는 void, 나머지는 i64")]
+    #[summary("Register type of a scalar (stage0 llty): bool is i1, f64 is double, () is void, the rest i64")]
     #[effects(alloc)]
     fn llty(t: &ast::TypeKind) -> String {
         match t {
@@ -4981,7 +4981,7 @@ mod codegen {
         }
     }
 
-    #[summary("정의 하나를 낮춘다 (stage0 emit_with의 한 바퀴): 매개변수의 자리, 몸, 반환. g.out이 그 정의의 글 전체다")]
+    #[summary("Lowers one definition (one round of stage0 emit_with): parameter places, body, return. g.out is the whole text of that definition")]
     #[effects(alloc)]
     fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
         let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>() };
@@ -5071,7 +5071,7 @@ mod codegen {
         g
     }
 
-    #[summary("배열 원소의 메모리 타입 (stage0 mem): bool과 좁은 정수는 제 폭")]
+    #[summary("Memory type of an array element (stage0 mem): bool and narrow integers have their own width")]
     #[effects(alloc)]
     fn mem(elem: &str) -> String {
         if elem == "i1" {
@@ -5090,7 +5090,7 @@ mod codegen {
         String::from(elem)
     }
 
-    #[summary("t의 값의 메모리에서의 LLVM 타입 (stage0 mem_ty): bool은 한 바이트")]
+    #[summary("LLVM type of a value of t in memory (stage0 mem_ty): bool is one byte")]
     #[effects(alloc)]
     fn mem_ty(t: &ast::TypeKind) -> String {
         mem_ty_in(t, 100000)
@@ -5125,7 +5125,7 @@ mod codegen {
         }
     }
 
-    #[summary("원소 종류가 이름하는 좁은 정수의 폭 (stage0 narrow). 아니면 0")]
+    #[summary("Width of the narrow integer named by the element kind (stage0 narrow). Otherwise 0")]
     #[effects(pure)]
     fn narrow_bits(elem: &str) -> u32 {
         if elem == "i8" || elem == "u8" {
@@ -5140,13 +5140,13 @@ mod codegen {
         0
     }
 
-    #[summary("원소 종류가 부호 있는 좁은 정수인가 (stage0 narrow의 signed)")]
+    #[summary("Whether the element kind is a signed narrow integer (signed of stage0 narrow)")]
     #[effects(pure)]
     fn narrow_signed(elem: &str) -> bool {
         elem == "i8" || elem == "i16" || elem == "i32"
     }
 
-    #[summary("글 text에 `@이름(`의 꼴로 나오는 이름을 called에 적는다. 이름은 영문자·숫자·밑줄이다: 그런 이름 n에 대해 called에 n이 있는 것과 글에 `@n(`이 있는 것이 같다 (stage0은 IR에서 그 글을 찾는다. 찾을 때마다 IR 전체를 훑는 대신 한 번 훑는다, 백로그 4E-04)")]
+    #[summary("Records in called the names that occur in the text text in the form `@name(`. A name is letters, digits and underscores: for such a name n, n being in called is the same as `@n(` being in the text (stage0 searches the IR for that text. Scans once instead of scanning the whole IR on every search)")]
     #[effects(alloc)]
     fn note_calls(called: &mut table::Table<bool>, text: &str) -> () {
         let mut i: usize = 0;
@@ -5174,7 +5174,7 @@ mod codegen {
         }
     }
 
-    #[summary("매개변수가 넘겨지는 꼴 (stage0 emit_with의 매개변수 갈래들). 0: 값으로 넘기는 스칼라나 단위 값, 1: 슬라이스 (주소와 길이), 2: 스칼라의 참조 (자리의 주소), 3: 값으로 넘기는 배열 (주소, 받는 쪽이 옮긴다), 4: 메모리 값의 참조 (자리의 주소), 5: 값으로 넘기는 메모리 값 (부른 쪽이 만든 사본의 주소), 9: 아직 옮기지 않은 것 (배열의 참조, 참조의 참조)")]
+    #[summary("Form in which a parameter is passed (parameter arms of stage0 emit_with). 0: scalar or unit value passed by value, 1: slice (address and length), 2: reference to a scalar (address of the place), 3: array passed by value (address, the callee copies it), 4: reference to a memory value (address of the place), 5: memory value passed by value (address of a copy made by the caller), 9: not yet ported (reference to an array, reference to a reference)")]
     #[effects(alloc)]
     fn param_kind(t: &ast::TypeKind) -> u32 {
         match body::ref_inner(t) {
@@ -5183,7 +5183,7 @@ mod codegen {
         }
     }
 
-    #[summary("패턴이 가리키는 변형의 이름 (경로의 마지막 마디)")]
+    #[summary("Name of the variant the pattern refers to (last segment of the path)")]
     #[effects(alloc)]
     fn pat_name(p: &ast::Pat) -> String {
         if p.path.len() == 0 {
@@ -5192,7 +5192,7 @@ mod codegen {
         p.path[p.path.len() - 1].name.clone()
     }
 
-    #[summary("원소가 힙 메모리를 갖지 않는 Vec인가 (그 clone은 Vec의 것이다)")]
+    #[summary("Whether it is a Vec whose elements own no heap memory (its clone is the Vec's own)")]
     #[effects(alloc)]
     fn plain_vec(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
         let none: Vec<String> = Vec::new();
@@ -5202,7 +5202,7 @@ mod codegen {
         }
     }
 
-    #[summary("메모리에 사는 값의 주소. 아니면 undef")]
+    #[summary("Address of a value that lives in memory. Otherwise undef")]
     #[effects(alloc)]
     fn ptr_of(v: &CVal) -> String {
         match v {
@@ -5214,7 +5214,7 @@ mod codegen {
         }
     }
 
-    #[summary("메모리에 사는 값의 타입. 아니면 Error")]
+    #[summary("Type of a value that lives in memory. Otherwise Error")]
     #[effects(alloc)]
     fn ptr_ty(v: &CVal) -> ast::TypeKind {
         match v {
@@ -5226,7 +5226,7 @@ mod codegen {
         }
     }
 
-    #[summary("식이 범위면 그 범위")]
+    #[summary("If the expression is a range, that range")]
     #[effects(alloc)]
     fn range_of(e: &ast::Expr) -> Option<ast::Range> {
         match &e.kind {
@@ -5268,13 +5268,13 @@ mod codegen {
         }
     }
 
-    #[summary("결과를 부른 쪽의 메모리에 쓰는가 (stage0 ret_in_memory): 메모리에 사는 값이거나 배열")]
+    #[summary("Whether the result is written into the caller's memory (stage0 ret_in_memory): a value that lives in memory, or an array")]
     #[effects(alloc)]
     fn ret_in_memory(ret: &ast::TypeKind) -> bool {
         is_mem(ret) || body::is_array(ret)
     }
 
-    #[summary("x를 a의 배수로 올린다 (stage0의 x.div_ceil(a) * a, 넘치면 감긴다). a가 0이면 x")]
+    #[summary("Rounds x up to a multiple of a (stage0's x.div_ceil(a) * a, wraps on overflow). x if a is 0")]
     #[effects(pure)]
     fn round_up(x: u64, a: u64) -> u64 {
         if a == 0 {
@@ -5288,7 +5288,7 @@ mod codegen {
         }
     }
 
-    #[summary("스칼라 원소의 배열 타입인가")]
+    #[summary("Whether it is an array type of scalar elements")]
     #[effects(alloc)]
     fn scalar_array(t: &ast::TypeKind) -> bool {
         match body::array_elem(t) {
@@ -5297,13 +5297,13 @@ mod codegen {
         }
     }
 
-    #[summary("t의 값의 바이트 수를 주는 상수 식 (stage0 size_of)")]
+    #[summary("Constant expression giving the byte count of a value of t (stage0 size_of)")]
     #[effects(alloc)]
     fn size_of(t: &ast::TypeKind) -> String {
         types::cat3("ptrtoint (ptr getelementptr (", mem_ty(t).as_str(), ", ptr null, i32 1) to i64)")
     }
 
-    #[summary("몸 있는 정의를 경로 순서로 (stage0 emit_with의 defs): body::defs_of의 줄마다 그 구문")]
+    #[summary("Definitions with a body in path order (defs of stage0 emit_with): the syntax for each line of body::defs_of")]
     #[effects(alloc)]
     fn sorted_defs(p: &ast::Program, tb: &lowered::Tables) -> Vec<Def> {
         let mut by_span: table::Table<ast::FnDef> = table::new::<ast::FnDef>();
@@ -5334,7 +5334,7 @@ mod codegen {
         out
     }
 
-    #[summary("시스템 내장 target의 호출이 부르는 함수. 그런 내장이 아니면 빈 글 (stage0 call의 갈래들)")]
+    #[summary("Function called by a call of system built-in target. Empty text if not such a built-in (arms of stage0 call)")]
     #[effects(alloc)]
     fn sys_callee(target: &str) -> String {
         if target == "std::env::args" {
@@ -5360,7 +5360,7 @@ mod codegen {
         String::new()
     }
 
-    #[summary("런타임 조각들의 글 text가 부르는 도우미 (stage0 sys::helpers): 경로의 복사와 strlen의 선언")]
+    #[summary("Helpers called by the text text of the runtime fragments (stage0 sys::helpers): path copy and the declaration of strlen")]
     #[effects(alloc)]
     fn sys_helpers(text: &str) -> String {
         let mut out: String = String::new();
@@ -5373,7 +5373,7 @@ mod codegen {
         out
     }
 
-    #[summary("ir이 부르는 런타임 조각과 그것들이 부르는 조각 (stage0 sys::runtime): 인자, 표준 오류, 종료. 더 늘지 않을 때까지")]
+    #[summary("Runtime fragments that ir calls and the fragments they call (stage0 sys::runtime): arguments, standard error, exit. Until it grows no further")]
     #[effects(alloc)]
     fn sys_runtime(called: &table::Table<bool>) -> String {
         let mut out: String = String::new();
@@ -5399,7 +5399,7 @@ mod codegen {
         out
     }
 
-    #[summary("프로그램이 쓰는 구조체와 열거형(인스턴스)의 LLVM 타입 정의 (stage0 type_defs): 구조체는 필드를 선언 순서로, 열거형은 꼬리표와 페이로드 자리, 페이로드 있는 변형마다 보는 타입 하나")]
+    #[summary("LLVM type definitions of the structs and enums (instances) the program uses (stage0 type_defs): struct: the fields in declaration order, enum: the tag and the payload slot, plus one view type per variant with a payload")]
     #[effects(alloc)]
     fn type_defs(tb: &lowered::Tables, extra: &[ast::TypeKind]) -> String {
         let mut seen: Vec<String> = Vec::new();
@@ -5413,7 +5413,7 @@ mod codegen {
         out
     }
 
-    #[summary("프로그램이 힙 값을 갖는가 (stage0 emit_with의 uses_heap): Vec을 들거나, 식이나 지역 변수의 타입이 옮겨지는 값이다 (시그니처는 세지 않는다)")]
+    #[summary("Whether the program has heap values (uses_heap of stage0 emit_with): it holds a Vec, or the type of an expression or local variable is a move type (signatures are not counted)")]
     #[effects(alloc)]
     fn uses_heap(tb: &lowered::Tables, uses_vec: bool) -> bool {
         if uses_vec {
@@ -5439,7 +5439,7 @@ mod codegen {
         false
     }
 
-    #[summary("e가 지역 이름이면 그 이름")]
+    #[summary("If e is a local name, that name")]
     #[effects(alloc)]
     fn var_name(e: &ast::Expr) -> Option<String> {
         match &e.kind {
@@ -5481,7 +5481,7 @@ mod codegen {
         }
     }
 
-    #[summary("변형들에서 이름 name의 차례. 없으면 길이")]
+    #[summary("Position of the name name among the variants. The length if absent")]
     #[effects(pure)]
     fn variant_at(vs: &[types::VariantSig], name: &str) -> usize {
         for k in 0..vs.len()
@@ -5494,7 +5494,7 @@ mod codegen {
         vs.len()
     }
 
-    #[summary("Vec<T>의 최대 길이 (stage0 vec_len_max, ADR-0017 §3)")]
+    #[summary("Maximum length of Vec<T> (stage0 vec_len_max, ADR-0017 §3)")]
     #[effects(alloc)]
     fn vec_len_max(e: &ast::TypeKind) -> String {
         if body::is_bool(e) || body::is_named(e) {
@@ -5504,7 +5504,7 @@ mod codegen {
         }
     }
 
-    #[summary("열거형 t의 변형 v를 보는 타입 (stage0 view_ty): 꼬리표와 페이로드")]
+    #[summary("Type viewing variant v of enum t (stage0 view_ty): tag and payload")]
     #[effects(alloc)]
     fn view_ty(t: &ast::TypeKind, v: &str) -> String {
         types::cat5("%\"", types::text(&lowered::value_ty(t)).as_str(), "::", v, "\"")
@@ -5538,7 +5538,7 @@ mod codegen {
         }
     }
 
-    #[summary("타입 정의를 낼 구조체나 열거형 t (visit의 Named 갈래): 처음 볼 때만")]
+    #[summary("Struct or enum t whose type definition is to be emitted (Named arm of visit): only when first seen")]
     #[effects(alloc)]
     fn visit_data(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut Vec<String>, out: &mut String, f: usize) -> ()
         decreases f,
@@ -5556,7 +5556,7 @@ mod codegen {
         }
     }
 
-    #[summary("이름에 쓰는 바이트인가: 영문자, 숫자, 밑줄")]
+    #[summary("Whether it is a byte used in names: letters, digits, underscore")]
     #[effects(pure)]
     fn word_byte(c: u8) -> bool {
         c >= 48 && c <= 57 || c >= 65 && c <= 90 || c >= 97 && c <= 122 || c == 95
