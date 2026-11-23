@@ -1,6 +1,6 @@
 # ADR-0149: Gate B (economics) cannot be judged yet and is carried over to gate D
 
-- Status: Proposed (awaiting the maintainer's approval)
+- Status: Accepted (approved by the maintainer on 2026-11-23)
 - Date: 2026-11-23
 - Related: DESIGN.md §2 (premise E3), ADR-0102 (the E3 criterion), ADR-0103 (reference model), ADR-0111 (decision gates; this record applies its decisions 2 and 3), ADR-0112 (judgement rule), ADR-0146 (text search and bounded responses), [`../CLAIMS.md`](../CLAIMS.md)
 
@@ -42,15 +42,15 @@
 
 | Option | Verdict |
 | --- | --- |
-| **Cannot be judged, carried over once more (proposed)** | It is what the pre-registered rule gives for these numbers. The cost of being wrong is bounded: the port to the full fixed point is an engineering goal that stands without E3 |
+| **Cannot be judged, carried over once more (chosen)** | It is what the pre-registered rule gives for these numbers. The cost of being wrong is bounded: the port to the full fixed point is an engineering goal that stands without E3 |
 | Declare that E3 holds | 1.07 is above 1 by the registered statistic, there is one run and no interval, and the defect clause is empty. Reading 1.01 (sums) instead would be choosing the statistic after seeing the result |
 | Declare E3 refuted on the first measurement | The first condition lacked a tool whose absence, not the language, carried the cost: adding it moved the BMB side's input tokens to 0.36 to 0.45 times with the Rust side unchanged. A refutation of that condition stays on record as such |
 | Wait for the small model before a verdict | The verdict uses the reference model. The small model's result is reported beside it and tracked separately |
 
-What weakens the proposed reading, and is stated so it is not lost: the tools were fixed after seeing the first results and measured again on the same tasks. The second numbers are an upper bound on what new tasks will show; item 5 exists for that reason.
+What weakens this reading, and is stated so it is not lost: the tools were fixed after seeing the first results and measured again on the same tasks. The second numbers are an upper bound on what new tasks will show; item 5 exists for that reason.
 
 ## Consequences
 
-- `docs/ROADMAP.md`: gate B becomes "carried over to gate D" on approval.
+- `docs/ROADMAP.md`: gate B is "carried over to gate D".
 - The measurement plan for gate D grows by the items of decision 5.
 - If this record is rejected in favour of "refuted", the registered action applies instead: the port stops after the layer in progress and a direction record is raised.
