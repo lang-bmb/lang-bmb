@@ -447,6 +447,66 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
+/// `bmb dump smt-decls`: what the proof encoder derives before it reads a
+/// body, with no solver: the instances of generic spec fns, the sorts of
+/// parameters and results in the encoder's view (a `Vec` and text are an
+/// array and a length, a struct its leaves), the SMT functions of a spec fn,
+/// the declarations of type parameters, the datatypes, which parameters are
+/// text and the default contexts.
+#[test]
+fn smt_decls_dump_shows_the_encoders_declarations() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    struct Node { v: i64, kids: Vec<Node> }
+    struct P { x: i64, on: bool }
+    enum E { A, B(P) }
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+    spec fn top<T: Ord + Copy>(a: T, b: T) -> bool { a <= b }
+    spec fn mid(p: P) -> P { p }
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> (r: T)
+        ensures same::<T>(r, x),
+    {
+        x
+    }
+    #[effects(pure)]
+    fn f(s: &str, n: &Node, e: E) -> (r: u8)
+        requires top::<usize>(s.len(), 9),
+    {
+        id::<u8>(3)
+    }
+}
+"#;
+    let dump = |text: &str| bmb(&["dump", "smt-decls"], &one("x.bmb", text));
+    let (ok, out) = dump(SRC);
+    assert!(ok && out.starts_with("---\n"), "{out}");
+    assert_eq!(dump(SRC).1, out);
+    for row in [
+        // An instance in the generic caller's own terms, one from the
+        // callee's contract at the call, one from a clause.
+        r#"{"inst":"d::same<T>","base":"d::same","sub":[["T","T"]]}"#,
+        r#"{"inst":"d::same<u8>","base":"d::same","sub":[["T","u8"]]}"#,
+        r#"{"inst":"d::top<usize>","base":"d::top","sub":[["T","usize"]]}"#,
+        r#"{"inst_type":"usize"}"#,
+        r#"{"fn":"d::f","params":["(Array Int Int)","Int","|d::Node|","|d::E|"],"ret":["Int"],"funs":[],"sorts":""}"#,
+        r#"{"fn":"d::id","params":["|'T|"],"ret":["|'T|"],"funs":[],"sorts":"(declare-sort |'T| 0)\n(declare-const |'T.default| |'T|)\n"}"#,
+        r#"{"fn":"d::mid","params":["Int","Bool"],"ret":["Int","Bool"],"funs":[["|d::mid.x|","Int"],["|d::mid.on|","Bool"]],"sorts":""}"#,
+        r#"{"fn":"d::same<u8>","params":["Int","Int"],"ret":["Bool"],"funs":[["|d::same<u8>|","Bool"]],"sorts":""}"#,
+        r#"(declare-fun |'T.le| (|'T| |'T|) Bool)\n(assert (forall ((a |'T|)) (! (|'T.le| a a) :pattern ((|'T.le| a a)))))\n"#,
+        r#"{"datatype":"|d::Node::","name":"|d::Node|","decl":"(define-sort |d::Node| () Int)"}"#,
+        r#"{"datatype":"|d::E::","name":"|d::E|","decl":"(declare-datatypes ((|d::E| 0)) (((|d::E::A|) (|d::E::B| (|d::E::B.0.x| Int) (|d::E::B.0.on| Bool)))))"}"#,
+        r#"(declare-fun |d::Node::Node.1.e| (|d::Node|) (Array Int |d::Node|))\n"#,
+        r#"{"text_sig":"d::f","params":[true,false,false],"ret":false}"#,
+        r#"{"context":"d::f","specs":["d::same","d::top"]}"#,
+        r#"{"context":"d::same","specs":[]}"#,
+    ] {
+        assert!(out.contains(row), "{row}\n{out}");
+    }
+    // A program that does not check has diagnostics and no rows.
+    let (ok, out) = dump(&SRC.replace("id::<u8>(3)", "true"));
+    assert!(!ok && out.ends_with("---\n"), "{out}");
+}
+
 /// `bmb dump runtime`: the code generator's constant IR
 /// texts by name (the port's module is made of them, and its IR is compared
 /// with this compiler's: `tests/port/cases.json`, case `emit`).

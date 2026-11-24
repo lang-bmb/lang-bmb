@@ -417,7 +417,9 @@ fn each_expr<'e>(e: &'e Expr, f: &mut dyn FnMut(&'e Expr)) {
             sub(base);
             sub(index);
         }
-        ExprKind::Binary(_, l, r) => {
+        // The two ends of a range: a generic call written there has its
+        // contract's instances like any other call.
+        ExprKind::Range { lo: l, hi: r, .. } | ExprKind::Binary(_, l, r) => {
             sub(l);
             sub(r);
         }
@@ -661,6 +663,78 @@ fn prepare(p: &Program, t: &Tables) -> Tables {
     view.insts = insts;
     view.inst_types = types;
     view
+}
+
+/// `bmb dump smt-decls`: what the encoder derives from the checked tables
+/// before it reads a body, as JSONL rows, with no solver. The spec fn
+/// instances the program reaches and the types they mention (`prepare`);
+/// per function of the prepared tables its parameter sorts, its result
+/// sorts, the SMT functions of a spec fn and the declarations of its type
+/// parameters; the datatype declarations in their order; which parameters
+/// and results are text; and each definition's default proof context.
+pub fn dump_decls(p: &Program, t: &Tables) -> String {
+    use crate::check::ty_str;
+    let q = crate::diag::json_str;
+    let list = |xs: Vec<String>| format!("[{}]", xs.join(","));
+    let view = prepare(p, t);
+    let mut out = String::new();
+    for (key, (base, sub)) in &view.insts {
+        let subs = sub
+            .iter()
+            .map(|(n, x)| format!("[{},{}]", q(n), q(&ty_str(x))))
+            .collect();
+        out.push_str(&format!(
+            "{{\"inst\":{},\"base\":{},\"sub\":{}}}\n",
+            q(key),
+            q(base),
+            list(subs)
+        ));
+    }
+    for x in &view.inst_types {
+        out.push_str(&format!("{{\"inst_type\":{}}}\n", q(&ty_str(x))));
+    }
+    for (path, sig) in &view.fns {
+        let funs = if sig.kind == FnKind::Spec {
+            spec_funs(path, &view)
+                .iter()
+                .map(|(n, s)| format!("[{},{}]", q(n), q(s)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let sorts = |ts: &[TypeKind]| list(param_sorts(ts, &view).iter().map(|s| q(s)).collect());
+        out.push_str(&format!(
+            "{{\"fn\":{},\"params\":{},\"ret\":{},\"funs\":{},\"sorts\":{}}}\n",
+            q(path),
+            sorts(&sig.params),
+            sorts(std::slice::from_ref(&sig.ret)),
+            list(funs),
+            q(&sort_decls(sig))
+        ));
+    }
+    for (key, name, decl) in datatypes(&view) {
+        out.push_str(&format!(
+            "{{\"datatype\":{},\"name\":{},\"decl\":{}}}\n",
+            q(&key),
+            q(&name),
+            q(&decl)
+        ));
+    }
+    for (path, (params, ret)) in &view.text_sigs {
+        out.push_str(&format!(
+            "{{\"text_sig\":{},\"params\":{},\"ret\":{ret}}}\n",
+            q(path),
+            list(params.iter().map(|b| b.to_string()).collect())
+        ));
+    }
+    for (path, specs) in &view.context {
+        out.push_str(&format!(
+            "{{\"context\":{},\"specs\":{}}}\n",
+            q(path),
+            list(specs.iter().map(|s| q(s)).collect())
+        ));
+    }
+    out
 }
 
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).

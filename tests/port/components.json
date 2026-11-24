@@ -244,13 +244,21 @@
         "verify/invariants.rs",
         "verify/text.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/encode_decls.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": null,
-        "undecided_runs": null,
-        "friction": []
+        "gate_runs": 1,
+        "undecided_runs": 0,
+        "friction": [
+          "This row is not closed: it has only what the encoder derives from the tables before it reads a body (the view of slices, the instances of generic spec fns, sorts, datatype declarations, text signatures, default contexts) and compares `dump smt-decls`. The ratio comes out low because the ported part is measured against all of C6. The 85 definitions (1,151 obligations) were all proved on the first run of `bmb verify`",
+          "The tables of the earlier components are left as they are: a new struct `encode_decls::Prepared` wraps the view with the instances, the instance types, the text signatures and the contexts, so the proofs of code generation are not keyed again",
+          "The closures of the traversal (`each_expr` taking `&mut dyn FnMut`) became a walk that gathers nodes into a `Vec` and a visitor struct for calls; a substitution map is `types::Subst` kept in name order; maps keyed by position are `table::Table` under `body::span_key`: left as is",
+          "Porting found a defect in stage0: the walk that finds the instances of generic spec fns did not enter the two ends of a range, so a generic call written there whose contract names a generic spec fn made `bmb verify` halt. stage0 was fixed and the port followed in the same commit (`tests/verify/pass/range_instances.bmb`, `tests/port/smt/range.txt`)",
+          "`context_of` cuts a generic path at the first `<` after the last `::`, so a type argument that itself has a path would not find its context. It has no effect today because the context of a spec fn is always empty: copied as is"
+        ]
       }
     },
     {

@@ -932,6 +932,55 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "smt-decls",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt-decls",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt-decls",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/smt/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-decls-together",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt-decls",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt-decls",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
     }
   ]
 }

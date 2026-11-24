@@ -196,6 +196,11 @@ const USAGE: &str = "usage:
                             how the code generator lays the types out, when the program
                             checks: each type's LLVM types, size and alignment, what the
                             module's head depends on, and the LLVM type definitions
+  bmb dump smt-decls <file.bmb>...
+                            what the proof encoder derives before it reads a body, when the
+                            program checks, with no solver: the spec fn instances, each
+                            function's sorts and SMT functions, the datatype declarations,
+                            which values are text, and each definition's default context
   bmb dump runtime          the code generator's constant IR texts by name, as JSONL
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
@@ -1055,6 +1060,7 @@ fn run() -> ExitCode {
                         | "moves"
                         | "texts"
                         | "lowered"
+                        | "smt-decls"
                         | "layout"
                 ) =>
         {

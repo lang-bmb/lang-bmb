@@ -1,0 +1,68 @@
+#[summary("Datatype declarations: structs that hold themselves through a Vec and through a Box (Int handles with selector functions), two structs on one cycle, a generic recursive struct, enums whose payloads are enums (declared after them), two enums on one cycle (declared together), a recursive enum, enums holding arrays, structs, a recursive struct and arrays of structs and of arrays (one array per leaf), Vec of Vec, Option and Result of data")]
+mod dt {
+    struct Node { v: i64, kids: Vec<Node> }
+
+    struct Dir { name: u64, subs: Vec<Dir>, files: Vec<File> }
+
+    struct File { size: u64, links: Vec<Dir> }
+
+    struct Rose<T> { v: T, kids: Vec<Rose<T>> }
+
+    struct Chain { v: u8, next: Option<Box<Chain>> }
+
+    struct Cell { v: u8, next: Vec<Cell>, tag: Colour }
+
+    struct Pt { x: i64, y: i64 }
+
+    struct Line { from: Pt, to: Pt, dash: [u8; 4] }
+
+    struct Grid { rows: [[u8; 3]; 2], pts: [Pt; 2], line: Line, more: Vec<Pt>, names: Vec<Vec<u8>> }
+
+    enum Colour { Red, Green, Blue }
+
+    enum Shade { Plain(Colour), Mixed(Colour, Colour), Deep(Tint) }
+
+    enum Tint { Light(u8), Of(Colour) }
+
+    enum Expr { Lit(i64), Neg(Box<Expr>), Add(Box<Expr>, Box<Expr>), In(Stmt2) }
+
+    enum Stmt2 { Skip, Eval(Box<Expr>), Seq(Vec<Stmt2>) }
+
+    enum Slot { Empty, Full(Node), Many([Pt; 2]), Row([u8; 3]), Line(Line) }
+
+    enum Tree<T> { Leaf, Fork(Box<Tree<T>>, T, Box<Tree<T>>) }
+
+    spec fn small(n: &Node) -> bool { n.kids.len() < 100 }
+
+    spec fn origin(p: Pt) -> bool { p.x == 0 && p.y == 0 }
+
+    spec fn depth(e: &Expr) -> i64 {
+        match e {
+            Expr::Lit(v) => 0,
+            Expr::Neg(x) => 1,
+            Expr::Add(a, b) => 2,
+            Expr::In(s) => 0,
+        }
+    }
+
+    #[effects(pure)]
+    fn first(g: &Grid, s: &Slot, sh: Shade) -> (r: u8) {
+        let o: Option<Pt> = Some(g.pts[0]);
+        let line: Option<Line> = None;
+        let res: Result<Colour, Tint> = Ok(Colour::Red);
+        let nested: Option<Option<Shade>> = Some(Some(sh));
+        g.rows[0][0]
+    }
+
+    #[effects(pure)]
+    fn count(n: &Node, d: &Dir, r: &Rose<u16>, rr: &Rose<Pt>, c: &Chain, k: &Cell) -> (m: usize)
+        requires small(n),
+    {
+        n.kids.len()
+    }
+
+    #[effects(pure)]
+    fn walk(t: &Tree<u8>, u: &Tree<Colour>, e: &Expr, deep: &[[Pt; 2]], rows: &[[[u8; 2]; 2]], vs: &[Vec<Pt>]) -> (r: i64) {
+        0
+    }
+}

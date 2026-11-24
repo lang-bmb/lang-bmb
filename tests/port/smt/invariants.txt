@@ -1,0 +1,41 @@
+#[summary("Instances of the invariant predicates of generic types: at every type a value of the program has, inside fields, payloads, elements and type arguments, with no call that names the predicate; a predicate that calls another generic spec fn; a type with two parameters; a non-generic type's invariant (no instance)")]
+mod inv {
+    #[invariant(fits)]
+    struct Stack<T: Copy> { items: [T; 8], len: usize }
+
+    #[invariant(ordered)]
+    struct Pair<A: Copy, B: Copy> { first: A, second: B, n: u8 }
+
+    #[invariant(within)]
+    struct Span { lo: i64, hi: i64 }
+
+    #[invariant(tagged)]
+    enum Tag<T: Copy> { None, One(T), Two(T, T) }
+
+    struct Holder { s: Stack<u8>, spans: Vec<Span>, deep: Option<Stack<Pair<bool, u16>>> }
+
+    spec fn fits<T: Copy>(s: &Stack<T>) -> bool { below::<usize>(s.len, 9) }
+
+    spec fn below<U: Copy>(a: U, b: U) -> bool { a == a && b == b }
+
+    spec fn ordered<A: Copy, B: Copy>(p: &Pair<A, B>) -> bool { p.n < 10 && below::<A>(p.first, p.first) }
+
+    spec fn within(s: &Span) -> bool { 0 <= s.lo && s.lo <= s.hi }
+
+    spec fn tagged<T: Copy>(t: &Tag<T>) -> bool { below::<Tag<T>>(*t, *t) }
+
+    #[effects(pure)]
+    fn len_of(h: &Holder) -> (r: usize) {
+        h.s.len
+    }
+
+    #[effects(pure)]
+    fn tags(t: Tag<i32>, ts: &[Tag<Tag<u8>>], p: Pair<Stack<i64>, Tag<bool>>) -> (r: u8) {
+        p.n
+    }
+
+    #[effects(pure)]
+    fn generic<T: Copy>(s: &Stack<T>, t: Tag<T>) -> (r: usize) {
+        s.len
+    }
+}

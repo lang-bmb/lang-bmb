@@ -1048,6 +1048,14 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
             let (_, t) = check::check_resolved(program, &mut diags);
             dump_lowered(&t, &|f| sm.name(f).to_string())
         }
+        "smt-decls" => {
+            let (r, t) = check::check_resolved(program, &mut diags);
+            if diags.has_errors() {
+                String::new()
+            } else {
+                verify::dump_decls(&r, &t)
+            }
+        }
         "layout" => {
             let (r, t) = check::check_resolved(program, &mut diags);
             if diags.has_errors() {

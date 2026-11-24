@@ -1,0 +1,106 @@
+#[summary("Instances of generic spec fns: reached from a call, from the body of another instance, and from the contract of a generic exec callee under the substitution of the call; type arguments that are scalars, structs, slices, Vec, Option and instances of generic types; a spec fn with a struct result; a parameter bounded by Ord")]
+mod gen {
+    struct Pt { x: i64, y: i64 }
+
+    struct Pair<A: Copy, B: Copy> { first: A, second: B }
+
+    enum Maybe<T: Copy> { Nothing, Just(T) }
+
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    // An instance whose body reaches two more instances.
+    spec fn both<T: Copy>(a: T, b: T, c: T) -> bool { same::<T>(a, b) && same::<Pair<T, T>>(Pair { first: a, second: b }, Pair { first: b, second: c }) }
+
+    // An instance at a type the caller wraps: `Maybe<T>` under `T = u8` is `Maybe<u8>`.
+    spec fn held<T: Copy>(m: Maybe<T>, x: T) -> bool { same::<Maybe<T>>(m, Maybe::Just(x)) }
+
+    spec fn idx<T: Copy>(a: &[T], i: usize) -> bool { i < a.len() }
+
+    spec fn at<T: Copy>(a: &[T], i: usize, r: T) -> bool { a[i] == r }
+
+    // A struct result: one SMT function per leaf.
+    spec fn mid(p: Pt, q: Pt) -> Pt { Pt { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 } }
+
+    // A generic spec fn with a struct result that names its parameters.
+    spec fn flip<A: Copy, B: Copy>(p: Pair<A, B>) -> Pair<B, A> { Pair { first: p.second, second: p.first } }
+
+    spec fn le_all<T: Ord + Copy>(a: &[T], v: T) -> bool { forall|k: usize| k < a.len() ==> #[trigger] a[k] <= v }
+
+    spec fn top<T: Ord + Copy, U: Copy>(a: &[T], v: T, u: U) -> bool { le_all::<T>(a, v) && same::<U>(u, u) }
+
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> (r: T)
+        ensures same::<T>(r, x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn get<T: Copy>(a: &[T], i: usize) -> (r: T)
+        requires idx::<T>(a, i),
+        ensures at::<T>(a, i, r),
+    {
+        a[i]
+    }
+
+    #[effects(pure)]
+    fn wrap<T: Copy>(x: T) -> (r: Maybe<T>)
+        ensures held::<T>(r, x),
+    {
+        Maybe::Just(x)
+    }
+
+    // A generic caller: its callee's contract in its own terms, then at each use.
+    #[effects(pure)]
+    fn twice<U: Copy>(x: U) -> (r: U)
+        ensures same::<U>(r, x),
+    {
+        id::<U>(id::<U>(x))
+    }
+
+    #[effects(pure)]
+    fn swap<A: Copy, B: Copy>(p: Pair<A, B>) -> (r: Pair<B, A>)
+        ensures same::<Pair<B, A>>(r, flip::<A, B>(p)),
+    {
+        Pair { first: p.second, second: p.first }
+    }
+
+    #[effects(pure)]
+    fn largest<T: Ord + Copy>(a: &[T], d: T) -> (r: T)
+        ensures a.len() == 0 || le_all::<T>(a, r),
+    {
+        let mut best: T = d;
+        let mut i: usize = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            if i == 0 || best < a[i] {
+                best = a[i];
+            }
+            i = i + 1;
+        }
+        best
+    }
+
+    #[effects(alloc)]
+    fn concrete(v: &Vec<u16>) -> (r: i64)
+        requires v.len() > 2,
+    {
+        let x: i64 = id::<i64>(5);
+        let p: Pt = id::<Pt>(Pt { x: 1, y: 2 });
+        let q: Pair<bool, Pt> = swap::<Pt, bool>(Pair { first: p, second: true });
+        let m: Maybe<u8> = wrap::<u8>(7);
+        let mm: Maybe<Maybe<u8>> = wrap::<Maybe<u8>>(m);
+        let o: Option<u32> = twice::<Option<u32>>(Some(3));
+        let e: u16 = get::<u16>(v.as_slice(), 1);
+        let arr: [[u8; 2]; 3] = id::<[[u8; 2]; 3]>([[0, 1], [2, 3], [4, 5]]);
+        let big: u16 = largest::<u16>(v.as_slice(), 0);
+        let pts: [Pt; 2] = [Pt { x: 0, y: 0 }, Pt { x: 4, y: 6 }];
+        let far: Pt = get::<Pt>(&pts, 1);
+        assert(both::<u16>(e, e, e));
+        assert(top::<u16, bool>(v.as_slice(), big, true));
+        assert(mid(p, far).x == 2);
+        x + q.second.x + far.y
+    }
+}

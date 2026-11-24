@@ -1,0 +1,23 @@
+#[summary("Generic calls inside the two ends of a range have the instances of their contracts")]
+mod range_instances {
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    #[effects(pure)]
+    fn id<T: Copy>(x: T) -> (r: T)
+        ensures same::<T>(r, x),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    fn take(a: &[u8]) -> (r: usize) {
+        a.len()
+    }
+
+    #[effects(pure)]
+    fn f(a: &[u8]) -> (r: usize)
+        requires a.len() > 3,
+    {
+        take(&a[id::<usize>(1)..id::<usize>(3)])
+    }
+}

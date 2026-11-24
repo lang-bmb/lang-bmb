@@ -1,0 +1,1944 @@
+#[summary("What the proof encoder derives from the checked tables before it reads a body (port of the head of stage0 verify.rs and of verify/invariants.rs, semantics in ADR-0017): the tables as the encoder sees them, the spec fn instances the program reaches, the sorts and leaves of values, the datatype declarations, which parameters are text, the default proof contexts. A stage0 BTreeMap<String, TypeKind> substitution is a types::Subst kept in name order (bind). The f of recursive functions is the remaining depth (ADR-0140)")]
+mod encode_decls {
+    #[summary("Visitor that collects the path of every call it is shown (the walks of default_contexts)")]
+    struct Calls { paths: Vec<Vec<ast::Ident>> }
+
+    impl ast::ExprFn for Calls {
+        #[effects(alloc)]
+        fn expr(self: &mut Calls, e: &mut ast::Expr) -> () {
+            match call_path(e) {
+                None => {},
+                Some(p) => self.paths.push(p),
+            }
+        }
+    }
+
+    #[summary("Constructor of a datatype: its symbol and its fields (selector symbol, sort)")]
+    struct Ctor { name: String, fields: Vec<Fun> }
+
+    #[summary("One datatype row (stage0 datatypes): the prefix of its constructor symbols, its sort, its declaration")]
+    struct Decl { key: String, name: String, decl: String }
+
+    #[summary("A definition (stage0 Def): its unit and its syntax")]
+    struct Def { unit: String, d: ast::FnDef }
+
+    #[summary("An enum instance as the encoder declares it (stage0 Dt). arb is a recursive struct's arbitrary constant, leaves are a recursive struct's selectors with their leaves")]
+    struct Dt { ctors: Vec<Ctor>, arb: Option<String>, leaves: Vec<NamedLeaf> }
+
+    #[summary("Every datatype of a program by type text, and the order that lists each one after those its payloads name (the result of stage0 enum_dts)")]
+    struct Dts { order: Vec<String>, dts: table::Table<Dt> }
+
+    #[summary("A symbol and a sort: an SMT function of a spec fn with its result sort, a selector with its sort, the suffix of an element leaf with the sort of one element")]
+    struct Fun { name: String, sort: String }
+
+    #[summary("An instance of a generic spec fn (a value of stage0 Tables::insts): the generic path and the substitution of its parameters")]
+    struct Inst { base: String, sub: types::Subst }
+
+    #[summary("An instance of a generic type's invariant predicate (stage0 invariants::instances): key, predicate, substitution")]
+    struct InvInst { key: String, base: String, sub: types::Subst }
+
+    #[summary("One SMT leaf of a value (stage0 Leaf): a scalar, a value of a recursive struct's sort (Data, stage0 Dt), an array's elements, one leaf array of an array of aggregates (the sort of one element's leaf), an array's length (the count for a fixed-size array)")]
+    enum Leaf { Scalar(ast::TypeKind), Data(ast::TypeKind), Elems(ast::TypeKind), Leaves(String), Len(ast::TypeKind, Option<u64>) }
+
+    #[summary("A leaf and its name")]
+    struct NamedLeaf { name: String, leaf: Leaf }
+
+    #[summary("One expression node of each_expr: its position and, for a call, the path written")]
+    struct Node { span: source::Span, call: bool, path: Vec<ast::Ident> }
+
+    #[summary("The encoder's tables (the result of stage0 prepare, with the fields of verify::Tables the lowered tables do not carry). t is the slice view with a signature for each instance, insts are the instances by key, inst_types are the types instances and substituted contracts mention, text_sigs says which parameters and results are text, context is the default proof context of each definition")]
+    struct Prepared { t: lowered::Tables, insts: table::Table<Inst>, inst_types: Vec<ast::TypeKind>, text_sigs: table::Table<TextSig>, context: table::Table<Vec<String>> }
+
+    #[summary("A definition with a body in walk order: path, unit, syntax (a row of stage0 check::defs_of)")]
+    struct Row { path: String, unit: String, d: ast::FnDef }
+
+    #[summary("Which parameters of a function are text and whether its result is (a value of stage0 Tables::text_sigs)")]
+    struct TextSig { params: Vec<bool>, ret: bool }
+
+    #[summary("One entry of the work list of prepare: a definition, the substitution of its type parameters, whether its measure and body are read too")]
+    struct Work { path: String, sub: types::Subst, whole: bool }
+
+    #[summary("Whether an array of e holds its elements as one array per leaf (ADR-0027 §2): structs and arrays")]
+    #[effects(alloc)]
+    fn agg_elem(e: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        match flat_fields(e, tb) {
+            None => is_array(e),
+            Some(fs) => true,
+        }
+    }
+
+    #[summary("The arbitrary constant of a recursive struct's datatype")]
+    #[effects(alloc)]
+    fn arb(t: &ast::TypeKind) -> String {
+        sym(types::cat2(types::text(&lowered::value_ty(t)).as_str(), "::'arb").as_str())
+    }
+
+    #[summary("The length of a fixed-size array")]
+    #[effects(pure)]
+    fn array_len(t: &ast::TypeKind) -> Option<u64> {
+        match t {
+            ast::TypeKind::Int(al_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(al_ae, an) => Some(*an),
+            ast::TypeKind::ArrayN(al_ne, al_nn) => None,
+            ast::TypeKind::Slice(al_se) => None,
+            ast::TypeKind::Ref(al_rm, al_ri) => None,
+            ast::TypeKind::Named(al_path, al_args) => None,
+            ast::TypeKind::Vec(al_ve) => None,
+            ast::TypeKind::Box(al_be) => None,
+            ast::TypeKind::Param(al_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("Whether index a of the components comes before index b: by depth, then by the text of the component's first type")]
+    #[effects(alloc)]
+    fn before(depth: &[usize], comps: &[Vec<String>], a: usize, b: usize) -> bool {
+        let da: usize = depth_at(depth, a);
+        let db: usize = depth_at(depth, b);
+        if da != db {
+            return da < db;
+        }
+        head(comps, a).as_str() < head(comps, b).as_str()
+    }
+
+    #[summary("Sets n to t in m, keeping the names in order (stage0 BTreeMap::insert: a name already there gets the new type)")]
+    #[effects(alloc)]
+    fn bind(m: &mut types::Subst, n: &str, t: ast::TypeKind) -> () {
+        let at: Option<usize> = types::sub_at(m, n);
+        match at {
+            None => bind_new(m, n, t),
+            Some(i) => { m.tys[i] = t; },
+        }
+    }
+
+    #[summary("Puts the new name n with type t at its place in the order of names")]
+    #[effects(alloc)]
+    fn bind_new(m: &mut types::Subst, n: &str, t: ast::TypeKind) -> () {
+        let mut names: Vec<String> = Vec::new();
+        let mut tys: Vec<ast::TypeKind> = Vec::new();
+        let mut placed: bool = false;
+        for i in 0..m.names.len()
+            invariant 0 <= i && i <= m.names.len(),
+        {
+            if !placed && n < m.names[i].as_str() {
+                names.push(String::from(n));
+                tys.push(t.clone());
+                placed = true;
+            }
+            if i < m.tys.len() {
+                names.push(m.names[i].clone());
+                tys.push(m.tys[i].clone());
+            }
+        }
+        if !placed {
+            names.push(String::from(n));
+            tys.push(t.clone());
+        }
+        m.names = names;
+        m.tys = tys;
+    }
+
+    #[summary("The path of a call expression")]
+    #[effects(alloc)]
+    fn call_path(e: &ast::Expr) -> Option<Vec<ast::Ident>> {
+        match &e.kind {
+            ast::ExprKind::Int(cp_int0, cp_int1) => None,
+            ast::ExprKind::Float(cp_float0) => None,
+            ast::ExprKind::ByteLit(cp_bytelit0) => None,
+            ast::ExprKind::ByteStr(cp_bytestr0) => None,
+            ast::ExprKind::StrLit(cp_strlit0) => None,
+            ast::ExprKind::CharLit(cp_charlit0) => None,
+            ast::ExprKind::Bool(cp_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(cp_var0) => None,
+            ast::ExprKind::Call(ca) => Some(ca.path.clone()),
+            ast::ExprKind::Method(cp_method0) => None,
+            ast::ExprKind::Index(cp_index0, cp_index1) => None,
+            ast::ExprKind::Unary(cp_unary0, cp_unary1) => None,
+            ast::ExprKind::Binary(cp_binary0, cp_binary1, cp_binary2) => None,
+            ast::ExprKind::Ref(cp_ref0, cp_ref1) => None,
+            ast::ExprKind::If(cp_if0) => None,
+            ast::ExprKind::Block(cp_block0) => None,
+            ast::ExprKind::Array(cp_array0) => None,
+            ast::ExprKind::Repeat(cp_repeat0) => None,
+            ast::ExprKind::Old(cp_old0) => None,
+            ast::ExprKind::Quant(cp_quant0) => None,
+            ast::ExprKind::Trigger(cp_trigger0) => None,
+            ast::ExprKind::Closure(cp_closure0) => None,
+            ast::ExprKind::StructLit(cp_structlit0) => None,
+            ast::ExprKind::Path(cp_path0) => None,
+            ast::ExprKind::Deref(cp_deref0) => None,
+            ast::ExprKind::Field(cp_field0, cp_field1) => None,
+            ast::ExprKind::Match(cp_match0) => None,
+            ast::ExprKind::Return(cp_return0) => None,
+            ast::ExprKind::Try(cp_try0) => None,
+            ast::ExprKind::Loop(cp_loop0) => None,
+            ast::ExprKind::Break(cp_break0) => None,
+            ast::ExprKind::Continue(cp_continue0) => None,
+            ast::ExprKind::Range(cp_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("The functions the calls of definition d name, as the checker resolved them from unit (the calls closure of stage0 default_contexts): those of its clauses alone, or of its measure and body too. One name may come more than once")]
+    #[effects(alloc)]
+    fn calls(d: &ast::FnDef, unit: &str, clauses_only: bool, tb: &lowered::Tables) -> Vec<String> {
+        let mut v: Calls = Calls { paths: Vec::new() };
+        if clauses_only {
+            let mut pre: Vec<ast::Expr> = d.pre.clone();
+            let mut post: Vec<ast::Expr> = d.post.clone();
+            ast::exprs_each::<Calls>(&mut pre, &mut v, true, 1000000000);
+            ast::exprs_each::<Calls>(&mut post, &mut v, true, 1000000000);
+        } else {
+            let mut g: ast::FnDef = d.clone();
+            ast::fn_exprs_mut::<Calls>(&mut g, &mut v, true, 1000000000);
+        }
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..v.paths.len()
+            invariant 0 <= i && i <= v.paths.len(),
+        {
+            let q: String = resolve_in(tb, v.paths[i].as_slice(), unit);
+            if tb.fns.has(q.as_str()) {
+                out.push(q.clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The definitions of p by path (a later duplicate is dropped), and the trait method declarations, which are declared, not proved (stage0 collect, ADR-0046 §4)")]
+    #[effects(alloc)]
+    fn collect(p: &ast::Program, tb: &lowered::Tables) -> table::Table<Def> {
+        let rows: Vec<Row> = defs(p, &tb.fns);
+        let mut out: table::Table<Def> = table::new::<Def>();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if !out.has(rows[i].path.as_str()) {
+                out.insert(rows[i].path.as_str(), Def { unit: rows[i].unit.clone(), d: rows[i].d.clone() });
+            }
+        }
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            trait_decls(&p.mods[i], "", &mut out, 100000);
+        }
+        out
+    }
+
+    #[summary("The spec fns definition path reveals (stage0 context_of): its default context (ADR-0095 A1) and its #[uses(..)]. An instance (unit::f<i64>) has its generic definition's context: as in stage0 the generic path ends at the first < after the last ::, so a key whose type arguments hold a path (unit::f<a::B>) is looked up under its own name alone")]
+    #[effects(alloc)]
+    fn context_of(path: &str, d: &ast::FnDef, mod_path: &str, pr: &Prepared) -> Vec<String> {
+        let mut out: Vec<String> = uses_of(d, mod_path, &pr.t.fns);
+        let mut generic: String = String::from(path);
+        if ends_with(path, ">") {
+            match last_of(path, "::") {
+                None => {},
+                Some(i) => { match decls::first_of(path, "<", i.saturating_add(2)) { None => {}, Some(j) => { generic = lexer::cut(path, 0, j); }, } },
+            }
+        }
+        let at: Option<usize> = match pr.context.find(path) {
+            None => pr.context.find(generic.as_str()),
+            Some(here) => Some(here),
+        };
+        match at {
+            None => {},
+            Some(k) => { for i in 0..pr.context.items[k].len() invariant 0 <= i && i <= pr.context.items[k].len(), { out.push(pr.context.items[k][i].clone()); } },
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("The spec fns the requires and ensures of definition path name: what every caller's default context reveals of it (stage0 contract_specs, ADR-0095 A1)")]
+    #[effects(alloc)]
+    fn contract_specs(p: &ast::Program, tb: &lowered::Tables, path: &str) -> Vec<String> {
+        let rows: Vec<Row> = defs(p, &tb.fns);
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if rows[i].path.as_str() == path {
+                let cs: Vec<String> = calls(&rows[i].d, rows[i].unit.as_str(), true, tb);
+                for j in 0..cs.len()
+                    invariant 0 <= j && j <= cs.len(),
+                {
+                    if spec_fn(tb, cs[j].as_str()) {
+                        out.push(cs[j].clone());
+                    }
+                }
+            }
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("The constructor symbol of variant v of enum t (ADR-0027 §3)")]
+    #[effects(alloc)]
+    fn ctor(t: &ast::TypeKind, v: &str) -> String {
+        sym(types::cat3(types::text(&lowered::value_ty(t)).as_str(), "::", v).as_str())
+    }
+
+    #[summary("A constructor in a declare-datatypes: (name) or (name (selector sort) ..)")]
+    #[effects(alloc)]
+    fn ctor_text(c: &Ctor) -> String {
+        let mut s: String = types::cat2("(", c.name.as_str());
+        for i in 0..c.fields.len()
+            invariant 0 <= i && i <= c.fields.len(),
+        {
+            s.push_str(" (");
+            s.push_str(c.fields[i].name.as_str());
+            s.push_str(" ");
+            s.push_str(c.fields[i].sort.as_str());
+            s.push_str(")");
+        }
+        s.push_str(")");
+        s
+    }
+
+    #[summary("Every enum instance a program uses, as (constructor prefix, sort, declare-datatypes), dependencies first (stage0 datatypes). Recursive structs are Int handles under the struct's sort name, declared before every datatype, with their selector functions after them. Recursive enums (ADR-0047 §3) are declared together with the enums of their cycle, under the first one's entry (the others' entries name it). The order is a property of the types alone: by type text, then by depth")]
+    #[effects(alloc)]
+    fn datatypes(tb: &lowered::Tables, inst_types: &[ast::TypeKind]) -> Vec<Decl> {
+        let all: Dts = enum_dts(tb, inst_types);
+        let mut struct_names: Vec<String> = Vec::new();
+        let mut enum_names: Vec<String> = Vec::new();
+        for i in 0..all.order.len()
+            invariant 0 <= i && i <= all.order.len(),
+        {
+            match all.dts.find(all.order[i].as_str()) {
+                None => {},
+                Some(at) => { if has_arb(&all.dts.items[at]) { struct_names.push(all.order[i].clone()); } else { enum_names.push(all.order[i].clone()); } },
+            }
+        }
+        let structs: Vec<String> = decls::sorted(struct_names.as_slice());
+        let order: Vec<String> = decls::sorted(enum_names.as_slice());
+        let mut deps: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..all.dts.len()
+            invariant 0 <= n,
+        {
+            match all.dts.nth(n) {
+                None => {},
+                Some(at) => { let mut named: Vec<String> = Vec::new(); for o in 0..order.len() invariant 0 <= o && o <= order.len(), { if mentions(&all.dts.items[at], sym(order[o].as_str()).as_str()) { named.push(order[o].clone()); } } deps.insert(all.dts.key(n).as_str(), named); },
+            }
+        }
+        let on: Vec<String> = Vec::new();
+        let stack: Vec<String> = Vec::new();
+        let found: Vec<Vec<String>> = Vec::new();
+        let mut tj: body::Scc = body::Scc { index: table::new::<usize>(), low: table::new::<usize>(), on: on, stack: stack, next: 0, out: found };
+        for i in 0..order.len()
+            invariant 0 <= i && i <= order.len(),
+        {
+            if !tj.index.has(order[i].as_str()) {
+                tarjan(&mut tj, &deps, order[i].as_str(), 1000000000);
+            }
+        }
+        let mut out: Vec<Decl> = Vec::new();
+        for i in 0..structs.len()
+            invariant 0 <= i && i <= structs.len(),
+        {
+            let ss: String = sym(structs[i].as_str());
+            out.push(Decl { key: types::cat3("|", structs[i].as_str(), "::"), name: ss.clone(), decl: types::cat3("(define-sort ", ss.as_str(), " () Int)") });
+        }
+        let mut comps: Vec<Vec<String>> = Vec::new();
+        let mut comp_of: table::Table<usize> = table::new::<usize>();
+        for i in 0..tj.out.len()
+            invariant 0 <= i && i <= tj.out.len(),
+        {
+            let c: Vec<String> = decls::sorted(tj.out[i].as_slice());
+            for j in 0..c.len()
+                invariant 0 <= j && j <= c.len(),
+            {
+                comp_of.insert(c[j].as_str(), i);
+            }
+            comps.push(c);
+        }
+        let mut depth: Vec<usize> = Vec::new();
+        for i in 0..comps.len()
+            invariant 0 <= i && i <= comps.len(),
+        {
+            let mut deepest: usize = 0;
+            let comp: Vec<String> = comps[i].clone();
+            for a in 0..comp.len()
+                invariant 0 <= a && a <= comp.len(),
+            {
+                let ws: Vec<String> = match deps.find(comp[a].as_str()) {
+                    None => Vec::new(),
+                    Some(da) => deps.items[da].clone(),
+                };
+                for b in 0..ws.len()
+                    invariant 0 <= b && b <= ws.len(),
+                {
+                    let j: usize = match comp_of.find(ws[b].as_str()) {
+                        None => i,
+                        Some(cj) => comp_of.items[cj],
+                    };
+                    if j != i {
+                        let cand: usize = depth_at(depth.as_slice(), j).saturating_add(1);
+                        if cand > deepest {
+                            deepest = cand;
+                        }
+                    }
+                }
+            }
+            depth.push(deepest);
+        }
+        let mut by_depth: Vec<usize> = Vec::new();
+        for i in 0..comps.len()
+            invariant 0 <= i && i <= comps.len(),
+        {
+            let mut at: usize = by_depth.len();
+            for j in 0..by_depth.len()
+                invariant 0 <= j && j <= by_depth.len() && at <= by_depth.len(),
+            {
+                if at == by_depth.len() && before(depth.as_slice(), comps.as_slice(), i, by_depth[j]) {
+                    at = j;
+                }
+            }
+            let mut next: Vec<usize> = Vec::new();
+            for j in 0..by_depth.len()
+                invariant 0 <= j && j <= by_depth.len(),
+            {
+                if j == at {
+                    next.push(i);
+                }
+                next.push(by_depth[j]);
+            }
+            if at == by_depth.len() {
+                next.push(i);
+            }
+            by_depth = next;
+        }
+        for x in 0..by_depth.len()
+            invariant 0 <= x && x <= by_depth.len(),
+        {
+            let members: Vec<String> = if by_depth[x] < comps.len() {
+                comps[by_depth[x]].clone()
+            } else {
+                Vec::new()
+            };
+            let mut heads: Vec<String> = Vec::new();
+            let mut bodies: Vec<String> = Vec::new();
+            for a in 0..members.len()
+                invariant 0 <= a && a <= members.len(),
+            {
+                heads.push(types::cat3("(", sym(members[a].as_str()).as_str(), " 0)"));
+                let mut cs: Vec<String> = Vec::new();
+                match all.dts.find(members[a].as_str()) {
+                    None => {},
+                    Some(at) => { for k in 0..all.dts.items[at].ctors.len() invariant 0 <= k && k <= all.dts.items[at].ctors.len(), { cs.push(ctor_text(&all.dts.items[at].ctors[k])); } },
+                }
+                bodies.push(types::cat3("(", types::join(cs.as_slice(), " ").as_str(), ")"));
+            }
+            if members.len() > 0 {
+                let first: String = sym(members[0].as_str());
+                out.push(Decl { key: types::cat3("|", members[0].as_str(), "::"), name: first.clone(), decl: types::cat5("(declare-datatypes (", types::join(heads.as_slice(), " ").as_str(), ") (", types::join(bodies.as_slice(), " ").as_str(), "))") });
+                for a in 0..members.len()
+                    invariant 0 <= a && a <= members.len(),
+                {
+                    if a > 0 {
+                        let ms: String = sym(members[a].as_str());
+                        out.push(Decl { key: types::cat3("|", members[a].as_str(), "::"), name: ms.clone(), decl: types::cat4("; ", ms.as_str(), " is declared with ", first.as_str()) });
+                    }
+                }
+            }
+        }
+        for i in 0..structs.len()
+            invariant 0 <= i && i <= structs.len(),
+        {
+            let st: String = sym(structs[i].as_str());
+            let mut decl: String = String::new();
+            match all.dts.find(structs[i].as_str()) {
+                None => {},
+                Some(at) => { for k in 0..all.dts.items[at].ctors.len() invariant 0 <= k && k <= all.dts.items[at].ctors.len(), { for j in 0..all.dts.items[at].ctors[k].fields.len() invariant 0 <= j && j <= all.dts.items[at].ctors[k].fields.len(), { decl.push_str("(declare-fun "); decl.push_str(all.dts.items[at].ctors[k].fields[j].name.as_str()); decl.push_str(" ("); decl.push_str(st.as_str()); decl.push_str(") "); decl.push_str(all.dts.items[at].ctors[k].fields[j].sort.as_str()); decl.push_str(")\n"); } } decl.push_str("(declare-const "); match &all.dts.items[at].arb { None => {}, Some(an) => decl.push_str(an.as_str()), } decl.push_str(" "); decl.push_str(st.as_str()); decl.push_str(")"); },
+            }
+            out.push(Decl { key: types::cat3("|", structs[i].as_str(), "::"), name: st, decl: decl });
+        }
+        out
+    }
+
+    #[summary("The default proof context of each definition (stage0 default_contexts, ADR-0095 A1, the rule without the closure over bodies): the spec fns its own clauses, loop invariants, assertions and proof code name, and those its callees' requires and ensures name. A spec fn's body is its definition, not a clause of a proof: only its own contract counts. The clauses a closure was written with are the bodies of its generated pre and post, and they count as the clauses of its call (ADR-0114). When two definitions have one path the later one stands")]
+    #[effects(alloc)]
+    fn default_contexts(p: &ast::Program, tb: &lowered::Tables) -> table::Table<Vec<String>> {
+        let rows: Vec<Row> = defs(p, &tb.fns);
+        let mut by_path: table::Table<Def> = table::new::<Def>();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            by_path.insert(rows[i].path.as_str(), Def { unit: rows[i].unit.clone(), d: rows[i].d.clone() });
+        }
+        let mut clause: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..by_path.len()
+            invariant 0 <= n,
+        {
+            match by_path.nth(n) {
+                None => {},
+                Some(at) => clause.insert(by_path.key(n).as_str(), specs_of(calls(&by_path.items[at].d, by_path.items[at].unit.as_str(), true, tb).as_slice(), tb)),
+            }
+        }
+        let mut out: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..by_path.len()
+            invariant 0 <= n,
+        {
+            match by_path.nth(n) {
+                None => {},
+                Some(at) => { let q: String = by_path.key(n); let mut ctx: Vec<String> = Vec::new(); let cs: Vec<String> = calls(&by_path.items[at].d, by_path.items[at].unit.as_str(), body::is_spec(by_path.items[at].d.kind), tb); for i in 0..cs.len() invariant 0 <= i && i <= cs.len(), { if spec_fn(tb, cs[i].as_str()) { ctx.push(cs[i].clone()); } else { push_at(&mut ctx, &clause, cs[i].as_str()); } } if ends_with(q.as_str(), ">::call") && q.len() >= 7 { let head: String = lexer::cut(q.as_str(), 0, q.len() - 7); if has_text(head.as_str(), "$") { push_whole(&mut ctx, &by_path, types::cat2(head.as_str(), ">::pre").as_str(), tb); push_whole(&mut ctx, &by_path, types::cat2(head.as_str(), ">::post").as_str(), tb); } } out.insert(q.as_str(), body::without(body::sorted_set(ctx.as_slice()).as_slice(), q.as_str())); },
+            }
+        }
+        out
+    }
+
+    #[summary("Every definition with a body in walk order (stage0 check::defs_of): each row of body::defs_of with its syntax")]
+    #[effects(alloc)]
+    fn defs(p: &ast::Program, fns: &table::Table<types::FnSig>) -> Vec<Row> {
+        let mut by_span: table::Table<ast::FnDef> = table::new::<ast::FnDef>();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            codegen::fn_defs(&p.mods[i], &mut by_span, 100000);
+        }
+        let rows: Vec<body::DefRow> = body::defs_of(p, fns);
+        let mut out: Vec<Row> = Vec::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            match by_span.find(body::span_key(rows[i].span).as_str()) {
+                None => {},
+                Some(at) => out.push(Row { path: rows[i].path.clone(), unit: rows[i].unit.clone(), d: by_span.items[at].clone() }),
+            }
+        }
+        out
+    }
+
+    #[summary("depth[i], 0 when the component has no depth yet")]
+    #[effects(pure)]
+    fn depth_at(depth: &[usize], i: usize) -> usize {
+        if i < depth.len() {
+            depth[i]
+        } else {
+            0
+        }
+    }
+
+    #[summary("The definition a call of target with type arguments args runs, and its type arguments (stage0 dispatched): for a trait method with a known Self, its impl's function (ADR-0046 §2)")]
+    #[effects(alloc)]
+    fn dispatched(tb: &lowered::Tables, target: &str, args: &[ast::TypeKind]) -> body::Dispatched {
+        match body::dispatch(&tb.fns, tb.trait_impls.as_slice(), target, args) {
+            None => { let mut same: Vec<ast::TypeKind> = Vec::new(); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { same.push(args[i].clone()); } body::Dispatched { path: String::from(target), args: same } },
+            Some(d) => d,
+        }
+    }
+
+    #[summary("The constructor name of a recursive struct's datatype: the struct's")]
+    #[effects(alloc)]
+    fn dt_ctor_name(t: &ast::TypeKind) -> String {
+        last_seg(&lowered::value_ty(t))
+    }
+
+    #[summary("Whether t (through a reference) is a struct that contains itself through structs alone: a datatype of one constructor, not a tuple of leaves (ADR-0047 §3)")]
+    #[effects(alloc)]
+    fn dt_struct(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        match lowered::struct_fields(t, tb) {
+            None => false,
+            Some(fs) => struct_cycle(t, tb),
+        }
+    }
+
+    #[summary("`bmb dump smt-decls` (stage0 verify::dump_decls): what the encoder derives from the checked tables before it reads a body, as JSONL rows. The spec fn instances and the types they mention; per function of the prepared tables its parameter sorts, its result sorts, the SMT functions of a spec fn and the declarations of its type parameters; the datatype declarations in their order; which parameters and results are text; each definition's default proof context")]
+    #[effects(alloc)]
+    fn dump(ck: &body::Checked) -> String {
+        let pr: Prepared = prepared(ck);
+        let mut out: String = String::new();
+        for n in 0..pr.insts.len()
+            invariant 0 <= n,
+        {
+            match pr.insts.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"inst\":"); std::json::push_string(&mut out, pr.insts.key(n).as_str()); out.push_str(",\"base\":"); std::json::push_string(&mut out, pr.insts.items[at].base.as_str()); out.push_str(",\"sub\":["); for i in 0..pr.insts.items[at].sub.names.len() invariant 0 <= i && i <= pr.insts.items[at].sub.names.len(), { if i < pr.insts.items[at].sub.tys.len() { if i > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(&mut out, pr.insts.items[at].sub.names[i].as_str()); out.push_str(","); std::json::push_string(&mut out, types::text(&pr.insts.items[at].sub.tys[i]).as_str()); out.push_str("]"); } } out.push_str("]}\n"); },
+            }
+        }
+        for i in 0..pr.inst_types.len()
+            invariant 0 <= i && i <= pr.inst_types.len(),
+        {
+            out.push_str("{\"inst_type\":");
+            std::json::push_string(&mut out, types::text(&pr.inst_types[i]).as_str());
+            out.push_str("}\n");
+        }
+        for n in 0..pr.t.fns.len()
+            invariant 0 <= n,
+        {
+            match pr.t.fns.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pr.t.fns.key(n); out.push_str("{\"fn\":"); std::json::push_string(&mut out, path.as_str()); out.push_str(",\"params\":"); push_list(&mut out, param_sorts(pr.t.fns.items[at].params.as_slice(), &pr.t).as_slice()); out.push_str(",\"ret\":"); let mut one: Vec<ast::TypeKind> = Vec::new(); one.push(pr.t.fns.items[at].ret.clone()); push_list(&mut out, param_sorts(one.as_slice(), &pr.t).as_slice()); out.push_str(",\"funs\":["); if body::is_spec(pr.t.fns.items[at].kind) { let funs: Vec<Fun> = spec_funs(path.as_str(), &pr.t); for i in 0..funs.len() invariant 0 <= i && i <= funs.len(), { if i > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(&mut out, funs[i].name.as_str()); out.push_str(","); std::json::push_string(&mut out, funs[i].sort.as_str()); out.push_str("]"); } } out.push_str("],\"sorts\":"); std::json::push_string(&mut out, sort_decls(&pr.t.fns.items[at]).as_str()); out.push_str("}\n"); },
+            }
+        }
+        let dts: Vec<Decl> = datatypes(&pr.t, pr.inst_types.as_slice());
+        for i in 0..dts.len()
+            invariant 0 <= i && i <= dts.len(),
+        {
+            out.push_str("{\"datatype\":");
+            std::json::push_string(&mut out, dts[i].key.as_str());
+            out.push_str(",\"name\":");
+            std::json::push_string(&mut out, dts[i].name.as_str());
+            out.push_str(",\"decl\":");
+            std::json::push_string(&mut out, dts[i].decl.as_str());
+            out.push_str("}\n");
+        }
+        for n in 0..pr.text_sigs.len()
+            invariant 0 <= n,
+        {
+            match pr.text_sigs.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"text_sig\":"); std::json::push_string(&mut out, pr.text_sigs.key(n).as_str()); out.push_str(",\"params\":["); for i in 0..pr.text_sigs.items[at].params.len() invariant 0 <= i && i <= pr.text_sigs.items[at].params.len(), { if i > 0 { out.push_str(","); } decls::push_bool(&mut out, pr.text_sigs.items[at].params[i]); } out.push_str("],\"ret\":"); decls::push_bool(&mut out, pr.text_sigs.items[at].ret); out.push_str("}\n"); },
+            }
+        }
+        for n in 0..pr.context.len()
+            invariant 0 <= n,
+        {
+            match pr.context.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"context\":"); std::json::push_string(&mut out, pr.context.key(n).as_str()); out.push_str(",\"specs\":"); push_list(&mut out, pr.context.items[at].as_slice()); out.push_str("}\n"); },
+            }
+        }
+        out
+    }
+
+    #[summary("Every expression node of block b, in order (stage0 each_block_expr)")]
+    #[effects(alloc)]
+    fn each_block_expr(b: &ast::Block, out: &mut Vec<Node>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => each_expr(&sl.init, out, f - 1),
+                ast::Stmt::Assign(sa) => { each_expr(&sa.target, out, f - 1); each_expr(&sa.value, out, f - 1); },
+                ast::Stmt::While(sw) => { each_expr(&sw.cond, out, f - 1); each_exprs(sw.invariants.as_slice(), out, f - 1); match &sw.measure { None => {}, Some(wm) => each_expr(wm, out, f - 1), } each_block_expr(&sw.body, out, f - 1); },
+                ast::Stmt::For(sf) => { each_expr(&sf.lo, out, f - 1); each_expr(&sf.hi, out, f - 1); each_exprs(sf.invariants.as_slice(), out, f - 1); each_block_expr(&sf.body, out, f - 1); },
+                ast::Stmt::Assert(st) => each_expr(&st.cond, out, f - 1),
+                ast::Stmt::Assume(su) => each_expr(&su.cond, out, f - 1),
+                ast::Stmt::Proof(sp) => each_block_expr(&sp.body, out, f - 1),
+                ast::Stmt::LetFields(lf) => each_expr(&lf.init, out, f - 1),
+                ast::Stmt::Expr(se) => each_expr(se, out, f - 1),
+            }
+        }
+        each_opt(&b.tail, out, f - 1);
+    }
+
+    #[summary("Every expression node of e, specification parts included, the node before what it holds (stage0 each_expr). As there, the two ends of a range and the parts of a closure are not entered")]
+    #[effects(alloc)]
+    fn each_expr(e: &ast::Expr, out: &mut Vec<Node>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let at: usize = out.len();
+        out.push(Node { span: e.span, call: false, path: Vec::new() });
+        match &e.kind {
+            ast::ExprKind::Int(ee_int0, ee_int1) => {},
+            ast::ExprKind::Float(ee_float0) => {},
+            ast::ExprKind::ByteLit(ee_bytelit0) => {},
+            ast::ExprKind::ByteStr(ee_bytestr0) => {},
+            ast::ExprKind::StrLit(ee_strlit0) => {},
+            ast::ExprKind::CharLit(ee_charlit0) => {},
+            ast::ExprKind::Bool(ee_bool0) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(ee_var0) => {},
+            ast::ExprKind::Call(ca) => { if at < out.len() { out[at].call = true; out[at].path = ca.path.clone(); } each_exprs(ca.args.as_slice(), out, f - 1); },
+            ast::ExprKind::Method(me) => { each_expr(&*me.recv, out, f - 1); each_exprs(me.args.as_slice(), out, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { each_expr(&**ib, out, f - 1); each_expr(&**ii, out, f - 1); },
+            ast::ExprKind::Unary(ee_uo, ux) => each_expr(&**ux, out, f - 1),
+            ast::ExprKind::Binary(ee_bop, bl, br) => { each_expr(&**bl, out, f - 1); each_expr(&**br, out, f - 1); },
+            ast::ExprKind::Ref(ee_rm, rx) => each_expr(&**rx, out, f - 1),
+            ast::ExprKind::If(ife) => { each_expr(&*ife.cond, out, f - 1); each_block_expr(&ife.then, out, f - 1); each_opt(&ife.els, out, f - 1); },
+            ast::ExprKind::Block(blk) => each_block_expr(blk, out, f - 1),
+            ast::ExprKind::Array(ar) => each_exprs(ar.as_slice(), out, f - 1),
+            ast::ExprKind::Repeat(rp) => each_expr(&*rp.value, out, f - 1),
+            ast::ExprKind::Old(ox) => each_expr(&**ox, out, f - 1),
+            ast::ExprKind::Quant(qu) => each_expr(&*qu.body, out, f - 1),
+            ast::ExprKind::Trigger(tx) => each_expr(&**tx, out, f - 1),
+            ast::ExprKind::Closure(ee_closure0) => {},
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { each_expr(&sl.fields[i].value, out, f - 1); } each_opt(&sl.rest, out, f - 1); },
+            ast::ExprKind::Path(ee_path0) => {},
+            ast::ExprKind::Deref(dx) => each_expr(&**dx, out, f - 1),
+            ast::ExprKind::Field(fx, ee_fnm) => each_expr(&**fx, out, f - 1),
+            ast::ExprKind::Match(ma) => { each_expr(&*ma.scrut, out, f - 1); for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { each_expr(&ma.arms[j].body, out, f - 1); } },
+            ast::ExprKind::Return(rv) => each_opt(rv, out, f - 1),
+            ast::ExprKind::Try(tr) => each_expr(&**tr, out, f - 1),
+            ast::ExprKind::Loop(lp) => { each_exprs(lp.invariants.as_slice(), out, f - 1); each_opt(&lp.measure, out, f - 1); each_block_expr(&lp.body, out, f - 1); },
+            ast::ExprKind::Break(bk) => each_opt(&bk.value, out, f - 1),
+            ast::ExprKind::Continue(ee_continue0) => {},
+            ast::ExprKind::Range(rg) => { each_expr(&*rg.lo, out, f - 1); each_expr(&*rg.hi, out, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("each_expr of each expression of xs in order")]
+    #[effects(alloc)]
+    fn each_exprs(xs: &[ast::Expr], out: &mut Vec<Node>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            each_expr(&xs[i], out, f - 1);
+        }
+    }
+
+    #[summary("each_expr of the expression of o, if there is one")]
+    #[effects(alloc)]
+    fn each_opt(o: &Option<Box<ast::Expr>>, out: &mut Vec<Node>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => each_expr(&**x, out, f - 1),
+        }
+    }
+
+    #[summary("The leaves of an element of type e, each with the sort of its value for one element (stage0 elem_leaves): a struct's fields in order, an inner array's leaves one array level deeper (its fixed length is a constant), an inner Vec's leaves one level deeper and its length")]
+    #[effects(alloc)]
+    fn elem_leaves(e: &ast::TypeKind, tb: &lowered::Tables, suffix: &str, out: &mut Vec<Fun>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match flat_fields(e, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { elem_leaves(&fs[i].ty, tb, types::cat3(suffix, ".", fs[i].name.as_str()).as_str(), out, f - 1); } return; },
+        }
+        let sh: u8 = shape(e);
+        if sh == 3 {
+            return;
+        }
+        if sh == 4 || is_array(e) {
+            let inner: ast::TypeKind = elem_ty(e);
+            let mut el: Vec<Fun> = Vec::new();
+            elem_leaves(&inner, tb, types::cat2(suffix, ".e").as_str(), &mut el, f - 1);
+            for j in 0..el.len()
+                invariant 0 <= j && j <= el.len(),
+            {
+                out.push(Fun { name: el[j].name.clone(), sort: types::cat3("(Array Int ", el[j].sort.as_str(), ")") });
+            }
+            if sh != 4 {
+                out.push(Fun { name: types::cat2(suffix, ".len"), sort: String::from("Int") });
+            }
+            return;
+        }
+        out.push(Fun { name: String::from(suffix), sort: sort_of(e) });
+    }
+
+    #[summary("The element type of an array or of a reference to a slice; what another reference points to; other types as they are (stage0 elem_ty)")]
+    #[effects(alloc)]
+    fn elem_ty(t: &ast::TypeKind) -> ast::TypeKind {
+        let sh: u8 = shape(t);
+        if sh != 4 && sh != 5 && sh != 6 {
+            return t.clone();
+        }
+        let inner: ast::TypeKind = match body::under(t) {
+            None => { return t.clone(); },
+            Some(u) => u,
+        };
+        if sh != 6 {
+            return inner;
+        }
+        match body::slice_elem(&inner) {
+            None => inner,
+            Some(se) => se,
+        }
+    }
+
+    #[summary("Whether s ends with suf")]
+    #[effects(pure)]
+    fn ends_with(s: &str, suf: &str) -> bool {
+        if suf.len() > s.len() {
+            return false;
+        }
+        let from: usize = s.len() - suf.len();
+        for k in 0..suf.len()
+            invariant 0 <= k && k <= suf.len(),
+        {
+            if s.as_bytes()[from + k] != suf.as_bytes()[k] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Every enum instance a program uses, by type text, and the order that lists each one after the enums its payloads name (stage0 enum_dts). The types are those of expressions, of instances, of locals and of the signatures of functions that are not built in (a built-in's types count where it is called, ADR-0091 §4). A type text met again is not walked again: the walk of a type depends on its text alone")]
+    #[effects(alloc)]
+    fn enum_dts(tb: &lowered::Tables, inst_types: &[ast::TypeKind]) -> Dts {
+        let mut st: Dts = Dts { order: Vec::new(), dts: table::new::<Dt>() };
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        for n in 0..tb.types.len()
+            invariant 0 <= n,
+        {
+            match tb.types.nth(n) {
+                None => {},
+                Some(at) => visit_new(&tb.types.items[at], tb, &mut st, &mut seen),
+            }
+        }
+        for i in 0..inst_types.len()
+            invariant 0 <= i && i <= inst_types.len(),
+        {
+            visit_new(&inst_types[i], tb, &mut st, &mut seen);
+        }
+        for n in 0..tb.locals.len()
+            invariant 0 <= n,
+        {
+            match tb.locals.nth(n) {
+                None => {},
+                Some(at) => { for v in 0..tb.locals.items[at].len() invariant 0 <= v, { match tb.locals.items[at].nth(v) { None => {}, Some(i) => visit_new(&tb.locals.items[at].items[i], tb, &mut st, &mut seen), } } },
+            }
+        }
+        for n in 0..tb.fns.len()
+            invariant 0 <= n,
+        {
+            match tb.fns.nth(n) {
+                None => {},
+                Some(at) => { if !tb.fns.items[at].builtin { for k in 0..tb.fns.items[at].params.len() invariant 0 <= k && k <= tb.fns.items[at].params.len(), { visit_new(&tb.fns.items[at].params[k], tb, &mut st, &mut seen); } visit_new(&tb.fns.items[at].ret, tb, &mut st, &mut seen); } },
+            }
+        }
+        st
+    }
+
+    #[summary("The position of field name in struct t (stage0 field_index, which halts on a name the struct lacks: the checker admits none). The number of fields if there is no such field")]
+    #[effects(alloc)]
+    fn field_index(t: &ast::TypeKind, tb: &lowered::Tables, name: &str) -> usize {
+        match lowered::struct_fields(t, tb) {
+            None => 0,
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if fs[i].name.as_str() == name { return i; } } fs.len() },
+        }
+    }
+
+    #[summary("The fields of a struct the encoder holds as a tuple of leaves: every struct but a recursive one (dt_struct)")]
+    #[effects(alloc)]
+    fn flat_fields(t: &ast::TypeKind, tb: &lowered::Tables) -> Option<Vec<types::FieldSig>> {
+        if dt_struct(t, tb) {
+            return None;
+        }
+        lowered::struct_fields(t, tb)
+    }
+
+    #[summary("Whether the datatype is a recursive struct's")]
+    #[effects(pure)]
+    fn has_arb(d: &Dt) -> bool {
+        match &d.arb {
+            None => false,
+            Some(a) => true,
+        }
+    }
+
+    #[summary("Whether a value of type t holds an array anywhere (its SMT equality would compare elements past the length). A recursive type is visited once")]
+    #[effects(alloc)]
+    fn has_array(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        has_array_in(t, tb, &mut seen, 100000)
+    }
+
+    #[effects(alloc)]
+    fn has_array_in(t: &ast::TypeKind, tb: &lowered::Tables, seen: &mut table::Table<bool>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        if is_array(t) {
+            return true;
+        }
+        let k: String = types::text(t);
+        if seen.has(k.as_str()) {
+            return false;
+        }
+        seen.insert(k.as_str(), true);
+        match flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if has_array_in(&fs[i].ty, tb, seen, f - 1) { return true; } } return false; },
+        }
+        match variants(t, tb) {
+            None => false,
+            Some(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { if has_array_in(&vs[i].tys[j], tb, seen, f - 1) { return true; } } } false },
+        }
+    }
+
+    #[summary("Whether pat occurs in s")]
+    #[effects(pure)]
+    fn has_text(s: &str, pat: &str) -> bool {
+        match decls::first_of(s, pat, 0) {
+            None => false,
+            Some(i) => true,
+        }
+    }
+
+    #[summary("The text of the first type of component i")]
+    #[effects(alloc)]
+    fn head(comps: &[Vec<String>], i: usize) -> String {
+        if i < comps.len() && comps[i].len() > 0 {
+            comps[i][0].clone()
+        } else {
+            String::new()
+        }
+    }
+
+    #[summary("The types a value of t directly holds (fields, payloads, elements, what a reference points to), in the encoder's view (stage0 invariants::holds)")]
+    #[effects(alloc)]
+    fn holds(t: &ast::TypeKind, tb: &lowered::Tables) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        if is_array(t) {
+            out.push(elem_ty(t));
+            return out;
+        }
+        match body::ref_inner(t) {
+            None => {},
+            Some(inner) => { out.push(inner); return out; },
+        }
+        match lowered::struct_fields(t, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(fs[i].ty.clone()); } return out; },
+        }
+        match lowered::enum_variants(t, tb) {
+            None => {},
+            Some(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { for j in 0..vs[i].tys.len() invariant 0 <= j && j <= vs[i].tys.len(), { out.push(vs[i].tys[j].clone()); } } },
+        }
+        out
+    }
+
+    #[summary("Every generic invariant predicate instance a value of one of the types can need (stage0 invariants::instances, ADR-0060 §2): the predicate's parameters are the type's, in order")]
+    #[effects(alloc)]
+    fn instances(tb: &lowered::Tables, tys: &[ast::TypeKind]) -> Vec<InvInst> {
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut todo: Vec<ast::TypeKind> = Vec::new();
+        body::push_all(&mut todo, tys);
+        let mut out: Vec<InvInst> = Vec::new();
+        let mut fuel: usize = 1000000000;
+        while todo.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match todo.pop() {
+                None => {},
+                Some(t) => { let k: String = types::text(&t); if body::type_depth(&t, 100000) <= 8 && !seen.has(k.as_str()) { seen.insert(k.as_str(), true); let args: Vec<ast::TypeKind> = types::named_args(&t); if args.len() > 0 { match inv_of(&t, tb) { None => {}, Some(p) => { match tb.fns.find(p.as_str()) { None => {}, Some(at) => out.push(InvInst { key: body::inst_key(p.as_str(), args.as_slice()), base: p.clone(), sub: zip(tb.fns.items[at].generics.as_slice(), args.as_slice()) }), } }, } } let more: Vec<ast::TypeKind> = holds(&t, tb); body::push_all(&mut todo, more.as_slice()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("The invariant predicate of the data type t names (not through a reference)")]
+    #[effects(alloc)]
+    fn inv_of(t: &ast::TypeKind, tb: &lowered::Tables) -> Option<String> {
+        match types::named_path(t) {
+            None => None,
+            Some(p) => { match tb.adts.find(p.as_str()) { None => None, Some(at) => tb.adts.items[at].inv.clone(), } },
+        }
+    }
+
+    #[summary("Whether t is an array to the encoder (stage0 is_array): a fixed-size array or a reference to a slice")]
+    #[effects(alloc)]
+    fn is_array(t: &ast::TypeKind) -> bool {
+        let sh: u8 = shape(t);
+        if sh == 4 {
+            return true;
+        }
+        if sh != 6 {
+            return false;
+        }
+        match body::ref_inner(t) {
+            None => false,
+            Some(inner) => body::is_slice(&inner),
+        }
+    }
+
+    #[summary("Where pat last occurs in s")]
+    #[effects(pure)]
+    fn last_of(s: &str, pat: &str) -> Option<usize> {
+        let mut found: Option<usize> = None;
+        let mut from: usize = 0;
+        let mut fuel: usize = s.len();
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match decls::first_of(s, pat, from) {
+                None => { return found; },
+                Some(i) => { found = Some(i); from = i.saturating_add(1); },
+            }
+        }
+        found
+    }
+
+    #[summary("The last segment of the path of a named type, empty text otherwise")]
+    #[effects(alloc)]
+    fn last_seg(t: &ast::TypeKind) -> String {
+        match t {
+            ast::TypeKind::Int(ls_it) => String::new(),
+            ast::TypeKind::F64 => String::new(),
+            ast::TypeKind::Bool => String::new(),
+            ast::TypeKind::Unit => String::new(),
+            ast::TypeKind::Char => String::new(),
+            ast::TypeKind::String => String::new(),
+            ast::TypeKind::Str => String::new(),
+            ast::TypeKind::Array(ls_ae, ls_an) => String::new(),
+            ast::TypeKind::ArrayN(ls_ne, ls_nn) => String::new(),
+            ast::TypeKind::Slice(ls_se) => String::new(),
+            ast::TypeKind::Ref(ls_rm, ls_ri) => String::new(),
+            ast::TypeKind::Named(path, ls_args) => { if path.len() > 0 { path[path.len() - 1].clone() } else { String::new() } },
+            ast::TypeKind::Vec(ls_ve) => String::new(),
+            ast::TypeKind::Box(ls_be) => String::new(),
+            ast::TypeKind::Param(ls_pn) => String::new(),
+            ast::TypeKind::Never => String::new(),
+            ast::TypeKind::Error => String::new(),
+        }
+    }
+
+    #[summary("The sort of a leaf (stage0 Leaf::sort)")]
+    #[effects(alloc)]
+    fn leaf_sort(l: &Leaf) -> String {
+        match l {
+            Leaf::Scalar(st) => sort_of(st),
+            Leaf::Data(dt) => sort_of(dt),
+            Leaf::Elems(et) => types::cat3("(Array Int ", sort_of(et).as_str(), ")"),
+            Leaf::Leaves(s) => types::cat3("(Array Int ", s.as_str(), ")"),
+            Leaf::Len(lt, ln) => String::from("Int"),
+        }
+    }
+
+    #[summary("The leaves of a value of type t, named base + a suffix, in the order the encoder writes them (stage0 leaves). A struct or array element gives one array per leaf (ADR-0027 §2)")]
+    #[effects(alloc)]
+    fn leaves(t: &ast::TypeKind, tb: &lowered::Tables, base: &str, out: &mut Vec<NamedLeaf>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { leaves(&fs[i].ty, tb, types::cat3(base, ".", fs[i].name.as_str()).as_str(), out, f - 1); } return; },
+        }
+        let sh: u8 = shape(t);
+        if sh == 3 {
+            return;
+        }
+        if is_array(t) {
+            let e: ast::TypeKind = elem_ty(t);
+            if agg_elem(&e, tb) {
+                let mut el: Vec<Fun> = Vec::new();
+                elem_leaves(&e, tb, "", &mut el, 100000);
+                for j in 0..el.len()
+                    invariant 0 <= j && j <= el.len(),
+                {
+                    out.push(NamedLeaf { name: types::cat3(base, ".e", el[j].name.as_str()), leaf: Leaf::Leaves(el[j].sort.clone()) });
+                }
+            } else {
+                out.push(NamedLeaf { name: types::cat2(base, ".e"), leaf: Leaf::Elems(e.clone()) });
+            }
+            out.push(NamedLeaf { name: types::cat2(base, ".len"), leaf: Leaf::Len(e, array_len(t)) });
+            return;
+        }
+        if sh == 6 {
+            match body::ref_inner(t) {
+                None => {},
+                Some(inner) => leaves(&inner, tb, base, out, f - 1),
+            }
+            return;
+        }
+        if dt_struct(t, tb) {
+            out.push(NamedLeaf { name: String::from(base), leaf: Leaf::Data(t.clone()) });
+        } else {
+            out.push(NamedLeaf { name: String::from(base), leaf: Leaf::Scalar(t.clone()) });
+        }
+    }
+
+    #[summary("Whether a field sort of the datatype mentions symbol s")]
+    #[effects(pure)]
+    fn mentions(d: &Dt, s: &str) -> bool {
+        for i in 0..d.ctors.len()
+            invariant 0 <= i && i <= d.ctors.len(),
+        {
+            for j in 0..d.ctors[i].fields.len()
+                invariant 0 <= j && j <= d.ctors[i].fields.len(),
+            {
+                if has_text(d.ctors[i].fields[j].sort.as_str(), s) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[summary("The sorts of the leaves of values of the types params, in order (stage0 param_sorts)")]
+    #[effects(alloc)]
+    fn param_sorts(params: &[ast::TypeKind], tb: &lowered::Tables) -> Vec<String> {
+        let mut ls: Vec<NamedLeaf> = Vec::new();
+        for i in 0..params.len()
+            invariant 0 <= i && i <= params.len(),
+        {
+            leaves(&params[i], tb, "", &mut ls, 100000);
+        }
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..ls.len()
+            invariant 0 <= i && i <= ls.len(),
+        {
+            out.push(leaf_sort(&ls[i].leaf));
+        }
+        out
+    }
+
+    #[summary("The selector leaves of payload position k of variant v")]
+    #[effects(alloc)]
+    fn payload_leaves(t: &ast::TypeKind, v: &str, k: usize, pt: &ast::TypeKind, tb: &lowered::Tables) -> Vec<NamedLeaf> {
+        let mut base: String = types::cat4(types::text(&lowered::value_ty(t)).as_str(), "::", v, ".");
+        std::num::push_u64(&mut base, k as u64);
+        let mut ls: Vec<NamedLeaf> = Vec::new();
+        leaves(pt, tb, base.as_str(), &mut ls, 100000);
+        ls
+    }
+
+    #[summary("The encoder's tables (stage0 prepare): the slice view (ADR-0031 §3) with the instances of generic spec fns the program reaches (ADR-0046 §4). Each definition's generic calls, with type arguments in its own terms (a generic definition is proved once over its parameters as sorts), then each instance's body and each generic exec callee's contract under the substitution of the call; then the invariant predicates of generic types (ADR-0060 §2) at every type a value of the program has, until none is new. Instances get signatures of their own")]
+    #[effects(alloc)]
+    fn prepare(p: &ast::Program, low: &lowered::Tables) -> Prepared {
+        let mut view: lowered::Tables = slice_view(low);
+        let defs_by: table::Table<Def> = collect(p, &view);
+        let mut insts: table::Table<Inst> = table::new::<Inst>();
+        let mut seen_exec: table::Table<bool> = table::new::<bool>();
+        let mut found: Vec<ast::TypeKind> = Vec::new();
+        let mut work: Vec<Work> = Vec::new();
+        for n in 0..defs_by.len()
+            invariant 0 <= n,
+        {
+            work.push(Work { path: defs_by.key(n), sub: types::Subst { names: Vec::new(), tys: Vec::new() }, whole: true });
+        }
+        let mut grew: bool = true;
+        let mut rounds: usize = 1000000000;
+        while grew && rounds > 0
+            decreases rounds,
+        {
+            rounds = rounds - 1;
+            let mut fuel: usize = 1000000000;
+            while work.len() > 0 && fuel > 0
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match work.pop() {
+                    None => {},
+                    Some(w) => step(&w, &defs_by, &view, &mut insts, &mut seen_exec, &mut found, &mut work),
+                }
+            }
+            let mut all: Vec<ast::TypeKind> = Vec::new();
+            for n in 0..view.types.len()
+                invariant 0 <= n,
+            {
+                match view.types.nth(n) {
+                    None => {},
+                    Some(at) => all.push(view.types.items[at].clone()),
+                }
+            }
+            for n in 0..view.locals.len()
+                invariant 0 <= n,
+            {
+                match view.locals.nth(n) {
+                    None => {},
+                    Some(at) => { for v in 0..view.locals.items[at].len() invariant 0 <= v, { match view.locals.items[at].nth(v) { None => {}, Some(i) => all.push(view.locals.items[at].items[i].clone()), } } },
+                }
+            }
+            for n in 0..view.fns.len()
+                invariant 0 <= n,
+            {
+                match view.fns.nth(n) {
+                    None => {},
+                    Some(at) => { if !view.fns.items[at].builtin { body::push_all(&mut all, view.fns.items[at].params.as_slice()); all.push(view.fns.items[at].ret.clone()); } },
+                }
+            }
+            body::push_all(&mut all, found.as_slice());
+            grew = false;
+            let invs: Vec<InvInst> = instances(&view, all.as_slice());
+            for i in 0..invs.len()
+                invariant 0 <= i && i <= invs.len(),
+            {
+                if !insts.has(invs[i].key.as_str()) {
+                    insts.insert(invs[i].key.as_str(), Inst { base: invs[i].base.clone(), sub: invs[i].sub.clone() });
+                    work.push(Work { path: invs[i].base.clone(), sub: invs[i].sub.clone(), whole: true });
+                    grew = true;
+                }
+            }
+        }
+        for n in 0..insts.len()
+            invariant 0 <= n,
+        {
+            match insts.nth(n) {
+                None => {},
+                Some(at) => { match view.fns.find(insts.items[at].base.as_str()) { None => {}, Some(b) => { let key: String = insts.key(n); let mut sig: types::FnSig = view.fns.items[b].clone(); sig.path = key.clone(); sig.params = subst_all(view.fns.items[b].params.as_slice(), &insts.items[at].sub); sig.ret = types::subst(&view.fns.items[b].ret, &insts.items[at].sub); let none: Vec<types::TParam> = Vec::new(); sig.generics = none; sig.impl_generics = 0; body::push_all(&mut found, sig.params.as_slice()); found.push(sig.ret.clone()); view.fns.insert(key.as_str(), sig); }, } },
+            }
+        }
+        Prepared { t: view, insts: insts, inst_types: found, text_sigs: table::new::<TextSig>(), context: table::new::<Vec<String>>() }
+    }
+
+    #[summary("The encoder's tables of a checked program: prepare over its lowered tables, with the text signatures (stage0 Checker::into_tables) and the default contexts (stage0 check_resolved) the port's checked form does not carry")]
+    #[effects(alloc)]
+    fn prepared(ck: &body::Checked) -> Prepared {
+        let low: lowered::Tables = lowered::tables(ck);
+        let mut pr: Prepared = prepare(&ck.program, &low);
+        pr.text_sigs = text_sigs(ck);
+        pr.context = default_contexts(&ck.program, &low);
+        pr
+    }
+
+    #[summary("Adds to ctx the names table t holds under key k")]
+    #[effects(alloc)]
+    fn push_at(ctx: &mut Vec<String>, t: &table::Table<Vec<String>>, k: &str) -> () {
+        match t.find(k) {
+            None => {},
+            Some(at) => { for i in 0..t.items[at].len() invariant 0 <= i && i <= t.items[at].len(), { ctx.push(t.items[at][i].clone()); } },
+        }
+    }
+
+    #[summary("Texts in order as a JSON array")]
+    #[effects(alloc)]
+    fn push_list(out: &mut String, xs: &[String]) -> () {
+        out.push_str("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, xs[i].as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[summary("Adds to ctx the spec fns that the clauses, measure and body of definition q name, if there is such a definition")]
+    #[effects(alloc)]
+    fn push_whole(ctx: &mut Vec<String>, by_path: &table::Table<Def>, q: &str, tb: &lowered::Tables) -> () {
+        match by_path.find(q) {
+            None => {},
+            Some(at) => { let ss: Vec<String> = specs_of(calls(&by_path.items[at].d, by_path.items[at].unit.as_str(), false, tb).as_slice(), tb); for i in 0..ss.len() invariant 0 <= i && i <= ss.len(), { ctx.push(ss[i].clone()); } },
+        }
+    }
+
+    #[summary("For a trait impl's function path: the trait method it implements and the substitution that states the trait's contract for it (stage0 refinement_of, ADR-0046 §4): Self by the implementing type, the method's own type parameters by the impl function's")]
+    #[effects(alloc)]
+    fn refinement_of(tb: &lowered::Tables, path: &str) -> Option<Inst> {
+        let at: usize = match tb.fns.find(path) {
+            None => { return None; },
+            Some(i) => i,
+        };
+        if !tb.fns.items[at].in_impl || path.len() == 0 || path.as_bytes()[0] != 60 {
+            return None;
+        }
+        let segs: Vec<String> = refs::split_path(path);
+        if segs.len() == 0 {
+            return None;
+        }
+        let name: String = segs[segs.len() - 1].clone();
+        for k in 0..tb.trait_impls.len()
+            invariant 0 <= k && k <= tb.trait_impls.len(),
+        {
+            if types::fn_path(&tb.trait_impls[k], name.as_str()).as_str() == path {
+                let decl: String = types::cat3(tb.trait_impls[k].trait_path.as_str(), "::", name.as_str());
+                let dat: usize = match tb.fns.find(decl.as_str()) {
+                    None => { return None; },
+                    Some(j) => j,
+                };
+                let mut sub: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() };
+                bind(&mut sub, "Self", tb.trait_impls[k].head.clone());
+                let dfrom: usize = tb.fns.items[dat].impl_generics;
+                let sfrom: usize = tb.fns.items[at].impl_generics;
+                for g in 0..tb.fns.items[dat].generics.len()
+                    invariant 0 <= g && g <= tb.fns.items[dat].generics.len(),
+                {
+                    if g >= dfrom {
+                        let other: usize = sfrom.saturating_add(g - dfrom);
+                        if other < tb.fns.items[at].generics.len() {
+                            bind(&mut sub, tb.fns.items[dat].generics[g].name.as_str(), ast::TypeKind::Param(tb.fns.items[at].generics[other].name.clone()));
+                        }
+                    }
+                }
+                return Some(Inst { base: decl, sub: sub });
+            }
+        }
+        None
+    }
+
+    #[summary("The definition a call path from unit mod_path names (stage0 resolve_in): a function of the unit by its name, or by two segments when the first is a type of the unit or the function is a trait's method; otherwise the path as written")]
+    #[effects(alloc)]
+    fn resolve_in(tb: &lowered::Tables, path: &[ast::Ident], mod_path: &str) -> String {
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len(),
+        {
+            names.push(path[i].name.clone());
+        }
+        let name: String = types::join(names.as_slice(), "::");
+        let local: String = types::cat3(mod_path, "::", name.as_str());
+        match tb.fns.find(local.as_str()) {
+            None => name,
+            Some(at) => { if path.len() == 1 { local } else if path.len() == 2 && (tb.adts.has(types::cat3(mod_path, "::", path[0].name.as_str()).as_str()) || trait_method(&tb.fns.items[at])) { local } else { name } },
+        }
+    }
+
+    #[summary("Shape of a type: 1 Bool, 2 F64, 3 the unit type, 4 fixed-size array, 5 slice, 6 reference, 7 named type, 8 type parameter, 9 Vec, 10 Box, 0 the rest")]
+    #[effects(pure)]
+    fn shape(t: &ast::TypeKind) -> u8 {
+        match t {
+            ast::TypeKind::Int(sh_it) => 0,
+            ast::TypeKind::F64 => 2,
+            ast::TypeKind::Bool => 1,
+            ast::TypeKind::Unit => 3,
+            ast::TypeKind::Char => 0,
+            ast::TypeKind::String => 0,
+            ast::TypeKind::Str => 0,
+            ast::TypeKind::Array(sh_ae, sh_an) => 4,
+            ast::TypeKind::ArrayN(sh_ne, sh_nn) => 0,
+            ast::TypeKind::Slice(sh_se) => 5,
+            ast::TypeKind::Ref(sh_rm, sh_ri) => 6,
+            ast::TypeKind::Named(sh_path, sh_args) => 7,
+            ast::TypeKind::Vec(sh_ve) => 9,
+            ast::TypeKind::Box(sh_be) => 10,
+            ast::TypeKind::Param(sh_pn) => 8,
+            ast::TypeKind::Never => 0,
+            ast::TypeKind::Error => 0,
+        }
+    }
+
+    #[summary("The tables as the encoder sees them (stage0 Tables::slice_view, ADR-0031 §3): each type by view. The operations that change a length and a callee taking &mut Vec<T> are told apart by the program text")]
+    #[effects(alloc)]
+    fn slice_view(low: &lowered::Tables) -> lowered::Tables {
+        let mut fns: table::Table<types::FnSig> = table::new::<types::FnSig>();
+        for n in 0..low.fns.len()
+            invariant 0 <= n,
+        {
+            match low.fns.nth(n) {
+                None => {},
+                Some(at) => { let mut s: types::FnSig = low.fns.items[at].clone(); s.params = view_all(low.fns.items[at].params.as_slice()); s.ret = view(&low.fns.items[at].ret); fns.insert(low.fns.key(n).as_str(), s); },
+            }
+        }
+        let mut adts: table::Table<types::Adt> = table::new::<types::Adt>();
+        for n in 0..low.adts.len()
+            invariant 0 <= n,
+        {
+            match low.adts.nth(n) {
+                None => {},
+                Some(at) => { let mut a: types::Adt = low.adts.items[at].clone(); a.kind = match &low.adts.items[at].kind { types::AdtKind::Struct(fs) => { let mut vf: Vec<types::FieldSig> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { vf.push(types::FieldSig { name: fs[i].name.clone(), ty: view(&fs[i].ty) }); } types::AdtKind::Struct(vf) }, types::AdtKind::Enum(vs) => { let mut vv: Vec<types::VariantSig> = Vec::new(); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { vv.push(types::VariantSig { name: vs[i].name.clone(), tys: view_all(vs[i].tys.as_slice()) }); } types::AdtKind::Enum(vv) }, }; adts.insert(low.adts.key(n).as_str(), a); },
+            }
+        }
+        let mut trait_impls: Vec<types::TraitImplInfo> = Vec::new();
+        for i in 0..low.trait_impls.len()
+            invariant 0 <= i && i <= low.trait_impls.len(),
+        {
+            let mut ti: types::TraitImplInfo = low.trait_impls[i].clone();
+            ti.head = view(&low.trait_impls[i].head);
+            trait_impls.push(ti);
+        }
+        let mut locals: table::Table<table::Table<ast::TypeKind>> = table::new::<table::Table<ast::TypeKind>>();
+        for n in 0..low.locals.len()
+            invariant 0 <= n,
+        {
+            match low.locals.nth(n) {
+                None => {},
+                Some(at) => { let mut vars: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>(); for v in 0..low.locals.items[at].len() invariant 0 <= v, { match low.locals.items[at].nth(v) { None => {}, Some(i) => vars.insert(low.locals.items[at].key(v).as_str(), view(&low.locals.items[at].items[i])), } } locals.insert(low.locals.key(n).as_str(), vars); },
+            }
+        }
+        let mut tys: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        for n in 0..low.types.len()
+            invariant 0 <= n,
+        {
+            match low.types.nth(n) {
+                None => {},
+                Some(at) => tys.insert(low.types.key(n).as_str(), view(&low.types.items[at])),
+            }
+        }
+        let mut targs: table::Table<Vec<ast::TypeKind>> = table::new::<Vec<ast::TypeKind>>();
+        for n in 0..low.targs.len()
+            invariant 0 <= n,
+        {
+            match low.targs.nth(n) {
+                None => {},
+                Some(at) => targs.insert(low.targs.key(n).as_str(), view_all(low.targs.items[at].as_slice())),
+            }
+        }
+        lowered::Tables { fns: fns, adts: adts, trait_impls: trait_impls, locals: locals, types: tys, targs: targs, text: low.text.clone() }
+    }
+
+    #[summary("The sorts of a generic definition's type parameters (ADR-0046 §4) and a value of each (the base of an empty array), as declarations (stage0 sort_decls). A parameter bounded by Ord has an uninterpreted total order le (reflexive, antisymmetric, transitive, total: the contract of the built-in Ord)")]
+    #[effects(alloc)]
+    fn sort_decls(sig: &types::FnSig) -> String {
+        let mut d: String = String::new();
+        for i in 0..sig.generics.len()
+            invariant 0 <= i && i <= sig.generics.len(),
+        {
+            let s: String = sym(types::cat2("'", sig.generics[i].name.as_str()).as_str());
+            d.push_str(types::cat7("(declare-sort ", s.as_str(), " 0)\n(declare-const ", sym(types::cat3("'", sig.generics[i].name.as_str(), ".default").as_str()).as_str(), " ", s.as_str(), ")\n").as_str());
+            if types::has(sig.generics[i].bounds.as_slice(), "Ord") {
+                let le: String = sym(types::cat3("'", sig.generics[i].name.as_str(), ".le").as_str());
+                let ab: String = types::cat5("((a ", s.as_str(), ") (b ", s.as_str(), "))");
+                let l_ab: String = types::cat3("(", le.as_str(), " a b)");
+                let l_ba: String = types::cat3("(", le.as_str(), " b a)");
+                let l_bc: String = types::cat3("(", le.as_str(), " b c)");
+                let l_aa: String = types::cat3("(", le.as_str(), " a a)");
+                d.push_str(types::cat7("(declare-fun ", le.as_str(), " (", s.as_str(), " ", s.as_str(), ") Bool)\n").as_str());
+                d.push_str(types::cat7("(assert (forall ((a ", s.as_str(), ")) (! ", l_aa.as_str(), " :pattern (", l_aa.as_str(), "))))\n").as_str());
+                d.push_str(types::cat7("(assert (forall ", ab.as_str(), " (! (=> (and ", l_ab.as_str(), " ", l_ba.as_str(), ") (= a b)) :pattern (").as_str());
+                d.push_str(types::cat4(l_ab.as_str(), " ", l_ba.as_str(), "))))\n").as_str());
+                d.push_str(types::cat7("(assert (forall ((a ", s.as_str(), ") (b ", s.as_str(), ") (c ", s.as_str(), ")) (! (=> (and ").as_str());
+                d.push_str(types::cat7(l_ab.as_str(), " ", l_bc.as_str(), ") (", le.as_str(), " a c)) :pattern (", l_ab.as_str()).as_str());
+                d.push_str(types::cat3(" ", l_bc.as_str(), "))))\n").as_str());
+                d.push_str(types::cat7("(assert (forall ", ab.as_str(), " (! (or ", l_ab.as_str(), " ", l_ba.as_str(), ") :pattern (").as_str());
+                d.push_str(types::cat2(l_ab.as_str(), "))))\n").as_str());
+            }
+        }
+        d
+    }
+
+    #[effects(alloc)]
+    fn sort_in(t: &ast::TypeKind, f: usize) -> String
+        decreases f,
+    {
+        let sh: u8 = shape(t);
+        if sh == 1 {
+            return String::from("Bool");
+        }
+        if sh == 2 {
+            return String::from("Float64");
+        }
+        if sh == 8 {
+            match types::param_name(t) {
+                None => {},
+                Some(n) => { return sym(types::cat2("'", n.as_str()).as_str()); },
+            }
+            return String::from("Int");
+        }
+        if sh == 7 {
+            return sym(types::text(t).as_str());
+        }
+        if sh == 6 && f > 0 {
+            match body::ref_inner(t) {
+                None => {},
+                Some(inner) => { if !body::is_slice(&inner) { return sort_in(&inner, f - 1); } },
+            }
+        }
+        String::from("Int")
+    }
+
+    #[summary("The sort of a scalar value of type t (stage0 sort_of): a type parameter is an uninterpreted sort (ADR-0046 §4), an enum is a datatype named after its type (ADR-0027 §3), a reference has the sort of what it points to")]
+    #[effects(alloc)]
+    fn sort_of(t: &ast::TypeKind) -> String {
+        sort_in(t, 100000)
+    }
+
+    #[summary("Whether path is a spec fn of the tables")]
+    #[effects(pure)]
+    fn spec_fn(tb: &lowered::Tables, path: &str) -> bool {
+        match tb.fns.find(path) {
+            None => false,
+            Some(at) => body::is_spec(tb.fns.items[at].kind),
+        }
+    }
+
+    #[summary("The SMT functions of spec fn path with their result sorts (stage0 spec_funs): one, or one per leaf of a struct result (|geo::mid.x|)")]
+    #[effects(alloc)]
+    fn spec_funs(path: &str, tb: &lowered::Tables) -> Vec<Fun> {
+        let mut out: Vec<Fun> = Vec::new();
+        match tb.fns.find(path) {
+            None => {},
+            Some(at) => { match flat_fields(&tb.fns.items[at].ret, tb) { None => out.push(Fun { name: sym(path), sort: sort_of(&tb.fns.items[at].ret) }), Some(fs) => { let mut ls: Vec<NamedLeaf> = Vec::new(); leaves(&tb.fns.items[at].ret, tb, path, &mut ls, 100000); for i in 0..ls.len() invariant 0 <= i && i <= ls.len(), { out.push(Fun { name: sym(ls[i].name.as_str()), sort: leaf_sort(&ls[i].leaf) }); } }, } },
+        }
+        out
+    }
+
+    #[summary("What marks spec fn path in a query text (stage0 spec_key): its symbol, or the prefix of its leaf symbols")]
+    #[effects(alloc)]
+    fn spec_key(path: &str, tb: &lowered::Tables) -> String {
+        match tb.fns.find(path) {
+            None => sym(path),
+            Some(at) => { match flat_fields(&tb.fns.items[at].ret, tb) { None => sym(path), Some(fs) => types::cat3("|", path, "."), } },
+        }
+    }
+
+    #[summary("Those of the names that are spec fns")]
+    #[effects(alloc)]
+    fn specs_of(names: &[String], tb: &lowered::Tables) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..names.len()
+            invariant 0 <= i && i <= names.len(),
+        {
+            if spec_fn(tb, names[i].as_str()) {
+                out.push(names[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("One entry of the work list of prepare: the types of an instance's values under its substitution, and the generic calls of the definition's clauses (and, when whole, of its measure and body). A call of a generic spec fn is a new instance, read whole; a call of a generic exec function has its contract read under the substitution of the call. A trait impl's function is also checked against the trait's contract, stated for it. A path without a definition is left alone (stage0 halts there: every such path has one)")]
+    #[effects(alloc)]
+    fn step(w: &Work, defs_by: &table::Table<Def>, view: &lowered::Tables, insts: &mut table::Table<Inst>, seen_exec: &mut table::Table<bool>, found: &mut Vec<ast::TypeKind>, work: &mut Vec<Work>) -> () {
+        let inst: bool = w.sub.names.len() > 0;
+        if w.whole && !inst {
+            match refinement_of(view, w.path.as_str()) {
+                None => {},
+                Some(r) => { if defs_by.has(r.base.as_str()) { work.push(Work { path: r.base.clone(), sub: r.sub.clone(), whole: false }); } },
+            }
+        }
+        let at: usize = match defs_by.find(w.path.as_str()) {
+            None => { return; },
+            Some(i) => i,
+        };
+        if inst {
+            match view.locals.find(w.path.as_str()) {
+                None => {},
+                Some(l) => { for v in 0..view.locals.items[l].len() invariant 0 <= v, { match view.locals.items[l].nth(v) { None => {}, Some(i) => found.push(types::subst(&view.locals.items[l].items[i], &w.sub)), } } },
+            }
+            match view.fns.find(w.path.as_str()) {
+                None => {},
+                Some(s) => { for k in 0..view.fns.items[s].params.len() invariant 0 <= k && k <= view.fns.items[s].params.len(), { found.push(types::subst(&view.fns.items[s].params[k], &w.sub)); } found.push(types::subst(&view.fns.items[s].ret, &w.sub)); },
+            }
+        }
+        let mut nodes: Vec<Node> = Vec::new();
+        each_exprs(defs_by.items[at].d.pre.as_slice(), &mut nodes, 1000000000);
+        each_exprs(defs_by.items[at].d.post.as_slice(), &mut nodes, 1000000000);
+        if w.whole {
+            match &defs_by.items[at].d.measure {
+                None => {},
+                Some(m) => each_expr(m, &mut nodes, 1000000000),
+            }
+            each_block_expr(&defs_by.items[at].d.body, &mut nodes, 1000000000);
+        }
+        for i in 0..nodes.len()
+            invariant 0 <= i && i <= nodes.len(),
+        {
+            if inst || nodes[i].call {
+                let sk: String = body::span_key(nodes[i].span);
+                if inst {
+                    match view.types.find(sk.as_str()) {
+                        None => {},
+                        Some(ty) => found.push(types::subst(&view.types.items[ty], &w.sub)),
+                    }
+                }
+                if nodes[i].call {
+                    match view.targs.find(sk.as_str()) {
+                        None => {},
+                        Some(ta) => step_call(nodes[i].path.as_slice(), subst_all(view.targs.items[ta].as_slice(), &w.sub).as_slice(), defs_by.items[at].unit.as_str(), view, insts, seen_exec, work),
+                    }
+                }
+            }
+        }
+    }
+
+    #[summary("One generic call of step: the call of path from unit with type arguments args (in the caller's terms)")]
+    #[effects(alloc)]
+    fn step_call(path: &[ast::Ident], args: &[ast::TypeKind], unit: &str, view: &lowered::Tables, insts: &mut table::Table<Inst>, seen_exec: &mut table::Table<bool>, work: &mut Vec<Work>) -> () {
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            if body::type_depth(&args[i], 100000) > 8 {
+                return;
+            }
+        }
+        let d: body::Dispatched = dispatched(view, resolve_in(view, path, unit).as_str(), args);
+        if d.args.len() == 0 {
+            return;
+        }
+        let at: usize = match view.fns.find(d.path.as_str()) {
+            None => { return; },
+            Some(i) => i,
+        };
+        let csub: types::Subst = zip(view.fns.items[at].generics.as_slice(), d.args.as_slice());
+        let key: String = body::inst_key(d.path.as_str(), d.args.as_slice());
+        if body::is_spec(view.fns.items[at].kind) {
+            if !insts.has(key.as_str()) {
+                insts.insert(key.as_str(), Inst { base: d.path.clone(), sub: csub.clone() });
+                work.push(Work { path: d.path.clone(), sub: csub.clone(), whole: true });
+            }
+        } else if !seen_exec.has(key.as_str()) {
+            seen_exec.insert(key.as_str(), true);
+            work.push(Work { path: d.path.clone(), sub: csub.clone(), whole: false });
+        }
+    }
+
+    #[summary("Whether the struct instance t (through a reference) contains itself through structs alone (stage0 check::struct_cycle over the encoder's tables: fields, arrays, slices and references, no enum in between)")]
+    #[effects(alloc)]
+    fn struct_cycle(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        let v: ast::TypeKind = match body::ref_inner(t) {
+            None => t.clone(),
+            Some(inner) => inner,
+        };
+        let target: String = types::text(&v);
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut todo: Vec<ast::TypeKind> = struct_parts(&v, tb);
+        let mut fuel: usize = 1000000000;
+        while todo.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match todo.pop() {
+                None => {},
+                Some(c) => { let k: String = types::text(&c); if k == target { return true; } if !seen.has(k.as_str()) { seen.insert(k.as_str(), true); let more: Vec<ast::TypeKind> = struct_parts(&c, tb); body::push_all(&mut todo, more.as_slice()); } },
+            }
+        }
+        false
+    }
+
+    #[summary("The structs the fields of struct t (not through a reference) hold through arrays, slices, Vec, Box and references")]
+    #[effects(alloc)]
+    fn struct_parts(t: &ast::TypeKind, tb: &lowered::Tables) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        if shape(t) != 7 {
+            return out;
+        }
+        match lowered::struct_fields(t, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { struct_under(&fs[i].ty, tb, &mut out, 100000); } },
+        }
+        out
+    }
+
+    #[summary("The structs under t into out: t itself if it is a struct, what is inside if it is an array, slice, Vec, Box or reference")]
+    #[effects(alloc)]
+    fn struct_under(t: &ast::TypeKind, tb: &lowered::Tables, out: &mut Vec<ast::TypeKind>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match body::under(t) {
+            None => { match types::named_path(t) { None => {}, Some(path) => { match tb.adts.find(path.as_str()) { None => {}, Some(at) => { if body::struct_kind(&tb.adts.items[at].kind) { out.push(t.clone()); } }, } }, } },
+            Some(e) => struct_under(&e, tb, out, f - 1),
+        }
+    }
+
+    #[summary("Each of ts with the type parameters of m replaced")]
+    #[effects(alloc)]
+    fn subst_all(ts: &[ast::TypeKind], m: &types::Subst) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            out.push(types::subst(&ts[i], m));
+        }
+        out
+    }
+
+    #[summary("An SMT symbol: the name between bars")]
+    #[effects(alloc)]
+    fn sym(name: &str) -> String {
+        types::cat3("|", name, "|")
+    }
+
+    #[summary("Strongly connected components reachable from v, dependencies first (the Tarjan of stage0 datatypes): each component in the order its types were reached. Neighbors are visited in the order deps lists them")]
+    #[effects(alloc)]
+    fn tarjan(t: &mut body::Scc, deps: &table::Table<Vec<String>>, v: &str, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let order: usize = t.next;
+        t.index.insert(v, order);
+        t.low.insert(v, order);
+        if t.next < 1000000000 {
+            t.next = t.next + 1;
+        }
+        t.stack.push(String::from(v));
+        t.on.push(String::from(v));
+        let ws: Vec<String> = match deps.find(v) {
+            None => Vec::new(),
+            Some(at) => deps.items[at].clone(),
+        };
+        for i in 0..ws.len()
+            invariant 0 <= i && i <= ws.len(),
+        {
+            if !t.index.has(ws[i].as_str()) {
+                tarjan(t, deps, ws[i].as_str(), f - 1);
+                let lw: usize = body::at_or_zero(&t.low, ws[i].as_str());
+                body::lower_to(&mut t.low, v, lw);
+            } else if types::has(t.on.as_slice(), ws[i].as_str()) {
+                let iw: usize = body::at_or_zero(&t.index, ws[i].as_str());
+                body::lower_to(&mut t.low, v, iw);
+            }
+        }
+        if body::at_or_zero(&t.low, v) == body::at_or_zero(&t.index, v) {
+            let mut comp: Vec<String> = Vec::new();
+            let mut done: bool = false;
+            let mut left: usize = t.stack.len();
+            while !done && left > 0
+                invariant 0 <= left,
+                decreases left,
+            {
+                left = left - 1;
+                match t.stack.pop() {
+                    None => { done = true; },
+                    Some(w) => { t.on = body::without(t.on.as_slice(), w.as_str()); if w.as_str() == v { done = true; } comp.push(w); },
+                }
+            }
+            t.out.push(comp);
+        }
+    }
+
+    #[summary("Which parameters and whether the result of each function are text, by path, for the functions that have any (stage0 Checker::into_tables, ADR-0050 §3): the values the prover assumes valid UTF-8 where they enter a definition")]
+    #[effects(alloc)]
+    fn text_sigs(ck: &body::Checked) -> table::Table<TextSig> {
+        let mut out: table::Table<TextSig> = table::new::<TextSig>();
+        for n in 0..ck.b.c.fns.len()
+            invariant 0 <= n,
+        {
+            match ck.b.c.fns.nth(n) {
+                None => {},
+                Some(at) => { let mut ps: Vec<bool> = Vec::new(); let ret: bool = body::is_text(&ck.b.c.fns.items[at].ret); let mut any: bool = ret; for k in 0..ck.b.c.fns.items[at].params.len() invariant 0 <= k && k <= ck.b.c.fns.items[at].params.len(), { let is: bool = body::is_text(&ck.b.c.fns.items[at].params[k]); if is { any = true; } ps.push(is); } if any { out.insert(ck.b.c.fns.key(n).as_str(), TextSig { params: ps.clone(), ret: ret }); } },
+            }
+        }
+        out
+    }
+
+    #[summary("The method declarations of every trait of m and of its units into out, by path unit::Trait::f (stage0 check::trait_decls). A path that already has a definition keeps it")]
+    #[effects(alloc)]
+    fn trait_decls(m: &ast::Mod, prefix: &str, out: &mut table::Table<Def>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            trait_decls(&m.mods[i], sub.as_str(), out, f - 1);
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            for j in 0..m.traits[i].fns.len()
+                invariant 0 <= j && j <= m.traits[i].fns.len(),
+            {
+                let path: String = types::cat4(sub.as_str(), m.traits[i].name.name.as_str(), "::", m.traits[i].fns[j].f.name.name.as_str());
+                if !out.has(path.as_str()) {
+                    out.insert(path.as_str(), Def { unit: mp.clone(), d: m.traits[i].fns[j].f.clone() });
+                }
+            }
+        }
+    }
+
+    #[summary("Whether the function is a method of a trait declaration")]
+    #[effects(pure)]
+    fn trait_method(s: &types::FnSig) -> bool {
+        match &s.trait_of {
+            None => false,
+            Some(tr) => true,
+        }
+    }
+
+    #[summary("The definitions the #[uses(..)] of d name from unit mod_path, in order, once each (stage0 uses_of)")]
+    #[effects(alloc)]
+    fn uses_of(d: &ast::FnDef, mod_path: &str, fns: &table::Table<types::FnSig>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..d.attrs.len()
+            invariant 0 <= i && i <= d.attrs.len(),
+        {
+            if d.attrs[i].name.name == "uses" {
+                for j in 0..d.attrs[i].args.len()
+                    invariant 0 <= j && j <= d.attrs[i].args.len(),
+                {
+                    match &d.attrs[i].args[j] {
+                        ast::AttrArg::Ident(id) => { match decls::uses_target(id.name.as_str(), mod_path, fns) { None => {}, Some(full) => out.push(full), } },
+                        ast::AttrArg::Str(uo_s, uo_at) => {},
+                        ast::AttrArg::Pair(uo_k, uo_v) => {},
+                    }
+                }
+            }
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("The variants of the datatype of t: an enum's, or the one constructor of a recursive struct with its fields as the payload")]
+    #[effects(alloc)]
+    fn variants(t: &ast::TypeKind, tb: &lowered::Tables) -> Option<Vec<types::VariantSig>> {
+        if !dt_struct(t, tb) {
+            return lowered::enum_variants(t, tb);
+        }
+        match lowered::struct_fields(t, tb) {
+            None => None,
+            Some(fs) => { let mut tys: Vec<ast::TypeKind> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { tys.push(fs[i].ty.clone()); } let mut out: Vec<types::VariantSig> = Vec::new(); out.push(types::VariantSig { name: dt_ctor_name(t), tys: tys }); Some(out) },
+        }
+    }
+
+    #[summary("The element type of a Vec, with its position")]
+    #[effects(alloc)]
+    fn vec_type(t: &ast::TypeKind) -> Option<ast::Type> {
+        match t {
+            ast::TypeKind::Int(vt_it) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(vt_ae, vt_an) => None,
+            ast::TypeKind::ArrayN(vt_ne, vt_nn) => None,
+            ast::TypeKind::Slice(vt_se) => None,
+            ast::TypeKind::Ref(vt_rm, vt_ri) => None,
+            ast::TypeKind::Named(vt_path, vt_args) => None,
+            ast::TypeKind::Vec(ve) => Some((**ve).clone()),
+            ast::TypeKind::Box(vt_be) => None,
+            ast::TypeKind::Param(vt_pn) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("Type t as the encoder sees it (the view of stage0 Tables::slice_view, ADR-0031 §3): text is bytes and char is u32 (lowered::lower), a Vec<T> is a slice value, the pair of its element array and length, &Vec<T> and &mut Vec<T> are slice references, a Box<T> is its value T everywhere (ADR-0047 §3), also in fields, payloads and type arguments")]
+    #[effects(alloc)]
+    fn view(t: &ast::TypeKind) -> ast::TypeKind {
+        view_in(&lowered::lower(t), 100000)
+    }
+
+    #[summary("view of each of ts")]
+    #[effects(alloc)]
+    fn view_all(ts: &[ast::TypeKind]) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        for i in 0..ts.len()
+            invariant 0 <= i && i <= ts.len(),
+        {
+            out.push(view(&ts[i]));
+        }
+        out
+    }
+
+    #[summary("view of a lowered type")]
+    #[effects(alloc)]
+    fn view_in(t: &ast::TypeKind, f: usize) -> ast::TypeKind
+        decreases f * 2,
+    {
+        if f == 0 {
+            return t.clone();
+        }
+        match t {
+            ast::TypeKind::Int(vw_it) => t.clone(),
+            ast::TypeKind::F64 => t.clone(),
+            ast::TypeKind::Bool => t.clone(),
+            ast::TypeKind::Unit => t.clone(),
+            ast::TypeKind::Char => t.clone(),
+            ast::TypeKind::String => t.clone(),
+            ast::TypeKind::Str => t.clone(),
+            ast::TypeKind::Array(ae, an) => ast::TypeKind::Array(Box::new(view_type(&**ae, f - 1)), *an),
+            ast::TypeKind::ArrayN(vw_ne, vw_nn) => t.clone(),
+            ast::TypeKind::Slice(se) => ast::TypeKind::Slice(Box::new(view_type(&**se, f - 1))),
+            ast::TypeKind::Ref(rm, ri) => { match vec_type(&ri.kind) { None => ast::TypeKind::Ref(*rm, Box::new(view_type(&**ri, f - 1))), Some(re) => ast::TypeKind::Ref(*rm, Box::new(ast::Type { kind: ast::TypeKind::Slice(Box::new(view_type(&re, f - 1))), span: re.span })), } },
+            ast::TypeKind::Named(path, args) => { let mut out: Vec<ast::Type> = Vec::new(); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { out.push(view_type(&args[i], f - 1)); } ast::TypeKind::Named(path.clone(), out) },
+            ast::TypeKind::Vec(ve) => ast::TypeKind::Ref(false, Box::new(ast::Type { kind: ast::TypeKind::Slice(Box::new(view_type(&**ve, f - 1))), span: ve.span })),
+            ast::TypeKind::Box(be) => view_in(&be.kind, f - 1),
+            ast::TypeKind::Param(vw_pn) => t.clone(),
+            ast::TypeKind::Never => t.clone(),
+            ast::TypeKind::Error => t.clone(),
+        }
+    }
+
+    #[effects(alloc)]
+    fn view_type(x: &ast::Type, f: usize) -> ast::Type
+        decreases f * 2 + 1,
+    {
+        ast::Type { kind: view_in(&x.kind, f), span: x.span }
+    }
+
+    #[summary("One type of the walk of enum_dts (the visit of stage0 enum_dts): the datatypes under t into st, each after those its payloads name")]
+    #[effects(alloc)]
+    fn visit(t: &ast::TypeKind, tb: &lowered::Tables, st: &mut Dts, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let sh: u8 = shape(t);
+        if sh == 4 || sh == 5 || sh == 6 {
+            match body::under(t) {
+                None => {},
+                Some(inner) => visit(&inner, tb, st, f - 1),
+            }
+            return;
+        }
+        if sh != 7 {
+            return;
+        }
+        match flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { visit(&fs[i].ty, tb, st, f - 1); } return; },
+        }
+        let vs: Vec<types::VariantSig> = match variants(t, tb) {
+            None => { return; },
+            Some(found) => found,
+        };
+        let ts: String = types::text(t);
+        if st.dts.has(ts.as_str()) {
+            return;
+        }
+        let is_struct: bool = dt_struct(t, tb);
+        let arb_name: Option<String> = if is_struct {
+            Some(arb(t))
+        } else {
+            None
+        };
+        st.dts.insert(ts.as_str(), Dt { ctors: Vec::new(), arb: arb_name.clone(), leaves: Vec::new() });
+        let mut ctors: Vec<Ctor> = Vec::new();
+        let mut kept: Vec<NamedLeaf> = Vec::new();
+        for i in 0..vs.len()
+            invariant 0 <= i && i <= vs.len(),
+        {
+            let mut fields: Vec<Fun> = Vec::new();
+            for k in 0..vs[i].tys.len()
+                invariant 0 <= k && k <= vs[i].tys.len(),
+            {
+                visit(&vs[i].tys[k], tb, st, f - 1);
+                let pl: Vec<NamedLeaf> = payload_leaves(t, vs[i].name.as_str(), k, &vs[i].tys[k], tb);
+                for j in 0..pl.len()
+                    invariant 0 <= j && j <= pl.len(),
+                {
+                    let sel: String = sym(pl[j].name.as_str());
+                    fields.push(Fun { name: sel.clone(), sort: leaf_sort(&pl[j].leaf) });
+                    if is_struct {
+                        kept.push(NamedLeaf { name: sel.clone(), leaf: pl[j].leaf.clone() });
+                    }
+                }
+            }
+            ctors.push(Ctor { name: ctor(t, vs[i].name.as_str()), fields: fields });
+        }
+        st.dts.insert(ts.as_str(), Dt { ctors: ctors, arb: arb_name, leaves: kept });
+        st.order.push(ts);
+    }
+
+    #[summary("visit of t unless a type of the same text was visited from the top before")]
+    #[effects(alloc)]
+    fn visit_new(t: &ast::TypeKind, tb: &lowered::Tables, st: &mut Dts, seen: &mut table::Table<bool>) -> () {
+        let k: String = types::text(t);
+        if seen.has(k.as_str()) {
+            return;
+        }
+        seen.insert(k.as_str(), true);
+        visit(t, tb, st, 100000);
+    }
+
+    #[summary("The substitution of the names of ps by ts, position by position, as far as both go")]
+    #[effects(alloc)]
+    fn zip(ps: &[types::TParam], ts: &[ast::TypeKind]) -> types::Subst {
+        let mut m: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() };
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            if i < ts.len() {
+                bind(&mut m, ps[i].name.as_str(), ts[i].clone());
+            }
+        }
+        m
+    }
+}

@@ -1,0 +1,106 @@
+#[summary("Trait dispatch in the encoder's tables: a call that runs a non-generic impl function, a generic impl, a default body run for an impl that leaves the method out, a spec fn method, an impl function checked against the trait's contract (its refinement), a method with type parameters of its own, a bounded call whose Self is a type parameter")]
+mod tr {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            requires small(self.model()),
+            ensures is_model(r, self.model());
+
+        spec fn model(self: &Self) -> i64;
+
+        #[effects(pure)]
+        fn twice(self: &Self) -> (r: i64)
+            requires small(self.model()),
+        {
+            let a: i64 = self.area();
+            if a < 1000 && a > -1000 { a + a } else { 0 }
+        }
+
+        #[effects(pure)]
+        fn pick<U: Copy>(self: &Self, a: U, b: U) -> (r: U)
+            ensures either::<U>(r, a, b);
+    }
+
+    struct Sq { s: i64 }
+
+    struct Wrap<T: Copy> { inner: T, n: i64 }
+
+    impl Shape for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures is_model(r, self.model()),
+        {
+            self.s
+        }
+
+        spec fn model(self: &Sq) -> i64 {
+            self.s
+        }
+
+        #[effects(pure)]
+        fn pick<V: Copy>(self: &Sq, a: V, b: V) -> (r: V)
+            ensures either::<V>(r, a, b),
+        {
+            if self.s > 0 { a } else { b }
+        }
+    }
+
+    impl<T: Copy> Shape for Wrap<T> {
+        #[effects(pure)]
+        fn area(self: &Wrap<T>) -> (r: i64)
+            ensures is_model(r, self.model()),
+        {
+            self.n
+        }
+
+        spec fn model(self: &Wrap<T>) -> i64 {
+            self.n
+        }
+
+        #[effects(pure)]
+        fn twice(self: &Wrap<T>) -> (r: i64) {
+            0
+        }
+
+        #[effects(pure)]
+        fn pick<V: Copy>(self: &Wrap<T>, a: V, b: V) -> (r: V)
+            ensures either::<V>(r, a, b),
+        {
+            a
+        }
+    }
+
+    spec fn either<T: Copy>(r: T, a: T, b: T) -> bool {
+        r == a || r == b
+    }
+
+    spec fn is_model(r: i64, m: i64) -> bool {
+        r == m
+    }
+
+    spec fn small(x: i64) -> bool {
+        x < 1000 && x > -1000
+    }
+
+    #[effects(pure)]
+    fn of<T: Copy + Shape>(x: T) -> (r: i64)
+        requires small(x.model()),
+        ensures is_model(r, x.model()),
+    {
+        x.area()
+    }
+
+    #[effects(pure)]
+    fn known(q: Sq, w: Wrap<u8>, ww: Wrap<Wrap<bool>>) -> (r: i64)
+        requires small(q.s), small(w.n), small(ww.n),
+    {
+        let a: i64 = of::<Sq>(q);
+        let b: i64 = of::<Wrap<u8>>(w);
+        let c: i64 = q.twice();
+        let d: i64 = ww.twice();
+        let e: u8 = Shape::pick::<u8>(&q, 1, 2);
+        let g: Sq = Shape::pick::<Sq>(&w, q, Sq { s: 3 });
+        let h: bool = Shape::pick::<bool>(&ww, true, false);
+        a + b + c + d + g.s
+    }
+}

@@ -1,0 +1,112 @@
+#[summary("Text and proof contexts: which parameters and results are text (String, &String, &str, and not bytes), text inside data and type arguments; default contexts from clauses, loop invariants, assertions and proof code, from the contracts of callees and not from their bodies, of a spec fn (its body is its definition, not a clause), of a closure's call from the clauses written on it; #[uses] by name, by path and by impl path")]
+mod tx {
+    struct Name { text: String, id: u32 }
+
+    trait Show {
+        #[effects(alloc)]
+        fn show(self: &Self) -> (r: String);
+
+        spec fn width(self: &Self) -> usize;
+    }
+
+    impl Show for Name {
+        #[effects(alloc)]
+        fn show(self: &Name) -> (r: String) {
+            self.text.clone()
+        }
+
+        spec fn width(self: &Name) -> usize {
+            self.text.len()
+        }
+    }
+
+    spec fn short(s: &str) -> bool { s.len() < 100 }
+
+    spec fn tiny(s: &str) -> bool { short(s) && s.len() < 10 }
+
+    spec fn bytes_ok(b: &[u8]) -> bool { b.len() < 100 }
+
+    spec fn guarded(n: usize) -> bool { hidden(n) && limit(n) }
+
+    spec fn limit(n: usize) -> bool { n < 1000 }
+
+    spec fn hidden(n: usize) -> bool { n > 0 }
+
+    spec fn grows(a: usize, b: usize) -> bool { a <= b }
+
+    spec fn fact(n: usize) -> bool { n == n }
+
+    proof fn lemma(n: usize)
+        requires limit(n),
+        ensures fact(n),
+    {
+    }
+
+    #[effects(alloc)]
+    fn join(a: &str, b: &String, c: String, sep: char, raw: &[u8]) -> (r: String)
+        requires short(a), bytes_ok(raw),
+    {
+        let mut s: String = String::from(a);
+        s.push(sep);
+        s.push_str(b.as_str());
+        s.push_str(c.as_str());
+        s
+    }
+
+    #[effects(pure)]
+    fn len_of(s: &str, n: &Name, names: &[String], o: Option<String>) -> (r: usize)
+        ensures grows(0, r),
+    {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn first(xs: &Vec<String>, c: char) -> (r: char) {
+        c
+    }
+
+    #[effects(alloc)]
+    fn caller(a: &str) -> (r: usize)
+        requires tiny(a),
+    {
+        let t: String = join(a, &String::from("x"), String::from("y"), 'z', b"raw");
+        let mut i: usize = 0;
+        while i < 3
+            invariant limit(i),
+            decreases 3 - i,
+        {
+            i = i + 1;
+        }
+        proof {
+            lemma(i);
+        }
+        assert(grows(i, i));
+        let ns: Vec<String> = Vec::new();
+        let nm: Name = Name { text: String::new(), id: 0 };
+        len_of(t.as_str(), &nm, ns.as_slice(), None)
+    }
+
+    #[effects(pure)]
+    #[uses(hidden, tx::fact, <Name as Show>::width)]
+    fn revealed(n: usize) -> (r: usize)
+        requires guarded(n),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn apply<F: Fn(usize) -> usize>(f: F, x: usize) -> (r: usize)
+        requires f.requires(x),
+        ensures f.ensures(x, r),
+    {
+        f(x)
+    }
+
+    #[effects(pure)]
+    #[uses(hidden)]
+    fn closed(k: usize) -> (r: usize)
+        requires limit(k),
+    {
+        apply::<_>(move |x: usize| -> (y: usize) requires limit(x), limit(k), ensures grows(x, y), { x + k }, k)
+    }
+}

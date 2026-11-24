@@ -1135,6 +1135,10 @@
    "out": "0c7e42e264f95da8",
    "src": "618c003288f6b551"
   },
+  "tests/verify/pass/range_instances.bmb": {
+   "out": "3f776222c69972b2",
+   "src": "f4c695a6aab4662e"
+  },
   "tests/verify/pass/ranges.bmb": {
    "out": "3d1e8ee3cdaf7227",
    "src": "121a0127b1a6e7eb"

@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -29,7 +29,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts" || args[2] == "lowered" || args[2] == "layout") {
+        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts" || args[2] == "lowered" || args[2] == "layout" || args[2] == "smt-decls") {
             let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
             let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
             print_str(sr.text.as_str());
@@ -117,7 +117,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
         std::process::exit(2);
     }
 
