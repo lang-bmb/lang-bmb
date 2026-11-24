@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """This repository reads on its own: no file outside the listed exceptions
 names a task of the project's private backlog, a working document of the
-workspace, or carries Korean prose.
+workspace, or a path under the `bench/` directory this repository no longer
+has, or carries Korean prose.
 
   scripts/standalone.py check
 
-Decision records (`docs/adr`) are historical and the benches (`bench/`) carry
-frozen material; both are outside this check. An exception below is a file
-or one exact line fragment, with its reason.
+Decision records (`docs/adr`) are historical and are outside this check. The
+benchmarks are in the bmb-bench repository
+(https://github.com/lang-bmb/bmb-bench). An exception below is a file or one
+exact line fragment, with its reason.
 """
 import re
 import subprocess
@@ -15,15 +17,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUTSIDE = (":!bench", ":!docs/adr")
+OUTSIDE = (":!docs/adr",)
 
 TASK = re.compile(r"(?<![0-9A-Za-z-])(?:INF|T[0-9]|[0-9][A-Z])-[0-9]{2}[a-z0-9]*(?![0-9A-Za-z])")
 WORKSPACE = re.compile(r"dev-docs/|bmb-works|claudedocs|\b(?:HEALTH|BACKLOG|AUTONOMY|JUDGMENT)\.md|\b[Bb]acklog\b")
 HANGUL = re.compile("[가-힣]")
+# `bench/..` as a path of this repository (not `bmb-bench/..`, not a longer name).
+BENCH = re.compile(r"(?<![0-9A-Za-z_./-])bench/")
 
 # Files whose non-ASCII text is the data under test, or a record.
 DATA = (
     "tests/port/lexer/",                # lexer inputs: arbitrary bytes and scripts
+    "tests/corpus/",                    # benchmark seeds and reference programs, kept byte for byte
     "tests/conformance/",               # non-ASCII in comments and literals is a case
     "tests/port/emit/c1-literals.txt",  # a multi-byte `char` literal
     "tests/port/emit/d1-slices.txt",    # multi-byte text in a slice
@@ -48,7 +53,9 @@ LINES = (
 )
 # Scripts whose output is a Korean report kept outside this repository.
 REPORTS = ("scripts/components.py", "scripts/test_components.py", "scripts/cross_solver.py",
-           "scripts/gate_power.py", "scripts/test_gate_power.py", "scripts/check.sh")
+           "scripts/gate_power.py", "scripts/test_gate_power.py")
+# Scripts that take a bmb-bench checkout from BMB_BENCH and name paths inside it.
+BENCH_CHECKOUT = ("scripts/cross_solver.py", "scripts/build_time.py")
 
 
 def tracked(root):
@@ -56,7 +63,7 @@ def tracked(root):
     r = subprocess.run(["git", "ls-files", "--", ".", *OUTSIDE], cwd=root, capture_output=True, text=True)
     if r.returncode == 0:
         return r.stdout.splitlines()
-    skip = ("bench/", "docs/adr/", ".git/")
+    skip = ("docs/adr/", ".git/")
     out = []
     for p in sorted(root.rglob("*")):
         rel = p.relative_to(root).as_posix()
@@ -82,6 +89,8 @@ def problems(root=ROOT):
                 out.append(f"{f}:{i}: names a backlog task")
             if WORKSPACE.search(line):
                 out.append(f"{f}:{i}: names a workspace document")
+            if BENCH.search(line) and f not in BENCH_CHECKOUT:
+                out.append(f"{f}:{i}: names a path under bench/")
             if HANGUL.search(line) and f not in REPORTS:
                 out.append(f"{f}:{i}: Korean text")
     return out

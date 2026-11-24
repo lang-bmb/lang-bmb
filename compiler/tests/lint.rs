@@ -744,7 +744,7 @@ mod t {
     assert!(!out.diagnostics.contains("W0906"), "{}", out.diagnostics);
 }
 
-/// The prefix-sum specification of bench m1b `w22` is
+/// The prefix-sum specification of the m1b benchmark's `w22` is
 /// reported in each spec function that states the step; with both reads as
 /// triggers the program still verifies.
 #[test]

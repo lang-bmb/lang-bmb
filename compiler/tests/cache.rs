@@ -243,7 +243,7 @@ fn builds_and_maps_through_the_cache_match_the_uncached_ones() {
 }
 
 /// `bmb query --cache DIR` and `bmb map --cache DIR` (the
-/// bench harness judges through the session's cache) print the uncached bytes
+/// benchmark harnesses judge through the session's cache) print the uncached bytes
 /// and fill the cache, so a warm `verify` skips the solver.
 #[test]
 fn query_and_map_cli_take_the_cache() {

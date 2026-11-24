@@ -114,9 +114,9 @@ fn pass_corpus_is_proved() {
     }
 }
 
-/// No reach point of the proved corpora, the run programs or the bench
-/// seed and baseline programs is refuted by its own proof (a loop that kept a `Vec`'s length made two corpus proofs vacuous and
-/// nothing said so). One program per file; a bench `seed/src` directory is
+/// No reach point of the proved corpora, the run programs or the benchmark
+/// seed and baseline programs (`tests/corpus`) is refuted by its own proof (a loop that kept a `Vec`'s length made two corpus proofs vacuous and
+/// nothing said so). One program per file; a seed's `src` directory is
 /// one program.
 #[test]
 fn proofs_are_not_vacuous() {
@@ -125,18 +125,18 @@ fn proofs_are_not_vacuous() {
     for dir in [root().join("verify").join("pass"), root().join("run")] {
         programs.extend(bmb_files(&dir).iter().map(|p| one(p)));
     }
-    let bench = root().join("..").join("bench");
-    programs.extend(bmb_files(&bench.join("baseline")).iter().map(|p| one(p)));
+    let corpus = root().join("corpus");
+    programs.extend(bmb_files(&corpus.join("baseline")).iter().map(|p| one(p)));
     for set in ["m1", "m1b", "bvb"] {
-        let src = bench.join(set).join("seed").join("src");
+        let src = corpus.join("seed").join(set).join("src");
         let files = bmb_files(&src)
             .iter()
             .map(|p| (name(p), fs::read_to_string(p).unwrap()))
             .collect();
         programs.push((format!("{set}/seed"), files));
     }
-    // BRB-ENCAP: one seed unit per task directory.
-    let mut encap: Vec<PathBuf> = fs::read_dir(bench.join("brb-encap").join("seed"))
+    // The encapsulation seeds: one unit per directory.
+    let mut encap: Vec<PathBuf> = fs::read_dir(corpus.join("encap"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .collect();
@@ -146,7 +146,7 @@ fn proofs_are_not_vacuous() {
     }
     // The standard library's units, each alone, and each program that uses
     // them (the compiler adds them, ADR-0092).
-    for lib in bmb_files(&bench.join("..").join("lib").join("std")) {
+    for lib in bmb_files(&root().join("..").join("lib").join("std")) {
         programs.push(one(&lib));
     }
     for p in bmb_files(&root().join("lib_run")) {
@@ -158,13 +158,13 @@ fn proofs_are_not_vacuous() {
     }
 }
 
-/// The Benchmarks Game programs (`bench/game`) are proved with
-/// the standard library units they use. Running them takes tens of seconds,
-/// so the gate proves them and `bench/game/README.md` runs them.
+/// The Benchmarks Game programs (`tests/corpus/game`) are proved with
+/// the standard library units they use. Running the long ones takes tens of
+/// seconds, so the gate proves them; the two with a short argument are run by
+/// the code generation tests.
 #[test]
 fn game_programs_are_proved() {
-    let repo = root().join("..");
-    let games = bmb_files(&repo.join("bench").join("game"));
+    let games = bmb_files(&root().join("corpus").join("game"));
     assert!(games.len() >= 2);
     for p in games {
         let files = vec![(name(&p), fs::read_to_string(&p).unwrap())];
@@ -314,13 +314,13 @@ fn queries_and_output_are_deterministic() {
 
 #[test]
 fn benchmark_programs_are_proved() {
-    let bench = root().join("..").join("bench");
-    for p in bmb_files(&bench.join("baseline")) {
+    let corpus = root().join("corpus");
+    for p in bmb_files(&corpus.join("baseline")) {
         let out = verify(&p);
         assert!(out.ok, "{} should verify:\n{}", p.display(), out.output);
     }
     // The M1 seed workspace is one program spread over unit files.
-    let seed = bench.join("m1").join("seed").join("src");
+    let seed = corpus.join("seed").join("m1").join("src");
     let files: Vec<(String, String)> = bmb_files(&seed)
         .into_iter()
         .map(|p| (name(&p), fs::read_to_string(&p).unwrap()))
@@ -507,11 +507,11 @@ mod tasks {
 "#;
 
 /// The hidden contract check of the BVB judge for `vc-vv0039` (the text
-/// `bench/m1/harness.py` `judge_target` writes), with `body` as the
-/// check's body.
+/// the benchmark harness writes from the task's `accept` fields), with
+/// `body` as the check's body.
 fn vv0039_judge(body: &str) -> String {
-    let task =
-        fs::read_to_string(root().join("../bench/bvb/tasks/vc-vv0039-max-of-list.json")).unwrap();
+    let task = fs::read_to_string(root().join("corpus/seed/bvb/tasks/vc-vv0039-max-of-list.json"))
+        .unwrap();
     let task = json::parse(&task).unwrap();
     let accept = task.get("accept").unwrap();
     let field = |k: &str| accept.get(k).unwrap().as_str().unwrap().to_string();

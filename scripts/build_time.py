@@ -3,15 +3,19 @@
 
   build_time.py [--defs N] [--out FILE.jsonl]
 
-Generates the m3 workspace of N definitions (bench/m3/gen.py) and times
+Generates the m3 workspace of N definitions and times
 `bmb emit-llvm --cache` (proof gate and code generation; the m3 workspace
 has no `main` to link) three times: cold (empty cache), warm (nothing changed)
 and after a one-definition edit (a comment inside one body, which re-encodes
 that definition alone, ADR-0032). CPU is user+sys of the build process
 (`wait4`). One JSON line per run, with the per-definition cost of the cold
-build. Time is not deterministic, so nothing here is a gate: the nightly job
-records the line for the trend (it never fails on a value).
+build. Time is not deterministic, so nothing here is a gate: a job
+that records the line for the trend never fails on a value.
 Standard library only.
+
+The workspace generator is part of the bmb-bench repository
+(https://github.com/lang-bmb/bmb-bench, `bench/m3/gen.py` there): BMB_BENCH
+names a checkout of it.
 """
 import argparse
 import datetime
@@ -44,9 +48,16 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--bmb", default=os.path.join(ROOT, "target", "release", "bmb"))
     args = ap.parse_args()
+    bench = os.environ.get("BMB_BENCH")
+    if not bench:
+        sys.exit("build_time: the workspace generator is in the bmb-bench repository "
+                 "(https://github.com/lang-bmb/bmb-bench): set BMB_BENCH to a checkout of it")
+    gen = os.path.join(os.path.abspath(bench), "bench", "m3", "gen.py")
+    if not os.path.isfile(gen):
+        sys.exit(f"build_time: BMB_BENCH={bench} is not a bmb-bench checkout (no bench/m3/gen.py)")
     with tempfile.TemporaryDirectory() as d:
         ws, cache, stats, ll = (os.path.join(d, x) for x in ("ws", "cache", "stats.json", "out.ll"))
-        subprocess.run([sys.executable, os.path.join(ROOT, "bench", "m3", "gen.py"), ws, "--defs", str(args.defs)],
+        subprocess.run([sys.executable, gen, ws, "--defs", str(args.defs)],
                        check=True, stdout=subprocess.DEVNULL)
         build = [args.bmb, "emit-llvm", "--cache", cache, "--stats", stats, os.path.join(ws, "src"), "-o", ll]
         row = {"date": datetime.date.today().isoformat(), "defs": args.defs,

@@ -13,9 +13,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The port-twin tasks take the twin from a fixed commit (bench/twin/port).
-          fetch-depth: 0
       - name: Rust toolchain (pinned by rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - name: Pinned tools (z3, LLVM)
@@ -28,23 +25,3 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Gate
         run: ./scripts/check.sh
-
-  # BVB original-Verus side: the pinned Verus release must
-  # verify every task's Verus reference against the hidden original spec, and
-  # reject every weak control (reference with the target's `ensures` removed).
-  bvb-verus:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/bmb/verus
-          key: verus-${{ runner.os }}-${{ hashFiles('bench/bvb/verus/verus.env') }}
-      - name: Pinned Verus
-        run: bench/bvb/verus/install.sh
-      - name: Oracle passes, weak controls are rejected
-        run: |
-          python3 bench/bvb/verus/harness.py run --agent oracle --expect all-pass --jobs 4 --out oracle.jsonl > /dev/null
-          python3 bench/bvb/verus/harness.py run --agent weak --expect weak-fail --jobs 4 --out weak.jsonl > /dev/null
-          python3 bench/bvb/verus/harness.py strength oracle.jsonl | grep -qF '"spec_accepted": 45, "eligible": 45'
-          python3 bench/bvb/verus/harness.py strength weak.jsonl | grep -qF '"spec_accepted": 0, "eligible": 45'

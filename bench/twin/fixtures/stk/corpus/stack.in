@@ -1,3 +1,0 @@
-1 2 swap print drop print
-5 dup add print
-drop drop

@@ -9,8 +9,8 @@ docs/reference/NN-name.md are the chapters. The rules:
   - every diagnostic code of the language (docs/diagnostics.md, without the
     retired ones and the lint-only `W` codes) is named in a chapter;
   - a chapter names no code that does not exist or is retired;
-  - every repository path a chapter names in backticks (`tests/..`, `lib/..`,
-    `bench/..`) exists;
+  - every repository path a chapter names in backticks (`tests/..`, `lib/..`)
+    exists;
   - every `##` section of a chapter names a code or a corpus path.
 
 Standard library only.
@@ -24,7 +24,7 @@ REF = Path("docs/reference")
 BEGIN = "<!-- reference:index begin (scripts/reference.py index --write; do not edit by hand) -->"
 END = "<!-- reference:index end -->"
 CODE = re.compile(r"(?<![A-Za-z0-9_])([EW]\d{4})(?!\d)")
-PATH = re.compile(r"`((?:tests|lib|bench)/[A-Za-z0-9_./-]+)`")
+PATH = re.compile(r"`((?:tests|lib)/[A-Za-z0-9_./-]+)`")
 
 
 def codes(root=ROOT):

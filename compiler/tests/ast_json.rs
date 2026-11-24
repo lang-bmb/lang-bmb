@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Programs: each corpus file alone, and each bench seed as a workspace.
+/// Programs: each corpus file alone, and each benchmark seed of `tests/corpus` as a workspace.
 fn corpus() -> Vec<(String, Vec<PathBuf>)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let files = |dir: &str| -> Vec<PathBuf> {
@@ -31,7 +31,7 @@ fn corpus() -> Vec<(String, Vec<PathBuf>)> {
             out.push((p.display().to_string(), vec![p]));
         }
     }
-    for dir in ["bench/m1b/seed/src", "bench/bvb/seed/src"] {
+    for dir in ["tests/corpus/seed/m1b/src", "tests/corpus/seed/bvb/src"] {
         out.push((dir.to_string(), files(dir)));
     }
     out

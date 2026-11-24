@@ -205,13 +205,13 @@ def measure(paths, variants=1, bmb=None):
 
 
 def default_paths():
-    """The corpus and the bench seeds: every program the gate proves."""
+    """The corpus and the benchmark seeds of tests/corpus: every program the gate proves."""
     t = os.path.join(ROOT, "tests")
     out = [os.path.join(t, "verify", "pass", f) for f in sorted(os.listdir(os.path.join(t, "verify", "pass")))
            if f.endswith(".bmb")]
     out += [os.path.join(t, "run", f) for f in sorted(os.listdir(os.path.join(t, "run"))) if f.endswith(".bmb")]
     for b in ("m1", "m1b", "bvb"):
-        s = os.path.join(ROOT, "bench", b, "seed")
+        s = os.path.join(t, "corpus", "seed", b)
         if os.path.isdir(s):
             out.append(s)
     return out

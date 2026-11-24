@@ -10,14 +10,17 @@ exact query and the ground-instance retry, each a `(reset)` segment of the
 definition's script (canonical symbols, ADR-0063). The programs are the ones
 the health metrics prove (V4, V8, V10), plus the failing corpus:
 
-  corpus   tests/verify/pass, tests/verify/fail, tests/run, bench/baseline,
-           each file alone
-  seeds    bench/{m1,m1b,bvb}/seed/src as one workspace each, and each
-           BRB-encap task's seed files alone
-  lib      lib/std/*.bmb alone, tests/lib_run and bench/game (the compiler adds the std units they name)
+  corpus   tests/verify/pass, tests/verify/fail, tests/run,
+           tests/corpus/baseline, each file alone
+  seeds    tests/corpus/seed/{m1,m1b,bvb}/src as one workspace each, and each
+           encapsulation seed (tests/corpus/encap) alone
+  lib      lib/std/*.bmb alone, tests/lib_run and tests/corpus/game (the compiler adds the std units they name)
   bench    the m1b and BVB reference and weak solutions as the frozen harness
            judges them (`--agent oracle` and `weak`), through a `bmb` wrapper
-           that adds `--emit-smt` to each `verify` it runs
+           that adds `--emit-smt` to each `verify` it runs. The harness and
+           the sets are in the bmb-bench repository
+           (https://github.com/lang-bmb/bmb-bench): BMB_BENCH names a checkout
+           of it. The group is part of the default only when BMB_BENCH is set.
 
 Identical segments are asked once. Z3 is the pinned binary (toolchain.env)
 on the segment as written, so it reproduces the gate's answer; cvc5 gets the
@@ -44,6 +47,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BMB = ROOT / "target" / "debug" / "bmb"
 GROUPS = ["corpus", "seeds", "lib", "bench"]
+PRODUCT_GROUPS = GROUPS[:3]  # need this repository alone
+
+
+def bench_checkout():
+    """The bmb-bench checkout BMB_BENCH names (the `bench` group runs its harness)."""
+    d = os.environ.get("BMB_BENCH")
+    if not d:
+        sys.exit("cross_solver: the `bench` group runs the harness of the bmb-bench repository "
+                 "(https://github.com/lang-bmb/bmb-bench): set BMB_BENCH to a checkout of it, "
+                 f"or pass --groups {','.join(PRODUCT_GROUPS)}")
+    d = Path(d).resolve()
+    if not (d / "bench" / "m1" / "harness.py").is_file():
+        sys.exit(f"cross_solver: BMB_BENCH={d} is not a bmb-bench checkout (no bench/m1/harness.py)")
+    return d
 # Resource units per cvc5 query. Deterministic, unlike a time limit. Measured
 # on lib/std/base64.bmb's queries: 12,000 to 20,000 units a second on the slow
 # ones, 95% of the queries under 210,000; so a query stops within about 20 s.
@@ -66,16 +83,16 @@ def files(d):
 def programs(group):
     """(name, [files]) for each program of a group, as health.py groups them."""
     if group == "corpus":
-        return [(f, [f]) for d in ("tests/verify/pass", "tests/verify/fail", "tests/run", "bench/baseline")
+        return [(f, [f]) for d in ("tests/verify/pass", "tests/verify/fail", "tests/run", "tests/corpus/baseline")
                 for f in files(d)]
     if group == "seeds":
-        out = [(f"bench/{s}/seed", files(f"bench/{s}/seed/src")) for s in ("m1", "m1b", "bvb")]
-        for task in sorted(p for p in (ROOT / "bench/brb-encap/seed").iterdir() if p.is_dir()):
+        out = [(f"tests/corpus/seed/{s}", files(f"tests/corpus/seed/{s}/src")) for s in ("m1", "m1b", "bvb")]
+        for task in sorted(p for p in (ROOT / "tests/corpus/encap").iterdir() if p.is_dir()):
             out += [(f, [f]) for f in files(task.relative_to(ROOT))]
         return out
     if group == "lib":
         libs = files("lib/std")
-        return [(f, [f]) for f in libs] + [(f, [f]) for d in ("tests/lib_run", "bench/game")
+        return [(f, [f]) for f in libs] + [(f, [f]) for d in ("tests/lib_run", "tests/corpus/game")
                                            for f in files(d)]
     raise ValueError(group)
 
@@ -103,13 +120,14 @@ def emit(group, out_dir, jobs):
         wrapper = out_dir / "bmb"
         wrapper.write_text(WRAPPER)
         wrapper.chmod(0o755)
-        env = dict(os.environ, BMB=str(wrapper), CROSS_BMB=str(BMB), CROSS_EMIT=str(out_dir))
+        bench = bench_checkout()
+        env = dict(os.environ, BMB=str(wrapper), LANG_BMB=str(ROOT), CROSS_BMB=str(BMB), CROSS_EMIT=str(out_dir))
         n = 0
         for s in ("bench/m1b", "bench/bvb"):
             for agent in ("oracle", "weak"):
                 with tempfile.NamedTemporaryFile(suffix=".jsonl") as f:
                     r = subprocess.run([sys.executable, "bench/m1/harness.py", "--set", s, "run", "--agent", agent,
-                                        "--jobs", str(jobs), "--out", f.name], cwd=ROOT, env=env,
+                                        "--jobs", str(jobs), "--out", f.name], cwd=bench, env=env,
                                        capture_output=True, text=True)
                     if r.returncode != 0:
                         sys.exit(f"cross_solver: {s} {agent} run failed\n{r.stderr[-2000:]}")
@@ -207,7 +225,7 @@ def ask_both(text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
-    ap.add_argument("--groups", default=",".join(GROUPS))
+    ap.add_argument("--groups", default=",".join(GROUPS if os.environ.get("BMB_BENCH") else PRODUCT_GROUPS))
     ap.add_argument("--write", help="also write the report (markdown) to this file")
     ap.add_argument("--keep", help="keep the emitted scripts in this directory")
     a = ap.parse_args()

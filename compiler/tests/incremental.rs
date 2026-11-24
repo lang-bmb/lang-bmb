@@ -1277,7 +1277,7 @@ mod u {
 
 /// A definition that reuses another's result by key (equal up to names)
 /// keeps it under its own path: editing the other one later re-encodes
-/// only that one (`bench/bcb` found the loss).
+/// only that one (the build-cache benchmark found the loss).
 #[test]
 fn a_result_reused_by_key_stays_when_its_source_changes() {
     let dir = tmp("twin");

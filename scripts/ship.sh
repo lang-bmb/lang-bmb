@@ -8,7 +8,7 @@
 # .git/ship-gate with its own target/, so builds stay incremental), and that
 # commit is what is pushed. Edits, untracked files and builds in the working
 # tree while the gate runs cannot change the verdict: twice they did (a
-# half-written ADR index, a target/ rebuilt under the benches).
+# half-written ADR index, a target/ rebuilt under the running jobs).
 #
 #   scripts/ship.sh            # gate HEAD, then push it to the current branch
 set -euo pipefail

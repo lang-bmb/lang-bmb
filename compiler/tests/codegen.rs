@@ -1182,12 +1182,12 @@ mod m {
 }
 
 /// The Benchmarks Game programs that have a Rust reference
-/// (`bench/game/ref/*.rs`: n-body, spectral-norm) print the
-/// benchmark's check output for its small argument (`bench/game/*.out`),
+/// (`tests/corpus/game/ref/*.rs`: n-body, spectral-norm) print the
+/// benchmark's check output for its small argument (`tests/corpus/game/*.out`),
 /// and so does the Rust reference built by rustc.
 #[test]
 fn game_programs_match_their_rust_references() {
-    let game = Path::new(env!("CARGO_MANIFEST_DIR")).join("../bench/game");
+    let game = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/corpus/game");
     let dir = std::env::temp_dir().join(format!("bmb-game-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let mut refs: Vec<PathBuf> = fs::read_dir(game.join("ref"))
