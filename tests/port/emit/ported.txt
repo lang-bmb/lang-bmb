@@ -536,6 +536,7 @@ tests/verify/pass/nested_vecs.bmb
 tests/verify/pass/owned_fields.bmb
 tests/verify/pass/proof_text_vecs.bmb
 tests/verify/pass/proofs.bmb
+tests/verify/pass/range_instances.bmb
 tests/verify/pass/ranges.bmb
 tests/verify/pass/rec_structs.bmb
 tests/verify/pass/recursion.bmb
