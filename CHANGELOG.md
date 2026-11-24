@@ -19,6 +19,8 @@ The language surface carries its own version, apart from the compiler crate's.
 - An integer literal of a specification above the largest `i128` keeps its value in a proof query. It was read as a negative number (`2^128 - 1` as `-1`), so a false assertion about it could be proved.
 - A sub-proof `assert(e) by (bit_vector)` that passes a plain variable to a spec fn parameter of a narrower type is proved; it ended in a solver error.
 - `bmb dump smt-queries` prints, without running the solver, the queries `bmb verify --emit-smt` writes of each definition before the first answer, with their legends.
+- `BMB_Z3_RLIMIT`, `BMB_Z3_MEMORY_MB` and `BMB_Z3_BACKSTOP_MS` set to 0 give the smallest limit, 1. Z3 reads 0 as no limit, so a variable that may only lower a limit removed it: `bmb verify` under `BMB_Z3_RLIMIT=0` proved with no resource limit. The probe's share of a resource limit lowered below 100 is 1 for the same reason.
+- A query that is asked again alone after its process ended at the memory limit, and then ends its own process there at a later command, is undecided at once. It was asked a third time, in another process under the same limit.
 
 ### Standard library
 

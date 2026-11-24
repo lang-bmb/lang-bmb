@@ -1,0 +1,721 @@
+#[summary("The solver connection (port of the process part of stage0 compiler/src/smt.rs, ADR-0017 §5): Z3 runs as a child process speaking SMT-LIB on its standard input and output, and this unit owns that process and turns commands into answers. A Proc is one Z3 process: started with the pinned limits as arguments, asked one command at a time, read one complete s-expression at a time, and closed with `(exit)` and a wait. A Solver asks the queries of a proof run through it: check_sat with the reason of an unknown, the resource units spent, model values named back in the program's symbols, the replay of a query alone in a new process when its process ended at the memory limit (ADR-0129), the reuse window, and the pinned and advisory limits. Which query follows which answer is the proof driver's and not here. Where the shape differs from stage0: a child process is waited for by value and nothing runs when a value is dropped, so a Proc holds its child in a slot that the wait empties and remembers the exit status, and every place where stage0 drops a process calls close; stage0 counts solver starts and remembers who asks in statics of the process, here a Solver counts its own starts and the asker is an argument")]
+mod solver {
+    #[summary("The solver's answer to check-sat. Every answer other than Unsat is a failure for the proof gate; Unknown carries the solver's reason")]
+    enum Answer { Unsat, Sat, Unknown(String) }
+
+    #[summary("Who asks (stage0 smt::Advisory and the gate outside it): what an answer is used for decides which of the gate's limits a query may do without. Gate: a verdict, the pinned limits. Refutations: the lint's queries after its first verification, where every report needs an unsat (ADR-0131), the advisory memory limit and the advisory rlimit. Models: rows read from a model, which are found above the advisory rlimit, the advisory memory limit and the gate's rlimit")]
+    enum Asker { Gate, Refutations, Models }
+
+    #[summary("One Z3 process. child is the process until it has been waited for (ended, close), then None; status is its exit status once waited for (128 + N for signal N; None when the wait failed or has not happened). started is the clock at its start in milliseconds and aged what a test added to its age; memory is its `-memory` in megabytes; queries counts the `(reset)`s it was sent; alone is set for a process started to answer one query alone")]
+    #[invariant(settled)]
+    struct Proc { child: Option<std::process::Child>, status: Option<i32>, started: u64, aged: u64, memory: u64, queries: u64, alone: bool }
+
+    #[summary("proc is the process that answers; None after a query ended at the memory limit in a process of its own, and after close, until the next `(reset)`. limit is the memory limit in megabytes that decides (query_memory_mb when the solver started): only a query that reaches it as the first query of its process is undecided for memory (ADR-0129). query is the commands of the query since its `(reset)`, as sent: what a new process is asked when the query's process ends at its memory limit. down is why there is no process. alone: the query before ended at a memory limit, so the next one is asked alone at once. canon is the canonical symbols of the query since the last `(reset)` (ADR-0063). timeouts counts the queries since the last take_timeouts that the per-query backstop ended. starts counts the processes this solver tried to start, successful or not")]
+    #[invariant(fits)]
+    struct Solver { proc: Option<Proc>, limit: u64, query: Vec<String>, down: String, alone: bool, canon: encode_query::Canon, timeouts: u64, starts: u64 }
+
+    #[summary("The pinned memory limit in megabytes of an advisory query (stage0 advisory_memory_mb). Never above memory_mb, so what lowers that lowers this")]
+    #[effects(alloc, io, nondet)]
+    fn advisory_memory_mb() -> u64 {
+        let m: u64 = memory_mb();
+        if toolchain::pinned_advisory_memory_mb() < m {
+            toolchain::pinned_advisory_memory_mb()
+        } else {
+            m
+        }
+    }
+
+    #[summary("The pinned resource limit of an advisory query (stage0 advisory_rlimit, ADR-0131). Never above rlimit, so what lowers that lowers this")]
+    #[effects(alloc, io, nondet)]
+    fn advisory_rlimit() -> u64 {
+        let r: u64 = rlimit();
+        if toolchain::pinned_advisory_rlimit() < r {
+            toolchain::pinned_advisory_rlimit()
+        } else {
+            r
+        }
+    }
+
+    #[summary("Makes the solver's process ms milliseconds older for reusable (stage0 Solver::age): the clock of a test, which cannot wait for the window to pass")]
+    #[effects(pure)]
+    #[uses(fits, settled)]
+    fn age(s: &mut Solver, ms: u64) -> () {
+        match &mut s.proc {
+            None => {},
+            Some(p) => { p.aged = p.aged.saturating_add(ms); },
+        }
+    }
+
+    #[summary("Sends one command of the current query, as the solver receives it, and reads its answer (stage0 Solver::ask). A `(reset)` starts a query: a process that answered a query alone answers no other and is closed, and when there is no process one is started, under the deciding limit when the query before ended at it and under the working limit otherwise. When the process ends at its memory limit, the query is undecided only if it was that process's first query and the limit was the deciding one. Otherwise what the process held from earlier queries, or its smaller limit, may have ended it: the query is asked again from its `(reset)`, alone in a new process under the deciding limit, whose first query it then is, and that answer stands (ADR-0129). Every process this lets go of is closed first")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, kept, live, none, settled, started_with, working)]
+    fn ask(s: &mut Solver, sent: &str) -> (r: Result<String, String>) {
+        let reset: bool = fmt::trim(sent) == "(reset)";
+        if reset {
+            s.query = Vec::new();
+            if holds_alone(&s.proc) {
+                retire(&mut s.proc);
+                s.alone = false;
+            }
+            if is_none(&s.proc) {
+                let alone: bool = s.alone;
+                let memory: u64 = if alone {
+                    s.limit
+                } else {
+                    working_memory_mb(s.limit)
+                };
+                s.starts = s.starts.saturating_add(1);
+                match start_proc(memory) {
+                    Ok(started) => { let mut fresh: Proc = started; fresh.alone = alone; s.proc = Some(fresh); },
+                    Err(e) => { s.down = e.clone(); return Err(e); },
+                }
+            }
+        }
+        s.query.push(String::from(sent));
+        let limit: u64 = s.limit;
+        let mut decided: bool = false;
+        if is_none(&s.proc) {
+            return Err(s.down.clone());
+        }
+        let first: Result<String, String> = match &mut s.proc {
+            None => Err(String::new()),
+            Some(p) => { if reset { p.queries = p.queries.saturating_add(1); } decided = p.queries == 1 && p.memory == limit; proc_ask(p, sent) },
+        };
+        if !failed_for_memory(&first) {
+            return first;
+        }
+        retire(&mut s.proc);
+        s.down = out_of_memory_text();
+        if decided {
+            s.alone = true;
+            return first;
+        }
+        s.starts = s.starts.saturating_add(1);
+        let mut p2: Proc = match start_proc(limit) {
+            Ok(again) => again,
+            Err(e2) => { s.down = e2.clone(); return Err(e2); },
+        };
+        p2.alone = true;
+        p2.queries = 1;
+        let mut answer: Result<String, String> = Ok(String::new());
+        let mut good: bool = true;
+        for i in 0..s.query.len()
+            invariant 0 <= i && i <= s.query.len() && p2.alone && p2.memory == limit,
+        {
+            if good {
+                answer = proc_ask(&mut p2, s.query[i].as_str());
+                good = is_ok(&answer);
+            }
+        }
+        match &answer {
+            Ok(a) => { s.proc = Some(p2); },
+            Err(e3) => { s.alone = out_of_memory(e3.as_str()); s.down = e3.clone(); let status: Option<i32> = proc_close(&mut p2); assert(!live(&p2)); },
+        }
+        answer
+    }
+
+    #[summary("The per-query wall-clock backstop in milliseconds (stage0 backstop_ms; Z3's soft timeout `-t`): 300 seconds, or the value of BMB_Z3_BACKSTOP_MS when that is a smaller number (for tests; it can never raise it). Results are governed by the deterministic rlimit; this only stops a query whose rlimit ticks slowly, and reaching it is reported as its own reason, as the verdict then depends on the machine")]
+    #[effects(alloc, io, nondet)]
+    fn backstop_ms() -> u64 {
+        lowered("BMB_Z3_BACKSTOP_MS", 300000)
+    }
+
+    #[summary("The solver's verdict on the assertions sent (stage0 check_sat). For unknown the solver is asked its reason, named back in the program's symbols; a reason `timeout` is counted (take_timeouts)")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn check_sat(s: &mut Solver) -> (r: Result<Answer, String>) {
+        let got: String = ask(s, "(check-sat)")?;
+        if got == "unsat" {
+            return Ok(Answer::Unsat);
+        }
+        if got == "sat" {
+            return Ok(Answer::Sat);
+        }
+        if got == "unknown" {
+            let why: String = ask(s, "(get-info :reason-unknown)")?;
+            let text: String = reason_text(why.as_str());
+            if text == "timeout" {
+                s.timeouts = s.timeouts.saturating_add(1);
+            }
+            return Ok(Answer::Unknown(encode_query::back(&s.canon, text.as_str())));
+        }
+        Err(types::cat2("unexpected solver response: ", got.as_str()))
+    }
+
+    #[summary("Ends the solver's process as stage0 does where it drops the solver, and gives its exit status (stage0 Solver::close); None when there is no process or its wait failed. Until the next `(reset)` starts a new one, a command is answered with the error `z3 closed`. A solver must be closed before it is let go of: nothing else ends and reaps its process")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, none, settled)]
+    fn close(s: &mut Solver) -> (r: Option<i32>)
+        ensures none(&s.proc),
+    {
+        match std::mem::replace(&mut s.proc, None) {
+            None => None,
+            Some(held) => { let mut p: Proc = held; let status: Option<i32> = proc_close(&mut p); assert(!live(&p)); s.down = String::from("z3 closed"); status },
+        }
+    }
+
+    #[summary("Reads the process's output to its end and discards it. The wait for a process closes both of its pipes first, which stage0's does not: a solver that is still writing its answer to `(exit)` when its output closes is ended by the signal of a closed pipe, and its exit status is then 141 or 0 by the timing. Read to the end first, the process has written all it had to and ends as it does under stage0. A line that is not UTF-8 is discarded like any other; any other failure of a read ends the reading")]
+    #[effects(alloc, io, nondet)]
+    fn drain(c: &mut std::process::Child) -> () {
+        loop {
+            let mut line: String = String::new();
+            match c.read_line(&mut line) {
+                Ok(n) => { if n == 0 { break; } },
+                Err(e) => { if e.code != 0 { break; } },
+            }
+        }
+    }
+
+    #[summary("The error for a process that ended at its memory limit (stage0 Proc::ended): Z3 ends with 101 at `-memory` and its message goes to its standard error. Waits for the process, which leaves the slot, and remembers its status; a process waited for before is not waited for again. The wait closes the process's input first, which stage0's does not: a process that is still running here (it closed its output, or stopped reading, without ending) is ended by the end of its input, where stage0 waits until it ends by itself")]
+    #[effects(alloc, io, nondet)]
+    #[uses(kept, live, settled)]
+    fn ended(p: &mut Proc) -> (r: Option<String>)
+        ensures !live(p), kept(p, old(p)),
+    {
+        match std::mem::replace(&mut p.child, None) {
+            None => {},
+            Some(c) => { p.status = match c.wait() { Ok(code) => Some(code), Err(e) => None, }; },
+        }
+        match p.status {
+            None => None,
+            Some(code2) => { if code2 == 101 { Some(out_of_memory_text()) } else { None } },
+        }
+    }
+
+    #[summary("Sends a command that must answer `success` (stage0 expect_success); any other answer is an error with the answer in the program's symbols and the command cmd as it was written, cut to 160 characters")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn expect_success(s: &mut Solver, sent: &str, cmd: &str) -> (r: Result<(), String>) {
+        let got: String = ask(s, sent)?;
+        if got == "success" {
+            Ok(())
+        } else {
+            Err(types::cat5(encode_query::back(&s.canon, got.as_str()).as_str(), " (in `", truncate(cmd, 160).as_str(), "`)", ""))
+        }
+    }
+
+    #[summary("Whether an answer is the error of a process that ended at its memory limit")]
+    #[effects(pure)]
+    fn failed_for_memory(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(a) => false,
+            Err(e) => out_of_memory(e.as_str()),
+        }
+    }
+
+    #[summary("A process of a solver runs under the limit its kind has: one started to answer a query alone under the deciding limit, any other under the working limit")]
+    spec fn fits(s: &Solver) -> bool {
+        match s.proc {
+            None => true,
+            Some(p) => p.alone && p.memory == s.limit || !p.alone && p.memory == working(s.limit),
+        }
+    }
+
+    #[summary("Values of the given terms in the current model, as the solver writes them, named back in the program's symbols (stage0 get_value_terms)")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn get_value_terms(s: &mut Solver, terms: &[String]) -> (r: Result<Vec<encode_terms::Sexp>, String>) {
+        let mut out: Vec<encode_terms::Sexp> = Vec::new();
+        if terms.len() == 0 {
+            return Ok(out);
+        }
+        let pairs: Vec<encode_terms::Sexp> = model_pairs(s, terms)?;
+        for i in 0..pairs.len()
+            invariant 0 <= i && i <= pairs.len(),
+        {
+            out.push(value_of(&pairs[i]));
+        }
+        Ok(out)
+    }
+
+    #[summary("Values of the given terms in the current model, rendered for humans (stage0 get_values). Values are only meaningful right after sat")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn get_values(s: &mut Solver, terms: &[String]) -> (r: Result<Vec<String>, String>) {
+        let mut out: Vec<String> = Vec::new();
+        if terms.len() == 0 {
+            return Ok(out);
+        }
+        let pairs: Vec<encode_terms::Sexp> = model_pairs(s, terms)?;
+        for i in 0..pairs.len()
+            invariant 0 <= i && i <= pairs.len(),
+        {
+            let v: encode_terms::Sexp = value_of(&pairs[i]);
+            out.push(encode_terms::render_value(&v, 100000));
+        }
+        Ok(out)
+    }
+
+    #[summary("The process's hard limit in seconds (`-T`, stage0 HARD_SECS): the reuse window and two backstops, only for a process that does not stop at its soft timeout")]
+    #[effects(pure)]
+    fn hard_secs() -> u64 {
+        660
+    }
+
+    #[summary("Whether the slot holds a process that was started to answer one query alone")]
+    #[effects(pure)]
+    #[uses(settled)]
+    fn holds_alone(o: &Option<Proc>) -> bool {
+        match o {
+            None => false,
+            Some(p) => p.alone,
+        }
+    }
+
+    #[summary("Whether the slot is empty")]
+    #[effects(pure)]
+    #[uses(none, settled)]
+    fn is_none(o: &Option<Proc>) -> (r: bool)
+        ensures r == none(o),
+    {
+        match o {
+            None => true,
+            Some(p) => false,
+        }
+    }
+
+    #[summary("Whether an answer is no error")]
+    #[effects(pure)]
+    fn is_ok(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(a) => true,
+            Err(e) => false,
+        }
+    }
+
+    #[summary("The process is of the kind it was: started for the same purpose under the same memory limit, and sent as many queries")]
+    spec fn kept(p: &Proc, was: &Proc) -> bool {
+        p.alone == was.alone && p.memory == was.memory && p.queries == was.queries
+    }
+
+    #[summary("The reason in an `undecided` diagnostic for a solver error that is a limit (stage0 limit_reason): the memory limit or the rlimit of the asker; None for any other error")]
+    #[effects(alloc, io, nondet)]
+    fn limit_reason(e: &str, who: Asker) -> Option<String> {
+        if out_of_memory(e) {
+            Some(types::cat3("memory limit reached, ", encode_terms::dec(query_memory_mb(who)).as_str(), " MB"))
+        } else if encode_query::has(e, "canceled") {
+            Some(types::cat2("resource limit reached, rlimit ", encode_terms::dec(query_rlimit(who)).as_str()))
+        } else {
+            None
+        }
+    }
+
+    #[summary("Whether the process has not been waited for")]
+    spec fn live(p: &Proc) -> bool {
+        match p.child {
+            None => false,
+            Some(c) => true,
+        }
+    }
+
+    #[summary("pinned, or the value of the environment variable name when that is a smaller number (Rust's parse of a u64: digits after an optional `+`). A variable may lower a limit, for tests; it can never raise it, so the least it gives is 1: Z3 reads 0 as no limit for each of `-t`, `-memory` and `:rlimit`")]
+    #[effects(alloc, io, nondet)]
+    #[uses(wide::small, wide::stepped)]
+    fn lowered(name: &str, pinned: u64) -> u64 {
+        match std::env::var(name) {
+            None => pinned,
+            Some(v) => match encode_sub::parse_u128(v.as_str()) { None => pinned, Some(x) => { if x.hi == 0 && x.lo < pinned { if x.lo == 0 { 1 } else { x.lo } } else { pinned } }, },
+        }
+    }
+
+    #[summary("The pinned memory limit of a query in megabytes (stage0 memory_mb; Z3's `-memory`, which counts a process: see working_memory_mb for how a query gets a count of its own), or the value of BMB_Z3_MEMORY_MB when that is a smaller number. A query that reaches it is undecided, as one that reaches the rlimit is")]
+    #[effects(alloc, io, nondet)]
+    fn memory_mb() -> u64 {
+        lowered("BMB_Z3_MEMORY_MB", toolchain::pinned_memory_mb())
+    }
+
+    #[summary("The pairs of term and value the solver answers `(get-value (terms))` with, in the program's symbols (the shared part of stage0 get_values and get_value_terms): an error answer is the error, text that is no s-expression `cannot parse model`, an atom `unexpected model`")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn model_pairs(s: &mut Solver, terms: &[String]) -> (r: Result<Vec<encode_terms::Sexp>, String>) {
+        let asked: String = encode_query::forward(&mut s.canon, types::cat3("(get-value (", encode_terms::join(terms, " ").as_str(), "))").as_str());
+        let raw: String = ask(s, asked.as_str())?;
+        let got: String = encode_query::back(&s.canon, raw.as_str());
+        if encode_terms::starts_at(got.as_str(), 0, "(error") {
+            return Err(got);
+        }
+        match encode_terms::parse(got.as_str()) {
+            None => Err(types::cat2("cannot parse model: ", got.as_str())),
+            Some(tree) => match tree { encode_terms::Sexp::Atom(a) => Err(types::cat2("unexpected model: ", got.as_str())), encode_terms::Sexp::List(pairs) => Ok(pairs), },
+        }
+    }
+
+    #[summary("Whether the slot is empty")]
+    spec fn none(o: &Option<Proc>) -> bool {
+        match o {
+            None => true,
+            Some(p) => false,
+        }
+    }
+
+    #[summary("Whether a solver error is the memory limit (stage0 out_of_memory). The process has ended: the next query needs a new one")]
+    #[effects(pure)]
+    fn out_of_memory(e: &str) -> bool {
+        encode_query::has(e, "out of memory")
+    }
+
+    #[summary("The error of a query that ended at the memory limit (stage0 OUT_OF_MEMORY)")]
+    #[effects(alloc)]
+    fn out_of_memory_text() -> String {
+        String::from("z3: out of memory")
+    }
+
+    #[summary("Sends one command to the process and reads its answer (stage0 Proc::ask): the command and a newline in one write. A write that fails is the error of a process that ended at its memory limit, or `z3 input closed` with the system's text. A process that has been waited for is not written to and stays so: it gets the error stage0 gets from writing to a process that is gone, where the system's text is that of a closed pipe")]
+    #[effects(alloc, io, nondet)]
+    #[uses(kept, live, refused, settled)]
+    fn proc_ask(p: &mut Proc, text: &str) -> (r: Result<String, String>)
+        ensures !live(old(p)) ==> !live(p) && refused(&r), kept(p, old(p)),
+    {
+        let mut line: String = String::from(text);
+        line.push_str("\n");
+        let failed: Option<String> = match &mut p.child {
+            None => Some(String::from("Broken pipe (os error 32)")),
+            Some(c) => write_to(c, line.as_bytes()),
+        };
+        match failed {
+            None => {},
+            Some(why) => { return match ended(p) { None => Err(types::cat2("z3 input closed: ", why.as_str())), Some(limit) => Err(limit), }; },
+        }
+        read_response(p)
+    }
+
+    #[summary("Asks the process to end, reads what it still writes (drain) and waits for it (stage0's Drop of Proc), and gives its exit status. A process waited for before is neither written to nor waited for again: its remembered status is the answer, as stage0's second wait gives the first one's")]
+    #[effects(alloc, io, nondet)]
+    #[uses(live, settled)]
+    fn proc_close(p: &mut Proc) -> (r: Option<i32>)
+        ensures !live(p),
+    {
+        match std::mem::replace(&mut p.child, None) {
+            None => {},
+            Some(held) => { let mut c: std::process::Child = held; match c.write_all(b"(exit)\n") { Ok(u) => {}, Err(e) => {}, } drain(&mut c); p.status = match c.wait() { Ok(code) => Some(code), Err(e2) => None, }; },
+        }
+        p.status
+    }
+
+    #[summary("The memory limit in megabytes that decides a query asked by who (stage0 query_memory_mb): the gate's, or the advisory one for an advisory asker. Part of the proof cache's key")]
+    #[effects(alloc, io, nondet)]
+    fn query_memory_mb(who: Asker) -> u64 {
+        match who {
+            Asker::Gate => memory_mb(),
+            Asker::Refutations => advisory_memory_mb(),
+            Asker::Models => advisory_memory_mb(),
+        }
+    }
+
+    #[summary("The resource limit of a full query asked by who (stage0 query_rlimit): the gate's, or the advisory one for the lint's refutations. It is in the text of the query (its header), and so in the proof cache's keys")]
+    #[effects(alloc, io, nondet)]
+    fn query_rlimit(who: Asker) -> u64 {
+        match who {
+            Asker::Gate => rlimit(),
+            Asker::Refutations => advisory_rlimit(),
+            Asker::Models => rlimit(),
+        }
+    }
+
+    #[summary("Reads one line of the process's output onto line: how many bytes, 0 at the end of the output, or `z3 output error` with the system's text")]
+    #[effects(alloc, io, nondet)]
+    fn read_from(c: &mut std::process::Child, line: &mut String) -> Result<usize, String> {
+        match c.read_line(line) {
+            Ok(n) => Ok(n),
+            Err(e) => Err(types::cat2("z3 output error: ", e.message.as_str())),
+        }
+    }
+
+    #[summary("Reads one complete s-expression or atom from the solver (stage0 read_response): lines until the parentheses are balanced and no string literal or quoted symbol is open, white space trimmed from both ends. A parenthesis inside a string literal or a quoted symbol does not count (an error message may quote one). The end of the output is the error of a process that ended at its memory limit, or `z3 exited unexpectedly`. The loop runs until the solver answers or its output ends, so the definition is proved for partial correctness (ADR-0094)")]
+    #[effects(alloc, io, nondet)]
+    #[uses(kept, live, settled)]
+    fn read_response(p: &mut Proc) -> (r: Result<String, String>)
+        ensures !live(old(p)) ==> !live(p), kept(p, old(p)),
+    {
+        let mut out: String = String::new();
+        let mut depth: i64 = 0;
+        let mut quoted: u8 = 0;
+        loop
+            invariant !live(old(p)) ==> !live(p), kept(p, old(p)),
+        {
+            let mut line: String = String::new();
+            let read: Result<usize, String> = match &mut p.child {
+                None => Ok(0),
+                Some(c) => read_from(c, &mut line),
+            };
+            let n: usize = read?;
+            if n == 0 {
+                return match ended(p) { None => Err(String::from("z3 exited unexpectedly")), Some(limit) => Err(limit), };
+            }
+            for i in 0..line.len()
+                invariant 0 <= i && i <= line.len(),
+            {
+                let b: u8 = line.as_bytes()[i];
+                if quoted != 0 {
+                    if b == quoted {
+                        quoted = 0;
+                    }
+                } else if b == 34 || b == 124 {
+                    quoted = b;
+                } else if b == 40 {
+                    depth = depth.saturating_add(1);
+                } else if b == 41 {
+                    depth = depth.saturating_sub(1);
+                }
+            }
+            out.push_str(line.as_str());
+            if depth <= 0 && quoted == 0 {
+                let trimmed: String = fmt::trim(out.as_str());
+                if trimmed.len() > 0 {
+                    return Ok(trimmed);
+                }
+            }
+        }
+    }
+
+    #[summary("The reason inside the solver's answer `(:reason-unknown \"...\")` (stage0 reason_text): what follows the first quote, without the closing parentheses and quotes at its end; the whole answer when it has no quote")]
+    #[effects(alloc)]
+    fn reason_text(r: &str) -> String {
+        let from: usize = match encode_query::find_byte(r, 34, 0) {
+            None => { return String::from(r); },
+            Some(q) => q + 1,
+        };
+        let mut end: usize = r.len();
+        let mut parens: bool = true;
+        for k in 0..r.len()
+            invariant 0 <= k && k <= r.len() && from <= end && end <= r.len(),
+        {
+            if end > from && parens && r.as_bytes()[end - 1] == 41 {
+                end = end - 1;
+            } else {
+                parens = false;
+            }
+        }
+        for k2 in 0..r.len()
+            invariant 0 <= k2 && k2 <= r.len() && from <= end && end <= r.len(),
+        {
+            if end > from && r.as_bytes()[end - 1] == 34 {
+                end = end - 1;
+            }
+        }
+        lexer::cut(r, from, end)
+    }
+
+    #[summary("Whether an answer is an error")]
+    spec fn refused(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(a) => false,
+            Err(e) => true,
+        }
+    }
+
+    #[summary("Closes the process of a slot, if it holds one, and empties the slot: what stage0 does by dropping the process")]
+    #[effects(alloc, io, nondet)]
+    #[uses(live, none, settled)]
+    fn retire(slot: &mut Option<Proc>) -> ()
+        ensures none(slot),
+    {
+        match std::mem::replace(slot, None) {
+            None => {},
+            Some(held) => { let mut p: Proc = held; let status: Option<i32> = proc_close(&mut p); assert(!live(&p)); },
+        }
+    }
+
+    #[summary("Whether this solver may take on another definition (stage0 reusable): a process may be reused for a new definition only 60 seconds after it started, so that each definition gets the wall-clock backstop in full. Every obligation starts with `(reset)` and its full base, so a reused process answers as a new one would; where its memory could make it answer otherwise, a new one is asked (ask)")]
+    #[effects(io, nondet)]
+    #[uses(fits, settled)]
+    fn reusable(s: &Solver) -> bool {
+        match &s.proc {
+            None => true,
+            Some(p) => { let now: u64 = std::time::monotonic_ms(); now.saturating_sub(p.started).saturating_add(p.aged) < 60000 },
+        }
+    }
+
+    #[summary("The pinned resource limit per obligation (stage0 rlimit): Z3_RLIMIT of scripts/toolchain.env, or the value of BMB_Z3_RLIMIT when that is a smaller number (for tests of the gate; it can never raise it)")]
+    #[effects(alloc, io, nondet)]
+    fn rlimit() -> u64 {
+        lowered("BMB_Z3_RLIMIT", toolchain::pinned_rlimit())
+    }
+
+    #[summary("The number in the solver's answer `(:rlimit N)` (the reading of stage0 rlimit_used): the second word of the answer without the parentheses at its two ends, read as Rust reads a u64")]
+    #[effects(alloc)]
+    #[uses(wide::small, wide::stepped)]
+    fn rlimit_of(r: &str) -> Option<u64> {
+        let mut a: usize = 0;
+        let mut b: usize = r.len();
+        for k in 0..r.len()
+            invariant 0 <= k && k <= r.len() && a <= b && b <= r.len(),
+        {
+            if a < b && a == k && (r.as_bytes()[a] == 40 || r.as_bytes()[a] == 41) {
+                a = a + 1;
+            }
+        }
+        for k2 in 0..r.len()
+            invariant 0 <= k2 && k2 <= r.len() && a <= b && b <= r.len(),
+        {
+            if a < b && (r.as_bytes()[b - 1] == 40 || r.as_bytes()[b - 1] == 41) {
+                b = b - 1;
+            }
+        }
+        let ws: Vec<String> = toolchain::words(lexer::cut(r, a, b).as_str());
+        if ws.len() > 1 {
+            match encode_sub::parse_u128(ws[1].as_str()) {
+                None => {},
+                Some(x) => { if x.hi == 0 { return Some(x.lo); } },
+            }
+        }
+        None
+    }
+
+    #[summary("Resource units spent since the last `(reset)` (stage0 rlimit_used; deterministic for a given solver version and query): the second word of the answer `(:rlimit N)`")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn rlimit_used(s: &mut Solver) -> (r: Result<u64, String>) {
+        let got: String = ask(s, "(get-info :rlimit)")?;
+        match rlimit_of(got.as_str()) {
+            None => Err(types::cat2("unexpected rlimit answer: ", got.as_str())),
+            Some(n) => Ok(n),
+        }
+    }
+
+    #[summary("Runs a sequence of top-level commands that answer `success` (stage0 run), each sent in canonical symbols. Each query starts with `(reset)` and numbers its own symbols. Stops at the first command that answers otherwise")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled)]
+    fn run(s: &mut Solver, script: &str) -> (r: Result<(), String>) {
+        let cmds: Vec<String> = encode_spec::split_commands(script);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            if fmt::trim(cmds[i].as_str()) == "(reset)" {
+                s.canon = encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() };
+            }
+            let sent: String = encode_query::forward(&mut s.canon, cmds[i].as_str());
+            expect_success(s, sent.as_str(), cmds[i].as_str())?;
+        }
+        Ok(())
+    }
+
+    #[summary("A process that has not been waited for has no exit status yet")]
+    spec fn settled(p: &Proc) -> bool {
+        match p.child {
+            None => true,
+            Some(c) => match p.status { None => true, Some(code) => false, },
+        }
+    }
+
+    #[summary("Starts the pinned Z3 for the asker who (stage0 Solver::start), under the working limit of the asker's memory limit. Fails if the solver is missing or a different version (z3 remembers a passed check), or does not start; a failed start is one attempted start, which the caller counts, as there is no solver to count it")]
+    #[effects(alloc, io, nondet)]
+    #[uses(fits, settled, started_with, working)]
+    fn start(who: Asker, z3: &mut toolchain::Z3) -> (r: Result<Solver, String>) {
+        let checked: String = toolchain::check_z3(z3)?;
+        let limit: u64 = query_memory_mb(who);
+        let p: Proc = start_proc(working_memory_mb(limit))?;
+        Ok(Solver { proc: Some(p), limit: limit, query: Vec::new(), down: String::new(), alone: false, canon: encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() }, timeouts: 0, starts: 1 })
+    }
+
+    #[summary("Starts the pinned Z3 with memory limit memory in megabytes (stage0 Proc::start): `z3 -in -smt2 -t:BACKSTOP -T:HARD -memory:MEMORY` with its standard error discarded, then `(set-option :print-success true)`, so that every command answers and an error is seen at the command that caused it. A process that does not answer `success` to that is closed")]
+    #[effects(alloc, io, nondet)]
+    #[uses(kept, live, settled, started_with)]
+    fn start_proc(memory: u64) -> (r: Result<Proc, String>)
+        ensures started_with(&r, memory),
+    {
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("-in"));
+        args.push(String::from("-smt2"));
+        args.push(types::cat2("-t:", encode_terms::dec(backstop_ms()).as_str()));
+        args.push(types::cat2("-T:", encode_terms::dec(hard_secs()).as_str()));
+        args.push(types::cat2("-memory:", encode_terms::dec(memory).as_str()));
+        let child: std::process::Child = match std::process::spawn("z3", args.as_slice(), std::process::Stdio::Null) {
+            Ok(c) => c,
+            Err(e) => { return Err(types::cat2("cannot start z3: ", e.message.as_str())); },
+        };
+        let mut p: Proc = Proc { child: Some(child), status: None, started: std::time::monotonic_ms(), aged: 0, memory: memory, queries: 0, alone: false };
+        match proc_ask(&mut p, "(set-option :print-success true)") {
+            Ok(got) => { if got == "success" { Ok(p) } else { let s2: Option<i32> = proc_close(&mut p); assert(!live(&p)); Err(types::cat2(got.as_str(), " (in `(set-option :print-success true)`)")) } },
+            Err(e2) => { let s1: Option<i32> = proc_close(&mut p); assert(!live(&p)); Err(e2) },
+        }
+    }
+
+    #[summary("A process just started is not one that answers alone and has the memory limit asked for")]
+    spec fn started_with(r: &Result<Proc, String>, memory: u64) -> bool {
+        match r {
+            Ok(p) => !p.alone && p.memory == memory,
+            Err(e) => true,
+        }
+    }
+
+    #[summary("Queries the backstop ended since the last call (stage0 take_timeouts)")]
+    #[effects(pure)]
+    #[uses(fits, settled)]
+    fn take_timeouts(s: &mut Solver) -> u64 {
+        let n: u64 = s.timeouts;
+        s.timeouts = 0;
+        n
+    }
+
+    #[summary("s when it has at most n characters, else its first n characters and `..` (stage0 truncate)")]
+    #[effects(alloc)]
+    fn truncate(s: &str, n: usize) -> String {
+        let mut count: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant count <= i,
+            decreases s.len() - i,
+        {
+            if count == n {
+                return types::cat2(lexer::cut(s, 0, i).as_str(), "..");
+            }
+            match std::str::decode_utf8(s, i) {
+                None => { i = s.len(); },
+                Some(dc) => { if dc.next <= i { i = s.len(); } else { count = count + 1; i = dc.next; } },
+            }
+        }
+        String::from(s)
+    }
+
+    #[summary("The reason in an `undecided` diagnostic for Z3's reason-unknown why (stage0 unknown_reason): the backstop for a timeout, the rlimit of the asker for a query canceled at it, the solver's own words otherwise")]
+    #[effects(alloc, io, nondet)]
+    fn unknown_reason(why: &str, who: Asker) -> String {
+        if encode_query::has(why, "timeout") {
+            types::cat3("wall-clock backstop of ", encode_terms::dec(backstop_ms()).as_str(), " ms reached before the rlimit; this verdict depends on the machine")
+        } else if encode_query::has(why, "canceled") || encode_query::has(why, "resource") {
+            types::cat2("resource limit reached, rlimit ", encode_terms::dec(query_rlimit(who)).as_str())
+        } else {
+            String::from(why)
+        }
+    }
+
+    #[summary("The value of a pair `(term value)` of a model; a member that is no pair is its own value (stage0 get_values)")]
+    #[effects(alloc)]
+    fn value_of(p: &encode_terms::Sexp) -> encode_terms::Sexp {
+        match p {
+            encode_terms::Sexp::Atom(a) => p.clone(),
+            encode_terms::Sexp::List(kv) => { if kv.len() == 2 { kv[1].clone() } else { p.clone() } },
+        }
+    }
+
+    #[summary("The working limit of a process for the deciding limit limit")]
+    spec fn working(limit: u64) -> u64 {
+        if limit / 2 >= 1 {
+            limit / 2
+        } else {
+            1
+        }
+    }
+
+    #[summary("The memory limit in megabytes of a process that answers one query after another, for the deciding limit limit (stage0 working_memory_mb, ADR-0129): half of it, and at least 1, as Z3 reads 0 as no limit. Z3 counts the allocations of its process, and a process keeps a little of each query it answered, so a query is undecided for memory only when it reaches limit as the first query of a new process, which is the same state for every query; and a process that has answered others is trusted only below this smaller limit, so that a query it answers would also have been answered alone")]
+    #[effects(pure)]
+    fn working_memory_mb(limit: u64) -> (r: u64)
+        ensures r == working(limit),
+    {
+        if limit / 2 >= 1 {
+            limit / 2
+        } else {
+            1
+        }
+    }
+
+    #[summary("Writes data to the process's input and flushes it: None when it went through, the system's text when it did not")]
+    #[effects(alloc, io, nondet)]
+    fn write_to(c: &mut std::process::Child, data: &[u8]) -> Option<String> {
+        match c.write_all(data) {
+            Ok(u) => None,
+            Err(e) => Some(e.message.clone()),
+        }
+    }
+}

@@ -1,0 +1,290 @@
+#[summary("Differential test: sends scripts through the port's solver connection (selfhost/solver.bmb: the Z3 process, the solver, the limits; selfhost/toolchain.bmb: the version check) and prints everything the connection shows of them. The reference is smt_answers_ref.rs, which does the same job with stage0's connection and describes the directives and what each prints. stage0 counts solver starts and remembers a passed version check in statics of its process; here the state of the run holds both")]
+mod app {
+    #[summary("The state of a run: the solver of the script, if one is started; who asks; the solver starts of the solvers let go of and of failed starts (done), and the count last printed (shown); the remembered version check; the text to print")]
+    struct State { solver: Option<solver::Solver>, who: solver::Asker, done: u64, shown: u64, z3: toolchain::Z3, out: String }
+
+    #[summary("The asker a script names: gate unless refutations or models")]
+    #[effects(pure)]
+    fn asker(rest: &str) -> solver::Asker {
+        if rest == "refutations" {
+            solver::Asker::Refutations
+        } else if rest == "models" {
+            solver::Asker::Models
+        } else {
+            solver::Asker::Gate
+        }
+    }
+
+    #[summary("Whether b is ASCII white space as Rust's is_ascii_whitespace reads it")]
+    #[effects(pure)]
+    fn blank(b: u8) -> bool {
+        b == 32 || b == 9 || b == 10 || b == 12 || b == 13
+    }
+
+    #[summary("Closes the solver of the state, if it has one, counts its starts and gives its exit status")]
+    #[effects(alloc, io, nondet)]
+    fn close(st: &mut State) -> Option<i32> {
+        match std::mem::replace(&mut st.solver, None) {
+            None => None,
+            Some(held) => { let mut s: solver::Solver = held; let status: Option<i32> = solver::close(&mut s); st.done = st.done.saturating_add(s.starts); status },
+        }
+    }
+
+    #[summary("The line `closed:` with an exit status")]
+    #[effects(alloc)]
+    fn closed(st: &mut State, status: Option<i32>) -> () {
+        match status {
+            None => line(st, "closed: none", ""),
+            Some(code) => { if code >= 0 { line(st, "closed: ", encode_terms::dec(code as u64).as_str()); } else { line(st, "closed: none", ""); } },
+        }
+    }
+
+    #[summary("A copy of who")]
+    #[effects(pure)]
+    fn copy(who: &solver::Asker) -> solver::Asker {
+        match who {
+            solver::Asker::Gate => solver::Asker::Gate,
+            solver::Asker::Refutations => solver::Asker::Refutations,
+            solver::Asker::Models => solver::Asker::Models,
+        }
+    }
+
+    #[summary("Runs one directive: its word and the rest of it")]
+    #[effects(alloc, io, nondet)]
+    fn directive(st: &mut State, word: &str, rest: &str) -> () {
+        if word == "start" {
+            let before: Option<i32> = close(st);
+            st.who = asker(rest);
+            let who: solver::Asker = copy(&st.who);
+            match solver::start(who, &mut st.z3) {
+                Ok(s) => { st.solver = Some(s); line(st, "ok", ""); },
+                Err(e) => { st.done = st.done.saturating_add(1); error(st, e.as_str()); },
+            }
+            return;
+        }
+        if word == "z3" {
+            match toolchain::check_z3(&mut st.z3) {
+                Ok(v) => line(st, "z3: ", v.as_str()),
+                Err(e2) => error(st, e2.as_str()),
+            }
+            return;
+        }
+        if word == "limits" {
+            limits(st);
+            return;
+        }
+        let mut s2: solver::Solver = match std::mem::replace(&mut st.solver, None) {
+            None => { line(st, "no solver", ""); return; },
+            Some(held) => held,
+        };
+        if word == "run" {
+            match solver::run(&mut s2, rest) {
+                Ok(u) => line(st, "ok", ""),
+                Err(e3) => error(st, e3.as_str()),
+            }
+        } else if word == "ask" {
+            match solver::ask(&mut s2, rest) {
+                Ok(a) => line(st, "answer: ", a.as_str()),
+                Err(e4) => error(st, e4.as_str()),
+            }
+        } else if word == "check" {
+            match solver::check_sat(&mut s2) {
+                Ok(ans) => match ans { solver::Answer::Unsat => line(st, "unsat", ""), solver::Answer::Sat => line(st, "sat", ""), solver::Answer::Unknown(why) => { line(st, "unknown: ", why.as_str()); let reason: String = solver::unknown_reason(why.as_str(), copy(&st.who)); line(st, "reason: ", reason.as_str()); }, },
+                Err(e5) => error(st, e5.as_str()),
+            }
+        } else if word == "rlimit" {
+            match solver::rlimit_used(&mut s2) {
+                Ok(n) => line(st, "rlimit: ", encode_terms::dec(n).as_str()),
+                Err(e6) => error(st, e6.as_str()),
+            }
+        } else if word == "values" {
+            let asked: Vec<String> = terms(rest);
+            match solver::get_values(&mut s2, asked.as_slice()) {
+                Ok(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { line(st, "value: ", vs[i].as_str()); } },
+                Err(e7) => error(st, e7.as_str()),
+            }
+        } else if word == "terms" {
+            let asked2: Vec<String> = terms(rest);
+            match solver::get_value_terms(&mut s2, asked2.as_slice()) {
+                Ok(ts) => { for j in 0..ts.len() invariant 0 <= j && j <= ts.len(), { line(st, "term: ", encode_terms::print(&ts[j], 100000).as_str()); } },
+                Err(e8) => error(st, e8.as_str()),
+            }
+        } else if word == "timeouts" {
+            line(st, "timeouts: ", encode_terms::dec(solver::take_timeouts(&mut s2)).as_str());
+        } else if word == "reusable" {
+            if solver::reusable(&s2) {
+                line(st, "reusable: ", "true");
+            } else {
+                line(st, "reusable: ", "false");
+            }
+        } else if word == "age" {
+            solver::age(&mut s2, number(rest));
+        } else if word == "close" {
+            let status: Option<i32> = solver::close(&mut s2);
+            closed(st, status);
+        } else {
+            line(st, "unknown directive", "");
+        }
+        st.solver = Some(s2);
+    }
+
+    #[summary("The line of an error, and the line of its limit when it is one")]
+    #[effects(alloc, io, nondet)]
+    fn error(st: &mut State, e: &str) -> () {
+        line(st, "error: ", e);
+        match solver::limit_reason(e, copy(&st.who)) {
+            None => {},
+            Some(l) => line(st, "limit: ", l.as_str()),
+        }
+    }
+
+    #[summary("Whether the state has a solver")]
+    #[effects(pure)]
+    fn has_solver(st: &State) -> bool {
+        match &st.solver {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[summary("The line of the limits of the asker")]
+    #[effects(alloc, io, nondet)]
+    fn limits(st: &mut State) -> () {
+        let l: u64 = solver::query_memory_mb(copy(&st.who));
+        let mut t: String = types::cat4("rlimit ", encode_terms::dec(solver::rlimit()).as_str(), " advisory ", encode_terms::dec(solver::advisory_rlimit()).as_str());
+        t.push_str(types::cat4(" query ", encode_terms::dec(solver::query_rlimit(copy(&st.who))).as_str(), " memory ", encode_terms::dec(solver::memory_mb()).as_str()).as_str());
+        t.push_str(types::cat4(" advisory ", encode_terms::dec(solver::advisory_memory_mb()).as_str(), " query ", encode_terms::dec(l).as_str()).as_str());
+        t.push_str(types::cat4(" working ", encode_terms::dec(solver::working_memory_mb(l)).as_str(), " backstop ", encode_terms::dec(solver::backstop_ms()).as_str()).as_str());
+        line(st, "limits: ", t.as_str());
+    }
+
+    #[summary("Adds one line of two parts to the text to print")]
+    #[effects(alloc)]
+    fn line(st: &mut State, a: &str, b: &str) -> () {
+        st.out.push_str(a);
+        st.out.push_str(b);
+        st.out.push_str("\n");
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let args: Vec<String> = std::env::args();
+        let mut st: State = State { solver: None, who: solver::Asker::Gate, done: 0, shown: 0, z3: toolchain::new(), out: String::new() };
+        let mut a: usize = 1;
+        while a < args.len()
+            decreases args.len() - a,
+        {
+            let text: String = match std::fs::read_to_string(args[a].as_str()) {
+                Ok(t) => t,
+                Err(e) => { eprint_str("cannot read "); eprint_str(args[a].as_str()); eprint_str("\n"); std::process::exit(2); },
+            };
+            line(&mut st, "== ", name_of(args[a].as_str()).as_str());
+            let ds: Vec<String> = encode_spec::split_commands(text.as_str());
+            for i in 0..ds.len()
+                invariant 0 <= i && i <= ds.len(),
+            {
+                line(&mut st, "> ", ds[i].as_str());
+                step(&mut st, ds[i].as_str());
+                let now: u64 = starts(&st);
+                if now != st.shown {
+                    st.shown = now;
+                    line(&mut st, "starts: ", encode_terms::dec(now).as_str());
+                }
+                print_str(st.out.as_str());
+                st.out = String::new();
+            }
+            if has_solver(&st) {
+                let status: Option<i32> = close(&mut st);
+                st.out.push_str("end ");
+                closed(&mut st, status);
+            }
+            st.who = solver::Asker::Gate;
+            print_str(st.out.as_str());
+            st.out = String::new();
+            a = a + 1;
+        }
+    }
+
+    #[summary("What follows the last `/` of a path")]
+    #[effects(alloc)]
+    fn name_of(path: &str) -> String {
+        let mut from: usize = 0;
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len() && from <= i,
+        {
+            if path.as_bytes()[i] == 47 {
+                from = i + 1;
+            }
+        }
+        lexer::cut(path, from, path.len())
+    }
+
+    #[summary("The number text is as Rust reads a u64, or 0")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn number(text: &str) -> u64 {
+        match encode_sub::parse_u128(text) {
+            None => 0,
+            Some(x) => { if x.hi == 0 { x.lo } else { 0 } },
+        }
+    }
+
+    #[summary("The solver starts so far: those counted and those of the solver held")]
+    #[effects(pure)]
+    fn starts(st: &State) -> u64 {
+        match &st.solver {
+            None => st.done,
+            Some(s) => st.done.saturating_add(s.starts),
+        }
+    }
+
+    #[summary("Runs the directive of the form d: `(!WORD REST)`, where WORD ends at the first ASCII white space and REST is what follows without the white space at its ends; a form that does not start with `(!` has an empty word")]
+    #[effects(alloc, io, nondet)]
+    fn step(st: &mut State, d: &str) -> () {
+        let mut a: usize = 0;
+        let mut b: usize = 0;
+        if d.len() >= 2 && encode_terms::starts_at(d, 0, "(!") {
+            a = 2;
+            b = d.len();
+            if b > a && d.as_bytes()[b - 1] == 41 {
+                b = b - 1;
+            }
+        }
+        let mut w: usize = b;
+        for i in a..b
+            invariant a <= i && i <= b && a <= w && w <= b,
+        {
+            if w == b && blank(d.as_bytes()[i]) {
+                w = i;
+            }
+        }
+        let mut r0: usize = w;
+        let mut r1: usize = b;
+        for j in w..b
+            invariant w <= j && j <= b && w <= r0 && r0 <= r1 && r1 <= b,
+        {
+            if r0 == j && r0 < r1 && blank(d.as_bytes()[r0]) {
+                r0 = r0 + 1;
+            }
+        }
+        for k in w..b
+            invariant w <= k && k <= b && w <= r0 && r0 <= r1 && r1 <= b,
+        {
+            if r0 < r1 && blank(d.as_bytes()[r1 - 1]) {
+                r1 = r1 - 1;
+            }
+        }
+        directive(st, lexer::cut(d, a, w).as_str(), lexer::cut(d, r0, r1).as_str());
+    }
+
+    #[summary("The terms of rest, each as text")]
+    #[effects(alloc)]
+    fn terms(rest: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        match encode_terms::parse(types::cat3("(", rest, ")").as_str()) {
+            None => {},
+            Some(tree) => match &tree { encode_terms::Sexp::Atom(a) => {}, encode_terms::Sexp::List(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { out.push(encode_terms::print(&xs[i], 100000)); } }, },
+        }
+        out
+    }
+}

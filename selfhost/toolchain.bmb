@@ -1,0 +1,182 @@
+#[summary("Pinned external tools (port of the solver's part of stage0 compiler/src/toolchain.rs): the values of scripts/toolchain.env the proof side reads, written out here, and the check that the `z3` on PATH is exactly the pinned version. A missing solver or a different version is an error, never a warning: the proof gate must not run on an unknown solver. stage0 remembers a passed check in a static of the process; here the caller holds it (Z3)")]
+mod toolchain {
+    #[summary("A passed check of the solver's version, remembered as long as PATH is what it was (stage0's static in check_z3): known is false until a check passes; path is the PATH it passed under and version the version found")]
+    struct Z3 { known: bool, path: Option<String>, version: String }
+
+    #[summary("How many bytes at i are one ill-formed piece, as Rust's from_utf8_lossy cuts them (each becomes one U+FFFD): the lead byte and the continuation bytes after it that a well-formed sequence could have had there. i is inside b and no sequence is well formed at i")]
+    #[effects(pure)]
+    fn bad_len(b: &[u8], i: usize) -> (n: usize)
+        requires i < b.len(),
+        ensures 1 <= n && n <= 3,
+    {
+        let lead: u8 = b[i];
+        if lead < 224 || lead > 244 || i + 1 >= b.len() {
+            return 1;
+        }
+        let c: u8 = b[i + 1];
+        let second: bool = if lead == 224 {
+            c >= 160 && c <= 191
+        } else if lead == 237 {
+            c >= 128 && c <= 159
+        } else if lead == 240 {
+            c >= 144 && c <= 191
+        } else if lead == 244 {
+            c >= 128 && c <= 143
+        } else {
+            c >= 128 && c <= 191
+        };
+        if !second {
+            return 1;
+        }
+        if lead < 240 || i + 2 >= b.len() {
+            return 2;
+        }
+        if b[i + 2] >= 128 && b[i + 2] <= 191 {
+            3
+        } else {
+            2
+        }
+    }
+
+    #[summary("The version of the `z3` on PATH when it is exactly the pinned one (stage0 check_z3). A passed check is remembered in seen as long as PATH is unchanged: every proof run asks, and `z3 --version` is a process start. Failures are not remembered, so a missing or wrong solver is reported on every call. A PATH that is not UTF-8 reads as no PATH, so two such values are one here (stage0 compares the bytes)")]
+    #[effects(alloc, io, nondet)]
+    fn check_z3(seen: &mut Z3) -> Result<String, String> {
+        let path: Option<String> = std::env::var("PATH");
+        if seen.known && same(&seen.path, &path) {
+            return Ok(seen.version.clone());
+        }
+        let v: String = check_z3_uncached()?;
+        seen.known = true;
+        seen.path = path;
+        seen.version = v.clone();
+        Ok(v)
+    }
+
+    #[summary("Runs `z3 --version` and compares the version it prints with the pinned one (stage0 check_z3_uncached). The solver is given an empty standard input (stage0's Command::output gives it none)")]
+    #[effects(alloc, io, nondet)]
+    fn check_z3_uncached() -> Result<String, String> {
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("--version"));
+        let none: Vec<u8> = Vec::new();
+        let out: String = match std::process::run("z3", args.as_slice(), none.as_slice()) {
+            Ok(o) => lossy(o.stdout.as_slice()),
+            Err(e) => { return Err(types::cat2("`z3` not found: ", e.message.as_str())); },
+        };
+        match parse_z3_version(out.as_str()) {
+            None => { let mut why: String = String::from("cannot read z3 version from "); std::json::push_string(&mut why, out.as_str()); Err(why) },
+            Some(found) => { if found == z3_version() { Ok(found) } else { Err(types::cat5("z3 ", found.as_str(), " found, ", z3_version().as_str(), " required (run scripts/setup.sh)")) } },
+        }
+    }
+
+    #[summary("Bytes as text (Rust's String::from_utf8_lossy): well-formed sequences as they are, each ill-formed piece (bad_len) as U+FFFD")]
+    #[effects(alloc)]
+    fn lossy(b: &[u8]) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        let mut i: usize = 0;
+        while i < b.len()
+            decreases b.len() - i,
+        {
+            let w: usize = std::utf8::width(b, i);
+            if w == 0 || w > b.len() - i {
+                out.push(239);
+                out.push(191);
+                out.push(189);
+                i = i + bad_len(b, i);
+            } else {
+                for k in 0..w
+                    invariant 0 <= k && k <= w && i + w <= b.len(),
+                {
+                    out.push(b[i + k]);
+                }
+                i = i + w;
+            }
+        }
+        match String::from_utf8(out) {
+            Ok(s) => s,
+            Err(e) => String::new(),
+        }
+    }
+
+    #[summary("No check has passed yet")]
+    #[effects(alloc)]
+    fn new() -> Z3 {
+        Z3 { known: false, path: None, version: String::new() }
+    }
+
+    #[summary("X.Y.Z of `Z3 version X.Y.Z - 64 bit` (stage0 parse_z3_version): the word after the first word `version`")]
+    #[effects(alloc)]
+    fn parse_z3_version(out: &str) -> Option<String> {
+        let ws: Vec<String> = words(out);
+        for i in 0..ws.len()
+            invariant 0 <= i && i <= ws.len(),
+        {
+            if ws[i] == "version" {
+                if i + 1 < ws.len() {
+                    return Some(ws[i + 1].clone());
+                }
+                return None;
+            }
+        }
+        None
+    }
+
+    #[summary("Z3_ADVISORY_MEMORY_MB of scripts/toolchain.env")]
+    #[effects(pure)]
+    fn pinned_advisory_memory_mb() -> u64 {
+        128
+    }
+
+    #[summary("Z3_ADVISORY_RLIMIT of scripts/toolchain.env")]
+    #[effects(pure)]
+    fn pinned_advisory_rlimit() -> u64 {
+        1000000
+    }
+
+    #[summary("Z3_MEMORY_MB of scripts/toolchain.env")]
+    #[effects(pure)]
+    fn pinned_memory_mb() -> u64 {
+        1024
+    }
+
+    #[summary("Z3_RLIMIT of scripts/toolchain.env")]
+    #[effects(pure)]
+    fn pinned_rlimit() -> u64 {
+        5000000
+    }
+
+    #[summary("Whether two readings of PATH are the same")]
+    #[effects(pure)]
+    fn same(a: &Option<String>, b: &Option<String>) -> bool {
+        match a {
+            None => match b { None => true, Some(y) => false, },
+            Some(x) => match b { None => false, Some(y2) => x == y2, },
+        }
+    }
+
+    #[summary("The parts of text between runs of white space (Rust's split_whitespace: Unicode White_Space)")]
+    #[effects(alloc)]
+    fn words(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        while i < text.len()
+            invariant a <= i,
+            decreases text.len() - i,
+        {
+            match std::str::decode_utf8(text, i) {
+                None => { i = text.len(); },
+                Some(dc) => { if dc.next <= i { i = text.len(); } else { if unicode::whitespace(u32::from(dc.ch)) { if a < i { out.push(lexer::cut(text, a, i)); } a = dc.next; } i = dc.next; } },
+            }
+        }
+        if a < text.len() {
+            out.push(lexer::cut(text, a, text.len()));
+        }
+        out
+    }
+
+    #[summary("Z3_VERSION of scripts/toolchain.env")]
+    #[effects(alloc)]
+    fn z3_version() -> String {
+        String::from("4.15.4")
+    }
+}

@@ -15,4 +15,9 @@ path = "src/main.rs"
 name = "smt_terms_ref"
 path = "../tests/port/smt_terms_ref.rs"
 
+# The stage0 side of the differential cases `smt-answers*` (tests/port/README.md).
+[[example]]
+name = "smt_answers_ref"
+path = "../tests/port/smt_answers_ref.rs"
+
 [dependencies]

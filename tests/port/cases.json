@@ -40,6 +40,18 @@
         "selfhost/unicode.bmb",
         "tests/port/unicode_classes.bmb"
       ]
+    },
+    "smt_answers_ref": {
+      "example": "smt_answers_ref"
+    },
+    "smt_answers": {
+      "bmb": [
+        "selfhost/*.bmb",
+        "tests/port/smt_answers.bmb"
+      ],
+      "except": [
+        "selfhost/main.bmb"
+      ]
     }
   },
   "cases": [
@@ -1132,6 +1144,552 @@
       ],
       "inputs": {
         "none": true
+      }
+    },
+    {
+      "name": "smt-answers",
+      "component": "C7",
+      "a": [
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/z3-answers.txt",
+          "tests/port/answers/z3-values.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-memory",
+      "component": "C7",
+      "a": [
+        "env",
+        "BMB_Z3_MEMORY_MB=24",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_MEMORY_MB=24",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/z3-memory.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-memory-least",
+      "component": "C7",
+      "a": [
+        "env",
+        "BMB_Z3_MEMORY_MB=1",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_MEMORY_MB=1",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/z3-memory.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-timeout",
+      "component": "C7",
+      "a": [
+        "env",
+        "BMB_Z3_BACKSTOP_MS=1000",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_BACKSTOP_MS=1000",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/z3-timeout.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-missing",
+      "component": "C7",
+      "a": [
+        "env",
+        "PATH=/nonexistent",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "PATH=/nonexistent",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-fake",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-answers-fake-old",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-garbage",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "garbage",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "garbage",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-silent",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "silent",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "silent",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-cut",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "cut",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "cut",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-spaced",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "spaced",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "spaced",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-dead",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-full",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-no-alone",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "no-alone",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "no-alone",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-mute",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-fake-vanish",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-limits-lowered",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=1000",
+        "BMB_Z3_MEMORY_MB=11",
+        "BMB_Z3_BACKSTOP_MS=50",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=1000",
+        "BMB_Z3_MEMORY_MB=11",
+        "BMB_Z3_BACKSTOP_MS=50",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-limits-zero",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=0",
+        "BMB_Z3_MEMORY_MB=0",
+        "BMB_Z3_BACKSTOP_MS=0",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=0",
+        "BMB_Z3_MEMORY_MB=0",
+        "BMB_Z3_BACKSTOP_MS=0",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-limits-raised",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=18446744073709551615",
+        "BMB_Z3_MEMORY_MB=18446744073709551616",
+        "BMB_Z3_BACKSTOP_MS=300001",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=18446744073709551615",
+        "BMB_Z3_MEMORY_MB=18446744073709551616",
+        "BMB_Z3_BACKSTOP_MS=300001",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-limits-read",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=+7",
+        "BMB_Z3_MEMORY_MB=007",
+        "BMB_Z3_BACKSTOP_MS=1e3",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=+7",
+        "BMB_Z3_MEMORY_MB=007",
+        "BMB_Z3_BACKSTOP_MS=1e3",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
+      }
+    },
+    {
+      "name": "smt-answers-limits-unread",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=-7",
+        "BMB_Z3_MEMORY_MB=",
+        "BMB_Z3_BACKSTOP_MS= 5",
+        "{build:smt_answers_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "plain",
+        "env",
+        "BMB_Z3_RLIMIT=-7",
+        "BMB_Z3_MEMORY_MB=",
+        "BMB_Z3_BACKSTOP_MS= 5",
+        "{build:smt_answers}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/answers/fake-start.txt",
+          "tests/port/answers/fake-memory.txt"
+        ],
+        "chunk": 2
       }
     }
   ]

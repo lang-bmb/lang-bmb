@@ -1,0 +1,86 @@
+#!/bin/sh
+# A stand-in for the solver in the differential cases `smt-answers-fake*`
+# (tests/port/README.md): it writes down how it was started and every line
+# it is sent, in `z3.log` of the working directory, and does what the lines
+# tell it, so that both sides are compared on what they sent as well as on
+# what they made of the answers, and so that the ends a real solver reaches
+# only by chance (its memory limit, a kill, a closed pipe) come when asked.
+#
+#   (fake-say TEXT)         answers TEXT (printf's escapes: \n, \042, \0377)
+#   (fake-then TEXT)        answers `success`; the next line that is no
+#                           `(fake-..)` is answered TEXT (they queue up)
+#   (fake-part TEXT)        writes TEXT without the end of the line and ends
+#   (fake-exit N)           ends with status N, without an answer
+#   (fake-exit-below M N)   the same when its `-memory` is below M; else `success`
+#   (fake-leave N)          closes its input, answers `success`, ends with N
+#   (fake-kill)             is killed by signal 9
+#   (exit)                  ends with status 0
+#   anything else           `sat` for `(check-sat)`, else `success`
+#
+# FAKE_Z3 chooses what it is: `old`, `garbage`, `silent`, `cut` and `spaced`
+# print for `--version` another version, bytes that are not UTF-8 without a
+# version, nothing, the line up to the version, and the pinned version
+# between white space outside ASCII; `dead` ends at once with
+# status 3 when started as a solver, `full` with 101, `no-alone` with 3 when
+# its `-memory` is the pinned limit; `mute` answers its first line with an
+# error; `vanish` (a copy that `fake.sh` makes the only `z3` on PATH) prints
+# the pinned version and removes itself, so the check passes and no solver
+# can be started.
+log=z3.log
+[ -n "$FAKE_PATH" ] && PATH=$FAKE_PATH
+. "${FAKE_HOME:-$(dirname "$0")/..}/../../../scripts/toolchain.env"
+if [ "$1" = --version ]; then
+  echo "--version" >> "$log"
+  case "$FAKE_Z3" in
+    vanish) rm -f "$0"; echo "Z3 version $Z3_VERSION - 64 bit" ;;
+    old) echo "Z3 version 4.8.0 - 64 bit" ;;
+    garbage) printf 'no\377number "here"\there \340\240x\340\200x\360\220\200x\360\220x\360\200x\364\220x\355\240\200x\303\251\342\202\254\360\237\230\200 \001\302\n' ;;
+    silent) ;;
+    cut) echo "Z3 version" ;;
+    spaced) printf 'Z3\302\240version\342\200\203%s\t- 64 bit\n' "$Z3_VERSION" ;;
+    *) echo "Z3 version $Z3_VERSION - 64 bit" ;;
+  esac
+  exit 0
+fi
+echo "start $*" >> "$log"
+memory=${5#-memory:}
+case "$FAKE_Z3" in
+  dead) exit 3 ;;
+  full) exit 101 ;;
+  no-alone) [ "$memory" = "$Z3_MEMORY_MB" ] && exit 3 ;;
+esac
+first=1
+queue=
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  if [ "$first" = 1 ] && [ "$FAKE_Z3" = mute ]; then
+    first=0
+    echo '(error "line 1 column 1: not today")'
+    continue
+  fi
+  first=0
+  case "$line" in
+    "(fake-say "*) text=${line#"(fake-say "}; printf '%b\n' "${text%)}" ;;
+    "(fake-then "*) text=${line#"(fake-then "}; queue="$queue${text%)}
+"; echo success ;;
+    "(fake-part "*) text=${line#"(fake-part "}; printf '%b' "${text%)}"; exit 0 ;;
+    "(fake-exit-below "*)
+      rest=${line#"(fake-exit-below "}; rest=${rest%)}
+      if [ "$memory" -lt "${rest% *}" ]; then exit "${rest#* }"; fi
+      echo success ;;
+    "(fake-exit "*) code=${line#"(fake-exit "}; exit "${code%)}" ;;
+    "(fake-leave "*) code=${line#"(fake-leave "}; exec 0<&-; echo success; exit "${code%)}" ;;
+    "(fake-kill)") kill -9 $$ ;;
+    "(exit)") exit 0 ;;
+    *)
+      if [ -n "$queue" ]; then
+        printf '%b\n' "${queue%%
+*}"
+        queue=${queue#*
+}
+      elif [ "$line" = "(check-sat)" ]; then echo sat
+      else echo success
+      fi ;;
+  esac
+done
+exit 0

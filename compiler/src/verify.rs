@@ -10511,7 +10511,7 @@ const BOUND_LEN: usize = 4;
 const BOUND_SHARE: u64 = 10;
 
 fn bounded_limit() -> String {
-    format!("(set-option :rlimit {})", smt::rlimit() / BOUND_SHARE)
+    format!("(set-option :rlimit {})", share_of(BOUND_SHARE))
 }
 
 /// Assertions that keep `inputs` within the search bounds: each integer
@@ -10573,7 +10573,13 @@ fn bound_terms(inputs: &[(String, Val, TypeKind)]) -> Vec<String> {
 }
 
 fn probe_limit() -> String {
-    format!("(set-option :rlimit {})", smt::rlimit() / PROBE_SHARE)
+    format!("(set-option :rlimit {})", share_of(PROBE_SHARE))
+}
+
+/// One `share`th of the gate's `rlimit`, and at least 1: Z3 reads 0 as no
+/// limit, so under a limit lowered below `share` the query ran without one.
+fn share_of(share: u64) -> u64 {
+    (smt::rlimit() / share).max(1)
 }
 
 /// The base of a satisfiability check's query with the definitions `q`

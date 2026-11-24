@@ -77,6 +77,17 @@ fn gate_fails_without_solver_or_resources() {
     );
     assert!(!texts.iter().any(|s| s.contains("999999999999")));
 
+    // A limit of 0 is the smallest limit, not none: Z3 reads `:rlimit 0` as
+    // no limit, and so did the shares of a limit lowered below them (the
+    // probe's hundredth of 1 or of 99).
+    for low in ["0", "1", "99"] {
+        let smt = tmp.join(format!("low{low}"));
+        assert!(!verify(SEARCH, &[("BMB_Z3_RLIMIT", low)], Some(&smt)).0);
+        let texts = scripts(&smt);
+        assert!(texts.iter().any(|s| s.contains("(set-option :rlimit 1)")));
+        assert!(!texts.iter().any(|s| s.contains(":rlimit 0)")), "{low}");
+    }
+
     // A query the wall-clock backstop ends, before its rlimit, is marked:
     // that verdict depends on the machine. `pff::tri_le`
     // spends the whole rlimit (about a second); 50 ms ends it.
@@ -209,6 +220,23 @@ fn a_query_at_the_memory_limit_is_undecided_and_the_rest_go_on() {
         "{out}\n{starts:?}"
     );
 
+    // Zero is the smallest limit here too: Z3 reads `-memory:0` and `-t:0`
+    // as no limit, so a variable set to 0 raised what it was to lower.
+    fs::remove_file(&log).unwrap();
+    let zero = [
+        ("PATH", path.as_str()),
+        ("BMB_Z3_MEMORY_MB", "0"),
+        ("BMB_Z3_BACKSTOP_MS", "0"),
+    ];
+    assert!(!verify(SEARCH, &zero, None).0);
+    let starts = fs::read_to_string(&log).unwrap();
+    assert!(
+        starts
+            .lines()
+            .all(|l| l.contains(" -t:1 ") && l.ends_with(" -memory:1")),
+        "{starts}"
+    );
+
     // The real solver, with a limit every query reaches: Z3 ends with the
     // code the gate reads as its memory limit, at each obligation anew.
     let (ok, out) = verify(SEARCH, &[("BMB_Z3_MEMORY_MB", "1")], None);
@@ -304,6 +332,50 @@ fn a_memory_end_in_a_working_process_is_asked_again_alone() {
     };
     assert!(count(limit) > 10, "{starts:?}");
     assert_eq!(count(limit / 2), count(limit), "{starts:?}");
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+/// A query asked again alone is the first query of its process: when a
+/// later command of it ends that process at the deciding limit, the query
+/// is undecided there. Before, the process counted no query, so the query
+/// was asked a third time, in another process under the same limit, and
+/// paid its way to the limit twice. Here a process under the working limit
+/// ends at its first query's first command and a process under the
+/// deciding limit at `(check-sat)`: no process is sent what the process
+/// before it was sent.
+#[test]
+fn a_query_asked_alone_is_not_asked_a_third_time() {
+    let tmp = std::env::temp_dir().join(format!("bmb-gate-third-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let limit: u64 = pinned("Z3_MEMORY_MB").parse().unwrap();
+    let (path, log) = fake_solver(
+        &tmp,
+        "/bin/sh",
+        &format!(
+            "echo \"start $*\" >> $LOG\n\
+             n=0\n\
+             while IFS= read -r line; do\n\
+             n=$((n+1)); echo \"$line\" >> $LOG\n\
+             case \" $* \" in\n\
+             *\" -memory:{} \"*) if [ $n -gt 2 ]; then exit 101; fi;;\n\
+             *) if [ \"$line\" = \"(check-sat)\" ]; then exit 101; fi;;\n\
+             esac\n\
+             echo success\n\
+             done\n",
+            limit / 2
+        ),
+    );
+    let (ok, out) = verify(SEARCH, &[("PATH", &path)], None);
+    assert!(!ok);
+    assert!(out.contains("memory limit reached"), "{out}");
+    let text = fs::read_to_string(&log).unwrap();
+    let sent: Vec<&str> = text.split("start ").skip(1).collect();
+    let deciding = format!("-memory:{limit}\n");
+    assert!(sent.iter().filter(|p| p.contains(&deciding)).count() > 2);
+    for pair in sent.windows(2) {
+        assert!(pair[0] != pair[1], "asked twice:\n{}", pair[0]);
+    }
     let _ = fs::remove_dir_all(&tmp);
 }
 

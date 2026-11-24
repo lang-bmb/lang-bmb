@@ -49,6 +49,8 @@ struct Proc {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     started: Instant,
+    /// Time added to its age (`Solver::age`).
+    aged: Duration,
     /// Its `-memory` in megabytes.
     memory: u64,
     /// Queries (`(reset)`s) it was sent.
@@ -262,12 +264,20 @@ fn legend_of(out: &mut String, query: usize, canon: &Canon) {
 const BACKSTOP_SECS: u64 = 300;
 
 /// The per-query backstop in milliseconds. `BMB_Z3_BACKSTOP_MS` may lower it
-/// (for tests); it can never raise it.
+/// (for tests); it can never raise it (see `lowered`).
 pub fn backstop_ms() -> u64 {
-    std::env::var("BMB_Z3_BACKSTOP_MS")
+    lowered("BMB_Z3_BACKSTOP_MS", BACKSTOP_SECS * 1000)
+}
+
+/// `pinned`, or the value of the environment variable `name` when that is
+/// a smaller number, and at least 1: Z3 reads 0 as no limit for each of
+/// `-t`, `-memory` and `:rlimit`, so a variable set to 0 raised the limit
+/// it was to lower.
+fn lowered(name: &str, pinned: u64) -> u64 {
+    std::env::var(name)
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .map_or(BACKSTOP_SECS * 1000, |v| v.min(BACKSTOP_SECS * 1000))
+        .map_or(pinned, |v| v.min(pinned).max(1))
 }
 
 /// A process may be reused for a new definition only this long after it
@@ -306,10 +316,7 @@ pub fn rlimit() -> u64 {
     let pinned: u64 = toolchain::pinned("Z3_RLIMIT")
         .parse()
         .expect("Z3_RLIMIT must be an integer");
-    std::env::var("BMB_Z3_RLIMIT")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .map_or(pinned, |v| v.min(pinned))
+    lowered("BMB_Z3_RLIMIT", pinned)
 }
 
 /// The pinned resource limit of an advisory query (`advisory`, ADR-0131):
@@ -351,10 +358,7 @@ pub fn memory_mb() -> u64 {
     let pinned: u64 = toolchain::pinned("Z3_MEMORY_MB")
         .parse()
         .expect("Z3_MEMORY_MB must be an integer");
-    std::env::var("BMB_Z3_MEMORY_MB")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .map_or(pinned, |v| v.min(pinned))
+    lowered("BMB_Z3_MEMORY_MB", pinned)
 }
 
 /// The pinned memory limit in megabytes of an advisory query (`advisory`):
@@ -489,6 +493,7 @@ impl Proc {
             stdin,
             stdout,
             started: Instant::now(),
+            aged: Duration::ZERO,
             memory,
             queries: 0,
             alone: false,
@@ -563,13 +568,20 @@ impl Proc {
     }
 }
 
-impl Drop for Proc {
-    fn drop(&mut self) {
+impl Proc {
+    /// Asks the process to end and waits for it.
+    fn exit(&mut self) -> Option<std::process::ExitStatus> {
         let _ = self
             .stdin
             .write_all(b"(exit)\n")
             .and_then(|_| self.stdin.flush());
-        let _ = self.child.wait();
+        self.child.wait().ok()
+    }
+}
+
+impl Drop for Proc {
+    fn drop(&mut self) {
+        let _ = self.exit();
     }
 }
 
@@ -599,7 +611,24 @@ impl Solver {
     pub fn reusable(&self) -> bool {
         self.proc
             .as_ref()
-            .is_none_or(|p| p.started.elapsed() < Duration::from_secs(REUSE_SECS))
+            .is_none_or(|p| p.started.elapsed() + p.aged < Duration::from_secs(REUSE_SECS))
+    }
+
+    /// Makes the process `ms` milliseconds older for `reusable`: the clock
+    /// of a test, which cannot wait for the window to pass.
+    pub fn age(&mut self, ms: u64) {
+        if let Some(p) = self.proc.as_mut() {
+            p.aged += Duration::from_millis(ms);
+        }
+    }
+
+    /// Ends the process as dropping the solver does and gives its exit
+    /// status; `None` when there is no process. The next `(reset)` starts
+    /// a new one.
+    pub fn close(&mut self) -> Option<std::process::ExitStatus> {
+        let status = self.proc.take()?.exit();
+        self.down = "z3 closed".into();
+        status
     }
 
     /// Sends one command of the current query, as the solver receives it,
@@ -618,7 +647,7 @@ impl Solver {
     /// same way, and asked alone each pays for its way to the limit once.
     /// Where a query is asked does not change its answer, so this is a
     /// matter of cost only.
-    fn ask(&mut self, sent: &str) -> Result<String, String> {
+    pub fn ask(&mut self, sent: &str) -> Result<String, String> {
         let reset = sent.trim() == "(reset)";
         if reset {
             self.query.clear();
@@ -660,6 +689,10 @@ impl Solver {
         }
         let mut p = Proc::start(self.limit).inspect_err(|e| self.down = e.clone())?;
         p.alone = true;
+        // The query it is asked is its first: when a later command of the
+        // query ends it at the limit, the query is undecided, not asked
+        // again in a third process.
+        p.queries = 1;
         let mut answer = Ok(String::new());
         for cmd in &self.query {
             answer = p.ask(cmd);

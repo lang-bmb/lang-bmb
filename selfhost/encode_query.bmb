@@ -1553,7 +1553,12 @@ mod encode_query {
     fn script_of(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, reach: bool) -> Option<String> {
         let head: String = header(rlimit);
         let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
-        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(rlimit / 100).as_str(), ")");
+        let share: u64 = if rlimit / 100 >= 1 {
+            rlimit / 100
+        } else {
+            1
+        };
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
         if body::is_spec(def.d.kind) {
             let comp: usize = pg.recursive.items[pg.recursive.find(path)?];
             let mut enc: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
