@@ -426,10 +426,10 @@ MUTANTS = [
             && self.prog.t.recursive.get(&self.path) == Some(cc)''',
      "a recursive lemma call need not decrease the measure (an induction without a base)"),
     ("v-lemma-post-dropped", "unsound", V,
-     '''                enc.mark_reach(d.f.name.span, "end of the body");
-                enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");''',
-     '''                enc.mark_reach(d.f.name.span, "end of the body");
-                let _unchecked = Val::Unit;''',
+     '''        self.mark_reach(f.name.span, "end of the body");
+        self.post_check(Val::Unit, f.name.span, "at the end of the body");''',
+     '''        self.mark_reach(f.name.span, "end of the body");
+        let _unchecked = Val::Unit;''',
      "a lemma's conclusion is never an obligation of its own proof"),
     ("v-lemma-arg-range-dropped", "unsound", V,
      '''        if f.kind == FnKind::Proof {

@@ -493,6 +493,7 @@ tests/verify/pass/recursive.bmb
 tests/verify/pass/returns.bmb
 tests/verify/pass/search.bmb
 tests/verify/pass/slices.bmb
+tests/verify/pass/spec_cast.bmb
 tests/verify/pass/spec_widening.bmb
 tests/verify/pass/strings.bmb
 tests/verify/pass/structs.bmb

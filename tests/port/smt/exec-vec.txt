@@ -1,0 +1,159 @@
+#[summary("Operations that change a length, in code: `push`, `pop` and `truncate` on a Vec of scalars, of structs and of enums, on a Vec in a struct field, in an element and behind `&mut`; the length facts after each; `copy_within` with constant bounds (stores), with long and with variable bounds (a quantified fact per leaf array) on arrays, slices and Vecs of scalars and structs; loops that grow and shrink a Vec")]
+mod vecs {
+    struct Pt { x: i64, y: i64 }
+
+    struct Bag { items: Vec<u32>, n: usize }
+
+    enum Tok { End, Num(u64), Pair(u8, u8) }
+
+    spec fn len_is(n: usize, m: usize) -> bool { n == m }
+
+    #[effects(alloc)]
+    fn pushes(v: &mut Vec<u8>, x: u8) -> ()
+        ensures len_is(v.len(), old(v).len() + 2),
+    {
+        v.push(x);
+        v.push(7);
+    }
+
+    #[effects(alloc)]
+    fn push_structs(ps: &mut Vec<Pt>, ts: &mut Vec<Tok>, a: i64) -> usize {
+        ps.push(Pt { x: a, y: 0 });
+        ts.push(Tok::Num(3));
+        ts.push(Tok::Pair(1, 2));
+        ts.push(Tok::End);
+        ps.len() + ts.len()
+    }
+
+    #[effects(alloc)]
+    fn pops(v: &mut Vec<u8>, ps: &mut Vec<Pt>) -> (r: i64) {
+        let last: Option<u8> = v.pop();
+        let p: Option<Pt> = ps.pop();
+        let a: i64 = match last {
+            None => 0,
+            Some(b) => b as i64,
+        };
+        let c: i64 = match p {
+            None => 0,
+            Some(q) => if q.x > 0 && q.x < 100 { q.x } else { 1 },
+        };
+        a + c
+    }
+
+    #[effects(alloc)]
+    fn truncates(v: &mut Vec<u8>, n: usize) -> (r: usize)
+        ensures r <= n,
+    {
+        v.truncate(n);
+        let after: usize = v.len();
+        v.truncate(0);
+        after
+    }
+
+    #[effects(alloc)]
+    fn in_field(b: &mut Bag, bs: &mut Vec<Bag>, x: u32) -> usize
+        requires bs.len() > 0,
+    {
+        b.items.push(x);
+        b.n = b.items.len();
+        let o: Option<u32> = b.items.pop();
+        bs[0].items.push(x);
+        bs[0].items.truncate(1);
+        bs[0].items.len()
+    }
+
+    #[effects(alloc)]
+    fn local_vec(n: u8) -> (r: Vec<u8>) {
+        let mut v: Vec<u8> = Vec::new();
+        v.push(n);
+        v.push(n);
+        let top: Option<u8> = v.pop();
+        let mut w: Vec<Vec<u8>> = Vec::new();
+        w.push(v.clone());
+        w[0].push(1);
+        v
+    }
+
+    #[effects(alloc)]
+    fn fill(n: usize) -> (r: Vec<u64>)
+        requires n < 100,
+        ensures len_is(r.len(), n),
+    {
+        let mut v: Vec<u64> = Vec::with_capacity(n);
+        let mut i: usize = 0;
+        while i < n
+            invariant i <= n && v.len() == i,
+            decreases n - i,
+        {
+            v.push(i as u64);
+            i = i + 1;
+        }
+        v
+    }
+
+    #[effects(alloc)]
+    fn drain(v: &mut Vec<Pt>) -> i64 {
+        let mut t: i64 = 0;
+        loop
+            invariant 0 <= t && t <= 10,
+            decreases v.len(),
+        {
+            match v.pop() {
+                None => { break; },
+                Some(p) => { if p.x == 1 && t < 10 { t = t + 1; } },
+            }
+        }
+        t
+    }
+
+    #[effects(pure)]
+    fn copy_const(a: &mut [u8], ps: &mut [Pt]) -> u8
+        requires a.len() == 8 && ps.len() == 4,
+    {
+        let mut x: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+        x.copy_within(1..4, 0);
+        a.copy_within(1..4, 0);
+        a.copy_within(0..0, 7);
+        ps.copy_within(1..3, 0);
+        x[0]
+    }
+
+    #[effects(pure)]
+    fn copy_long(a: &mut [u8]) -> ()
+        requires a.len() == 64,
+    {
+        a.copy_within(0..16, 16);
+        a.copy_within(0..17, 32);
+        a.copy_within(5..2, 0);
+    }
+
+    #[effects(pure)]
+    fn copy_var(a: &mut [u8], ps: &mut [Pt], lo: usize, hi: usize, d: usize) -> ()
+        requires lo <= hi && hi <= a.len() && d + (hi - lo) <= a.len(),
+    {
+        a.copy_within(lo..hi, d);
+        ps.copy_within(lo..hi, 0);
+        a.copy_within(0..hi, 0);
+    }
+
+    #[effects(alloc)]
+    fn copy_vec(v: &mut Vec<u32>, b: &mut Bag) -> ()
+        requires v.len() >= 4,
+    {
+        v.copy_within(0..2, 1);
+        b.items.copy_within(0..1, 0);
+        let mut ps: Vec<Pt> = Vec::new();
+        ps.push(Pt { x: 1, y: 2 });
+        ps.copy_within(0..1, 0);
+    }
+
+    #[effects(alloc)]
+    fn branches(v: &mut Vec<u8>, c: bool) -> usize {
+        if c {
+            v.push(1);
+        } else {
+            v.truncate(2);
+        }
+        v.len()
+    }
+}

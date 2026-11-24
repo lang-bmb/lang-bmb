@@ -1167,6 +1167,10 @@
    "out": "7e11adf8e0708364",
    "src": "84ce304e8f1fdfad"
   },
+  "tests/verify/pass/spec_cast.bmb": {
+   "out": "8fc17466d6738435",
+   "src": "db9435e808bbb9da"
+  },
   "tests/verify/pass/spec_widening.bmb": {
    "out": "7378fd8fd263a4c2",
    "src": "b15e1e2761096c1f"

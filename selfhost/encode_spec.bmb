@@ -468,9 +468,9 @@ mod encode_spec {
             }
         }
 
-        #[summary("Parameter name of a proof fn on entry (stage0 Enc::proof_param): a fresh value with the facts every call proves of its argument (type_facts), and nothing more")]
+        #[summary("Parameter name of a proof fn on entry (stage0 Enc::proof_param): a fresh value with the facts every call proves of its argument (type_facts), and nothing more. The value with its name and type")]
         #[effects(alloc)]
-        fn proof_param(self: &mut Enc, name: &str, pg: &Prog) -> () {
+        fn proof_param(self: &mut Enc, name: &str, pg: &Prog) -> Shown {
             let ty: ast::TypeKind = self.local_ty(name, pg);
             let n: usize = self.pc.len();
             let v: encode_terms::Val = self.fresh_val(name, &ty, pg, 100000);
@@ -481,6 +481,7 @@ mod encode_spec {
             {
                 self.pc.push(facts[i].clone());
             }
+            Shown { name: String::from(name), v: v, ty: ty }
         }
 
         #[summary("An array literal in a specification (the Array arm of stage0 Enc::spec): a constant array of the first element, or of some value of the element type for no element, with every element stored")]
@@ -864,13 +865,17 @@ mod encode_spec {
             out
         }
 
-        #[summary("A built-in method in a specification (the Method arm of stage0 Enc::spec): len, the views of a Vec and of text, is_char_boundary, len_utf8, the methods of f64, the bit methods (a linear form reads the receiver's image, ADR-0090), the bytes of an integer, the arithmetic methods (a checked one is an Option). The unit value for a receiver of another shape, which the checker admits none of")]
+        #[summary("A built-in method in a specification (the Method arm of stage0 Enc::spec): a widening `x as T` is the value itself (ADR-0099); len, the views of a Vec and of text, is_char_boundary, len_utf8, the methods of f64, the bit methods (a linear form reads the receiver's image, ADR-0090), the bytes of an integer, the arithmetic methods (a checked one is an Option). The unit value for a receiver of another shape, which the checker admits none of")]
         #[effects(alloc)]
         fn spec_method(self: &mut Enc, e: &ast::Expr, x: &ast::Method, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
             decreases f,
         {
             if f == 0 {
                 return encode_terms::Val::Unit;
+            }
+            match codegen::conv_parts(&*x.recv) {
+                None => {},
+                Some(cv) => { return self.spec_expr(&cv.arg, env, was, pg, f - 1); },
             }
             let rv: encode_terms::Val = self.spec_expr(&*x.recv, env, was, pg, f - 1);
             let m: String = x.name.name.clone();
@@ -1450,7 +1455,7 @@ mod encode_spec {
         String::from("false")
     }
 
-    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row; for an executable function whose body is encoded an exec row (encode_exec::dump_body); each obligation of a termination or exec row follows as an obl row. encoded is false for a definition whose body this dump does not encode: proof functions, #[external_body], and what encode_exec::ported leaves out. The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
+    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row; for an executable or proof function whose body is encoded an exec row (encode_exec::dump_body); each obligation of a termination or exec row follows as an obl row. encoded is false for a definition whose body this dump does not encode: #[external_body], which has no obligations, and what encode_exec::ported leaves out (a body that holds `assert .. by`). The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
     #[effects(alloc)]
     fn dump(ck: &body::Checked) -> String {
         let pg: Prog = prog_of(ck);
@@ -1484,7 +1489,7 @@ mod encode_spec {
     fn dump_def(out: &mut String, pg: &Prog, rows: &[encode_decls::Row], path: &str, def: &Def, sig: &types::FnSig, external: &[String]) -> () {
         let is_sp: bool = body::is_spec(def.d.kind);
         let is_pf: bool = body::is_proof(def.d.kind);
-        let is_ex: bool = !is_sp && !is_pf && !def.inst && !types::has(external, path) && encode_exec::ported(&def.d, pg);
+        let is_ex: bool = !is_sp && !def.inst && !types::has(external, path) && encode_exec::ported(&def.d);
         out.push_str("{\"def\":");
         std::json::push_string(out, path);
         out.push_str(",\"kind\":");

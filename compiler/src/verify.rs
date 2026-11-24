@@ -747,14 +747,15 @@ pub fn dump_decls(p: &Program, t: &Tables) -> String {
 /// definition as the queries take it, its parts for ground instances, the
 /// struct facts of its text); a recursive one a `termination` row. A proof
 /// fn has a `proof_params` row (the declarations and facts of its
-/// parameters on entry). An executable function whose body is encoded has an
-/// `exec` row: the declarations, the obligations that hold by their own
-/// text, whether the body's end is unreachable, the path condition there,
-/// the entry values, the texts known valid and the validity functions
-/// defined. Each obligation of a `termination` or `exec` row follows as an
-/// `obl` row (`shown` is the value its counterexample adds). `encoded` is
-/// false for a definition whose body this dump does not encode: proof
-/// functions, `#[external_body]` and what `port_encodes` leaves out.
+/// parameters on entry). An executable or proof function whose body is
+/// encoded has an `exec` row: the declarations, the obligations that hold
+/// by their own text, whether the body's end is unreachable, the path
+/// condition there, the entry values, the texts known valid, the validity
+/// functions defined and the reach points (`vacuous_ends`). Each obligation
+/// of a `termination` or `exec` row follows as an `obl` row (`shown` is the
+/// value its counterexample adds). `encoded` is false for a definition whose
+/// body this dump does not encode: `#[external_body]`, which has no
+/// obligations, and what `port_encodes` leaves out.
 pub fn dump_smt(p: &Program, t: &Tables) -> String {
     let q = crate::diag::json_str;
     let raw = |xs: Vec<String>| format!("[{}]", xs.join(","));
@@ -781,6 +782,8 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     let t = &view;
     let prog = prog_of(p, t);
     let mut out = String::new();
+    // The reach points are recorded as under `vacuous_ends`.
+    let reaching = REACH.with(|r| r.replace(true));
     for (path, key, decl) in prog.spec_decls() {
         let (a, b, c) = (q(&path), q(&key), q(&decl));
         out += &format!("{{\"spec_decl\":{a},\"key\":{b},\"decl\":{c}}}\n");
@@ -788,8 +791,7 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     for (path, d) in &prog.defs {
         let Some(sig) = t.fns.get(path) else { continue };
         let (name, unit, inst, spec) = (q(path), q(&d.mod_path), d.inst, d.f.kind == FnKind::Spec);
-        let exec = d.f.kind == FnKind::Exec && !inst && !t.external.contains(path);
-        let exec = exec && port_encodes(d.f, t);
+        let exec = !spec && !inst && !t.external.contains(path) && port_encodes(d.f);
         let kind = match d.f.kind {
             FnKind::Spec => "spec fn",
             FnKind::Proof => "proof fn",
@@ -832,8 +834,13 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
             }
             let (decls, facts) = (list(&enc.decls), list(&enc.pc));
             out += &format!("{{\"proof_params\":{name},\"decls\":{decls},\"facts\":{facts}}}\n");
+            enc = Enc::new(&prog, path, &d.mod_path);
         }
         let row = match (t.recursive.get(path), &d.f.decreases) {
+            _ if exec && d.f.kind == FnKind::Proof => {
+                enc.proof_body(d.f);
+                "exec"
+            }
             _ if exec => {
                 enc.exec_body(d.f);
                 "exec"
@@ -856,8 +863,12 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
                 .map(|(a, n)| format!("[{},{}]", q(a), q(n)));
             let (inputs, texts, pc) = (raw(inputs.collect()), raw(texts.collect()), list(&enc.pc));
             let valid = raw(enc.valid_defs.iter().map(part).collect());
+            let reach = enc.reach.iter().map(|(s, what, pc)| {
+                format!("[{},{},{},{},{}]", s.file, s.lo, s.hi, q(what), list(pc))
+            });
+            let reach = raw(reach.collect());
             out += &format!(
-                ",\"dead\":{},\"pc\":{pc},\"inputs\":{inputs},\"texts\":{texts},\"valid\":{valid}",
+                ",\"dead\":{},\"pc\":{pc},\"inputs\":{inputs},\"texts\":{texts},\"valid\":{valid},\"reach\":{reach}",
                 enc.dead
             );
         }
@@ -875,42 +886,31 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
             );
         }
     }
+    REACH.with(|r| r.set(reaching));
     out
 }
 
 /// The frontier of the port (`selfhost/encode_exec.bmb`): whether it encodes
-/// the body of executable function `f` yet. Not yet: a loop, `break` and
-/// `continue`, a `proof` block, `assert .. by`, the methods that change a
-/// `Vec` or a `String` (`push`, `pop`, `truncate`, `copy_within`,
-/// `push_str`), a comparison or a range slice of text and
-/// `String::from_utf8`. Both sides of `bmb dump smt` compute it from the
-/// syntax (specification parts included) and the checker's table of text,
-/// so a body outside it has no rows on either. It shrinks to nothing as the
-/// port's next pieces arrive, and goes then.
-fn port_encodes(f: &FnDef, t: &Tables) -> bool {
-    let plain = |b: &Block| {
+/// the body of function `f`. Not yet: a body that holds `assert .. by`,
+/// whose obligation and assumed fact are the translation `subproof` makes
+/// (the port's next piece). Both sides of `bmb dump smt` compute it from the
+/// syntax, so a body outside it has no rows on either. It goes with that
+/// piece.
+fn port_encodes(f: &FnDef) -> bool {
+    fn plain(b: &Block) -> bool {
         b.stmts.iter().all(|s| match s {
-            Stmt::Let { .. } | Stmt::Assign { .. } | Stmt::Expr(_) | Stmt::Assume { .. } => true,
             Stmt::Assert { by, .. } => by.is_none(),
-            _ => false,
+            Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Proof { body, .. } => {
+                plain(body)
+            }
+            _ => true,
         })
-    };
-    let text = |e: &Expr| t.text.contains(&(e.span.file, e.span.lo, e.span.hi));
+    }
     let mut ok = plain(&f.body);
     each_block_expr(&f.body, &mut |e| {
         ok &= match &e.kind {
-            ExprKind::Loop { .. } | ExprKind::Break { .. } | ExprKind::Continue { .. } => false,
-            ExprKind::Block(b) | ExprKind::If { then: b, .. } => plain(b),
-            ExprKind::Method { name, .. } => !matches!(
-                name.name.as_str(),
-                "push" | "pop" | "truncate" | "copy_within" | "push_str"
-            ),
-            ExprKind::Binary(op, l, r) => !(op.is_cmp() && (text(l) || text(r))),
-            ExprKind::Index { base, index } => {
-                !(matches!(index.kind, ExprKind::Range { .. }) && text(base))
-            }
-            ExprKind::Call { path, .. } => {
-                !(path.len() == 2 && path[0].name == "String" && path[1].name == "from_utf8")
+            ExprKind::Block(b) | ExprKind::If { then: b, .. } | ExprKind::Loop { body: b, .. } => {
+                plain(b)
             }
             _ => true,
         }
@@ -4061,6 +4061,12 @@ impl<'p, 'q> Enc<'p, 'q> {
                     _ => panic!("index of non-array"),
                 }
             }
+            // A widening `x as T` (ADR-0099): the value itself. It reached
+            // the methods below and halted the proof.
+            ExprKind::Method { recv, .. } if crate::check::conv_call(recv).is_some() => {
+                let (_, args) = crate::check::conv_call(recv).unwrap();
+                self.spec(&args[0], env, old)
+            }
             ExprKind::Method { recv, name, args } => {
                 let rv = self.spec(recv, env, old);
                 match name.name.as_str() {
@@ -5288,6 +5294,31 @@ impl<'p, 'q> Enc<'p, 'q> {
             let at = f.body.tail.as_ref().map_or(f.name.span, |t| t.span);
             self.post_check(result, at, "at the end of the body");
         }
+    }
+
+    /// The obligations of the proof fn `f` (this encoder's definition): its
+    /// body is ghost code, proved against its contract. Each parameter
+    /// satisfies what every call proves of its argument (`type_facts`), and
+    /// nothing more.
+    fn proof_body(&mut self, f: &FnDef) {
+        for prm in &f.params {
+            let (v, ty) = self.proof_param(&prm.name.name);
+            self.inputs.push((prm.name.name.clone(), v.clone(), ty));
+            self.bind_var(prm.name.name.clone(), v);
+        }
+        let (env, old) = self.cur_env();
+        for r in &f.requires {
+            let g = self.spec(r, &env, &old).s();
+            self.pc.push(g);
+        }
+        if let Some(dec) = &f.decreases {
+            self.entry_measure = Some(self.measure(dec, &env, &old));
+        }
+        self.ghost = true;
+        self.block(&f.body);
+        self.ghost = false;
+        self.mark_reach(f.name.span, "end of the body");
+        self.post_check(Val::Unit, f.name.span, "at the end of the body");
     }
 
     /// The value behind a `&mut` parameter after the function: the callee
@@ -8760,26 +8791,7 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                // Each parameter satisfies what every call proves of its
-                // argument (`type_facts`), and nothing more.
-                for prm in &d.f.params {
-                    let (v, ty) = enc.proof_param(&prm.name.name);
-                    enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
-                    enc.bind_var(prm.name.name.clone(), v);
-                }
-                let (env, old) = enc.cur_env();
-                for r in &d.f.requires {
-                    let g = enc.spec(r, &env, &old).s();
-                    enc.pc.push(g);
-                }
-                if let Some(dec) = &d.f.decreases {
-                    enc.entry_measure = Some(enc.measure(dec, &env, &old));
-                }
-                enc.ghost = true;
-                enc.block(&d.f.body);
-                enc.ghost = false;
-                enc.mark_reach(d.f.name.span, "end of the body");
-                enc.post_check(Val::Unit, d.f.name.span, "at the end of the body");
+                enc.proof_body(d.f);
             }
             (None, FnKind::Exec) => {
                 for u in prog.revealed(path, d.f, &d.mod_path) {

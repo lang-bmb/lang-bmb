@@ -1,0 +1,217 @@
+#[summary("Proof code: proof fns as definitions (their parameters by type facts alone, `requires`, a measure, `if` and `match` on specifications, ghost `let`, `assert`, calls of other lemmas with the argument obligations, a recursive lemma, a generic lemma), `proof` blocks in code (facts that hold afterwards, a ghost value that ends with the block, a lemma call per iteration of a loop, a block on one side of an `if`), spec fns revealed by `#[uses]` and read in code, `#[external_body]` and `assume` with a rationale (a caller reads the trusted contract), and `assert .. by (bit_vector)` in code, in a `proof` block and in a proof fn, which stay outside the frontier")]
+mod proofs {
+    struct Pt { x: i64, y: i64 }
+
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    spec fn sum_to(a: &[u64], n: usize) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { sum_to(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn within(a: &[u64], i: usize, j: usize) -> bool { i <= j && j <= a.len() }
+
+    spec fn sum_le(a: &[u64], i: usize, j: usize) -> bool { sum_to(a, i) <= sum_to(a, j) }
+
+    spec fn total_small(a: &[u64]) -> bool { sum_to(a, a.len()) <= 1000000 }
+
+    spec fn is_sum(a: &[u64], s: u64) -> bool { s == sum_to(a, a.len()) }
+
+    spec fn size(l: &List) -> i64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(_, t) => 1 + size(&**t),
+        }
+    }
+
+    spec fn nonneg_size(l: &List) -> bool { size(l) >= 0 }
+
+    spec fn nonneg_square(x: i64) -> bool { x * x >= 0 }
+
+    spec fn double(x: i64) -> i64 { x + x }
+
+    spec fn is_double(x: i64, r: i64) -> bool { r == double(x) }
+
+    spec fn far(p: &Pt) -> bool { p.x > 100 || p.y > 100 }
+
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    spec fn small(x: i64) -> bool { 0 <= x && x <= 10 }
+
+    spec fn low_byte(x: u32) -> u32 { x & 0xff }
+
+    spec fn swapped(a: u8, b: u8) -> bool { (a ^ b) ^ b == a }
+
+    #[uses(sum_to)]
+    proof fn sum_grows(a: &[u64], i: usize, j: usize)
+        requires within(a, i, j),
+        ensures sum_le(a, i, j),
+        decreases j,
+    {
+        if i < j {
+            sum_grows(a, i, j - 1);
+        }
+    }
+
+    #[uses(size)]
+    proof fn size_nonneg(l: &List)
+        ensures nonneg_size(l),
+        decreases l,
+    {
+        match l {
+            List::Nil => {}
+            List::Cons(_, t) => size_nonneg(&**t),
+        }
+    }
+
+    proof fn square_nonneg(x: i64)
+        ensures nonneg_square(x),
+    {
+        if x < 0 {
+            assert(x * x > 0);
+        } else {
+            let twice: i64 = x + x;
+            assert(twice >= x);
+        }
+    }
+
+    proof fn refl<T: Copy>(x: T)
+        ensures same::<T>(x, x),
+    {
+    }
+
+    proof fn shapes(p: Pt, a: &[i64], o: Option<u8>, n: u8, w: usize)
+        requires far(&p) && w < a.len(),
+        ensures nonneg_square(a[w]),
+    {
+        let at: i64 = a[w];
+        let big: bool = p.x > 100;
+        if big && n > 3 {
+            square_nonneg(p.x);
+        }
+        match o {
+            None => square_nonneg(at),
+            Some(b) => {
+                let wide: i64 = b as i64 + 1;
+                square_nonneg(wide);
+                square_nonneg(at);
+            }
+        }
+        refl::<i64>(at);
+    }
+
+    proof fn narrow(x: i64, n: u8, a: &[i64])
+        ensures nonneg_square(x),
+    {
+        square_nonneg(x + 1);
+        shapes(Pt { x: x, y: 0 }, a, Some(n), n, 0);
+        square_nonneg(x);
+    }
+
+    #[effects(pure)]
+    fn total(a: &[u64]) -> (r: u64)
+        requires total_small(a),
+        ensures is_sum(a, r),
+    {
+        let mut s: u64 = 0;
+        for i in 0..a.len()
+            invariant s == sum_to(a, i),
+        {
+            proof {
+                sum_grows(a, i + 1, a.len());
+            }
+            s = s + a[i];
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(double)]
+    fn doubled(x: i64) -> (r: i64)
+        requires -1000 < x && x < 1000,
+        ensures is_double(x, r),
+    {
+        proof {
+            let ghost: i64 = double(x);
+            assert(ghost == 2 * x);
+            square_nonneg(ghost);
+        }
+        let r0: i64 = x * 2;
+        if x > 0 {
+            proof {
+                square_nonneg(x);
+                if x > 5 {
+                    assert(double(x) > 10);
+                }
+            }
+        }
+        proof {
+        }
+        r0
+    }
+
+    #[effects(pure)]
+    fn uses_list(l: &List, p: &Pt) -> bool {
+        proof {
+            size_nonneg(l);
+            match l {
+                List::Nil => {}
+                List::Cons(h, t) => {
+                    square_nonneg(*h);
+                    size_nonneg(&**t);
+                }
+            }
+            refl::<bool>(far(p));
+        }
+        true
+    }
+
+    #[rationale(kind = boundary, hash = "0000000000000000", "the outside world")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside(seed: i64) -> (r: i64)
+        requires seed >= 0,
+        ensures small(r),
+    {
+        7
+    }
+
+    #[effects(panic)]
+    fn caller(n: i64) -> i64
+        requires n >= 0,
+    {
+        let v: i64 = outside(n);
+        #[rationale(kind = nonlinear, hash = "0000000000000000", "callers pass small values")]
+        assume(small(n));
+        v + n * n
+    }
+
+    #[effects(pure)]
+    #[uses(low_byte)]
+    fn mask_twice(x: u32) -> (r: u32) {
+        assert((x & 0xffff) & 0xff == low_byte(x)) by (bit_vector);
+        (x & 0xffff) & 0xff
+    }
+
+    #[effects(pure)]
+    fn fold(x: u32, a: &[u8]) -> u32 {
+        let y: u32 = x ^ (x >> 16);
+        for i in 0..a.len() {
+            proof {
+                assert(a[i] & 0 == 0) by (bit_vector);
+            }
+        }
+        y
+    }
+
+    proof fn xor_twice(a: u8, b: u8)
+        ensures swapped(a, b),
+    {
+        if a > b {
+            assert((a ^ b) ^ b == a) by (bit_vector);
+        }
+    }
+}

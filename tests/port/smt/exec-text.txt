@@ -1,0 +1,142 @@
+#[summary("Text in code: `push_str` (of a parameter, a literal and the text itself) and `push` (constant characters of one to four bytes, the first and last scalar values, a variable character) on a String local, parameter and field, with the length facts; the six comparisons of text (parameters, literals, a String and a `&str`, in conditions and loops), each with its own longest common prefix; range slices `&s[a..b]` with the boundary obligation and the texts known valid; `String::from_utf8` of a Vec; text built in a loop")]
+mod text {
+    struct Named { name: String, n: i64 }
+
+    spec fn longer(n: usize, m: usize) -> bool { n >= m }
+
+    #[effects(alloc)]
+    fn greet(who: &str) -> (r: String)
+        ensures longer(r.len(), 5),
+    {
+        let mut s: String = String::from("hi, ");
+        s.push_str(who);
+        s.push('!');
+        s
+    }
+
+    #[effects(alloc)]
+    fn chars(c: char) -> String {
+        let mut u: String = String::new();
+        u.push('a');
+        u.push('é');
+        u.push('€');
+        u.push('😀');
+        u.push('\u{0}');
+        u.push('\u{7f}');
+        u.push('\u{80}');
+        u.push('\u{7ff}');
+        u.push('\u{800}');
+        u.push('\u{d7ff}');
+        u.push('\u{e000}');
+        u.push('\u{ffff}');
+        u.push('\u{10000}');
+        u.push('\u{10ffff}');
+        u.push(c);
+        u.push(c);
+        u
+    }
+
+    #[effects(alloc)]
+    fn twice(s: &mut String, nm: &mut Named, t: &str) -> usize {
+        s.push_str(t);
+        let own: String = s.clone();
+        s.push_str(own.as_str());
+        s.push_str("");
+        s.push_str("tail");
+        nm.name.push_str(t);
+        nm.name.push('x');
+        s.len() + nm.name.len()
+    }
+
+    #[effects(pure)]
+    fn compare(a: &str, b: &str) -> u8 {
+        let mut t: u8 = 0;
+        if a == b { t = t + 1; }
+        if a != b { t = t + 1; }
+        if a < b { t = t + 1; }
+        if a <= b { t = t + 1; }
+        if a > b { t = t + 1; }
+        if a >= b { t = t + 1; }
+        t
+    }
+
+    #[effects(alloc)]
+    fn compare_owned(a: &String, b: String, nm: &Named) -> bool {
+        let lit: bool = a.as_str() == "key";
+        let empty: bool = b.as_str() <= "";
+        let both: bool = a.as_str() < b.as_str() || nm.name.as_str() > "m";
+        let same: bool = "a" == "a" && "ab" > "a";
+        lit && empty && both && same
+    }
+
+    #[effects(pure)]
+    fn find(keys: &[u8], a: &str, b: &str, n: u32) -> u32 {
+        let mut hits: u32 = 0;
+        let mut i: u32 = 0;
+        while i < n && a != b
+            invariant i <= n && hits <= i,
+            decreases n - i,
+        {
+            if a < "m" {
+                hits = hits + 1;
+            }
+            i = i + 1;
+        }
+        hits
+    }
+
+    #[effects(alloc)]
+    fn head(s: &str, n: usize) -> String {
+        String::from(&s[0..n])
+    }
+
+    #[effects(pure)]
+    fn size(s: &str) -> (r: usize) {
+        s.len()
+    }
+
+    #[effects(alloc)]
+    fn slices(s: &str, t: &String, a: usize, b: usize) -> usize
+        requires a <= b && b <= s.len(),
+    {
+        let mid: usize = size(&s[a..b]);
+        let all: String = String::from(&s[0..s.len()]);
+        let own: usize = size(&t.as_str()[1..2]);
+        let lit: usize = size(&"héllo"[0..1]);
+        let inner: usize = size(&all.as_str()[b..a]);
+        if all.as_str() == s { 1 } else { mid + own + lit + inner }
+    }
+
+    #[effects(alloc)]
+    fn from_bytes(v: Vec<u8>, w: &[u8]) -> usize {
+        let mut ok: Vec<u8> = Vec::new();
+        ok.push(0xED);
+        ok.push(0x95);
+        ok.push(0x9C);
+        let first: usize = match String::from_utf8(ok) {
+            Ok(s) => s.len(),
+            Err(b) => b.len(),
+        };
+        let second: usize = match String::from_utf8(v) {
+            Ok(s2) => if s2.as_str() == "x" { 1 } else { 0 },
+            Err(b2) => 2,
+        };
+        first + second
+    }
+
+    #[effects(alloc)]
+    fn build(n: usize, sep: &str) -> (r: String)
+        requires n < 100,
+    {
+        let mut out: String = String::new();
+        for i in 0..n
+            invariant out.len() >= i,
+        {
+            out.push('.');
+            if i % 2 == 0 {
+                out.push_str(sep);
+            }
+        }
+        out
+    }
+}

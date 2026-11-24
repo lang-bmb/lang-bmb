@@ -1,0 +1,22 @@
+#[summary("A widening conversion in a specification is the value itself (ADR-0099): a spec fn body, a clause, an assertion and a ghost `let` read through it")]
+mod sc {
+    spec fn wide(b: u8) -> i64 { b as i64 + 1 }
+
+    spec fn above(r: i64, b: u8) -> bool { r == wide(b) && r > b as i64 }
+
+    proof fn wide_pos(b: u8)
+        ensures wide(b) > 0,
+    {
+        let w: i64 = b as i64;
+        assert(w >= 0);
+    }
+
+    #[effects(pure)]
+    #[uses(wide)]
+    fn next(b: u8) -> (r: i64)
+        ensures above(r, b),
+    {
+        assert(b as i64 >= 0);
+        b as i64 + 1
+    }
+}

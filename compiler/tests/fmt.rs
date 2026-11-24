@@ -554,8 +554,8 @@ mod d {
     for row in [
         r#"{"spec_decl":"d::mid","key":"|d::mid.","decl":"(declare-fun |d::mid.x| (Int Bool) Int)\n(declare-fun |d::mid.on| (Int Bool) Bool)"}"#,
         r#"{"def":"d::f","kind":"fn","inst":false,"unit":"d","sub":[],"uses":["d::mid"],"context":["d::mid","d::same"],"contract":["d::same"],"revealed":["d::mid","d::same<bool>","d::same<i64>"],"arrays":[false,true,false],"fields":[[0,1],[0,1]],"encoded":true}"#,
-        // A proof fn's body is not encoded by this dump yet.
-        r#""revealed":["d::below","d::same<bool>","d::same<i64>"],"arrays":[true,false,false],"fields":[[],[0,1]],"encoded":false}"#,
+        // A proof fn's body is encoded as an executable function's.
+        r#""revealed":["d::below","d::same<bool>","d::same<i64>"],"arrays":[true,false,false],"fields":[[],[0,1]],"encoded":true}"#,
         // A generic spec fn has no definition of its own; its instance has.
         r#"{"def":"d::same","kind":"spec fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[false,false,false],"fields":[[],[]],"encoded":true}"#,
         r#"{"axiom":"d::same<bool>","text":"(define-fun |d::same<bool>| ((|a!p| Bool) (|b!p| Bool)) Bool (= |a!p| |b!p|))\n; quantified form outside the probe\n(assert (forall ((|a!p| Bool) (|b!p| Bool)) (! (=> true (= (|d::same<bool>| |a!p| |b!p|) (= |a!p| |b!p|))) :pattern ((|d::same<bool>| |a!p| |b!p|)))))","facts":"","parts":[{"sym":"|d::same<bool>|","params":["|a!p|","|b!p|"],"binders":["(|a!p| Bool)","(|b!p| Bool)"],"guard":"true","body":"(= |a!p| |b!p|)","sort":"Bool","recursive":false}]}"#,
@@ -572,18 +572,22 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
-/// `bmb dump smt` on executable functions: a body inside the port's
-/// frontier (`verify::port_encodes`) has an `exec` row (declarations, the
-/// path condition at the end, the entry values) and an `obl` row per
+/// `bmb dump smt` on executable and proof functions: a body has an `exec`
+/// row (declarations, the path condition at the end, the entry values, the
+/// reach points with their path conditions) and an `obl` row per
 /// obligation, built by the encoder the proof pass runs, with no solver; a
-/// body outside it (here a loop) says `encoded: false` and has no rows.
-/// The rows below show a `return` on one side of an `if`, a call with a
-/// `&mut` argument (its precondition, the new value and the callee's
-/// `ensures` with `old`), the obligations and lemmas of `%`, a conversion,
-/// and a type invariant proved for the result, with the value a
-/// counterexample would show.
+/// body outside the port's frontier (`verify::port_encodes`: one that holds
+/// `assert .. by`) says `encoded: false` and has no rows. The rows below
+/// show a `return` on one side of an `if`, a call with a `&mut` argument
+/// (its precondition, the new value and the callee's `ensures` with `old`),
+/// the obligations and lemmas of `%`, a conversion, a type invariant proved
+/// for the result with the value a counterexample would show, a `for` (its
+/// bounds on entry, its havocked variable, the obligations of going back to
+/// the head and its exit as a reach point), a proof fn's body, a `proof`
+/// block that calls it, and a `push` on a `Vec` and on a `String` with a
+/// comparison of the text.
 #[test]
-fn smt_dump_shows_executable_bodies_inside_the_frontier() {
+fn smt_dump_shows_executable_and_proof_bodies() {
     const SRC: &str = r#"#[summary("d")]
 mod d {
     #[invariant(low)]
@@ -613,6 +617,30 @@ mod d {
         }
         s
     }
+    proof fn lemma(a: i64)
+        requires small(a),
+        ensures small(a - 1),
+    {
+        if a > 0 {
+            assert(a - 1 < a);
+        }
+    }
+    #[effects(alloc)]
+    fn grow(v: &mut Vec<u8>, s: &mut String, a: i64) -> bool
+        requires small(a),
+    {
+        proof {
+            lemma(a);
+        }
+        v.push(1);
+        s.push('é');
+        s.as_str() < "m"
+    }
+    #[effects(pure)]
+    fn masked(x: u32) -> u32 {
+        assert(x & 0 == 0) by (bit_vector);
+        x
+    }
 }
 "#;
     let dump = |text: &str| bmb(&["dump", "smt"], &one("x.bmb", text));
@@ -622,21 +650,35 @@ mod d {
     for row in [
         r#"{"def":"d::f","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":["d::small"],"contract":["d::small"],"revealed":["d::small"],"arrays":[false,false,false],"fields":[[],[0]],"encoded":true}"#,
         r#"{"exec":"d::f","decls":["(declare-const |x@0| Int)","(declare-const |c.n@0| Int)","(declare-const |y@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","(and (<= 0 |c.n@0|) (<= |c.n@0| 255))","(|d::low| |c.n@0|)","(|d::small| |x@0|)","(not (< |x@0| 0))","(|d::small| |x@0|)","(and (<= (- 9223372036854775808) |y@0|) (<= |y@0| 9223372036854775807))","(and (|d::small| (- |y@0| 1)) (= |y@0| (+ |x@0| 1)))","(not (= 4 0))","#,
-        r#""(|d::low| (bmb_trem |y@0| 4))"],"inputs":[["x",["|x@0|"],"i64"],["c",["|c.n@0|"],"d::Cap"]],"texts":[],"valid":[]}"#,
+        r#""(|d::low| (bmb_trem |y@0| 4))"],"inputs":[["x",["|x@0|"],"i64"],["c",["|c.n@0|"],"d::Cap"]],"texts":[],"valid":[],"reach":[[0,354,355,"end of the body",["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","#,
         r#"{"obl":"d::f","code":"E0801","file":0,"lo":485,"hi":496,"msg":"precondition `small` of `d::inc` may not hold","assumptions":["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","(and (<= 0 |c.n@0|) (<= |c.n@0| 255))","(|d::low| |c.n@0|)","(|d::small| |x@0|)","(not (< |x@0| 0))"],"goal":"(|d::small| |x@0|)","facts":"","shown":null}"#,
         r#""goal":"(not (and (= |y@0| (- 9223372036854775808)) (= 4 (- 1))))","facts":"","shown":null}"#,
         r#""goal":"(and (<= 0 (bmb_trem |y@0| 4)) (<= (bmb_trem |y@0| 4) 255))","facts":"","shown":null}"#,
         r#""goal":"(|d::low| (bmb_trem |y@0| 4))","facts":"","shown":["result",["(bmb_trem |y@0| 4)"],"d::Cap"]}"#,
-        r#"{"exec":"d::inc","decls":["(declare-const |a@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(and (<= (- 9223372036854775808) (+ |a@0| 1)) (<= (+ |a@0| 1) 9223372036854775807))","(and (|d::small| (- (+ |a@0| 1) 1)) (= (+ |a@0| 1) (+ |a@0| 1)))"],"inputs":[["a",["|a@0|"],"&mut i64"]],"texts":[],"valid":[]}"#,
+        r#"{"exec":"d::inc","decls":["(declare-const |a@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(and (<= (- 9223372036854775808) (+ |a@0| 1)) (<= (+ |a@0| 1) 9223372036854775807))","(and (|d::small| (- (+ |a@0| 1) 1)) (= (+ |a@0| 1) (+ |a@0| 1)))"],"inputs":[["a",["|a@0|"],"&mut i64"]],"texts":[],"valid":[],"reach":[[0,190,193,"end of the body",["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(and (<= (- 9223372036854775808) (+ |a@0| 1)) (<= (+ |a@0| 1) 9223372036854775807))"]]]}"#,
         r#""msg":"postcondition `small(*a - 1) && *a == *old(a) + 1` may not hold""#,
-        r#"{"def":"d::sum","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[true,false],"fields":[[]],"encoded":false}"#,
+        r#"{"def":"d::sum","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[true,false],"fields":[[]],"encoded":true}"#,
+        r#"{"exec":"d::sum","decls":["(declare-const |a@0| (Array Int Int))","(declare-const |a.len@0| Int)","(declare-const |s@0| Int)","(declare-const |i@0| Int)"],"trivial":[],"dead":false,"pc":["#,
+        r#""(and (<= 0 |i@0|) (or (<= |i@0| |a.len@0|) (= |i@0| 0)))","(not (< |i@0| |a.len@0|))"],"inputs":[["a",["|a@0|","|a.len@0|"],"&[u8]"]],"texts":[],"valid":[],"reach":[[0,629,705,"exit of the loop",["#,
+        r#""(not (< |i@0| |a.len@0|))"]],[0,565,568,"end of the body",["#,
+        r#"{"obl":"d::sum","code":"E0806","file":0,"lo":629,"hi":705,"msg":"loop invariant may not hold on entry","assumptions":["#,
+        r#""msg":"loop invariant may not be preserved","#,
+        r#""goal":"(and (<= 0 (- |a.len@0| |i@0|)) (< (- |a.len@0| (+ |i@0| 1)) (- |a.len@0| |i@0|)))","facts":"","shown":null}"#,
+        r#"{"def":"d::lemma","kind":"proof fn","inst":false,"unit":"d","sub":[],"uses":[],"context":["d::small"],"contract":["d::small"],"revealed":["d::small"],"arrays":[false,false],"fields":[[]],"encoded":true}"#,
+        r#"{"exec":"d::lemma","decls":["(declare-const |a@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(=> (> |a@0| 0) (< (- |a@0| 1) |a@0|))","(|d::small| (- |a@0| 1))"],"inputs":[["a",["|a@0|"],"i64"]],"texts":[],"valid":[],"reach":[[0,735,740,"end of the body",["#,
+        r#""msg":"precondition `small` of `d::lemma` may not hold","#,
+        r#""(|d::small| |a@0|)","(|d::small| (- |a@0| 1))","(< |v.len@0| 9223372036854775807)","(or (and (<= 0 233) (<= 233 55295)) (and (<= 57344 233) (<= 233 1114111)))","#,
+        r#"(store (store (store (store |s@0| (+ |s.len@0| 0) 195) (+ |s.len@0| 1) 169) (+ |s.len@0| 2) 0) (+ |s.len@0| 3) 0)"#,
+        r#""(<= 0 |lcp@0|)","#,
+        r#""texts":[["|s@0|","|s.len@0|"]],"valid":[],"reach":[[0,907,911,"end of the body",["#,
+        r#"{"def":"d::masked","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[false,false],"fields":[[]],"encoded":false}"#,
     ] {
         assert!(out.contains(row), "{row}\n{out}");
     }
     // The invariant of the `Cap` returned early is on the path already: no
     // obligation; the body outside the frontier has no rows.
     assert_eq!(out.matches("\"code\":\"E0823\"").count(), 1, "{out}");
-    assert!(!out.contains("{\"exec\":\"d::sum\"") && !out.contains("{\"obl\":\"d::sum\""));
+    assert!(!out.contains("{\"exec\":\"d::masked\"") && !out.contains("{\"obl\":\"d::masked\""));
 }
 
 #[path = "../../tests/port/smt_terms_ref.rs"]
