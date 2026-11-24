@@ -82,11 +82,11 @@ Registered actions for gate B: if the claim holds, the port goes on as planned. 
 
 ## Now
 
-1. **Close gate B.** Finish the second measurement of task replay (with text search and bounded responses on the BMB side), then judge the gate with the registered actions.
-2. **Finish the repository split.** This repository keeps the language, its tests and its public documents in English; benchmarks and measurement reports move to `bmb-bench`.
-3. **After gate B, by its outcome:** the back half of the port (proof encoding first), or the repair the attribution names.
+1. **Port the back half, proof encoding first.** Gate B was carried over to gate D ([ADR-0149](adr/0149-gate-b-verdict-carried-over.md)), so the port goes on. The encoder's tables view, term builders, and the encoding of specification terms and axioms are ported and compared with the Rust compiler byte for byte (`bmb dump smt-decls`, `bmb dump smt`); the encoding of executable bodies, query assembly, the solver connection and the proving driver follow.
+2. **Prepare the gate D measurement.** What it must bring is listed in ADR-0149: enough history tasks for an interval, three runs of the reference model, tasks drawn anew at full size, refactoring under the current tools.
+3. **Finish the repository split.** The benchmarks, their harnesses, frozen sets and result rows are in [`bmb-bench`](https://github.com/lang-bmb/bmb-bench), which checks itself against a checkout of this repository. The programs the compiler's own tests read stay here as `tests/corpus`. Still to move: the measurement reports, in English.
 
-Open work that does not wait on the gate: the remaining gap between stage 1 and the Rust compiler (1.1 to 1.3 times), insertion cost of the standard library's sorted maps, incremental proof keys that read a type by field rather than whole.
+Open work beside these: the remaining gap between stage 1 and the Rust compiler (1.1 to 1.3 times), insertion cost of the standard library's sorted maps, incremental proof keys that read a type by field rather than whole.
 
 ## Later
 
