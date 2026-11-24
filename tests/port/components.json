@@ -245,19 +245,24 @@
         "verify/text.rs"
       ],
       "port": [
-        "selfhost/encode_decls.bmb"
+        "selfhost/encode_decls.bmb",
+        "selfhost/encode_terms.bmb"
       ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": 1,
-        "undecided_runs": 0,
+        "gate_runs": 3,
+        "undecided_runs": 1,
         "friction": [
           "This row is not closed: it has only what the encoder derives from the tables before it reads a body (the view of slices, the instances of generic spec fns, sorts, datatype declarations, text signatures, default contexts) and compares `dump smt-decls`. The ratio comes out low because the ported part is measured against all of C6. The 85 definitions (1,151 obligations) were all proved on the first run of `bmb verify`",
           "The tables of the earlier components are left as they are: a new struct `encode_decls::Prepared` wraps the view with the instances, the instance types, the text signatures and the contexts, so the proofs of code generation are not keyed again",
           "The closures of the traversal (`each_expr` taking `&mut dyn FnMut`) became a walk that gathers nodes into a `Vec` and a visitor struct for calls; a substitution map is `types::Subst` kept in name order; maps keyed by position are `table::Table` under `body::span_key`: left as is",
           "Porting found a defect in stage0: the walk that finds the instances of generic spec fns did not enter the two ends of a range, so a generic call written there whose contract names a generic spec fn made `bmb verify` halt. stage0 was fixed and the port followed in the same commit (`tests/verify/pass/range_instances.bmb`, `tests/port/smt/range.txt`)",
-          "`context_of` cuts a generic path at the first `<` after the last `::`, so a type argument that itself has a path would not find its context. It has no effect today because the context of a spec fn is always empty: copied as is"
+          "`context_of` cuts a generic path at the first `<` after the last `::`, so a type argument that itself has a path would not find its context. It has no effect today because the context of a spec fn is always empty: copied as is",
+          "The second piece (`encode_terms.bmb`, compared by the case `smt-terms`) has the values of expressions and the term builders that read no encoder state. The functions are not reached by a dump of a program, so two test programs call each over a grid of arguments written out in both (`tests/port/smt_terms_ref.rs`, an example of the compiler's crate, and `tests/port/smt_terms.bmb`); stage0 only made the builders public. `gate_runs` counts the two runs of this piece: on the first, 6 of its 139 definitions (builders and grid together) failed (the width of an integer type had no contract, so `w - 1` and `% w` fell to E0803·E0804, the friction code generation's `bit_method` met; a `for` starting at a constant or at an earlier length had no invariant on entry; one of them, a loop from the old length of a list that a callee grows, was undecided at the resource limit), on the second all were proved. The outputs of the two sides were byte-identical on the first comparison",
+          "There is no integer wider than 64 bits: stage0's `i128` terms (`2^64`, the numerals of a query read back) are a sign and a `wide::U128` (`encode_terms::Int`), written through `wide::push_radix`; a mask `2^k - 1`, a shift amount and an amount modulo the width are read from the low word: left as is",
+          "A function value that captures the encoder (`set_at`'s `mk: &mut dyn FnMut`, which is `Enc::mk_struct`) cannot be passed: the two fields it writes (the name counters and the declarations) became a struct `encode_terms::Fresh` that `set_at` takes, with `fresh` and `mk_struct` ported beside it. The encoder's state of the next piece has to hold a `Fresh` for these to be shared: undecided until that piece",
+          "Rust's panics on a value of the wrong shape (`Val::s` of an array, `store_val` of two shapes) have no counterpart: the port returns a fixed value there (empty text, the unit value, the template as it is) and the summaries say the encoder passes none. The iterator of leaf terms (`&mut impl Iterator`) is a slice and a position; enum variants with named fields (`Val::A { elems, len }`) are positional (E0233); text slices returned by the readers (`first_term`, `select_app`) are copies cut at byte positions with the run-time boundary check of `lexer::cut`: left as is"
         ]
       }
     },

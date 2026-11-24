@@ -98,6 +98,38 @@ class Difftest(unittest.TestCase):
         with self.assertRaises(ValueError):
             difftest.runs_of({"other": 1})
 
+    def test_builds(self):
+        # A `bmb` build passes the files of its globs but those left out, in
+        # path order; an example is built by cargo next to the compiler
+        # under test, in its profile, and copied.
+        where = os.path.join(self.d, "release")
+        os.makedirs(os.path.join(where, "examples"))
+        bmb = script(where, "bmb", '#!/bin/sh\nfor a in "$@"; do last=$a; done\nprintf \'%s\\n\' "$@" > "$last"\n')
+        out = os.path.join(self.d, "built")
+        spec = {"bmb": ["scripts/difftest.py", "scripts/test_difftest*.py"], "except": ["scripts/difftest.py"]}
+        self.assertIsNone(difftest.build(spec, out, bmb))
+        with open(out) as f:
+            args = f.read().split()
+        self.assertEqual(args[0], "build")
+        self.assertEqual([a for a in args if a.endswith(".py")], [os.path.join(HERE, "test_difftest.py")])
+        self.assertIn("no file matches", difftest.build({"bmb": "scripts/absent-*.bmb"}, out, bmb))
+        self.assertIn("unknown build", difftest.build({"other": 1}, out, bmb))
+        bin_dir = os.path.join(self.d, "bin")
+        os.makedirs(bin_dir)
+        made = os.path.join(where, "examples", "ref")
+        script(bin_dir, "cargo", f'#!/bin/sh\nprintf \'%s \' "$@" > "{made}"\n')
+        path = os.environ["PATH"]
+        os.environ["PATH"] = bin_dir + os.pathsep + path
+        try:
+            self.assertIsNone(difftest.build({"example": "ref"}, out, bmb))
+            with open(out) as f:
+                self.assertEqual(f.read().split(), ["build", "--quiet", "--example", "ref", "--release"])
+            os.remove(made)
+            script(bin_dir, "cargo", "#!/bin/sh\necho broken >&2\nexit 101\n")
+            self.assertIn("broken", difftest.build({"example": "ref"}, out, bmb))
+        finally:
+            os.environ["PATH"] = path
+
     def test_run_reports_the_case_that_differs(self):
         other = script(self.d, "other", BASE.replace("exit 3", "exit 4"))
         cases = {

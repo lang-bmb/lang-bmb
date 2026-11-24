@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod examples;
 mod invariants;
-mod text;
+pub mod text;
 pub use examples::{Example, Examples, MAX_EXAMPLES, examples};
 use invariants::Boundary;
 /// The text terms (ADR-0050 §3), for `tests/lemmas.rs`.
@@ -535,7 +535,7 @@ pub(crate) fn type_depth(t: &TypeKind) -> usize {
 /// definition is proved once over its parameters as sorts), then each
 /// instance's body and each generic exec callee's contract under the
 /// substitution of the call. Instances get signatures of their own.
-fn prepare(p: &Program, t: &Tables) -> Tables {
+pub fn prepare(p: &Program, t: &Tables) -> Tables {
     let mut view = t.slice_view();
     let defs = collect(p, t);
     let mut insts: BTreeMap<String, (String, BTreeMap<String, TypeKind>)> = BTreeMap::new();
@@ -738,7 +738,7 @@ pub fn dump_decls(p: &Program, t: &Tables) -> String {
 }
 
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).
-fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
+pub fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
     let mut defs = collect(p, t);
     for (key, (base, sub)) in &t.insts {
         let d = &defs[base];
@@ -806,7 +806,7 @@ fn sort_decls(sig: &FnSig) -> String {
 /// An ordering comparison of `a` and `b` of type `t` (Rust `Ord`): the
 /// sort's total order for a type parameter, `false < true` for `bool`,
 /// integer order otherwise.
-fn ord_term(op: BinOp, t: &TypeKind, a: &str, b: &str) -> String {
+pub fn ord_term(op: BinOp, t: &TypeKind, a: &str, b: &str) -> String {
     match t {
         TypeKind::Param(n) => {
             let le = sym(&format!("'{n}.le"));
@@ -1196,7 +1196,7 @@ pub fn vacuous_ends(p: &Program, t: &Tables) -> (Vec<(String, Span, &'static str
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Val {
+pub enum Val {
     S(String),
     A {
         elems: String,
@@ -1214,7 +1214,7 @@ enum Val {
 }
 
 impl Val {
-    fn s(&self) -> String {
+    pub fn s(&self) -> String {
         match self {
             Val::S(t) => t.clone(),
             Val::Unit => "true".into(),
@@ -1225,7 +1225,7 @@ impl Val {
 }
 
 /// Element `i` of a slice of structs.
-fn select_val(elem: &Val, i: &str) -> Val {
+pub fn select_val(elem: &Val, i: &str) -> Val {
     match elem {
         Val::S(a) => Val::S(format!("(select {a} {i})")),
         Val::Struct(fs) => Val::Struct(fs.iter().map(|f| select_val(f, i)).collect()),
@@ -1246,7 +1246,7 @@ fn select_val(elem: &Val, i: &str) -> Val {
 
 /// The range of every inner `Vec` length in element template `v` of type
 /// `e` (its lengths are arrays over the outer index), at the first level.
-fn inner_len_facts(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
+pub fn inner_len_facts(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
     if let (Some(fs), Val::Struct(xs)) = (flat_fields(e, tb), v) {
         for ((_, ft), x) in fs.iter().zip(xs) {
             inner_len_facts(x, ft, tb, out);
@@ -1266,11 +1266,11 @@ fn inner_len_facts(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
 
 /// Whether an element template's length is a fixed constant (a numeral),
 /// not the array of an inner `Vec`'s lengths.
-fn fixed_len(len: &str) -> bool {
+pub fn fixed_len(len: &str) -> bool {
     len.parse::<u64>().is_ok()
 }
 
-fn select_len(len: &str, i: &str) -> String {
+pub fn select_len(len: &str, i: &str) -> String {
     if fixed_len(len) {
         len.to_string()
     } else {
@@ -1278,7 +1278,7 @@ fn select_len(len: &str, i: &str) -> String {
     }
 }
 
-fn store_len(len: &str, i: &str, x: &str) -> String {
+pub fn store_len(len: &str, i: &str, x: &str) -> String {
     if fixed_len(len) {
         len.to_string()
     } else {
@@ -1292,7 +1292,7 @@ const COPY_UNROLL: u64 = 16;
 /// The leaf arrays of two element templates of the same type, paired
 /// (`copy_within`): every array over the outer index, inner lengths that
 /// are arrays included, fixed lengths left out.
-fn leaf_pairs(new: &Val, old: &Val, out: &mut Vec<(String, String)>) {
+pub fn leaf_pairs(new: &Val, old: &Val, out: &mut Vec<(String, String)>) {
     match (new, old) {
         (Val::S(n), Val::S(o)) => out.push((n.clone(), o.clone())),
         (Val::Struct(ns), Val::Struct(os)) => {
@@ -1315,7 +1315,7 @@ fn leaf_pairs(new: &Val, old: &Val, out: &mut Vec<(String, String)>) {
 }
 
 /// The element arrays of a slice of structs with element `i` set to `v`.
-fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
+pub fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
     match (elem, v) {
         (Val::S(a), Val::S(x)) => Val::S(format!("(store {a} {i} {x})")),
         (Val::Struct(fs), Val::Struct(xs)) => {
@@ -1335,7 +1335,7 @@ fn store_val(elem: &Val, i: &str, v: &Val) -> Val {
 
 /// The SMT terms a value is passed as (spec fn arguments): its scalars, an
 /// array's elements and length, a struct's fields in order, recursively.
-fn flatten(v: &Val, out: &mut Vec<String>) {
+pub fn flatten(v: &Val, out: &mut Vec<String>) {
     match v {
         Val::S(t) => out.push(t.clone()),
         Val::A { elems, len } => {
@@ -1355,7 +1355,7 @@ fn flatten(v: &Val, out: &mut Vec<String>) {
 /// default scalar, each field's, the first variant with default payloads
 /// that does not need a value of an enum being built (a recursive type,
 /// ADR-0047: the checker ensures one exists, E0421).
-fn default_val(t: &TypeKind, tb: &Tables) -> Val {
+pub fn default_val(t: &TypeKind, tb: &Tables) -> Val {
     default_in(t, tb, &mut Vec::new()).expect("a type with a finite value")
 }
 
@@ -1425,7 +1425,7 @@ fn default_in(t: &TypeKind, tb: &Tables, building: &mut Vec<String>) -> Option<V
 /// The value an array of `e` holds at every element by default: the
 /// default value, or for a recursive struct (whose default holds such an
 /// array) an arbitrary one, `arb`.
-fn elem_default(e: &TypeKind, tb: &Tables) -> Val {
+pub fn elem_default(e: &TypeKind, tb: &Tables) -> Val {
     if dt_struct(e, tb) {
         Val::S(arb(e))
     } else {
@@ -1440,7 +1440,7 @@ fn arb(t: &TypeKind) -> String {
 
 /// The element arrays of an array whose every element is `v` (of type
 /// `e`): one constant array, or one per leaf for an aggregate element.
-fn const_elems(e: &TypeKind, v: &Val, tb: &Tables) -> Val {
+pub fn const_elems(e: &TypeKind, v: &Val, tb: &Tables) -> Val {
     if !agg_elem(e, tb) {
         return Val::S(format!("((as const (Array Int {})) {})", sort_of(e), v.s()));
     }
@@ -1461,7 +1461,7 @@ const UNROLL_EQ: usize = 16;
 
 /// The leaf arrays of an element template (`elem_leaves` order): inner
 /// fixed lengths are constants, not terms.
-fn flatten_elem(v: &Val, out: &mut Vec<String>) {
+pub fn flatten_elem(v: &Val, out: &mut Vec<String>) {
     match v {
         Val::S(t) => out.push(t.clone()),
         Val::A { elems, len } => {
@@ -1484,7 +1484,7 @@ fn flatten_elem(v: &Val, out: &mut Vec<String>) {
 /// The leaf terms of one element value `v` of type `e`, in
 /// `elem_leaves` order (an inner `Vec`'s length is a leaf even when it is
 /// a numeral).
-fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
+pub fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
     if let Some(fs) = flat_fields(e, tb) {
         if let Val::Struct(xs) = v {
             for ((_, ft), x) in fs.iter().zip(xs) {
@@ -1518,14 +1518,14 @@ fn flatten_elem_of(v: &Val, e: &TypeKind, tb: &Tables, out: &mut Vec<String>) {
 
 /// Whether an array of `e` holds its elements as one array per leaf
 /// (ADR-0027 §2): structs and fixed-size arrays.
-fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
+pub fn agg_elem(e: &TypeKind, tb: &Tables) -> bool {
     flat_fields(e, tb).is_some() || is_array(e)
 }
 
 /// The leaves of an element of type `e`, each with the sort of its value
 /// for one element: a struct's fields in order, an inner array's leaves
 /// one array level deeper (its fixed length is a constant).
-fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, String)>) {
+pub fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, String)>) {
     if let Some(fs) = flat_fields(e, tb) {
         for (n, ft) in &fs {
             elem_leaves(ft, tb, &format!("{suffix}.{n}"), out);
@@ -1554,7 +1554,7 @@ fn elem_leaves(e: &TypeKind, tb: &Tables, suffix: &str, out: &mut Vec<(String, S
 
 /// The element template of type `e` whose leaf arrays are `terms` (the
 /// inverse of `flatten_elem`).
-fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
+pub fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
     if let Some(fs) = flat_fields(e, tb) {
         return Val::Struct(
             fs.iter()
@@ -1594,7 +1594,7 @@ fn elem_template(e: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = Str
 
 /// One SMT leaf of a value: a scalar, or an array's elements or length
 /// (`Some(n)` for a fixed-size array).
-enum Leaf {
+pub enum Leaf {
     Scalar(TypeKind),
     /// A recursive struct (`dt_struct`): a value of its sort.
     Dt(TypeKind),
@@ -1615,7 +1615,7 @@ impl Leaf {
     }
 
     /// What every value of the leaf satisfies (ADR-0017 §3).
-    fn fact(&self, x: &str) -> Option<String> {
+    pub fn fact(&self, x: &str) -> Option<String> {
         match self {
             Leaf::Scalar(t) => range(t, x),
             Leaf::Dt(_) => None,
@@ -1702,7 +1702,7 @@ pub(crate) fn enum_variants(t: &TypeKind, tb: &Tables) -> Option<Vec<(String, Ve
 /// Whether `t` (through a reference) is a struct that contains itself
 /// through structs alone: a datatype of one constructor, not a tuple of
 /// leaves (ADR-0047 §3).
-fn dt_struct(t: &TypeKind, tb: &Tables) -> bool {
+pub fn dt_struct(t: &TypeKind, tb: &Tables) -> bool {
     struct_fields(t, tb).is_some() && crate::check::struct_cycle(t, &tb.adts)
 }
 
@@ -2092,7 +2092,7 @@ fn field_index(t: &TypeKind, tb: &Tables, name: &str) -> usize {
 
 /// The leaves of a value of type `t`, named `base` + a suffix, in the order
 /// `flatten` writes them.
-fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) {
+pub fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) {
     if let Some(fs) = flat_fields(t, tb) {
         for (n, ft) in &fs {
             leaves(ft, tb, &format!("{base}.{n}"), out);
@@ -2126,7 +2126,7 @@ fn leaves(t: &TypeKind, tb: &Tables, base: &str, out: &mut Vec<(String, Leaf)>) 
 }
 
 /// The value of type `t` whose leaves are `terms` (the inverse of `flatten`).
-fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
+pub fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) -> Val {
     if let Some(fs) = flat_fields(t, tb) {
         return Val::Struct(fs.iter().map(|(_, ft)| build(ft, tb, terms)).collect());
     }
@@ -2149,7 +2149,7 @@ fn build(t: &TypeKind, tb: &Tables, terms: &mut impl Iterator<Item = String>) ->
 }
 
 /// A step from a variable to the place an assignment writes.
-enum Step {
+pub enum Step {
     Field(usize),
     /// Field `k` of a recursive struct of type `t` (`dt_struct`).
     DtField(usize, TypeKind),
@@ -2158,7 +2158,7 @@ enum Step {
 
 /// The fields of the recursive struct value `x` of type `t`, one value per
 /// field (its selectors applied to `x`).
-fn dt_fields(t: &TypeKind, x: &str, tb: &Tables) -> Vec<Val> {
+pub fn dt_fields(t: &TypeKind, x: &str, tb: &Tables) -> Vec<Val> {
     let name = dt_ctor_name(t);
     let fs = struct_fields(t, tb).expect("a struct");
     fs.iter()
@@ -2217,7 +2217,7 @@ fn set_at(
 }
 
 /// `ite(c, a, b)` on values of one type, leaf by leaf.
-fn ite_val(c: &str, a: &Val, b: &Val) -> Val {
+pub fn ite_val(c: &str, a: &Val, b: &Val) -> Val {
     match (a, b) {
         (Val::S(x), Val::S(y)) => Val::S(ite(c, x, y)),
         (Val::A { elems: e1, len: l1 }, Val::A { elems: e2, len: l2 }) => Val::A {
@@ -2261,7 +2261,7 @@ struct Def<'p> {
     inst: bool,
 }
 
-struct Prog<'p> {
+pub struct Prog<'p> {
     defs: BTreeMap<String, Def<'p>>,
     t: &'p Tables,
     /// The constructor of every enum selector symbol (structural
@@ -2291,7 +2291,7 @@ fn growable(t: &TypeKind) -> bool {
 }
 
 /// Symbolic state of one definition.
-struct Enc<'p, 'q> {
+pub struct Enc<'p, 'q> {
     prog: &'q Prog<'p>,
     path: String,
     mod_path: String,
@@ -2301,7 +2301,7 @@ struct Enc<'p, 'q> {
     tsub: BTreeMap<String, TypeKind>,
     /// Unit whose names the specification being translated refers to.
     spec_mod: String,
-    decls: Vec<String>,
+    pub decls: Vec<String>,
     counters: BTreeMap<String, u32>,
     pc: Vec<String>,
     vars: BTreeMap<String, Val>,
@@ -2399,7 +2399,7 @@ fn for_bounds(st: &ForStep, i: &str) -> String {
 }
 
 /// `(select a i)` as (`a`, `i`).
-fn select_app(t: &str) -> Option<(&str, &str)> {
+pub fn select_app(t: &str) -> Option<(&str, &str)> {
     let inner = t.strip_prefix("(select ")?.strip_suffix(')')?;
     let (mut depth, mut quoted) = (0i32, false);
     for (k, c) in inner.char_indices() {
@@ -2416,7 +2416,7 @@ fn select_app(t: &str) -> Option<(&str, &str)> {
 
 /// `(f a)` as (`f`, `a`): an application of a symbol to one argument (a
 /// selector application in a measure term).
-fn sel_app(t: &str) -> Option<(&str, &str)> {
+pub fn sel_app(t: &str) -> Option<(&str, &str)> {
     let inner = t.strip_prefix('(')?.strip_suffix(')')?;
     let head_end = if let Some(q) = inner.strip_prefix('|') {
         q.find('|')? + 2
@@ -2440,7 +2440,7 @@ fn sel_app(t: &str) -> Option<(&str, &str)> {
     Some((head, arg))
 }
 
-fn num(v: i128) -> String {
+pub fn num(v: i128) -> String {
     if v < 0 {
         format!("(- {})", -v)
     } else {
@@ -2463,7 +2463,7 @@ fn sort_of(t: &TypeKind) -> String {
     }
 }
 
-fn elem_ty(t: &TypeKind) -> TypeKind {
+pub fn elem_ty(t: &TypeKind) -> TypeKind {
     match t {
         TypeKind::Array(e, _) => e.kind.clone(),
         TypeKind::Ref { inner, .. } => match &inner.kind {
@@ -2475,16 +2475,16 @@ fn elem_ty(t: &TypeKind) -> TypeKind {
     }
 }
 
-fn is_array(t: &TypeKind) -> bool {
+pub fn is_array(t: &TypeKind) -> bool {
     matches!(t, TypeKind::Array(..))
         || matches!(t, TypeKind::Ref { inner, .. } if matches!(inner.kind, TypeKind::Slice(_)))
 }
 
-fn range(t: &TypeKind, x: &str) -> Option<String> {
+pub fn range(t: &TypeKind, x: &str) -> Option<String> {
     t.int().map(|i| range_int(i, x))
 }
 
-fn range_int(i: IntTy, x: &str) -> String {
+pub fn range_int(i: IntTy, x: &str) -> String {
     format!(
         "(and (<= {} {x}) (<= {x} {}))",
         num(i.min_value()),
@@ -2492,7 +2492,7 @@ fn range_int(i: IntTy, x: &str) -> String {
     )
 }
 
-fn len_max(elem: &TypeKind) -> &'static str {
+pub fn len_max(elem: &TypeKind) -> &'static str {
     // A data type may be one byte (a fieldless enum, a struct of a bool):
     // only `isize::MAX` is known without its layout.
     match elem {
@@ -2507,7 +2507,7 @@ fn len_max(elem: &TypeKind) -> &'static str {
     }
 }
 
-fn and(xs: &[String]) -> String {
+pub fn and(xs: &[String]) -> String {
     match xs.len() {
         0 => "true".into(),
         1 => xs[0].clone(),
@@ -2527,7 +2527,7 @@ fn and(xs: &[String]) -> String {
 /// 1,821,059 of its 1,843,925 `rlimit` there, and 8,180 lifted. The meaning
 /// is the same (`c => (a && (g => x))` is `(c => a) && (c && g => x)`), and
 /// a side without deep implications keeps its old text.
-fn guarded(c: &str, facts: &[String]) -> Vec<String> {
+pub fn guarded(c: &str, facts: &[String]) -> Vec<String> {
     let mut plain = Vec::new();
     let mut lifted = Vec::new();
     for f in facts {
@@ -2554,7 +2554,7 @@ fn guarded(c: &str, facts: &[String]) -> Vec<String> {
 const LIFT_DEPTH: usize = 3;
 
 /// The nesting depth of the connectives `and`, `or` and `=>` in term `t`.
-fn bool_depth(t: &str) -> usize {
+pub fn bool_depth(t: &str) -> usize {
     // For each open list: whether its head is a connective, and the
     // deepest connective nesting among its children so far.
     let mut stack: Vec<(bool, usize)> = Vec::new();
@@ -2586,7 +2586,7 @@ fn bool_depth(t: &str) -> usize {
 }
 
 /// The antecedent and consequent of an SMT implication `(=> g x)`, as text.
-fn implication(f: &str) -> Option<(&str, &str)> {
+pub fn implication(f: &str) -> Option<(&str, &str)> {
     let rest = f.strip_prefix("(=> ")?.strip_suffix(')')?;
     let g = first_term(rest)?;
     let x = rest[g.len()..].strip_prefix(' ')?;
@@ -2595,7 +2595,7 @@ fn implication(f: &str) -> Option<(&str, &str)> {
 
 /// The first complete term of `s` (an atom, a `|quoted|` symbol or a
 /// parenthesized list), as a prefix of `s`.
-fn first_term(s: &str) -> Option<&str> {
+pub fn first_term(s: &str) -> Option<&str> {
     let (mut depth, mut quoted) = (0usize, false);
     for (i, ch) in s.char_indices() {
         match ch {
@@ -2615,7 +2615,7 @@ fn first_term(s: &str) -> Option<&str> {
     (depth == 0 && !quoted && !s.is_empty()).then_some(s)
 }
 
-fn ite(c: &str, a: &str, b: &str) -> String {
+pub fn ite(c: &str, a: &str, b: &str) -> String {
     if a == b {
         a.to_string()
     } else {
@@ -2624,11 +2624,11 @@ fn ite(c: &str, a: &str, b: &str) -> String {
 }
 
 /// `x` reduced into the range of `t` (two's complement).
-fn wrap(t: &TypeKind, x: &str) -> String {
+pub fn wrap(t: &TypeKind, x: &str) -> String {
     wrap_int(t.int().expect("integer type"), x)
 }
 
-fn wrap_int(i: IntTy, x: &str) -> String {
+pub fn wrap_int(i: IntTy, x: &str) -> String {
     let size = num(1i128 << i.bits());
     if i.signed() {
         let half = num(1i128 << (i.bits() - 1));
@@ -2639,7 +2639,7 @@ fn wrap_int(i: IntTy, x: &str) -> String {
 }
 
 /// The value of a numeral term (`5`, `(- 5)`).
-fn numeral(t: &str) -> Option<i128> {
+pub fn numeral(t: &str) -> Option<i128> {
     if !is_numeral(t) {
         return None;
     }
@@ -2651,14 +2651,14 @@ fn numeral(t: &str) -> Option<i128> {
 
 /// `x` as a bitvector of `i`'s width: its value modulo `2^w`, so a negative
 /// value is its two's complement (ADR-0048 §4).
-fn to_bv(i: IntTy, x: &str) -> String {
+pub fn to_bv(i: IntTy, x: &str) -> String {
     format!("((_ int2bv {}) {x})", i.bits())
 }
 
 /// The value of a bitvector `v` of `i`'s width as an integer of `i`:
 /// unsigned, or two's complement (flipping the sign bit adds `2^(w-1)`
 /// modulo `2^w`, so one `bv2nat` suffices).
-fn from_bv(i: IntTy, v: &str) -> String {
+pub fn from_bv(i: IntTy, v: &str) -> String {
     if i.signed() {
         let half = 1i128 << (i.bits() - 1);
         format!("(- (bv2nat (bvxor {v} (_ bv{half} {}))) {half})", i.bits())
@@ -2782,7 +2782,7 @@ pub fn bv_value(i: IntTy, a: &str) -> String {
 
 /// `bit_facts_of`, each under the range of the operands (a shift amount's
 /// range is its own obligation).
-fn bit_facts(op: BinOp, i: IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
+pub fn bit_facts(op: BinOp, i: IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
     let ra = range_int(i, a);
     let pre = if op.is_shift() {
         ra
@@ -2949,7 +2949,7 @@ pub fn f64_lit(bits: u64) -> String {
 
 /// `a op b` on `f64` (ADR-0061 §3, §5): arithmetic and comparisons as the
 /// encoder's `f64.*` symbols. `None` for an operation `f64` does not have.
-fn f64_binary(op: BinOp, a: &str, b: &str) -> Option<String> {
+pub fn f64_binary(op: BinOp, a: &str, b: &str) -> Option<String> {
     Some(match op {
         BinOp::Add => format!("(f64.add {a} {b})"),
         BinOp::Sub => format!("(f64.sub {a} {b})"),
@@ -2975,7 +2975,7 @@ fn f64_neg(x: &Expr, v: &str) -> String {
 }
 
 /// A method of `f64` (ADR-0061 §3) as its symbol applied to `a` (and `b`).
-fn f64_method(m: &str, a: &str, b: Option<&str>) -> String {
+pub fn f64_method(m: &str, a: &str, b: Option<&str>) -> String {
     match b {
         Some(b) => format!("(f64.{m} {a} {b})"),
         None => format!("(f64.{m} {a})"),
@@ -2984,10 +2984,10 @@ fn f64_method(m: &str, a: &str, b: Option<&str>) -> String {
 
 /// `2^53`: the integers up to it in absolute value are exactly `f64`s
 /// (ADR-0061 §4).
-const F64_EXACT: &str = "9007199254740992";
+pub const F64_EXACT: &str = "9007199254740992";
 
 /// `&`, `|`, `^` on `bool`: both sides evaluated (Rust).
-fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
+pub fn bool_bit(op: BinOp, a: &str, b: &str) -> String {
     match op {
         BinOp::BitAnd => format!("(and {a} {b})"),
         BinOp::BitOr => format!("(or {a} {b})"),
@@ -3056,7 +3056,7 @@ pub fn from_bytes_term(i: IntTy, le: bool, bs: &[String]) -> String {
 }
 
 /// `to_be_bytes`/`to_le_bytes` of `a`: the byte array value.
-fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
+pub fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
     let n = i.bits() / 8;
     let mut arr = "((as const (Array Int Int)) 0)".to_string();
     for k in 0..n {
@@ -3069,7 +3069,7 @@ fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
 }
 
 /// `from_be_bytes`/`from_le_bytes` of the byte array value `v`.
-fn from_bytes_val(i: IntTy, le: bool, v: &Val) -> Val {
+pub fn from_bytes_val(i: IntTy, le: bool, v: &Val) -> Val {
     let Val::A { elems, .. } = v else {
         panic!("bytes of a non-array {v:?}")
     };
@@ -3179,7 +3179,7 @@ fn method_facts(m: &str, i: IntTy, a: &str, r: &str) -> Vec<String> {
 }
 
 /// A built-in integer method `a.op(b)` on type `t` (ADR-0028 §3, §5).
-enum IntMethod {
+pub enum IntMethod {
     /// `wrapping_*`, `saturating_*`: a value of `t`.
     Value(String),
     /// `checked_*`: `Some(v)` exactly when `ok`; `lemmas` are the division
@@ -3191,7 +3191,7 @@ enum IntMethod {
     },
 }
 
-fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
+pub fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
     let signed = t.is_signed();
     let (kind, base) = op.split_once('_').expect("integer method");
     let (v, lemmas) = match base {
@@ -3242,7 +3242,7 @@ fn int_method(op: &str, t: &TypeKind, a: &str, b: &str) -> IntMethod {
 
 /// The SMT array of a byte string (ADR-0044 §2): elements past the end
 /// are 0, as the encoding of any array's tail is unconstrained by use.
-fn byte_array(v: &[u8]) -> String {
+pub fn byte_array(v: &[u8]) -> String {
     let mut a = "((as const (Array Int Int)) 0)".to_string();
     for (k, b) in v.iter().enumerate() {
         a = format!("(store {a} {k} {b})");
@@ -3250,12 +3250,12 @@ fn byte_array(v: &[u8]) -> String {
     a
 }
 
-fn sym(name: &str) -> String {
+pub fn sym(name: &str) -> String {
     format!("|{name}|")
 }
 
 /// `e` with each atom in `m` replaced by its term.
-fn subst_atoms(e: &smt::Sexp, m: &BTreeMap<String, smt::Sexp>) -> smt::Sexp {
+pub fn subst_atoms(e: &smt::Sexp, m: &BTreeMap<String, smt::Sexp>) -> smt::Sexp {
     match e {
         smt::Sexp::Atom(a) => m.get(a).cloned().unwrap_or_else(|| e.clone()),
         smt::Sexp::List(xs) => smt::Sexp::List(xs.iter().map(|x| subst_atoms(x, m)).collect()),
@@ -3271,7 +3271,7 @@ impl<'p, 'q> Enc<'p, 'q> {
         Val::S(ite(ok, &some, &none))
     }
 
-    fn new(prog: &'q Prog<'p>, path: &str, mod_path: &str) -> Self {
+    pub fn new(prog: &'q Prog<'p>, path: &str, mod_path: &str) -> Self {
         Enc {
             prog,
             path: path.to_string(),
@@ -3436,7 +3436,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 
     /// `v` with the place at `steps` replaced by `new`.
-    fn set_at(&mut self, v: Val, steps: &[Step], new: Val) -> Val {
+    pub fn set_at(&mut self, v: Val, steps: &[Step], new: Val) -> Val {
         let tb = self.prog.t;
         set_at(v, steps, new, tb, &mut |t, fs| self.mk_struct(t, fs))
     }
@@ -6753,7 +6753,7 @@ impl<'p, 'q> Enc<'p, 'q> {
     }
 }
 
-fn default_of(t: &TypeKind) -> &'static str {
+pub fn default_of(t: &TypeKind) -> &'static str {
     match t {
         TypeKind::Bool => "false",
         TypeKind::F64 => "(_ +zero 11 53)",
@@ -7144,7 +7144,7 @@ const MAX_BOUNDS: usize = 2;
 
 /// Upper bounds of `term` that top-level conjuncts of the path condition
 /// state (`term < t`, `term <= t`, `t > term`, `t >= term`), newest first.
-fn upper_bounds(pc: &[String], term: &str) -> Vec<String> {
+pub fn upper_bounds(pc: &[String], term: &str) -> Vec<String> {
     fn walk(e: &smt::Sexp, term: &str, out: &mut Vec<String>) {
         let smt::Sexp::List(xs) = e else { return };
         let head = match xs.first() {
@@ -7172,7 +7172,7 @@ fn upper_bounds(pc: &[String], term: &str) -> Vec<String> {
     out
 }
 
-fn is_numeral(t: &str) -> bool {
+pub fn is_numeral(t: &str) -> bool {
     let t = t
         .strip_prefix("(- ")
         .and_then(|x| x.strip_suffix(')'))

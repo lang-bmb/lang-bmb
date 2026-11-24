@@ -20,6 +20,18 @@
         "selfhost/*.bmb"
       ]
     },
+    "smt_terms_ref": {
+      "example": "smt_terms_ref"
+    },
+    "smt_terms": {
+      "bmb": [
+        "selfhost/*.bmb",
+        "tests/port/smt_terms.bmb"
+      ],
+      "except": [
+        "selfhost/main.bmb"
+      ]
+    },
     "unicode_ref": {
       "rustc": "tests/port/unicode_ref.rs"
     },
@@ -980,6 +992,19 @@
           "selfhost/*.bmb"
         ],
         "chunk": 40
+      }
+    },
+    {
+      "name": "smt-terms",
+      "component": "C6",
+      "a": [
+        "{build:smt_terms_ref}"
+      ],
+      "b": [
+        "{build:smt_terms}"
+      ],
+      "inputs": {
+        "none": true
       }
     }
   ]

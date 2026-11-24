@@ -12,12 +12,15 @@ byte. Nothing is normalised.
 prints one JSON line per case and exits 1 when a case differs or cannot
 run. The cases file:
 
-    {"builds": {NAME: {"bmb": FILE} | {"rustc": FILE}},
+    {"builds": {NAME: {"bmb": FILE} | {"rustc": FILE} | {"example": NAME}},
      "cases": [{"name": .., "component": .., "a": [ARGV], "b": [ARGV],
                 "inputs": {..}}]}
 
 `builds` are made once: `{"bmb": FILE}` (or a list of globs, the files of one
-program) with `bmb build` (so the program is proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`. In an argv,
+program; `"except": GLOB..` leaves files out) with `bmb build` (so the
+program is proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`,
+`{"example": NAME}` with `cargo build --example NAME` in `compiler/` (a
+reference that calls the compiler's own functions). In an argv,
 `{build:NAME}` is a built program, `{bmb}` the compiler under test and
 `{inputs}` the run's files (it becomes several arguments); a word that
 starts with `{root}/` is a path in the repository (a run's directory is a
@@ -166,7 +169,9 @@ def build(spec, out, bmb):
     if "bmb" in spec:
         # One file, or globs of the files of one program (in path order).
         globs = spec["bmb"] if isinstance(spec["bmb"], list) else [spec["bmb"]]
+        left = [os.path.join(ROOT, g) for g in spec.get("except", [])]
         files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
+        files = [p for p in files if not any(fnmatch.fnmatch(p, g) for g in left)]
         if not files:
             return f"no file matches {globs}"
         # The gate proves the port once (check.sh "port proof"): a
@@ -175,6 +180,20 @@ def build(spec, out, bmb):
     elif "rustc" in spec:
         cmd = ["rustc", "--edition", "2021", "-O", "--cap-lints", "allow"]
         cmd += [os.path.join(ROOT, spec["rustc"]), "-o", out]
+    elif "example" in spec:
+        # An example of the compiler's crate (`compiler/Cargo.toml`): a
+        # program that calls stage0's own functions. cargo builds it in the
+        # profile of the compiler under test, next to it.
+        where = os.path.dirname(os.path.abspath(bmb))
+        cmd = ["cargo", "build", "--quiet", "--example", spec["example"]]
+        if os.path.basename(where) == "release":
+            cmd.append("--release")
+        r = subprocess.run(cmd, capture_output=True, cwd=os.path.join(ROOT, "compiler"))
+        made = os.path.join(where, "examples", spec["example"])
+        if r.returncode != 0 or not os.path.exists(made):
+            return (r.stdout + r.stderr).decode("utf-8", "replace")[-2000:] or f"no {made}"
+        shutil.copy2(made, out)
+        return None
     else:
         return f"unknown build: {sorted(spec)}"
     r = subprocess.run(cmd, capture_output=True, cwd=os.path.dirname(out))

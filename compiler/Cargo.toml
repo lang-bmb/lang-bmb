@@ -10,4 +10,9 @@ publish = false
 name = "bmb"
 path = "src/main.rs"
 
+# The stage0 side of the differential case `smt-terms` (tests/port/README.md).
+[[example]]
+name = "smt_terms_ref"
+path = "../tests/port/smt_terms_ref.rs"
+
 [dependencies]

@@ -1,0 +1,771 @@
+#[summary("Differential test: calls the term builders of the port's proof encoder (selfhost/encode_terms.bmb) over a fixed grid of arguments written out here and prints one JSONL row per call (the builder, its arguments, its result). The reference is smt_terms_ref.rs, which does the same job with stage0's builders over the same grid")]
+mod app {
+    #[summary("Every operation, in declaration order")]
+    #[effects(alloc)]
+    fn all_ops() -> Vec<ast::BinOp> {
+        let mut v: Vec<ast::BinOp> = Vec::new();
+        v.push(ast::BinOp::Add);
+        v.push(ast::BinOp::Sub);
+        v.push(ast::BinOp::Mul);
+        v.push(ast::BinOp::Div);
+        v.push(ast::BinOp::Rem);
+        v.push(ast::BinOp::Eq);
+        v.push(ast::BinOp::Ne);
+        v.push(ast::BinOp::Lt);
+        v.push(ast::BinOp::Le);
+        v.push(ast::BinOp::Gt);
+        v.push(ast::BinOp::Ge);
+        v.push(ast::BinOp::And);
+        v.push(ast::BinOp::Or);
+        v.push(ast::BinOp::Implies);
+        v.push(ast::BinOp::BitAnd);
+        v.push(ast::BinOp::BitOr);
+        v.push(ast::BinOp::BitXor);
+        v.push(ast::BinOp::Shl);
+        v.push(ast::BinOp::Shr);
+        v
+    }
+
+    #[summary("JSON of a truth value")]
+    #[effects(alloc)]
+    fn bool_text(b: bool) -> String {
+        if b {
+            return String::from("true");
+        }
+        String::from("false")
+    }
+
+    #[summary("The rows (rows of smt_terms_ref.rs): the term builders that need no encoder state, each over a fixed grid of arguments, as JSONL (the builder, its arguments, its result). The grid is written out here as it is in the reference: the numeral and text readers over grid_nums and grid_texts; the integer builders at every integer type; the bit operations over grid_pairs and the bit methods over grid_amounts; the f64 builders; the lemma templates; the builders of text; the value builders over shapes; and the builders that read the tables at each parameter type of the program of source, which ck is the checked form of")]
+    #[effects(alloc)]
+    fn dump(ck: &body::Checked) -> String {
+        let mut out: String = String::new();
+        dump_readers(&mut out);
+        dump_ints(&mut out);
+        dump_f64(&mut out);
+        dump_lemmas(&mut out);
+        let xs: Vec<encode_terms::Val> = shapes("x");
+        let ys: Vec<encode_terms::Val> = shapes("y");
+        dump_vals(&mut out, xs.as_slice(), ys.as_slice());
+        let pr: encode_decls::Prepared = encode_decls::prepared(ck);
+        let tys: Vec<ast::TypeKind> = match pr.t.fns.find("g::sig") {
+            None => Vec::new(),
+            Some(at) => pr.t.fns.items[at].params.clone(),
+        };
+        for i in 0..tys.len()
+            invariant 0 <= i && i <= tys.len(),
+        {
+            dump_type(&mut out, &tys[i], &pr.t);
+        }
+        dump_places(&mut out, xs.as_slice(), ys.as_slice(), tys.as_slice(), &pr.t);
+        out
+    }
+
+    #[summary("The rows of the f64 builders")]
+    #[effects(alloc)]
+    fn dump_f64(out: &mut String) -> () {
+        let funs: Vec<encode_terms::F64Fun> = encode_terms::f64_funs();
+        let mut all: Vec<String> = Vec::new();
+        for i in 0..funs.len()
+            invariant 0 <= i && i <= funs.len(),
+        {
+            all.push(types::cat3("(", funs[i].name.as_str(), " a)"));
+        }
+        let mut uses: Vec<String> = encode_terms::split("(+ a b)\n(f64.add a b)\n(f64.lt (f64.neg a) (f64.from 1))\n(f64.is_finite a)\n(f64.is_nan a) (f64.is_finite a)\n(f64.addx a) f64.sub (f64.)", b'\n');
+        uses.push(encode_terms::join(all.as_slice(), " "));
+        for u in 0..uses.len()
+            invariant 0 <= u && u <= uses.len(),
+        {
+            row(out, "f64_decls", types::cat2("false ", uses[u].as_str()).as_str(), quoted(encode_terms::f64_decls(uses[u].as_str(), false).as_str()).as_str());
+            row(out, "f64_decls", types::cat2("true ", uses[u].as_str()).as_str(), quoted(encode_terms::f64_decls(uses[u].as_str(), true).as_str()).as_str());
+        }
+        let bits: Vec<u64> = grid_f64();
+        for b in 0..bits.len()
+            invariant 0 <= b && b <= bits.len(),
+        {
+            row(out, "f64_lit", encode_terms::dec(bits[b]).as_str(), quoted(encode_terms::f64_lit(bits[b]).as_str()).as_str());
+        }
+        let ops: Vec<ast::BinOp> = all_ops();
+        for o in 0..ops.len()
+            invariant 0 <= o && o <= ops.len(),
+        {
+            row(out, "f64_binary", op_name(ops[o]).as_str(), opt_text(&encode_terms::f64_binary(ops[o], "a", "b")).as_str());
+        }
+        row(out, "f64_method", "sqrt", quoted(encode_terms::f64_method("sqrt", "a", &None).as_str()).as_str());
+        row(out, "f64_method", "min", quoted(encode_terms::f64_method("min", "a", &Some(String::from("b"))).as_str()).as_str());
+        row(out, "F64_EXACT", "", quoted(encode_terms::f64_exact().as_str()).as_str());
+        row(out, "bool_bit", "BitAnd", quoted(encode_terms::bool_bit(ast::BinOp::BitAnd, "a", "b").as_str()).as_str());
+        row(out, "bool_bit", "BitOr", quoted(encode_terms::bool_bit(ast::BinOp::BitOr, "a", "b").as_str()).as_str());
+        row(out, "bool_bit", "BitXor", quoted(encode_terms::bool_bit(ast::BinOp::BitXor, "a", "b").as_str()).as_str());
+    }
+
+    #[summary("The rows of the integer builders at one integer type")]
+    #[effects(alloc)]
+    fn dump_int(out: &mut String, i: ast::IntTy) -> () {
+        let name: String = body::int_text(i);
+        let xs: Vec<String> = encode_terms::split("x\n(- 5)", b'\n');
+        for x in 0..xs.len()
+            invariant 0 <= x && x <= xs.len(),
+        {
+            let args: String = types::cat3(name.as_str(), " ", xs[x].as_str());
+            row(out, "range_int", args.as_str(), quoted(encode_terms::range_int(i, xs[x].as_str()).as_str()).as_str());
+            row(out, "wrap_int", args.as_str(), quoted(encode_terms::wrap_int(i, xs[x].as_str()).as_str()).as_str());
+            row(out, "to_bv", args.as_str(), quoted(encode_terms::to_bv(i, xs[x].as_str()).as_str()).as_str());
+            row(out, "from_bv", args.as_str(), quoted(encode_terms::from_bv(i, xs[x].as_str()).as_str()).as_str());
+            row(out, "not_term", args.as_str(), quoted(encode_terms::not_term(i, xs[x].as_str()).as_str()).as_str());
+            row(out, "bv_value", args.as_str(), quoted(encode_terms::bv_value(i, xs[x].as_str()).as_str()).as_str());
+        }
+        let ops: Vec<ast::BinOp> = all_ops();
+        let pairs: Vec<String> = encode_terms::split(grid_pairs().as_str(), b'\n');
+        for o in 0..ops.len()
+            invariant 0 <= o && o <= ops.len(),
+        {
+            if encode_terms::bit_kind(ops[o]) == 0 {
+                continue;
+            }
+            let on: String = types::cat3(op_name(ops[o]).as_str(), " ", name.as_str());
+            for p in 0..pairs.len()
+                invariant 0 <= p && p <= pairs.len(),
+            {
+                let ab: Vec<String> = encode_terms::split(pairs[p].as_str(), b';');
+                if ab.len() == 2 {
+                    let r: encode_terms::Term = encode_terms::bit_op(ops[o], i, ab[0].as_str(), ab[1].as_str());
+                    row(out, "bit_op", types::cat5(on.as_str(), " ", ab[0].as_str(), " ", ab[1].as_str()).as_str(), term_text(&r).as_str());
+                }
+            }
+            row(out, "bv_term", on.as_str(), quoted(encode_terms::bv_term(ops[o], i, "xa", "xb").as_str()).as_str());
+            row(out, "bit_facts", on.as_str(), list_text(encode_terms::bit_facts(ops[o], i, "a", "b", "r").as_slice()).as_str());
+        }
+        for l in 0..ops.len()
+            invariant 0 <= l && l <= ops.len(),
+        {
+            row(out, "linear_bit", types::cat3(op_name(ops[l]).as_str(), " ", name.as_str()).as_str(), opt_text(&encode_terms::linear_bit(ops[l], i, "a", "3")).as_str());
+        }
+        let methods: Vec<String> = encode_terms::split("wrapping_shl\nwrapping_shr\nrotate_left\nrotate_right\nswap_bytes\ncount_ones\ncount_zeros\nleading_zeros\ntrailing_zeros\nleading_ones\ntrailing_ones\nreverse_bits", b'\n');
+        let amounts: Vec<String> = encode_terms::split(grid_amounts().as_str(), b'\n');
+        for m in 0..methods.len()
+            invariant 0 <= m && m <= methods.len(),
+        {
+            let mn: String = types::cat4(methods[m].as_str(), " ", name.as_str(), " ");
+            if m < 4 {
+                for n in 0..amounts.len()
+                    invariant 0 <= n && n <= amounts.len(),
+                {
+                    let r: encode_terms::Term = encode_terms::bit_method(methods[m].as_str(), i, "a", &Some(amounts[n].clone()));
+                    row(out, "bit_method", types::cat2(mn.as_str(), amounts[n].as_str()).as_str(), term_text(&r).as_str());
+                }
+            } else {
+                let r: encode_terms::Term = encode_terms::bit_method(methods[m].as_str(), i, "a", &None);
+                row(out, "bit_method", types::cat2(mn.as_str(), "-").as_str(), term_text(&r).as_str());
+            }
+        }
+        let bytes: u32 = encode_terms::width(i) / 8;
+        for e in 0..2
+            invariant 0 <= e && e <= 2,
+        {
+            let le: bool = e == 1;
+            let nl: String = if le {
+                types::cat2(name.as_str(), " true")
+            } else {
+                types::cat2(name.as_str(), " false")
+            };
+            let mut bs: Vec<String> = Vec::new();
+            for k in 0..bytes
+                invariant 0 <= k && k <= bytes,
+            {
+                row(out, "byte_term", types::cat3(nl.as_str(), " ", encode_terms::dec(k as u64).as_str()).as_str(), quoted(encode_terms::byte_term(i, le, "a", k).as_str()).as_str());
+                bs.push(types::cat2("b", encode_terms::dec(k as u64).as_str()));
+            }
+            row(out, "from_bytes_term", nl.as_str(), quoted(encode_terms::from_bytes_term(i, le, bs.as_slice()).as_str()).as_str());
+            let bv: encode_terms::Val = encode_terms::bytes_val(i, le, "a");
+            row(out, "bytes_val", nl.as_str(), val_text(&bv, 100000).as_str());
+            row(out, "from_bytes_val", nl.as_str(), val_text(&encode_terms::from_bytes_val(i, le, &bv), 100000).as_str());
+        }
+        let kinds: Vec<String> = encode_terms::split("wrapping\nsaturating\nchecked", b'\n');
+        let bases: Vec<String> = encode_terms::split("add\nsub\nmul\ndiv\nrem", b'\n');
+        for kd in 0..kinds.len()
+            invariant 0 <= kd && kd <= kinds.len(),
+        {
+            for bn in 0..bases.len()
+                invariant 0 <= bn && bn <= bases.len(),
+            {
+                let op: String = types::cat3(kinds[kd].as_str(), "_", bases[bn].as_str());
+                let im: encode_terms::IntMethod = encode_terms::int_method(op.as_str(), i, "a", "b");
+                let value: String = if im.checked {
+                    types::cat7("{\"ok\":", quoted(im.ok.as_str()).as_str(), ",\"v\":", quoted(im.v.as_str()).as_str(), ",\"lemmas\":", list_text(im.lemmas.as_slice()).as_str(), "}")
+                } else {
+                    types::cat3("{\"value\":", quoted(im.v.as_str()).as_str(), "}")
+                };
+                row(out, "int_method", types::cat3(op.as_str(), " ", name.as_str()).as_str(), value.as_str());
+            }
+        }
+    }
+
+    #[summary("The rows of the integer builders at every integer type")]
+    #[effects(alloc)]
+    fn dump_ints(out: &mut String) -> () {
+        dump_int(out, ast::IntTy::I8);
+        dump_int(out, ast::IntTy::I16);
+        dump_int(out, ast::IntTy::I32);
+        dump_int(out, ast::IntTy::I64);
+        dump_int(out, ast::IntTy::Isize);
+        dump_int(out, ast::IntTy::U8);
+        dump_int(out, ast::IntTy::U16);
+        dump_int(out, ast::IntTy::U32);
+        dump_int(out, ast::IntTy::U64);
+        dump_int(out, ast::IntTy::Usize);
+    }
+
+    #[summary("The rows of the lemma templates, the prelude, byte strings and the builders of text. The placeholders are replaced one after another: a replacement that holds a later placeholder is read again")]
+    #[effects(alloc)]
+    fn dump_lemmas(out: &mut String) -> () {
+        let sl: Vec<String> = encode_terms::signed_div_lemmas();
+        for k in 0..sl.len()
+            invariant 0 <= k && k <= sl.len(),
+        {
+            row(out, "instantiate", types::cat2("signed ", encode_terms::dec(k as u64).as_str()).as_str(), quoted(encode_terms::instantiate(sl[k].as_str(), "x", "(- y)", "(bmb_tdiv x (- y))", "{a}{q}").as_str()).as_str());
+        }
+        let ul: Vec<String> = encode_terms::unsigned_div_lemmas();
+        for k in 0..ul.len()
+            invariant 0 <= k && k <= ul.len(),
+        {
+            row(out, "instantiate", types::cat2("unsigned ", encode_terms::dec(k as u64).as_str()).as_str(), quoted(encode_terms::instantiate(ul[k].as_str(), "x", "(- y)", "(bmb_tdiv x (- y))", "{a}{q}").as_str()).as_str());
+        }
+        row(out, "instantiate", "nested", quoted(encode_terms::instantiate("{a} {b} {q} {r} {a}", "{b}", "{q}", "{r}", "{a}").as_str()).as_str());
+        let mut ml: Vec<String> = encode_terms::mul_lemmas();
+        ml.push(encode_terms::mul_bound_lemma());
+        for k in 0..ml.len()
+            invariant 0 <= k && k <= ml.len(),
+        {
+            row(out, "instantiate_mul", encode_terms::dec(k as u64).as_str(), quoted(encode_terms::instantiate_mul(ml[k].as_str(), "x", "(- y)", "(* x (- y))", "7", "{a}").as_str()).as_str());
+        }
+        row(out, "PRELUDE", "", quoted(encode_terms::prelude().as_str()).as_str());
+        let mut bytes: Vec<u8> = Vec::new();
+        row(out, "byte_array", "0", quoted(encode_terms::byte_array(bytes.as_slice()).as_str()).as_str());
+        bytes.push(0);
+        row(out, "byte_array", "1", quoted(encode_terms::byte_array(bytes.as_slice()).as_str()).as_str());
+        bytes.truncate(0);
+        bytes.push(1);
+        bytes.push(2);
+        bytes.push(255);
+        row(out, "byte_array", "3", quoted(encode_terms::byte_array(bytes.as_slice()).as_str()).as_str());
+        row(out, "boundary", "a n i", quoted(encode_terms::boundary("a", "n", "i").as_str()).as_str());
+        row(out, "scalar", "c", quoted(encode_terms::scalar("c").as_str()).as_str());
+        row(out, "utf8_len", "c", quoted(encode_terms::utf8_len("c").as_str()).as_str());
+        row(out, "utf8_at", "a n k", quoted(encode_terms::utf8_at("a", "n", "k").as_str()).as_str());
+        row(out, "utf8_before", "a n i", quoted(encode_terms::utf8_before("a", "n", "i").as_str()).as_str());
+    }
+
+    #[summary("The rows of assignment to a place (set_at). A step into a recursive struct makes a new value of it: a constant and the facts of its fields. tys are the parameter types of the grid's program: the recursive struct is the sixteenth")]
+    #[effects(alloc)]
+    fn dump_places(out: &mut String, xs: &[encode_terms::Val], ys: &[encode_terms::Val], tys: &[ast::TypeKind], tb: &lowered::Tables) -> () {
+        if xs.len() < 9 || ys.len() < 9 || tys.len() < 16 {
+            return;
+        }
+        let r: ast::TypeKind = tys[15].clone();
+        let new: encode_terms::Val = encode_terms::Val::S(String::from("new"));
+        let rv: encode_terms::Val = encode_terms::Val::S(String::from("r"));
+        let mut fr: encode_terms::Fresh = encode_terms::Fresh { counters: table::new::<u64>(), decls: Vec::new() };
+        let mut st: Vec<encode_terms::Step> = Vec::new();
+        place(out, 0, &xs[0], st.as_slice(), &new, tb, &mut fr);
+        st.push(encode_terms::Step::Field(0));
+        place(out, 1, &xs[4], st.as_slice(), &new, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::Field(1));
+        st.push(encode_terms::Step::Index(String::from("i")));
+        place(out, 2, &xs[4], st.as_slice(), &new, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::Field(2));
+        place(out, 3, &xs[4], st.as_slice(), &ys[2], tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::Index(String::from("i")));
+        place(out, 4, &xs[2], st.as_slice(), &new, tb, &mut fr);
+        let mut two: Vec<encode_terms::Val> = Vec::new();
+        two.push(encode_terms::Val::S(String::from("n0")));
+        two.push(encode_terms::Val::S(String::from("n1")));
+        place(out, 5, &xs[5], st.as_slice(), &encode_terms::Val::Struct(two), tb, &mut fr);
+        st.push(encode_terms::Step::Field(1));
+        place(out, 6, &xs[5], st.as_slice(), &new, tb, &mut fr);
+        st.truncate(1);
+        st.push(encode_terms::Step::Field(2));
+        st.push(encode_terms::Step::Index(String::from("j")));
+        place(out, 7, &xs[6], st.as_slice(), &new, tb, &mut fr);
+        st.truncate(1);
+        st.push(encode_terms::Step::Field(1));
+        place(out, 8, &xs[6], st.as_slice(), &ys[1], tb, &mut fr);
+        st.truncate(1);
+        st.push(encode_terms::Step::Index(String::from("j")));
+        st.push(encode_terms::Step::Field(0));
+        place(out, 9, &xs[7], st.as_slice(), &new, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::Field(1));
+        place(out, 10, &xs[8], st.as_slice(), &encode_terms::Val::Unit, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::DataField(0, r.clone()));
+        place(out, 11, &rv, st.as_slice(), &new, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::DataField(1, r.clone()));
+        st.push(encode_terms::Step::Index(String::from("i")));
+        place(out, 12, &rv, st.as_slice(), &encode_terms::Val::S(String::from("kid")), tb, &mut fr);
+        st.push(encode_terms::Step::DataField(0, r.clone()));
+        place(out, 13, &rv, st.as_slice(), &new, tb, &mut fr);
+        st.truncate(0);
+        st.push(encode_terms::Step::Index(String::from("i")));
+        st.push(encode_terms::Step::DataField(1, r.clone()));
+        place(out, 14, &encode_terms::Val::A(String::from("rs"), String::from("n")), st.as_slice(), &ys[2], tb, &mut fr);
+    }
+
+    #[summary("The rows of the numeral and text readers, of the connectives, of substitution and of the upper bounds a path condition states")]
+    #[effects(alloc)]
+    fn dump_readers(out: &mut String) -> () {
+        let nums: Vec<String> = encode_terms::split(grid_nums().as_str(), b'\n');
+        for i in 0..nums.len()
+            invariant 0 <= i && i <= nums.len(),
+        {
+            let t: String = nums[i].clone();
+            row(out, "is_numeral", t.as_str(), bool_text(encode_terms::is_numeral(t.as_str())).as_str());
+            let n: Option<String> = match encode_terms::numeral(t.as_str()) {
+                None => None,
+                Some(v) => Some(encode_terms::num(&v)),
+            };
+            row(out, "numeral", t.as_str(), opt_text(&n).as_str());
+            row(out, "fixed_len", t.as_str(), bool_text(encode_terms::fixed_len(t.as_str())).as_str());
+            row(out, "select_len", t.as_str(), quoted(encode_terms::select_len(t.as_str(), "i").as_str()).as_str());
+            row(out, "store_len", t.as_str(), quoted(encode_terms::store_len(t.as_str(), "i", "x").as_str()).as_str());
+        }
+        let texts: Vec<String> = encode_terms::split(grid_texts().as_str(), b'\n');
+        for i in 0..texts.len()
+            invariant 0 <= i && i <= texts.len(),
+        {
+            let t: String = texts[i].clone();
+            row(out, "bool_depth", t.as_str(), encode_terms::dec(encode_terms::bool_depth(t.as_str()) as u64).as_str());
+            row(out, "implication", t.as_str(), pair_text(&encode_terms::implication(t.as_str())).as_str());
+            row(out, "first_term", t.as_str(), opt_text(&encode_terms::first_term(t.as_str())).as_str());
+            row(out, "select_app", t.as_str(), pair_text(&encode_terms::select_app(t.as_str())).as_str());
+            row(out, "sel_app", t.as_str(), pair_text(&encode_terms::sel_app(t.as_str())).as_str());
+            let printed: Option<String> = match encode_terms::parse(t.as_str()) {
+                None => None,
+                Some(e) => Some(encode_terms::print(&e, 100000)),
+            };
+            row(out, "parse", t.as_str(), opt_text(&printed).as_str());
+            row(out, "text_decls", t.as_str(), quoted(encode_terms::text_decls(t.as_str()).as_str()).as_str());
+        }
+        let mut counts: Vec<usize> = Vec::new();
+        counts.push(0);
+        counts.push(1);
+        counts.push(2);
+        counts.push(5);
+        counts.push(texts.len());
+        for c in 0..counts.len()
+            invariant 0 <= c && c <= counts.len(),
+        {
+            let mut facts: Vec<String> = Vec::new();
+            for i in 0..texts.len()
+                invariant 0 <= i && i <= texts.len(),
+            {
+                if i + counts[c] >= texts.len() {
+                    facts.push(texts[i].clone());
+                }
+            }
+            let cn: String = encode_terms::dec(counts[c] as u64);
+            row(out, "and", cn.as_str(), quoted(encode_terms::and(facts.as_slice()).as_str()).as_str());
+            row(out, "guarded", cn.as_str(), list_text(encode_terms::guarded("c", facts.as_slice()).as_slice()).as_str());
+        }
+        row(out, "ite", "c a a", quoted(encode_terms::ite("c", "a", "a").as_str()).as_str());
+        row(out, "ite", "c a b", quoted(encode_terms::ite("c", "a", "b").as_str()).as_str());
+        row(out, "sym", "a b", quoted(encode_decls::sym("a b").as_str()).as_str());
+        let mut m: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+        let names: Vec<String> = encode_terms::split("a\nb\n|c d|\nf", b'\n');
+        let with: Vec<String> = encode_terms::split("(+ x 1)\na\n7\ng", b'\n');
+        for i in 0..names.len()
+            invariant 0 <= i && i <= names.len(),
+        {
+            if i < with.len() {
+                match encode_terms::parse(with[i].as_str()) {
+                    None => {},
+                    Some(e) => m.insert(names[i].as_str(), e),
+                }
+            }
+        }
+        for i in 0..texts.len()
+            invariant 0 <= i && i <= texts.len(),
+        {
+            match encode_terms::parse(texts[i].as_str()) {
+                None => {},
+                Some(e) => row(out, "subst_atoms", texts[i].as_str(), quoted(encode_terms::print(&encode_terms::subst_atoms(&e, &m, 100000), 100000).as_str()).as_str()),
+            }
+        }
+        let mut pcs: Vec<Vec<String>> = Vec::new();
+        pcs.push(Vec::new());
+        pcs.push(encode_terms::split("(< x 5)\n(<= x n)\n(> 9 x)", b'\n'));
+        pcs.push(encode_terms::split("(and (< x a) (and (>= b x) (< y x)))\n(or (< x 1) (< x 2))", b'\n'));
+        pcs.push(encode_terms::split("(< x 5)\n(and\n(< x 5)\n(<= (f x) |a b|)", b'\n'));
+        pcs.push(encode_terms::split("(< x 1 2)\n(<= x)\nx\n(>= m x)\n(> (+ m 1) x)\n(< x 3)", b'\n'));
+        let terms: Vec<String> = encode_terms::split("x\n(f x)\ny", b'\n');
+        for k in 0..pcs.len()
+            invariant 0 <= k && k <= pcs.len(),
+        {
+            for j in 0..terms.len()
+                invariant 0 <= j && j <= terms.len(),
+            {
+                row(out, "upper_bounds", types::cat3(encode_terms::dec(k as u64).as_str(), " ", terms[j].as_str()).as_str(), list_text(encode_terms::upper_bounds(pcs[k].as_slice(), terms[j].as_str()).as_slice()).as_str());
+            }
+        }
+    }
+
+    #[summary("The rows of the builders that read the tables, at type t")]
+    #[effects(alloc)]
+    fn dump_type(out: &mut String, t: &ast::TypeKind, tb: &lowered::Tables) -> () {
+        let name: String = types::text(t);
+        row(out, "range", name.as_str(), opt_text(&encode_terms::range(t, "x")).as_str());
+        row(out, "len_max", name.as_str(), quoted(encode_terms::len_max(t).as_str()).as_str());
+        row(out, "default_of", name.as_str(), quoted(encode_terms::default_of(t).as_str()).as_str());
+        row(out, "ord_term", types::cat2("Lt ", name.as_str()).as_str(), quoted(encode_terms::ord_term(ast::BinOp::Lt, t, "a", "b").as_str()).as_str());
+        row(out, "ord_term", types::cat2("Le ", name.as_str()).as_str(), quoted(encode_terms::ord_term(ast::BinOp::Le, t, "a", "b").as_str()).as_str());
+        row(out, "ord_term", types::cat2("Gt ", name.as_str()).as_str(), quoted(encode_terms::ord_term(ast::BinOp::Gt, t, "a", "b").as_str()).as_str());
+        row(out, "ord_term", types::cat2("Ge ", name.as_str()).as_str(), quoted(encode_terms::ord_term(ast::BinOp::Ge, t, "a", "b").as_str()).as_str());
+        match body::int_of(t) {
+            None => {},
+            Some(it) => row(out, "wrap", name.as_str(), quoted(encode_terms::wrap_int(it, "x").as_str()).as_str()),
+        }
+        row(out, "default_val", name.as_str(), val_text(&encode_terms::default_val(t, tb, 100000), 100000).as_str());
+        let mut ls: Vec<encode_decls::NamedLeaf> = Vec::new();
+        encode_decls::leaves(t, tb, "v", &mut ls, 100000);
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..ls.len()
+            invariant 0 <= i && i <= ls.len(),
+        {
+            row(out, "leaf_fact", types::cat3(name.as_str(), " ", ls[i].name.as_str()).as_str(), opt_text(&encode_terms::leaf_fact(&ls[i].leaf, ls[i].name.as_str())).as_str());
+            names.push(ls[i].name.clone());
+        }
+        let mut pos: usize = 0;
+        let built: encode_terms::Val = encode_terms::build(t, tb, names.as_slice(), &mut pos, 100000);
+        row(out, "build", name.as_str(), val_text(&built, 100000).as_str());
+        let mut flat: Vec<String> = Vec::new();
+        encode_terms::flatten(&built, &mut flat, 100000);
+        row(out, "flatten", name.as_str(), list_text(flat.as_slice()).as_str());
+        if encode_decls::is_array(t) {
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            let d: encode_terms::Val = encode_terms::elem_default(&e, tb, 100000);
+            row(out, "agg_elem", name.as_str(), bool_text(encode_decls::agg_elem(&e, tb)).as_str());
+            row(out, "elem_default", name.as_str(), val_text(&d, 100000).as_str());
+            row(out, "const_elems", name.as_str(), val_text(&encode_terms::const_elems(&e, &d, tb, 100000), 100000).as_str());
+            let mut of: Vec<String> = Vec::new();
+            encode_terms::flatten_elem_of(&d, &e, tb, &mut of, 100000);
+            row(out, "flatten_elem_of", name.as_str(), list_text(of.as_slice()).as_str());
+            let mut el: Vec<encode_decls::Fun> = Vec::new();
+            encode_decls::elem_leaves(&e, tb, "", &mut el, 100000);
+            let mut tn: Vec<String> = Vec::new();
+            for i in 0..el.len()
+                invariant 0 <= i && i <= el.len(),
+            {
+                tn.push(types::cat2("t", el[i].name.as_str()));
+            }
+            let mut tp: usize = 0;
+            let template: encode_terms::Val = encode_terms::elem_template(&e, tb, tn.as_slice(), &mut tp, 100000);
+            row(out, "elem_template", name.as_str(), val_text(&template, 100000).as_str());
+            let mut fe: Vec<String> = Vec::new();
+            encode_terms::flatten_elem(&template, &mut fe, 100000);
+            row(out, "flatten_elem", name.as_str(), list_text(fe.as_slice()).as_str());
+            let mut facts: Vec<String> = Vec::new();
+            encode_terms::inner_len_facts(&template, &e, tb, &mut facts, 100000);
+            row(out, "inner_len_facts", name.as_str(), list_text(facts.as_slice()).as_str());
+        }
+        if encode_decls::dt_struct(t, tb) {
+            row(out, "dt_fields", name.as_str(), vals_text(encode_terms::dt_fields(t, "x", tb).as_slice(), 100000).as_str());
+        }
+    }
+
+    #[summary("The rows of the value builders that need no type, over the shapes xs and ys. The unit value is no element template: shapes 3 and 8 are left out where one is read")]
+    #[effects(alloc)]
+    fn dump_vals(out: &mut String, xs: &[encode_terms::Val], ys: &[encode_terms::Val]) -> () {
+        for k in 0..xs.len()
+            invariant 0 <= k && k <= xs.len(),
+        {
+            let kn: String = encode_terms::dec(k as u64);
+            let mut flat: Vec<String> = Vec::new();
+            encode_terms::flatten(&xs[k], &mut flat, 100000);
+            row(out, "flatten", kn.as_str(), list_text(flat.as_slice()).as_str());
+            let mut fe: Vec<String> = Vec::new();
+            encode_terms::flatten_elem(&xs[k], &mut fe, 100000);
+            row(out, "flatten_elem", kn.as_str(), list_text(fe.as_slice()).as_str());
+            if k == 0 || k == 3 {
+                row(out, "s", kn.as_str(), quoted(encode_terms::scalar_of(&xs[k]).as_str()).as_str());
+            }
+            match encode_terms::parts(&xs[k]) {
+                None => {},
+                Some(p) => { let mut two: Vec<String> = Vec::new(); two.push(p.a.clone()); two.push(p.b.clone()); row(out, "parts", kn.as_str(), list_text(two.as_slice()).as_str()); },
+            }
+            if k != 3 && k != 8 && k < ys.len() {
+                row(out, "select_val", kn.as_str(), val_text(&encode_terms::select_val(&xs[k], "i", 100000), 100000).as_str());
+                row(out, "store_val", kn.as_str(), val_text(&encode_terms::store_val(&xs[k], "i", &ys[k], 100000), 100000).as_str());
+                let mut pairs: Vec<encode_terms::Pair> = Vec::new();
+                encode_terms::leaf_pairs(&xs[k], &ys[k], &mut pairs, 100000);
+                let mut both: Vec<String> = Vec::new();
+                for q in 0..pairs.len()
+                    invariant 0 <= q && q <= pairs.len(),
+                {
+                    both.push(types::cat3(pairs[q].a.as_str(), " ", pairs[q].b.as_str()));
+                }
+                row(out, "leaf_pairs", kn.as_str(), list_text(both.as_slice()).as_str());
+            }
+            for j in 0..ys.len()
+                invariant 0 <= j && j <= ys.len(),
+            {
+                row(out, "ite_val", types::cat3(kn.as_str(), " ", encode_terms::dec(j as u64).as_str()).as_str(), val_text(&encode_terms::ite_val("c", &xs[k], &ys[j], 100000), 100000).as_str());
+            }
+            row(out, "ite_val", types::cat2(kn.as_str(), " same").as_str(), val_text(&encode_terms::ite_val("c", &xs[k], &xs[k], 100000), 100000).as_str());
+        }
+    }
+
+    #[summary("The amounts the bit methods that take one are shown at, one per line")]
+    #[effects(alloc)]
+    fn grid_amounts() -> String {
+        String::from("n\n0\n1\n3\n7\n8\n9\n16\n31\n32\n33\n63\n64\n67\n(- 1)\n(- 3)\n(- 64)\n18446744073709551616\n(+ n 1)")
+    }
+
+    #[summary("The f64 bit patterns f64_lit is shown at: both zeros, one and minus one, the infinities, quiet, signalling and negative NaNs, the smallest and largest subnormals, the smallest normal and the largest finite value, and a value with every field mixed")]
+    #[effects(alloc)]
+    fn grid_f64() -> Vec<u64> {
+        let mut v: Vec<u64> = Vec::new();
+        v.push(0x0);
+        v.push(0x8000000000000000);
+        v.push(0x3ff0000000000000);
+        v.push(0xbff0000000000000);
+        v.push(0x7ff0000000000000);
+        v.push(0xfff0000000000000);
+        v.push(0x7ff8000000000000);
+        v.push(0x7ff0000000000001);
+        v.push(0xfff8000000000000);
+        v.push(0x1);
+        v.push(0xfffffffffffff);
+        v.push(0x10000000000000);
+        v.push(0x7fefffffffffffff);
+        v.push(0x400921fb54442d18);
+        v
+    }
+
+    #[summary("Terms the numeral readers are shown at, one per line: numerals of both signs, the ends of 64 and 128 bits and one past them, leading zeros and a leading sign, and text that is no numeral")]
+    #[effects(alloc)]
+    fn grid_nums() -> String {
+        String::from("x\n0\n1\n3\n5\n7\n8\n15\n16\n63\n64\n67\n127\n128\n255\n256\n65535\n007\n+5\n-3\n(- 0)\n(- 1)\n(- 3)\n(- 5)\n(- 64)\n(- x)\n(- )\n(-  5)\n(- 5) \n\n12a\n(+ a b)\n4294967295\n9223372036854775807\n9223372036854775808\n(- 9223372036854775808)\n18446744073709551615\n18446744073709551616\n170141183460469231731687303715884105727\n(- 170141183460469231731687303715884105727)\n170141183460469231731687303715884105728\n(- 170141183460469231731687303715884105728)\n340282366920938463463374607431768211455\n340282366920938463463374607431768211456\n99999999999999999999999999999999999999999")
+    }
+
+    #[summary("The operand pairs the bit operations are shown at, `a;b` one per line: terms, a zero and constant amounts on both sides of each width, masks 2^k - 1 up to each type's largest value on either side, constants that are no mask, and negative constants")]
+    #[effects(alloc)]
+    fn grid_pairs() -> String {
+        String::from("a;b\na;0\na;1\na;3\na;7\na;8\na;15\na;16\na;31\na;32\na;63\na;64\na;100\na;127\na;128\na;255\na;32767\na;65535\na;2147483647\na;4294967295\na;9223372036854775807\na;18446744073709551615\na;18446744073709551616\na;(- 1)\na;(- 8)\n255;b\n0;b\n6;b\n(+ a 1);(- b)\n(- 0);b\na;(- 0)")
+    }
+
+    #[summary("Terms the text readers are shown at, one per line: applications of select and of one-argument symbols, quoted symbols holding spaces, parentheses and a character outside ASCII, implications, connectives nested to each depth around the lift depth, white space that is a tab or outside ASCII, and unbalanced text")]
+    #[effects(alloc)]
+    fn grid_texts() -> String {
+        String::from("x\n\n|a b|\n(select a i)\n(select (store a 0 1) (+ i 1))\n(select |a b| |i (|)\n(select a)\n(select a i j)\n(select  a i)\n(select a i\n(f a)\n(f (g a))\n(f a b)\n(f)\n(|f g| a)\n(|f g| (h |) (|))\n(|f a)\n(|é| |é é|)\n( a)\n(f a )\n(=> g x)\n(=> (and a b) (or c d))\n(=> g x y)\n(=> g)\n(=> |g h| (=> a (and b (or c d))))\n(=> g (and a (=> b (and c d))))\n(=> g x) \n(f\ta b c)\n(and a b)\n(and a (or b (=> c d)))\n(and (and (and (and a b) c) d) (or e f))\n(not (and a (or b c)))\n(f |(and (or| (and a b))\n(andy (ore a b))\n(and\n) (\n(a))\na b\n (a)\n|a")
+    }
+
+    #[summary("JSON of a list of texts")]
+    #[effects(alloc)]
+    fn list_text(xs: &[String]) -> String {
+        let mut s: String = String::from("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                s.push_str(",");
+            }
+            std::json::push_string(&mut s, xs[i].as_str());
+        }
+        s.push_str("]");
+        s
+    }
+
+    #[summary("Checks the program of source and prints the rows. If it does not check, prints the diagnostics and exits 1")]
+    #[effects(alloc, io)]
+    fn main() -> () {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut files: Vec<lib::Input> = Vec::new();
+        files.push(lib::Input { name: String::from("terms.bmb"), text: source() });
+        let fe: lib::Front = lib::frontend(files.as_slice(), &mut sm, &mut diags);
+        if diags.has_errors() {
+            print_str(diags.to_jsonl(&sm).as_str());
+            std::process::exit(1);
+        }
+        print_str(dump(&fe.ck).as_str());
+    }
+
+    #[summary("The Rust name of an operation")]
+    #[effects(alloc)]
+    fn op_name(op: ast::BinOp) -> String {
+        match op {
+            ast::BinOp::Add => String::from("Add"),
+            ast::BinOp::Sub => String::from("Sub"),
+            ast::BinOp::Mul => String::from("Mul"),
+            ast::BinOp::Div => String::from("Div"),
+            ast::BinOp::Rem => String::from("Rem"),
+            ast::BinOp::Eq => String::from("Eq"),
+            ast::BinOp::Ne => String::from("Ne"),
+            ast::BinOp::Lt => String::from("Lt"),
+            ast::BinOp::Le => String::from("Le"),
+            ast::BinOp::Gt => String::from("Gt"),
+            ast::BinOp::Ge => String::from("Ge"),
+            ast::BinOp::And => String::from("And"),
+            ast::BinOp::Or => String::from("Or"),
+            ast::BinOp::Implies => String::from("Implies"),
+            ast::BinOp::BitAnd => String::from("BitAnd"),
+            ast::BinOp::BitOr => String::from("BitOr"),
+            ast::BinOp::BitXor => String::from("BitXor"),
+            ast::BinOp::Shl => String::from("Shl"),
+            ast::BinOp::Shr => String::from("Shr"),
+        }
+    }
+
+    #[summary("JSON of an optional text: null or a string")]
+    #[effects(alloc)]
+    fn opt_text(x: &Option<String>) -> String {
+        match x {
+            None => String::from("null"),
+            Some(s) => quoted(s.as_str()),
+        }
+    }
+
+    #[summary("JSON of an optional pair of texts: null or a list of two strings")]
+    #[effects(alloc)]
+    fn pair_text(x: &Option<encode_terms::Pair>) -> String {
+        match x {
+            None => String::from("null"),
+            Some(p) => types::cat5("[", quoted(p.a.as_str()).as_str(), ",", quoted(p.b.as_str()).as_str(), "]"),
+        }
+    }
+
+    #[summary("One row of set_at: place number k, the steps, the new value and the declarations and facts it made")]
+    #[effects(alloc)]
+    fn place(out: &mut String, k: u64, v: &encode_terms::Val, steps: &[encode_terms::Step], new: &encode_terms::Val, tb: &lowered::Tables, fr: &mut encode_terms::Fresh) -> () {
+        let from: usize = fr.decls.len();
+        let mut args: String = encode_terms::dec(k);
+        args.push_str(" ");
+        for i in 0..steps.len()
+            invariant 0 <= i && i <= steps.len(),
+        {
+            if i > 0 {
+                args.push_str(" ");
+            }
+            match &steps[i] {
+                encode_terms::Step::Field(n) => args.push_str(types::cat3("Field(", encode_terms::dec(*n as u64).as_str(), ")").as_str()),
+                encode_terms::Step::DataField(n, t) => args.push_str(types::cat5("DtField(", encode_terms::dec(*n as u64).as_str(), ",", types::text(t).as_str(), ")").as_str()),
+                encode_terms::Step::Index(x) => args.push_str(types::cat3("Index(", x.as_str(), ")").as_str()),
+            }
+        }
+        let nv: encode_terms::Val = encode_terms::set_at(v, steps, 0, new, tb, fr);
+        let mut made: Vec<String> = Vec::new();
+        for d in 0..fr.decls.len()
+            invariant 0 <= d && d <= fr.decls.len(),
+        {
+            if d >= from {
+                made.push(fr.decls[d].clone());
+            }
+        }
+        row(out, "set_at", args.as_str(), types::cat5("{\"val\":", val_text(&nv, 100000).as_str(), ",\"decls\":", list_text(made.as_slice()).as_str(), "}").as_str());
+    }
+
+    #[summary("JSON of a text")]
+    #[effects(alloc)]
+    fn quoted(s: &str) -> String {
+        let mut out: String = String::new();
+        std::json::push_string(&mut out, s);
+        out
+    }
+
+    #[summary("One row of the dump: the builder, its arguments and its result (JSON)")]
+    #[effects(alloc)]
+    fn row(out: &mut String, f: &str, args: &str, value: &str) -> () {
+        out.push_str("{\"fn\":");
+        std::json::push_string(out, f);
+        out.push_str(",\"args\":");
+        std::json::push_string(out, args);
+        out.push_str(",\"out\":");
+        out.push_str(value);
+        out.push_str("}\n");
+    }
+
+    #[summary("The value shapes the builders that need no type are shown at, their terms named after p: a scalar, arrays of a fixed and of a variable length, the unit value, a struct, slices of structs of a fixed and of a variable length (the element's inner arrays likewise), an array of arrays of structs, and a struct with a unit field")]
+    #[effects(alloc)]
+    fn shapes(p: &str) -> Vec<encode_terms::Val> {
+        let mut v: Vec<encode_terms::Val> = Vec::new();
+        v.push(encode_terms::Val::S(types::cat2(p, "s")));
+        v.push(encode_terms::Val::A(types::cat2(p, "a"), String::from("3")));
+        v.push(encode_terms::Val::A(types::cat2(p, "b"), types::cat2(p, "n")));
+        v.push(encode_terms::Val::Unit);
+        let mut st: Vec<encode_terms::Val> = Vec::new();
+        st.push(encode_terms::Val::S(types::cat2(p, "p")));
+        st.push(encode_terms::Val::A(types::cat2(p, "q"), String::from("2")));
+        st.push(encode_terms::Val::A(types::cat2(p, "r"), types::cat2(p, "m")));
+        v.push(encode_terms::Val::Struct(st));
+        let mut e: Vec<encode_terms::Val> = Vec::new();
+        e.push(encode_terms::Val::S(types::cat2(p, "e0")));
+        e.push(encode_terms::Val::S(types::cat2(p, "e1")));
+        v.push(encode_terms::Val::Arr(Box::new(encode_terms::Val::Struct(e)), String::from("2")));
+        let mut g: Vec<encode_terms::Val> = Vec::new();
+        g.push(encode_terms::Val::S(types::cat2(p, "f0")));
+        g.push(encode_terms::Val::A(types::cat2(p, "f1"), String::from("4")));
+        g.push(encode_terms::Val::A(types::cat2(p, "f2"), types::cat2(p, "fl")));
+        v.push(encode_terms::Val::Arr(Box::new(encode_terms::Val::Struct(g)), types::cat2(p, "n")));
+        let mut h: Vec<encode_terms::Val> = Vec::new();
+        h.push(encode_terms::Val::S(types::cat2(p, "g")));
+        v.push(encode_terms::Val::Arr(Box::new(encode_terms::Val::Arr(Box::new(encode_terms::Val::Struct(h)), types::cat2(p, "gl"))), String::from("2")));
+        let mut u: Vec<encode_terms::Val> = Vec::new();
+        u.push(encode_terms::Val::S(types::cat2(p, "u")));
+        u.push(encode_terms::Val::Unit);
+        v.push(encode_terms::Val::Struct(u));
+        v
+    }
+
+    #[summary("The program whose types the dump shows the builders at (TERMS_SOURCE of the reference): the parameters of g::sig, in order. Every integer type, the other scalars, a struct, a struct with an array, a Vec and an enum, a recursive struct (a datatype with selector functions), enums, arrays and slices of scalars, structs, arrays and Vecs, a type parameter, text and a built-in enum")]
+    #[effects(alloc)]
+    fn source() -> String {
+        String::from("#[summary(\"The types the term builders are shown at\")]\nmod g {\n    enum E { A, B(i64), C(P) }\n\n    enum L { Nil, Cons(i32, Box<L>) }\n\n    struct P { x: i32, on: bool }\n\n    struct Q { p: P, a: [u8; 3], v: Vec<u16>, e: E }\n\n    struct R { n: u64, kids: Vec<R> }\n\n    struct W { ps: Vec<P>, grid: [[i8; 2]; 2], vv: Vec<Vec<u32>> }\n\n    #[effects(pure)]\n    fn sig<T: Ord + Copy>(a: i8, b: i16, c: i32, d: i64, e: isize, f: u8, g: u16, h: u32, i: u64, j: usize, k: bool, l: f64, m: (), n: P, o: &Q, p: &R, q: E, r: &L, s: [u8; 4], t: &[i64], u: [P; 2], v: &[P], w: &Vec<Vec<u8>>, x: [[u16; 2]; 3], y: &[W], z: T, aa: [T; 2], ab: &str, ac: Option<u32>, ad: &[R], ae: &[E], af: &[bool], ag: &[f64], ah: &[T], ai: &mut P, aj: &Vec<P>, al: &[[P; 2]]) -> () {}\n}\n")
+    }
+
+    #[summary("JSON of a term with its facts: a list of the term and the list of facts")]
+    #[effects(alloc)]
+    fn term_text(r: &encode_terms::Term) -> String {
+        types::cat5("[", quoted(r.t.as_str()).as_str(), ",", list_text(r.facts.as_slice()).as_str(), "]")
+    }
+
+    #[summary("JSON of a value: its shape and the terms at its leaves")]
+    #[effects(alloc)]
+    fn val_text(v: &encode_terms::Val, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match v {
+            encode_terms::Val::S(t) => types::cat3("{\"s\":", quoted(t.as_str()).as_str(), "}"),
+            encode_terms::Val::A(elems, len) => types::cat5("{\"a\":", quoted(elems.as_str()).as_str(), ",\"len\":", quoted(len.as_str()).as_str(), "}"),
+            encode_terms::Val::Unit => String::from("\"unit\""),
+            encode_terms::Val::Struct(fs) => types::cat3("{\"struct\":", vals_text(fs.as_slice(), f - 1).as_str(), "}"),
+            encode_terms::Val::Arr(elem, alen) => types::cat5("{\"arr\":", val_text(&**elem, f - 1).as_str(), ",\"len\":", quoted(alen.as_str()).as_str(), "}"),
+        }
+    }
+
+    #[summary("JSON of a list of values")]
+    #[effects(alloc)]
+    fn vals_text(vs: &[encode_terms::Val], f: usize) -> String
+        decreases f,
+    {
+        let mut s: String = String::from("[");
+        if f == 0 {
+            return s;
+        }
+        for i in 0..vs.len()
+            invariant 0 <= i && i <= vs.len(),
+        {
+            if i > 0 {
+                s.push_str(",");
+            }
+            s.push_str(val_text(&vs[i], f - 1).as_str());
+        }
+        s.push_str("]");
+        s
+    }
+}

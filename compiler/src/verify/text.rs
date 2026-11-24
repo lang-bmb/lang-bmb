@@ -37,7 +37,7 @@ use super::*;
 
 /// The declaration and axiom of `bmb_shift` when `text` mentions it (none
 /// otherwise: a query without text slices is unchanged).
-pub(super) fn text_decls(text: &str) -> &'static str {
+pub fn text_decls(text: &str) -> &'static str {
     if text.contains("bmb_shift") {
         "(declare-fun bmb_shift ((Array Int Int) Int) (Array Int Int))\n(assert (forall ((a (Array Int Int)) (o Int) (k Int)) (! (= (select (bmb_shift a o) k) (select a (+ k o))) :pattern ((select (bmb_shift a o) k)))))\n"
     } else {
@@ -129,7 +129,7 @@ pub fn utf8_before(a: &str, n: &str, i: &str) -> String {
     format!("(and {})", parts.join(" "))
 }
 
-fn parts(v: &Val) -> (String, String) {
+pub fn parts(v: &Val) -> (String, String) {
     match v {
         Val::A { elems, len } => (elems.clone(), len.clone()),
         other => panic!("text value expected, found {other:?}"),

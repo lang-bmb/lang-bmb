@@ -1,0 +1,2104 @@
+#[summary("Proof encoding, second piece (port of the values and term builders of stage0 compiler/src/verify.rs and verify/text.rs): the value of an expression as SMT terms (Val) and its helpers, numerals wider than a machine word, the builders of integer, bit-vector, f64 and text terms, the lemma templates, the reader of s-expressions. None of them reads the encoder's state but set_at, which takes the part of it a new recursive struct value writes (Fresh). tests/port/smt_terms.bmb calls each over a fixed grid of arguments")]
+mod encode_terms {
+    #[summary("A numeral range of a term: the digits are bytes a..b, neg if they stand in `(- ..)`")]
+    struct Digits { a: usize, b: usize, neg: bool }
+
+    #[summary("One f64 operation of the encoder (stage0 F64_FUNS): its symbol, argument sorts, result sort and IEEE definition over a and b")]
+    struct F64Fun { name: String, args: String, ret: String, def: String }
+
+    #[summary("One open list of bool_depth: whether its head is a connective, and the deepest connective nesting among its children so far")]
+    struct Frame { head: bool, inner: usize }
+
+    #[summary("The part of the encoder's state a new constant writes (stage0 Enc::counters and Enc::decls): the next number of each base name, and the declarations and ground facts of the query")]
+    struct Fresh { counters: table::Table<u64>, decls: Vec<String> }
+
+    #[summary("An integer of stage0's i128 terms: sign and magnitude. Zero is not negative")]
+    struct Int { neg: bool, mag: wide::U128 }
+
+    #[summary("A built-in integer method a.op(b) (stage0 IntMethod, ADR-0028 §3, §5). checked is false for wrapping_* and saturating_*: v is a value of the type. Otherwise the result is Some(v) exactly when ok, and lemmas are the division facts of v")]
+    struct IntMethod { checked: bool, ok: String, v: String, lemmas: Vec<String> }
+
+    #[summary("Two terms")]
+    struct Pair { a: String, b: String }
+
+    #[summary("An s-expression (stage0 smt::Sexp)")]
+    enum Sexp { Atom(String), List(Vec<Sexp>) }
+
+    #[summary("A step from a variable to the place an assignment writes (stage0 Step). DataField is field k of a recursive struct of the type (dt_struct)")]
+    enum Step { Field(usize), DataField(usize, ast::TypeKind), Index(String) }
+
+    #[summary("A term with the facts about it")]
+    struct Term { t: String, facts: Vec<String> }
+
+    #[summary("The value of an expression as SMT terms (stage0 Val). S is a scalar. A is an array: its elements and its length. Struct is a struct field by field in declaration order (ADR-0027 §1). Arr is a slice of structs, one SMT array per leaf (ADR-0027 §2): the element's shape with an array term at each leaf, and the length")]
+    enum Val { S(String), A(String, String), Unit, Struct(Vec<Val>), Arr(Box<Val>, String) }
+
+    #[summary("The conjunction of xs (stage0 and)")]
+    #[effects(alloc)]
+    fn and(xs: &[String]) -> String {
+        if xs.len() == 0 {
+            return String::from("true");
+        }
+        if xs.len() == 1 {
+            return xs[0].clone();
+        }
+        types::cat3("(and ", join(xs, " ").as_str(), ")")
+    }
+
+    #[summary("Element o after position k of bytes a (stage0 utf8_at's at)")]
+    #[effects(alloc)]
+    fn at_plus(a: &str, k: &str, o: u64) -> String {
+        if o == 0 {
+            return types::cat5("(select ", a, " ", k, ")");
+        }
+        let mut s: String = types::cat5("(select ", a, " (+ ", k, " ");
+        std::num::push_u64(&mut s, o);
+        s.push_str("))");
+        s
+    }
+
+    #[summary("bit_facts_of, each under the range of the operands (stage0 bit_facts): a shift amount's range is its own obligation")]
+    #[effects(alloc)]
+    fn bit_facts(op: ast::BinOp, i: ast::IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
+        let ra: String = range_int(i, a);
+        let k: u8 = bit_kind(op);
+        let pre: String = if k == 4 || k == 5 {
+            ra
+        } else {
+            types::cat5("(and ", ra.as_str(), " ", range_int(i, b).as_str(), ")")
+        };
+        let fs: Vec<String> = bit_facts_of(op, i, a, b, r);
+        let mut out: Vec<String> = Vec::new();
+        for n in 0..fs.len()
+            invariant 0 <= n && n <= fs.len(),
+        {
+            out.push(types::cat5("(=> ", pre.as_str(), " ", fs[n].as_str(), ")"));
+        }
+        out
+    }
+
+    #[summary("What a bit-vector term r = a op b is known to satisfy when a (and b, but for a shift amount) are in the range of i (stage0 bit_facts_of): the range of i, and its order against the operands (clearing bits makes a value smaller, setting bits larger, in two's complement as well)")]
+    #[effects(alloc)]
+    fn bit_facts_of(op: ast::BinOp, i: ast::IntTy, a: &str, b: &str, r: &str) -> Vec<String> {
+        let mut fs: Vec<String> = Vec::new();
+        fs.push(range_int(i, r));
+        let s: bool = body::signed(i);
+        let k: u8 = bit_kind(op);
+        if k == 1 && s {
+            fs.push(fill("(=> (<= 0 {a}) (and (<= 0 {r}) (<= {r} {a})))", a, b, r));
+            fs.push(fill("(=> (<= 0 {b}) (and (<= 0 {r}) (<= {r} {b})))", a, b, r));
+            fs.push(fill("(=> (and (< {a} 0) (< {b} 0)) (and (< {r} 0) (<= {r} {a}) (<= {r} {b})))", a, b, r));
+        } else if k == 1 {
+            fs.push(fill("(<= {r} {a})", a, b, r));
+            fs.push(fill("(<= {r} {b})", a, b, r));
+        } else if k == 2 && s {
+            fs.push(fill("(=> (and (<= 0 {a}) (<= 0 {b})) (and (<= {a} {r}) (<= {b} {r})))", a, b, r));
+            fs.push(fill("(=> (< {a} 0) (and (<= {a} {r}) (< {r} 0)))", a, b, r));
+            fs.push(fill("(=> (< {b} 0) (and (<= {b} {r}) (< {r} 0)))", a, b, r));
+        } else if k == 2 {
+            fs.push(fill("(<= {a} {r})", a, b, r));
+            fs.push(fill("(<= {b} {r})", a, b, r));
+        } else if k == 3 && s {
+            fs.push(fill("(= (< {r} 0) (not (= (< {a} 0) (< {b} 0))))", a, b, r));
+        } else if k == 5 && s {
+            fs.push(fill("(=> (<= 0 {a}) (and (<= 0 {r}) (<= {r} {a})))", a, b, r));
+            fs.push(fill("(=> (< {a} 0) (and (<= {a} {r}) (< {r} 0)))", a, b, r));
+        } else if k == 5 {
+            fs.push(fill("(<= {r} {a})", a, b, r));
+        }
+        fs
+    }
+
+    #[summary("The kind of a bit operation: 1 `&`, 2 `|`, 3 `^`, 4 `<<`, 5 `>>`, 0 for the other operations")]
+    #[effects(pure)]
+    fn bit_kind(op: ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 0,
+            ast::BinOp::Sub => 0,
+            ast::BinOp::Mul => 0,
+            ast::BinOp::Div => 0,
+            ast::BinOp::Rem => 0,
+            ast::BinOp::Eq => 0,
+            ast::BinOp::Ne => 0,
+            ast::BinOp::Lt => 0,
+            ast::BinOp::Le => 0,
+            ast::BinOp::Gt => 0,
+            ast::BinOp::Ge => 0,
+            ast::BinOp::And => 0,
+            ast::BinOp::Or => 0,
+            ast::BinOp::Implies => 0,
+            ast::BinOp::BitAnd => 1,
+            ast::BinOp::BitOr => 2,
+            ast::BinOp::BitXor => 3,
+            ast::BinOp::Shl => 4,
+            ast::BinOp::Shr => 5,
+        }
+    }
+
+    #[summary("A bit method a.m(n) of integer type i in a specification (stage0 bit_method, ADR-0048 §2): its term and the facts about it when a is in range. Rust's meaning: a rotation or wrapping shift moves by n mod w; the counts are values in 0..=w. A constant amount is linear (ADR-0048 §4); anything else is one bit-vector term behind bv2nat, through a named function")]
+    #[effects(alloc)]
+    fn bit_method(m: &str, i: ast::IntTy, a: &str, n: &Option<String>) -> Term {
+        let xn: Option<String> = match n {
+            None => None,
+            Some(amount) => Some(to_bv(i, amount.as_str())),
+        };
+        let t: String = method_term(m, i, a, to_bv(i, a).as_str(), n, &xn);
+        let facts: Vec<String> = method_facts(m, i, a, t.as_str());
+        Term { t: t, facts: facts }
+    }
+
+    #[summary("A bit operation a op b on integer type i (stage0 bit_op, ADR-0048 §4): its term and the facts about the term that hold when the operands are in the range of i. Integers stay Int; only the term goes through a bit-vector of the operand width. Forms that are linear stay linear (linear_bit) and have no facts. op is a bit operation")]
+    #[effects(alloc)]
+    fn bit_op(op: ast::BinOp, i: ast::IntTy, a: &str, b: &str) -> Term {
+        match linear_bit(op, i, a, b) {
+            None => {},
+            Some(t) => { return Term { t: t, facts: Vec::new() }; },
+        }
+        let r: String = bv_term(op, i, to_bv(i, a).as_str(), to_bv(i, b).as_str());
+        let facts: Vec<String> = bit_facts(op, i, a, b, r.as_str());
+        Term { t: r, facts: facts }
+    }
+
+    #[summary("`&`, `|`, `^` on bool: both sides evaluated (stage0 bool_bit). Empty text for another operation, which the checker admits none of")]
+    #[effects(alloc)]
+    fn bool_bit(op: ast::BinOp, a: &str, b: &str) -> String {
+        let k: u8 = bit_kind(op);
+        if k == 1 {
+            return types::cat5("(and ", a, " ", b, ")");
+        }
+        if k == 2 {
+            return types::cat5("(or ", a, " ", b, ")");
+        }
+        if k == 3 {
+            return types::cat5("(xor ", a, " ", b, ")");
+        }
+        String::new()
+    }
+
+    #[summary("The nesting depth of the connectives and, or and => in term t (stage0 bool_depth). Text between bars is a symbol")]
+    #[effects(alloc)]
+    fn bool_depth(t: &str) -> usize {
+        let mut stack: Vec<Frame> = Vec::new();
+        let mut best: usize = 0;
+        let mut quoted: bool = false;
+        for i in 0..t.len()
+            invariant 0 <= i && i <= t.len(),
+        {
+            let ch: u8 = t.as_bytes()[i];
+            if ch == b'|' {
+                quoted = !quoted;
+            } else if quoted {} else if ch == b'(' {
+                let head: bool = starts_at(t, i + 1, "and ") || starts_at(t, i + 1, "or ") || starts_at(t, i + 1, "=> ");
+                stack.push(Frame { head: head, inner: 0 });
+            } else if ch == b')' {
+                match stack.pop() {
+                    None => {},
+                    Some(fr) => { let d: usize = if fr.head { fr.inner.saturating_add(1) } else { fr.inner }; let n: usize = stack.len(); if n > 0 { if stack[n - 1].inner < d { stack[n - 1].inner = d; } } else if best < d { best = d; } },
+                }
+            }
+        }
+        best
+    }
+
+    #[summary("Rust's str::is_char_boundary(i) of bytes a with length n (stage0 text::boundary)")]
+    #[effects(alloc)]
+    fn boundary(a: &str, n: &str, i: &str) -> String {
+        let b: String = types::cat5("(select ", a, " ", i, ")");
+        let mut s: String = types::cat5("(or (= ", i, " 0) (= ", i, " ");
+        s.push_str(types::cat5(n, ") (and (< 0 ", i, ") (< ", i).as_str());
+        s.push_str(types::cat5(" ", n, ") (or (< ", b.as_str(), " 128) (<= 192 ").as_str());
+        s.push_str(b.as_str());
+        s.push_str("))))");
+        s
+    }
+
+    #[summary("The value of type t whose leaves are terms from position pos on (stage0 build, the inverse of flatten). A missing term is empty text: the callers pass the leaves of t")]
+    #[effects(alloc)]
+    fn build(t: &ast::TypeKind, tb: &lowered::Tables, terms: &[String], pos: &mut usize, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        match encode_decls::flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { let mut out: Vec<Val> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(build(&fs[i].ty, tb, terms, pos, f - 1)); } return Val::Struct(out); },
+        }
+        let sh: u8 = encode_decls::shape(t);
+        if sh == 3 {
+            return Val::Unit;
+        }
+        if encode_decls::is_array(t) {
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            if encode_decls::agg_elem(&e, tb) {
+                let elem: Val = elem_template(&e, tb, terms, pos, f - 1);
+                let alen: String = next(terms, pos);
+                return Val::Arr(Box::new(elem), alen);
+            }
+            let elems: String = next(terms, pos);
+            let len: String = next(terms, pos);
+            return Val::A(elems, len);
+        }
+        if sh == 6 {
+            match body::ref_inner(t) {
+                None => {},
+                Some(inner) => { return build(&inner, tb, terms, pos, f - 1); },
+            }
+        }
+        Val::S(next(terms, pos))
+    }
+
+    #[summary("The term of a op b on i over bit-vectors xa, xb of the width of i (stage0 bv_term). op is a bit operation")]
+    #[effects(alloc)]
+    fn bv_term(op: ast::BinOp, i: ast::IntTy, xa: &str, xb: &str) -> String {
+        let k: u8 = bit_kind(op);
+        let f: String = if k == 1 {
+            String::from("bvand")
+        } else if k == 2 {
+            String::from("bvor")
+        } else if k == 3 {
+            String::from("bvxor")
+        } else if k == 4 {
+            String::from("bvshl")
+        } else if body::signed(i) {
+            String::from("bvashr")
+        } else {
+            String::from("bvlshr")
+        };
+        from_bv(i, types::cat7("(", f.as_str(), " ", xa, " ", xb, ")").as_str())
+    }
+
+    #[summary("The unsigned value of the bit-vector that stands for a, a value of i in range (stage0 bv_value): a itself, or its two's complement below zero")]
+    #[effects(alloc)]
+    fn bv_value(i: ast::IntTy, a: &str) -> String {
+        if body::signed(i) {
+            let mut s: String = types::cat5("(ite (< ", a, " 0) (+ ", a, " ");
+            s.push_str(types::cat3(pow2(width(i)).as_str(), ") ", a).as_str());
+            s.push_str(")");
+            return s;
+        }
+        String::from(a)
+    }
+
+    #[summary("The SMT array of a byte string (stage0 byte_array, ADR-0044 §2): elements past the end are 0")]
+    #[effects(alloc)]
+    fn byte_array(v: &[u8]) -> String {
+        let mut a: String = String::from("((as const (Array Int Int)) 0)");
+        for k in 0..v.len()
+            invariant 0 <= k && k <= v.len(),
+        {
+            let mut s: String = types::cat3("(store ", a.as_str(), " ");
+            std::num::push_u64(&mut s, k as u64);
+            s.push_str(" ");
+            std::num::push_u64(&mut s, v[k] as u64);
+            s.push_str(")");
+            a = s;
+        }
+        a
+    }
+
+    #[summary("Byte k (array index) of a.to_be_bytes() (le false) or a.to_le_bytes() of type i (stage0 byte_term): bits s..s + 8 of the two's complement image of a, s counted from the end the order starts at. Linear")]
+    #[effects(alloc)]
+    fn byte_term(i: ast::IntTy, le: bool, a: &str, k: u32) -> String {
+        let n: u32 = width(i) / 8;
+        let s: u32 = shift_of(n, le, k);
+        if s == 0 {
+            return types::cat3("(mod ", a, " 256)");
+        }
+        types::cat5("(mod (div ", a, " ", pow2(s).as_str(), ") 256)")
+    }
+
+    #[summary("to_be_bytes or to_le_bytes of a: the byte array value (stage0 bytes_val)")]
+    #[effects(alloc)]
+    fn bytes_val(i: ast::IntTy, le: bool, a: &str) -> Val {
+        let n: u32 = width(i) / 8;
+        let mut arr: String = String::from("((as const (Array Int Int)) 0)");
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            let mut s: String = types::cat3("(store ", arr.as_str(), " ");
+            std::num::push_u64(&mut s, k as u64);
+            s.push_str(" ");
+            s.push_str(byte_term(i, le, a, k).as_str());
+            s.push_str(")");
+            arr = s;
+        }
+        let mut len: String = String::new();
+        std::num::push_u64(&mut len, n as u64);
+        Val::A(arr, len)
+    }
+
+    #[summary("The element arrays of an array whose every element is v, of type e (stage0 const_elems): one constant array, or one per leaf for an aggregate element")]
+    #[effects(alloc)]
+    fn const_elems(e: &ast::TypeKind, v: &Val, tb: &lowered::Tables, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        if !encode_decls::agg_elem(e, tb) {
+            return Val::S(types::cat5("((as const (Array Int ", encode_decls::sort_of(e).as_str(), ")) ", scalar_of(v).as_str(), ")"));
+        }
+        let mut ls: Vec<encode_decls::Fun> = Vec::new();
+        encode_decls::elem_leaves(e, tb, "", &mut ls, 100000);
+        let mut terms: Vec<String> = Vec::new();
+        flatten_elem_of(v, e, tb, &mut terms, f - 1);
+        let mut consts: Vec<String> = Vec::new();
+        for i in 0..ls.len()
+            invariant 0 <= i && i <= ls.len(),
+        {
+            if i < terms.len() {
+                consts.push(types::cat5("((as const (Array Int ", ls[i].sort.as_str(), ")) ", terms[i].as_str(), ")"));
+            }
+        }
+        let mut pos: usize = 0;
+        elem_template(e, tb, consts.as_slice(), &mut pos, f - 1)
+    }
+
+    #[summary("A continuation byte, 0x80..=0xBF (stage0 text::cont)")]
+    #[effects(alloc)]
+    fn cont(x: &str) -> String {
+        types::cat5("(and (<= 128 ", x, ") (< ", x, " 192))")
+    }
+
+    #[summary("The decimal text of x")]
+    #[effects(alloc)]
+    fn dec(x: u64) -> String {
+        let mut s: String = String::new();
+        std::num::push_u64(&mut s, x);
+        s
+    }
+
+    #[summary("Some value of type t, the base of an empty array (stage0 default_in): the default scalar, each field's, the first variant with default payloads that does not need a value of an enum being built (a recursive type, ADR-0047: the checker ensures one exists, E0421). building holds the texts of the enums being built")]
+    #[effects(alloc)]
+    fn default_in(t: &ast::TypeKind, tb: &lowered::Tables, building: &mut Vec<String>, f: usize) -> Option<Val>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        if encode_decls::dt_struct(t, tb) {
+            return Some(Val::S(encode_decls::arb(t)));
+        }
+        match encode_decls::flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { let mut out: Vec<Val> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { match default_in(&fs[i].ty, tb, building, f - 1) { None => { return None; }, Some(fv) => out.push(fv), } } return Some(Val::Struct(out)); },
+        }
+        match encode_decls::variants(t, tb) {
+            None => {},
+            Some(vs) => { let ts: String = types::text(t); for b in 0..building.len() invariant 0 <= b && b <= building.len(), { if building[b].as_str() == ts.as_str() { return None; } } building.push(ts); let mut found: Option<Val> = None; let mut n: usize = 0; while n < vs.len() && is_none(&found) decreases vs.len() - n, { found = default_variant(t, &vs[n], tb, building, f - 1); n = n + 1; } let popped: Option<String> = building.pop(); return found; },
+        }
+        let sh: u8 = encode_decls::shape(t);
+        if sh == 8 {
+            match types::param_name(t) {
+                None => {},
+                Some(pn) => { return Some(Val::S(encode_decls::sym(types::cat3("'", pn.as_str(), ".default").as_str()))); },
+            }
+        }
+        if sh == 3 {
+            return Some(Val::Unit);
+        }
+        if encode_decls::is_array(t) {
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            let len: String = match encode_decls::array_len(t) {
+                None => String::from("0"),
+                Some(an) => dec(an),
+            };
+            let d: Val = elem_default(&e, tb, f - 1);
+            let c: Val = const_elems(&e, &d, tb, f - 1);
+            return Some(match c { Val::S(elems) => Val::A(elems, len), Val::A(ce, cl) => Val::Arr(Box::new(Val::A(ce, cl)), len), Val::Unit => Val::Arr(Box::new(Val::Unit), len), Val::Struct(cs) => Val::Arr(Box::new(Val::Struct(cs)), len), Val::Arr(ca, cn) => Val::Arr(Box::new(Val::Arr(ca, cn)), len), });
+        }
+        Some(Val::S(default_of(t)))
+    }
+
+    #[summary("The default value of a scalar type (stage0 default_of)")]
+    #[effects(alloc)]
+    fn default_of(t: &ast::TypeKind) -> String {
+        let sh: u8 = encode_decls::shape(t);
+        if sh == 1 {
+            return String::from("false");
+        }
+        if sh == 2 {
+            return String::from("(_ +zero 11 53)");
+        }
+        String::from("0")
+    }
+
+    #[summary("Some value of type t (stage0 default_val). The unit value for a type without one, which the checker admits none of")]
+    #[effects(alloc)]
+    fn default_val(t: &ast::TypeKind, tb: &lowered::Tables, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        let mut building: Vec<String> = Vec::new();
+        match default_in(t, tb, &mut building, f - 1) {
+            None => Val::Unit,
+            Some(v) => v,
+        }
+    }
+
+    #[summary("Variant v of enum t with default payloads, if each payload has a default value")]
+    #[effects(alloc)]
+    fn default_variant(t: &ast::TypeKind, v: &types::VariantSig, tb: &lowered::Tables, building: &mut Vec<String>, f: usize) -> Option<Val>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let mut leaves: Vec<String> = Vec::new();
+        for k in 0..v.tys.len()
+            invariant 0 <= k && k <= v.tys.len(),
+        {
+            match default_in(&v.tys[k], tb, building, f - 1) {
+                None => { return None; },
+                Some(pv) => flatten(&pv, &mut leaves, 100000),
+            }
+        }
+        let c: String = encode_decls::ctor(t, v.name.as_str());
+        if leaves.len() == 0 {
+            return Some(Val::S(c));
+        }
+        Some(Val::S(types::cat5("(", c.as_str(), " ", join(leaves.as_slice(), " ").as_str(), ")")))
+    }
+
+    #[summary("The digits of a numeral term: those of `(- 5)` between its parentheses, the whole text otherwise (stage0 is_numeral)")]
+    #[effects(pure)]
+    fn digits(t: &str) -> (r: Digits)
+        ensures r.a <= r.b && r.b <= t.len(),
+    {
+        if t.len() >= 4 && starts_at(t, 0, "(- ") && t.as_bytes()[t.len() - 1] == b')' {
+            return Digits { a: 3, b: t.len() - 1, neg: true };
+        }
+        Digits { a: 0, b: t.len(), neg: false }
+    }
+
+    #[summary("The fields of the recursive struct value x of type t, one value per field: its selectors applied to x (stage0 dt_fields)")]
+    #[effects(alloc)]
+    fn dt_fields(t: &ast::TypeKind, x: &str, tb: &lowered::Tables) -> Vec<Val> {
+        let name: String = encode_decls::dt_ctor_name(t);
+        let mut out: Vec<Val> = Vec::new();
+        match lowered::struct_fields(t, tb) {
+            None => {},
+            Some(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { let ls: Vec<encode_decls::NamedLeaf> = encode_decls::payload_leaves(t, name.as_str(), k, &fs[k].ty, tb); let mut terms: Vec<String> = Vec::new(); for j in 0..ls.len() invariant 0 <= j && j <= ls.len(), { terms.push(types::cat5("(", encode_decls::sym(ls[j].name.as_str()).as_str(), " ", x, ")")); } let mut pos: usize = 0; out.push(build(&fs[k].ty, tb, terms.as_slice(), &mut pos, 100000)); } },
+        }
+        out
+    }
+
+    #[summary("The value an array of e holds at every element by default (stage0 elem_default): the default value, or for a recursive struct (whose default holds such an array) an arbitrary one")]
+    #[effects(alloc)]
+    fn elem_default(e: &ast::TypeKind, tb: &lowered::Tables, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        if encode_decls::dt_struct(e, tb) {
+            return Val::S(encode_decls::arb(e));
+        }
+        default_val(e, tb, f - 1)
+    }
+
+    #[summary("The element template of type e whose leaf arrays are terms from position pos on (stage0 elem_template, the inverse of flatten_elem)")]
+    #[effects(alloc)]
+    fn elem_template(e: &ast::TypeKind, tb: &lowered::Tables, terms: &[String], pos: &mut usize, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        match encode_decls::flat_fields(e, tb) {
+            None => {},
+            Some(fs) => { let mut out: Vec<Val> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(elem_template(&fs[i].ty, tb, terms, pos, f - 1)); } return Val::Struct(out); },
+        }
+        let sh: u8 = encode_decls::shape(e);
+        if sh == 3 {
+            return Val::Unit;
+        }
+        if sh == 4 {
+            let inner: ast::TypeKind = encode_decls::elem_ty(e);
+            let n: String = match encode_decls::array_len(e) {
+                None => String::new(),
+                Some(an) => dec(an),
+            };
+            if encode_decls::agg_elem(&inner, tb) {
+                return Val::Arr(Box::new(elem_template(&inner, tb, terms, pos, f - 1)), n);
+            }
+            return Val::A(next(terms, pos), n);
+        }
+        if encode_decls::is_array(e) {
+            let el: ast::TypeKind = encode_decls::elem_ty(e);
+            if encode_decls::agg_elem(&el, tb) {
+                let elem: Val = elem_template(&el, tb, terms, pos, f - 1);
+                let alen: String = next(terms, pos);
+                return Val::Arr(Box::new(elem), alen);
+            }
+            let elems: String = next(terms, pos);
+            let len: String = next(terms, pos);
+            return Val::A(elems, len);
+        }
+        Val::S(next(terms, pos))
+    }
+
+    #[summary("a op b on f64 (stage0 f64_binary, ADR-0061 §3, §5): arithmetic and comparisons as the encoder's f64.* symbols. None for an operation f64 does not have")]
+    #[effects(alloc)]
+    fn f64_binary(op: ast::BinOp, a: &str, b: &str) -> Option<String> {
+        match op {
+            ast::BinOp::Add => Some(types::cat5("(f64.add ", a, " ", b, ")")),
+            ast::BinOp::Sub => Some(types::cat5("(f64.sub ", a, " ", b, ")")),
+            ast::BinOp::Mul => Some(types::cat5("(f64.mul ", a, " ", b, ")")),
+            ast::BinOp::Div => Some(types::cat5("(f64.div ", a, " ", b, ")")),
+            ast::BinOp::Rem => None,
+            ast::BinOp::Eq => Some(types::cat5("(f64.eq ", a, " ", b, ")")),
+            ast::BinOp::Ne => Some(types::cat5("(not (f64.eq ", a, " ", b, "))")),
+            ast::BinOp::Lt => Some(types::cat5("(f64.lt ", a, " ", b, ")")),
+            ast::BinOp::Le => Some(types::cat5("(f64.le ", a, " ", b, ")")),
+            ast::BinOp::Gt => Some(types::cat5("(f64.lt ", b, " ", a, ")")),
+            ast::BinOp::Ge => Some(types::cat5("(f64.le ", b, " ", a, ")")),
+            ast::BinOp::And => None,
+            ast::BinOp::Or => None,
+            ast::BinOp::Implies => None,
+            ast::BinOp::BitAnd => None,
+            ast::BinOp::BitOr => None,
+            ast::BinOp::BitXor => None,
+            ast::BinOp::Shl => None,
+            ast::BinOp::Shr => None,
+        }
+    }
+
+    #[summary("The declarations of the f64 operations text applies, in a fixed order (stage0 f64_decls): uninterpreted (an ordinary query, ADR-0061 §5), or with their IEEE definitions (interpreted, the counterexample search). Empty for a query without f64 operations, so its text is unchanged. f64.is_finite is defined from f64.is_nan's kin in both readings: a separate symbol keeps the opaque query free of fp.* terms")]
+    #[effects(alloc)]
+    fn f64_decls(text: &str, interpreted: bool) -> String {
+        let mut out: String = String::new();
+        if !encode_decls::has_text(text, "(f64.") {
+            return out;
+        }
+        let funs: Vec<F64Fun> = f64_funs();
+        for i in 0..funs.len()
+            invariant 0 <= i && i <= funs.len(),
+        {
+            if encode_decls::has_text(text, types::cat3("(", funs[i].name.as_str(), " ").as_str()) {
+                if interpreted {
+                    let sorts: Vec<String> = split(inside(funs[i].args.as_str()).as_str(), b' ');
+                    let mut params: Vec<String> = Vec::new();
+                    if sorts.len() > 0 {
+                        params.push(types::cat3("(a ", sorts[0].as_str(), ")"));
+                    }
+                    if sorts.len() > 1 {
+                        params.push(types::cat3("(b ", sorts[1].as_str(), ")"));
+                    }
+                    out.push_str(types::cat5("(define-fun ", funs[i].name.as_str(), " (", join(params.as_slice(), " ").as_str(), ") ").as_str());
+                    out.push_str(types::cat4(funs[i].ret.as_str(), " ", funs[i].def.as_str(), ")\n").as_str());
+                } else {
+                    out.push_str(types::cat7("(declare-fun ", funs[i].name.as_str(), " ", funs[i].args.as_str(), " ", funs[i].ret.as_str(), ")\n").as_str());
+                }
+            }
+        }
+        if encode_decls::has_text(text, "(f64.is_finite ") {
+            if interpreted {
+                out.push_str("(define-fun f64.is_finite ((a Float64)) Bool (not (or (fp.isInfinite a) (fp.isNaN a))))");
+            } else {
+                out.push_str("(declare-fun f64.is_finite (Float64) Bool)");
+            }
+            out.push_str("\n");
+        }
+        out
+    }
+
+    #[summary("2^53 (stage0 F64_EXACT): the integers up to it in absolute value are exactly f64s (ADR-0061 §4)")]
+    #[effects(alloc)]
+    fn f64_exact() -> String {
+        String::from("9007199254740992")
+    }
+
+    #[summary("The f64 operations as the encoder names them (stage0 F64_FUNS, ADR-0061 §5): in an ordinary query each is an uninterpreted function or predicate over Float64; a sub-proof by bit-vectors and the search for a counterexample give them their IEEE 754 meaning with rounding to nearest even. `>` and `>=` are f64.lt and f64.le with the operands swapped. f64.from takes an integer")]
+    #[effects(alloc)]
+    fn f64_funs() -> Vec<F64Fun> {
+        let mut v: Vec<F64Fun> = Vec::new();
+        v.push(fun2("f64.add", "Float64", "(fp.add RNE a b)"));
+        v.push(fun2("f64.sub", "Float64", "(fp.sub RNE a b)"));
+        v.push(fun2("f64.mul", "Float64", "(fp.mul RNE a b)"));
+        v.push(fun2("f64.div", "Float64", "(fp.div RNE a b)"));
+        v.push(fun1("f64.neg", "(Float64)", "Float64", "(fp.neg a)"));
+        v.push(fun1("f64.sqrt", "(Float64)", "Float64", "(fp.sqrt RNE a)"));
+        v.push(fun1("f64.abs", "(Float64)", "Float64", "(fp.abs a)"));
+        v.push(fun2("f64.min", "Float64", "(fp.min a b)"));
+        v.push(fun2("f64.max", "Float64", "(fp.max a b)"));
+        v.push(fun1("f64.from", "(Int)", "Float64", "((_ to_fp 11 53) RNE (to_real a))"));
+        v.push(fun2("f64.lt", "Bool", "(fp.lt a b)"));
+        v.push(fun2("f64.le", "Bool", "(fp.leq a b)"));
+        v.push(fun2("f64.eq", "Bool", "(fp.eq a b)"));
+        v.push(fun1("f64.is_nan", "(Float64)", "Bool", "(fp.isNaN a)"));
+        v
+    }
+
+    #[summary("An f64 value as an SMT term (stage0 f64_lit, ADR-0061 §5): its exact bit pattern (sign, 11 binary digits of exponent, 13 hexadecimal digits of significand); every NaN is SMT-LIB's one NaN")]
+    #[effects(alloc)]
+    fn f64_lit(bits: u64) -> String {
+        let exp: u64 = bits / 4503599627370496 % 2048;
+        let frac: u64 = bits % 4503599627370496;
+        if exp == 2047 && frac != 0 {
+            return String::from("(_ NaN 11 53)");
+        }
+        let mut s: String = String::from("(fp #b");
+        std::num::push_u64(&mut s, bits / 9223372036854775808);
+        s.push_str(" #b");
+        let mut d: u64 = 1024;
+        while d > 0
+            decreases d,
+        {
+            std::num::push_u64(&mut s, exp / d % 2);
+            d = d / 2;
+        }
+        s.push_str(" #x");
+        let mut h: u64 = 281474976710656;
+        while h > 0
+            decreases h,
+        {
+            std::num::push_u64_hex(&mut s, frac / h % 16);
+            h = h / 16;
+        }
+        s.push_str(")");
+        s
+    }
+
+    #[summary("A method of f64 as its symbol applied to a, and b (stage0 f64_method, ADR-0061 §3)")]
+    #[effects(alloc)]
+    fn f64_method(m: &str, a: &str, b: &Option<String>) -> String {
+        match b {
+            None => types::cat5("(f64.", m, " ", a, ")"),
+            Some(y) => types::cat7("(f64.", m, " ", a, " ", y.as_str(), ")"),
+        }
+    }
+
+    #[summary("Template s with {a}, {b} and {r} replaced, in that order")]
+    #[effects(alloc)]
+    fn fill(s: &str, a: &str, b: &str, r: &str) -> String {
+        replace(replace(replace(s, "{a}", a).as_str(), "{b}", b).as_str(), "{r}", r)
+    }
+
+    #[summary("The first complete term of bytes a..b of s, as the position after it (stage0 first_term): an atom, a |quoted| symbol or a parenthesized list")]
+    #[effects(pure)]
+    fn first_end(s: &str, a: usize, b: usize) -> (r: Option<usize>)
+        requires a <= b && b <= s.len(),
+        ensures match r { None => true, Some(e) => a <= e && e <= b, },
+    {
+        let mut depth: usize = 0;
+        let mut quoted: bool = false;
+        for i in a..b
+            invariant a <= i && i <= b && depth <= i - a,
+        {
+            let ch: u8 = s.as_bytes()[i];
+            if ch == b'|' {
+                quoted = !quoted;
+            } else if quoted {} else if ch == b'(' {
+                depth = depth + 1;
+            } else if ch == b')' {
+                if depth == 0 {
+                    return None;
+                }
+                depth = depth - 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            } else if ch == b' ' && depth == 0 {
+                if i > a {
+                    return Some(i);
+                }
+                return None;
+            }
+        }
+        if depth == 0 && !quoted && a < b {
+            return Some(b);
+        }
+        None
+    }
+
+    #[summary("The first complete term of s, a prefix of it (stage0 first_term)")]
+    #[effects(alloc)]
+    fn first_term(s: &str) -> Option<String> {
+        match first_end(s, 0, s.len()) {
+            None => None,
+            Some(e) => Some(lexer::cut(s, 0, e)),
+        }
+    }
+
+    #[summary("Whether the length of an element template is a fixed constant (a numeral), not the array of an inner Vec's lengths (stage0 fixed_len, Rust's parse of a u64: digits after an optional `+`, at most the largest u64)")]
+    #[effects(pure)]
+    fn fixed_len(len: &str) -> bool {
+        let from: usize = if len.len() > 0 && len.as_bytes()[0] == b'+' {
+            1
+        } else {
+            0
+        };
+        if from >= len.len() {
+            return false;
+        }
+        let mut acc: u64 = 0;
+        for i in from..len.len()
+            invariant from <= i && i <= len.len(),
+        {
+            let c: u8 = len.as_bytes()[i];
+            if c < 48 || c > 57 {
+                return false;
+            }
+            let d: u64 = (c - 48) as u64;
+            if acc > (18446744073709551615 - d) / 10 {
+                return false;
+            }
+            acc = acc * 10 + d;
+        }
+        true
+    }
+
+    #[summary("The SMT terms a value is passed as, spec fn arguments (stage0 flatten): its scalars, an array's elements and length, a struct's fields in order, recursively")]
+    #[effects(alloc)]
+    fn flatten(v: &Val, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            Val::S(t) => out.push(t.clone()),
+            Val::A(elems, len) => { out.push(elems.clone()); out.push(len.clone()); },
+            Val::Unit => {},
+            Val::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { flatten(&fs[i], out, f - 1); } },
+            Val::Arr(elem, alen) => { flatten_elem(&**elem, out, f - 1); out.push(alen.clone()); },
+        }
+    }
+
+    #[summary("The leaf arrays of an element template, in the order of elem_leaves (stage0 flatten_elem): inner fixed lengths are constants, not terms")]
+    #[effects(alloc)]
+    fn flatten_elem(v: &Val, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            Val::S(t) => out.push(t.clone()),
+            Val::A(elems, len) => { out.push(elems.clone()); if !fixed_len(len.as_str()) { out.push(len.clone()); } },
+            Val::Unit => {},
+            Val::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { flatten_elem(&fs[i], out, f - 1); } },
+            Val::Arr(elem, alen) => { flatten_elem(&**elem, out, f - 1); if !fixed_len(alen.as_str()) { out.push(alen.clone()); } },
+        }
+    }
+
+    #[summary("The leaf terms of one element value v of type e, in the order of elem_leaves (stage0 flatten_elem_of): an inner Vec's length is a leaf even when it is a numeral")]
+    #[effects(alloc)]
+    fn flatten_elem_of(v: &Val, e: &ast::TypeKind, tb: &lowered::Tables, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match encode_decls::flat_fields(e, tb) {
+            None => {},
+            Some(fs) => { match v { Val::S(st) => {}, Val::A(sa, sl) => {}, Val::Unit => {}, Val::Struct(xs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < xs.len() { flatten_elem_of(&xs[i], &fs[i].ty, tb, out, f - 1); } } }, Val::Arr(se, sn) => {}, } return; },
+        }
+        let sh: u8 = encode_decls::shape(e);
+        let inner: ast::TypeKind = encode_decls::elem_ty(e);
+        match v {
+            Val::S(t) => out.push(t.clone()),
+            Val::A(elems, len) => { if sh == 4 && !encode_decls::agg_elem(&inner, tb) { out.push(elems.clone()); } else if sh == 6 { out.push(elems.clone()); out.push(len.clone()); } else { flatten_elem(v, out, f - 1); } },
+            Val::Unit => {},
+            Val::Struct(vs) => flatten_elem(v, out, f - 1),
+            Val::Arr(elem, alen) => { if sh == 4 { flatten_elem_of(&**elem, &inner, tb, out, f - 1); } else if sh == 6 { if encode_decls::is_array(e) { flatten_elem_of(&**elem, &inner, tb, out, f - 1); } out.push(alen.clone()); } else { flatten_elem(v, out, f - 1); } },
+        }
+    }
+
+    #[summary("A fresh constant of sort named after base (stage0 Enc::fresh): base@n with the next number of base, declared")]
+    #[effects(alloc)]
+    fn fresh(fr: &mut Fresh, base: &str, sort: &str) -> String {
+        let n: u64 = match fr.counters.find(base) {
+            None => 0,
+            Some(at) => fr.counters.items[at],
+        };
+        let name: String = encode_decls::sym(types::cat3(base, "@", dec(n).as_str()).as_str());
+        fr.counters.insert(base, n.saturating_add(1));
+        fr.decls.push(types::cat5("(declare-const ", name.as_str(), " ", sort, ")"));
+        name
+    }
+
+    #[summary("The value of a bit-vector v of the width of i as an integer of i (stage0 from_bv): unsigned, or two's complement (flipping the sign bit adds 2^(w-1) modulo 2^w, so one bv2nat suffices)")]
+    #[effects(alloc)]
+    fn from_bv(i: ast::IntTy, v: &str) -> String {
+        if body::signed(i) {
+            let w: u32 = width(i);
+            let half: String = pow2(w - 1);
+            let mut s: String = types::cat5("(- (bv2nat (bvxor ", v, " (_ bv", half.as_str(), " ");
+            s.push_str(types::cat4(dec(w as u64).as_str(), "))) ", half.as_str(), ")").as_str());
+            return s;
+        }
+        types::cat3("(bv2nat ", v, ")")
+    }
+
+    #[summary("T::from_be_bytes(b) (le false) or T::from_le_bytes(b) of the byte terms bs in index order (stage0 from_bytes_term): the unsigned sum of each byte's image at its place, read as a value of i. bs has at most 16 terms (the bytes of an integer type are at most 8)")]
+    #[effects(alloc)]
+    fn from_bytes_term(i: ast::IntTy, le: bool, bs: &[String]) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for k in 0..bs.len()
+            invariant 0 <= k && k <= bs.len(),
+        {
+            if bs.len() <= 16 {
+                let s: u32 = shift_of(bs.len() as u32, le, k as u32);
+                if s == 0 {
+                    parts.push(types::cat3("(mod ", bs[k].as_str(), " 256)"));
+                } else {
+                    parts.push(types::cat5("(* (mod ", bs[k].as_str(), " 256) ", pow2(s).as_str(), ")"));
+                }
+            }
+        }
+        let u: String = if parts.len() == 1 {
+            parts[0].clone()
+        } else {
+            types::cat3("(+ ", join(parts.as_slice(), " ").as_str(), ")")
+        };
+        if body::signed(i) {
+            return wrap_int(i, u.as_str());
+        }
+        u
+    }
+
+    #[summary("from_be_bytes or from_le_bytes of the byte array value v (stage0 from_bytes_val). The unit value for a value that is no array, which the checker admits none of")]
+    #[effects(alloc)]
+    fn from_bytes_val(i: ast::IntTy, le: bool, v: &Val) -> Val {
+        let p: Pair = match parts(v) {
+            None => { return Val::Unit; },
+            Some(found) => found,
+        };
+        let n: u32 = width(i) / 8;
+        let mut bs: Vec<String> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            bs.push(types::cat5("(select ", p.a.as_str(), " ", dec(k as u64).as_str(), ")"));
+        }
+        Val::S(from_bytes_term(i, le, bs.as_slice()))
+    }
+
+    #[summary("The integer of a constant of the checker")]
+    #[effects(pure)]
+    fn from_num(n: consts::Num) -> Int {
+        Int { neg: n.neg && n.mag != 0, mag: wide::U128 { hi: 0, lo: n.mag } }
+    }
+
+    #[summary("An f64 operation of one argument")]
+    #[effects(alloc)]
+    fn fun1(name: &str, args: &str, ret: &str, def: &str) -> F64Fun {
+        F64Fun { name: String::from(name), args: String::from(args), ret: String::from(ret), def: String::from(def) }
+    }
+
+    #[summary("An f64 operation of two f64 arguments")]
+    #[effects(alloc)]
+    fn fun2(name: &str, ret: &str, def: &str) -> F64Fun {
+        fun1(name, "(Float64 Float64)", ret, def)
+    }
+
+    #[summary("The facts of one side of a branch (or of the right of `&&` or `||`) under its guard c, with connectives nested no deeper than the lift depth plus the guard (stage0 guarded). The facts stay one `(=> c (and ..))`, except that an implication `(=> g x)` among them at least that deep, such as an inner branch's own facts, becomes `(=> (and c g) x)` beside it: nesting them at every `if` made the solver's context simplifier visit each inner conjunct again under each of its siblings, exponentially in the depth. The meaning is the same, and a side without deep implications keeps its text")]
+    #[effects(alloc)]
+    fn guarded(c: &str, facts: &[String]) -> Vec<String> {
+        let mut plain: Vec<String> = Vec::new();
+        let mut lifted: Vec<String> = Vec::new();
+        for i in 0..facts.len()
+            invariant 0 <= i && i <= facts.len(),
+        {
+            let imp: Option<Pair> = if bool_depth(facts[i].as_str()) >= lift_depth() {
+                implication(facts[i].as_str())
+            } else {
+                None
+            };
+            match imp {
+                None => plain.push(facts[i].clone()),
+                Some(gx) => lifted.push(types::cat7("(=> (and ", c, " ", gx.a.as_str(), ") ", gx.b.as_str(), ")")),
+            }
+        }
+        let mut out: Vec<String> = Vec::new();
+        if plain.len() > 0 {
+            out.push(types::cat5("(=> ", c, " ", and(plain.as_slice()).as_str(), ")"));
+        }
+        for j in 0..lifted.len()
+            invariant 0 <= j && j <= lifted.len(),
+        {
+            out.push(lifted[j].clone());
+        }
+        out
+    }
+
+    #[summary("The antecedent and consequent of an SMT implication `(=> g x)`, as text (stage0 implication)")]
+    #[effects(alloc)]
+    fn implication(f: &str) -> Option<Pair> {
+        if f.len() < 5 || !starts_at(f, 0, "(=> ") || f.as_bytes()[f.len() - 1] != b')' {
+            return None;
+        }
+        let end: usize = f.len() - 1;
+        let e: usize = match first_end(f, 4, end) {
+            None => { return None; },
+            Some(ge) => ge,
+        };
+        if e >= end || f.as_bytes()[e] != b' ' {
+            return None;
+        }
+        match first_end(f, e + 1, end) {
+            None => None,
+            Some(xe) => { if xe == end { Some(Pair { a: lexer::cut(f, 4, e), b: lexer::cut(f, e + 1, end) }) } else { None } },
+        }
+    }
+
+    #[summary("The range of every inner Vec length in element template v of type e, at the first level (stage0 inner_len_facts): its lengths are arrays over the outer index")]
+    #[effects(alloc)]
+    fn inner_len_facts(v: &Val, e: &ast::TypeKind, tb: &lowered::Tables, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match encode_decls::flat_fields(e, tb) {
+            None => {},
+            Some(fs) => { match v { Val::S(st) => {}, Val::A(sa, sl) => {}, Val::Unit => {}, Val::Struct(xs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < xs.len() { inner_len_facts(&xs[i], &fs[i].ty, tb, out, f - 1); } } return; }, Val::Arr(se, sn) => {}, } },
+        }
+        if encode_decls::shape(e) != 6 {
+            return;
+        }
+        let len: String = match v {
+            Val::S(t) => { return; },
+            Val::A(elems, alen) => alen.clone(),
+            Val::Unit => { return; },
+            Val::Struct(vs) => { return; },
+            Val::Arr(elem, rlen) => rlen.clone(),
+        };
+        if fixed_len(len.as_str()) {
+            return;
+        }
+        let x: String = types::cat3("(select ", len.as_str(), " k)");
+        let mut s: String = types::cat5("(forall ((k Int)) (! (and (<= 0 ", x.as_str(), ") (<= ", x.as_str(), " ");
+        s.push_str(types::cat4(len_max(&encode_decls::elem_ty(e)).as_str(), ")) :pattern (", x.as_str(), ")))").as_str());
+        out.push(s);
+    }
+
+    #[summary("The text of s between its leading and trailing parentheses, any number of them (Rust's trim_matches of both)")]
+    #[effects(alloc)]
+    fn inside(s: &str) -> String {
+        let mut a: usize = 0;
+        while a < s.len() && (s.as_bytes()[a] == b'(' || s.as_bytes()[a] == b')')
+            invariant a <= s.len(),
+            decreases s.len() - a,
+        {
+            a = a + 1;
+        }
+        let mut b: usize = s.len();
+        while b > a && (s.as_bytes()[b - 1] == b'(' || s.as_bytes()[b - 1] == b')')
+            invariant a <= b && b <= s.len(),
+            decreases b,
+        {
+            b = b - 1;
+        }
+        lexer::cut(s, a, b)
+    }
+
+    #[summary("A division lemma at operands a, b with quotient term q and remainder term r (stage0 instantiate). The placeholders are replaced one after another, as Rust's chain of replace does")]
+    #[effects(alloc)]
+    fn instantiate(template: &str, a: &str, b: &str, q: &str, r: &str) -> String {
+        replace(replace(replace(replace(template, "{a}", a).as_str(), "{b}", b).as_str(), "{q}", q).as_str(), "{r}", r)
+    }
+
+    #[summary("A multiplication lemma at operands a, b with product term p and upper bounds x, y (stage0 instantiate_mul)")]
+    #[effects(alloc)]
+    fn instantiate_mul(template: &str, a: &str, b: &str, p: &str, x: &str, y: &str) -> String {
+        replace(replace(replace(replace(replace(template, "{a}", a).as_str(), "{b}", b).as_str(), "{p}", p).as_str(), "{x}", x).as_str(), "{y}", y)
+    }
+
+    #[summary("A built-in integer method a.op(b) on integer type i (stage0 int_method, ADR-0028 §3, §5): op is wrapping_, saturating_ or checked_ and add, sub, mul, div or rem. Division is truncating on signed operands (bmb_tdiv, bmb_trem) and SMT's on unsigned ones, with its lemmas")]
+    #[effects(alloc)]
+    fn int_method(op: &str, i: ast::IntTy, a: &str, b: &str) -> IntMethod {
+        let signed: bool = body::signed(i);
+        let cut: usize = match decls::first_of(op, "_", 0) {
+            None => op.len(),
+            Some(at) => at,
+        };
+        let kind: String = lexer::cut(op, 0, cut);
+        let base: String = lexer::cut(op, cut.saturating_add(1), op.len());
+        let mut lemmas: Vec<String> = Vec::new();
+        let mut v: String = String::new();
+        if base.as_str() == "add" {
+            v = types::cat5("(+ ", a, " ", b, ")");
+        } else if base.as_str() == "sub" {
+            v = types::cat5("(- ", a, " ", b, ")");
+        } else if base.as_str() == "mul" {
+            v = types::cat5("(* ", a, " ", b, ")");
+        } else {
+            let q: String = if signed {
+                types::cat5("(bmb_tdiv ", a, " ", b, ")")
+            } else {
+                types::cat5("(div ", a, " ", b, ")")
+            };
+            let r: String = if signed {
+                types::cat5("(bmb_trem ", a, " ", b, ")")
+            } else {
+                types::cat5("(mod ", a, " ", b, ")")
+            };
+            let ls: Vec<String> = if signed {
+                signed_div_lemmas()
+            } else {
+                unsigned_div_lemmas()
+            };
+            for n in 0..ls.len()
+                invariant 0 <= n && n <= ls.len(),
+            {
+                lemmas.push(instantiate(ls[n].as_str(), a, b, q.as_str(), r.as_str()));
+            }
+            v = if base.as_str() == "div" {
+                q
+            } else {
+                r
+            };
+        }
+        let min: String = num(&from_num(consts::min_of(i)));
+        let max: String = num(&from_num(consts::max_of(i)));
+        if kind.as_str() == "wrapping" {
+            return IntMethod { checked: false, ok: String::new(), v: wrap_int(i, v.as_str()), lemmas: Vec::new() };
+        }
+        if kind.as_str() == "saturating" {
+            let mut s: String = types::cat7("(ite (> ", v.as_str(), " ", max.as_str(), ") ", max.as_str(), " (ite (< ");
+            s.push_str(types::cat7(v.as_str(), " ", min.as_str(), ") ", min.as_str(), " ", v.as_str()).as_str());
+            s.push_str("))");
+            return IntMethod { checked: false, ok: String::new(), v: s, lemmas: Vec::new() };
+        }
+        let in_range: String = range_int(i, v.as_str());
+        let ok: String = if base.as_str() == "div" {
+            types::cat5("(and (not (= ", b, " 0)) ", in_range.as_str(), ")")
+        } else if base.as_str() == "rem" && signed {
+            types::cat7("(and (not (= ", b, " 0)) (not (and (= ", a, " ", min.as_str(), types::cat3(") (= ", b, " (- 1)))))").as_str())
+        } else if base.as_str() == "rem" {
+            types::cat3("(not (= ", b, " 0))")
+        } else {
+            in_range
+        };
+        IntMethod { checked: true, ok: ok, v: v, lemmas: lemmas }
+    }
+
+    #[summary("Whether o is None")]
+    #[effects(pure)]
+    fn is_none(o: &Option<Val>) -> bool {
+        match o {
+            None => true,
+            Some(v) => false,
+        }
+    }
+
+    #[summary("Whether t is a numeral term: digits, or digits in `(- ..)` (stage0 is_numeral)")]
+    #[effects(pure)]
+    fn is_numeral(t: &str) -> bool {
+        let d: Digits = digits(t);
+        if d.a >= d.b {
+            return false;
+        }
+        for i in d.a..d.b
+            invariant d.a <= i && i <= d.b,
+        {
+            let c: u8 = t.as_bytes()[i];
+            if c < 48 || c > 57 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("c ? a : b, or a where both are the same text (stage0 ite)")]
+    #[effects(alloc)]
+    fn ite(c: &str, a: &str, b: &str) -> String {
+        if a == b {
+            return String::from(a);
+        }
+        types::cat7("(ite ", c, " ", a, " ", b, ")")
+    }
+
+    #[summary("ite(c, a, b) on values of one type, leaf by leaf (stage0 ite_val). The unit value where the shapes differ")]
+    #[effects(alloc)]
+    fn ite_val(c: &str, a: &Val, b: &Val, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        match a {
+            Val::S(x) => match b { Val::S(y) => Val::S(ite(c, x.as_str(), y.as_str())), Val::A(ya, yl) => Val::Unit, Val::Unit => Val::Unit, Val::Struct(ys) => Val::Unit, Val::Arr(ye, yn) => Val::Unit, },
+            Val::A(e1, l1) => match b { Val::S(y) => Val::Unit, Val::A(e2, l2) => Val::A(ite(c, e1.as_str(), e2.as_str()), ite(c, l1.as_str(), l2.as_str())), Val::Unit => Val::Unit, Val::Struct(ys) => Val::Unit, Val::Arr(ye, yn) => Val::Unit, },
+            Val::Unit => Val::Unit,
+            Val::Struct(xs) => match b { Val::S(y) => Val::Unit, Val::A(ya, yl) => Val::Unit, Val::Unit => Val::Unit, Val::Struct(ys) => { let mut out: Vec<Val> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i < ys.len() { out.push(ite_val(c, &xs[i], &ys[i], f - 1)); } } Val::Struct(out) }, Val::Arr(ye, yn) => Val::Unit, },
+            Val::Arr(xe, xl) => match b { Val::S(y) => Val::Unit, Val::A(ya, yl) => Val::Unit, Val::Unit => Val::Unit, Val::Struct(ys) => Val::Unit, Val::Arr(ye, yl) => Val::Arr(Box::new(ite_val(c, &**xe, &**ye, f - 1)), ite(c, xl.as_str(), yl.as_str())), },
+        }
+    }
+
+    #[summary("The texts of xs with sep between them")]
+    #[effects(alloc)]
+    fn join(xs: &[String], sep: &str) -> String {
+        let mut s: String = String::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                s.push_str(sep);
+            }
+            s.push_str(xs[i].as_str());
+        }
+        s
+    }
+
+    #[summary("What every value of leaf l named x satisfies (stage0 Leaf::fact, ADR-0017 §3): the range of an integer, the length of a fixed-size array, the bounds of another array's length")]
+    #[effects(alloc)]
+    fn leaf_fact(l: &encode_decls::Leaf, x: &str) -> Option<String> {
+        match l {
+            encode_decls::Leaf::Scalar(t) => range(t, x),
+            encode_decls::Leaf::Data(dt) => None,
+            encode_decls::Leaf::Elems(et) => None,
+            encode_decls::Leaf::Leaves(s) => None,
+            encode_decls::Leaf::Len(e, n) => match n { None => Some(types::cat7("(and (<= 0 ", x, ") (<= ", x, " ", len_max(e).as_str(), "))")), Some(k) => Some(types::cat5("(= ", x, " ", dec(*k).as_str(), ")")), },
+        }
+    }
+
+    #[summary("The leaf arrays of two element templates of the same type, paired (stage0 leaf_pairs, for copy_within): every array over the outer index, inner lengths that are arrays included, fixed lengths left out. Nothing where the shapes differ, which the encoder passes none of")]
+    #[effects(alloc)]
+    fn leaf_pairs(new: &Val, was: &Val, out: &mut Vec<Pair>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match new {
+            Val::S(n) => match was { Val::S(o) => out.push(Pair { a: n.clone(), b: o.clone() }), Val::A(oa, ol) => {}, Val::Unit => {}, Val::Struct(os) => {}, Val::Arr(oe, on) => {}, },
+            Val::A(n, nl) => match was { Val::S(o) => {}, Val::A(o, ol) => { out.push(Pair { a: n.clone(), b: o.clone() }); if !fixed_len(nl.as_str()) { out.push(Pair { a: nl.clone(), b: ol.clone() }); } }, Val::Unit => {}, Val::Struct(os) => {}, Val::Arr(oe, on) => {}, },
+            Val::Unit => {},
+            Val::Struct(ns) => match was { Val::S(o) => {}, Val::A(oa, ol) => {}, Val::Unit => {}, Val::Struct(os) => { for i in 0..ns.len() invariant 0 <= i && i <= ns.len(), { if i < os.len() { leaf_pairs(&ns[i], &os[i], out, f - 1); } } }, Val::Arr(oe, on) => {}, },
+            Val::Arr(nb, nl) => match was { Val::S(o) => {}, Val::A(oa, ol) => {}, Val::Unit => {}, Val::Struct(os) => {}, Val::Arr(ob, ol) => { leaf_pairs(&**nb, &**ob, out, f - 1); if !fixed_len(nl.as_str()) { out.push(Pair { a: nl.clone(), b: ol.clone() }); } }, },
+        }
+    }
+
+    #[summary("The largest length of an array of elem (stage0 len_max): the bytes of an allocation are at most isize::MAX, so the bound follows the element's size. A data type may be one byte: only isize::MAX is known without its layout")]
+    #[effects(alloc)]
+    fn len_max(elem: &ast::TypeKind) -> String {
+        let sh: u8 = encode_decls::shape(elem);
+        if sh == 1 || sh == 7 || sh == 8 {
+            return String::from("9223372036854775807");
+        }
+        match body::int_of(elem) {
+            None => String::from("1152921504606846975"),
+            Some(i) => { let w: u32 = width(i); if w == 8 { String::from("9223372036854775807") } else if w == 16 { String::from("4611686018427387903") } else if w == 32 { String::from("2305843009213693951") } else { String::from("1152921504606846975") } },
+        }
+    }
+
+    #[summary("The connective depth from which guarded lifts an implication out of the conjunction it would nest in (stage0 LIFT_DEPTH). Below it the facts keep their nested form: a two-level group such as a division lemma's costs the context simplifier a constant factor, and lifting it too changed a nonlinear search for the worse")]
+    #[effects(pure)]
+    fn lift_depth() -> usize {
+        3
+    }
+
+    #[summary("The linear form of a op b on i, where there is one (stage0 linear_bit): a constant shift amount is a multiplication (wrapped into the range) or a floor division (`>>` rounds toward negative infinity on signed values, as SMT div does), and a & m with m = 2^k - 1 is a mod 2^k")]
+    #[effects(alloc)]
+    fn linear_bit(op: ast::BinOp, i: ast::IntTy, a: &str, b: &str) -> Option<String> {
+        let k: u8 = bit_kind(op);
+        let nb: Option<Int> = numeral(b);
+        if k == 1 {
+            match mask(&nb, i) {
+                None => {},
+                Some(kb) => { return Some(types::cat5("(mod ", a, " ", pow2(kb).as_str(), ")")); },
+            }
+            return match mask(&numeral(a), i) { None => None, Some(ka) => Some(types::cat5("(mod ", b, " ", pow2(ka).as_str(), ")")), };
+        }
+        if k != 4 && k != 5 {
+            return None;
+        }
+        let amount: u64 = match nb {
+            None => { return None; },
+            Some(n) => { if n.mag.hi != 0 || n.neg { return None; } n.mag.lo },
+        };
+        if amount == 0 {
+            return Some(String::from(a));
+        }
+        let w: u32 = width(i);
+        if amount >= w as u64 {
+            return None;
+        }
+        let p: String = pow2(amount as u32);
+        if k == 4 {
+            return Some(wrap_int(i, types::cat5("(* ", a, " ", p.as_str(), ")").as_str()));
+        }
+        Some(types::cat5("(div ", a, " ", p.as_str(), ")"))
+    }
+
+    #[summary("The k of a mask m = 2^k - 1 that is a value of i, not negative (stage0 linear_bit's mask): a & m keeps the low k bits")]
+    #[effects(pure)]
+    fn mask(m: &Option<Int>, i: ast::IntTy) -> Option<u32> {
+        match m {
+            None => None,
+            Some(n) => { if n.neg || n.mag.hi != 0 || n.mag.lo > consts::max_of(i).mag { return None; } let x: u64 = n.mag.lo; if x == 18446744073709551615 { return Some(64); } if x + 1 & x != 0 { return None; } Some((x + 1).trailing_zeros()) },
+        }
+    }
+
+    #[summary("What a bit method's bit-vector term r satisfies when a is in the range of i (stage0 method_facts): a value of i, or a count in 0..=w that is extreme exactly at zero (the ones: at every bit set, -1 signed and MAX unsigned). A linear term needs none")]
+    #[effects(alloc)]
+    fn method_facts(m: &str, i: ast::IntTy, a: &str, r: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        if !encode_decls::has_text(r, "(bv2nat ") {
+            return out;
+        }
+        let w: String = dec(width(i) as u64);
+        let mut fs: Vec<String> = Vec::new();
+        let count: String = types::cat7("(and (<= 0 ", r, ") (<= ", r, " ", w.as_str(), "))");
+        if m == "count_ones" {
+            fs.push(count);
+            fs.push(types::cat5("(= (= ", r, " 0) (= ", a, " 0))"));
+        } else if m == "count_zeros" || m == "leading_zeros" || m == "trailing_zeros" {
+            fs.push(count);
+            fs.push(types::cat7("(= (= ", r, " ", w.as_str(), ") (= ", a, " 0))"));
+        } else if m == "leading_ones" || m == "trailing_ones" {
+            fs.push(count);
+            let all: String = if body::signed(i) {
+                String::from("(- 1)")
+            } else {
+                num(&from_num(consts::max_of(i)))
+            };
+            fs.push(types::cat7("(= (= ", r, " ", w.as_str(), ") (= ", a, types::cat3(" ", all.as_str(), "))").as_str()));
+        } else {
+            fs.push(range_int(i, r));
+        }
+        let ra: String = range_int(i, a);
+        for n in 0..fs.len()
+            invariant 0 <= n && n <= fs.len(),
+        {
+            out.push(types::cat5("(=> ", ra.as_str(), " ", fs[n].as_str(), ")"));
+        }
+        out
+    }
+
+    #[summary("bit_method's term over xa, the bit-vector of a, and xn, the amount modulo 2^w as a bit-vector of a's width w (stage0 method_term). A constant amount k moves by k mod w: a wrapping shift has the form of `<<` or `>>`, a rotation is the sum of its two parts over the unsigned image of a. Empty text for a method that is no bit method or lacks its amount, which the checker admits none of")]
+    #[effects(alloc)]
+    fn method_term(m: &str, i: ast::IntTy, a: &str, xa: &str, n: &Option<String>, xn: &Option<String>) -> String {
+        let w: u32 = width(i);
+        let ws: String = dec(w as u64);
+        let shift: bool = m == "wrapping_shl" || m == "wrapping_shr";
+        let rotation: bool = m == "rotate_left" || m == "rotate_right";
+        let constant: Option<Int> = match n {
+            None => None,
+            Some(nt) => numeral(nt.as_str()),
+        };
+        match constant {
+            None => {},
+            Some(kv) => { let low: u32 = (kv.mag.lo % w as u64) as u32; let k: u32 = if kv.neg && low != 0 { w - low } else { low }; let left: u32 = if m == "rotate_right" { (w - k) % w } else { k }; if shift { let op: ast::BinOp = if m == "wrapping_shl" { ast::BinOp::Shl } else { ast::BinOp::Shr }; return match linear_bit(op, i, a, dec(k as u64).as_str()) { None => String::new(), Some(lt) => lt, }; } if rotation && left == 0 { return String::from(a); } if rotation { let lo: String = pow2(w - left); let u: String = if body::signed(i) { types::cat5("(mod ", a, " ", pow2(w).as_str(), ")") } else { String::from(a) }; let mut r: String = types::cat7("(+ (* (mod ", a, " ", lo.as_str(), ") ", pow2(left).as_str(), ") (div "); r.push_str(types::cat4(u.as_str(), " ", lo.as_str(), "))").as_str()); if body::signed(i) { return wrap_int(i, r.as_str()); } return r; } },
+        }
+        let amount: String = match xn {
+            None => String::new(),
+            Some(x) => x.clone(),
+        };
+        if shift {
+            let s: String = types::cat7("(bvand ", amount.as_str(), " (_ bv", dec((w - 1) as u64).as_str(), " ", ws.as_str(), "))");
+            let op: ast::BinOp = if m == "wrapping_shl" {
+                ast::BinOp::Shl
+            } else {
+                ast::BinOp::Shr
+            };
+            return bv_term(op, i, xa, s.as_str());
+        }
+        if rotation {
+            let f: String = if m == "rotate_left" {
+                String::from("rotl")
+            } else {
+                String::from("rotr")
+            };
+            return from_bv(i, types::cat7("(bmb_", f.as_str(), ws.as_str(), " ", xa, " ", types::cat2(amount.as_str(), ")").as_str()).as_str());
+        }
+        if m == "swap_bytes" {
+            if w == 8 {
+                return String::from(a);
+            }
+            return from_bv(i, types::cat5("(bmb_bswap", ws.as_str(), " ", xa, ")").as_str());
+        }
+        if m == "count_ones" {
+            return types::cat5("(bv2nat (bmb_ctpop", ws.as_str(), " ", xa, "))");
+        }
+        if m == "count_zeros" {
+            return types::cat7("(- ", ws.as_str(), " (bv2nat (bmb_ctpop", ws.as_str(), " ", xa, ")))");
+        }
+        if m == "leading_zeros" {
+            return types::cat5("(bv2nat (bmb_clz", ws.as_str(), " ", xa, "))");
+        }
+        if m == "trailing_zeros" {
+            return types::cat5("(bv2nat (bmb_ctz", ws.as_str(), " ", xa, "))");
+        }
+        if m == "leading_ones" {
+            return types::cat5("(bv2nat (bmb_clz", ws.as_str(), " (bvnot ", xa, ")))");
+        }
+        if m == "trailing_ones" {
+            return types::cat5("(bv2nat (bmb_ctz", ws.as_str(), " (bvnot ", xa, ")))");
+        }
+        if m == "reverse_bits" {
+            return from_bv(i, types::cat5("(bmb_brev", ws.as_str(), " ", xa, ")").as_str());
+        }
+        String::new()
+    }
+
+    #[summary("A value of the recursive struct t with fields (stage0 Enc::mk_struct): a fresh constant of its sort whose selectors are the field leaves, as ground facts (no constructor function: the queries stay free of quantifiers)")]
+    #[effects(alloc)]
+    fn mk_struct(fr: &mut Fresh, t: &ast::TypeKind, fields: &[Val], tb: &lowered::Tables) -> Val {
+        let vt: ast::TypeKind = lowered::value_ty(t);
+        let name: String = encode_decls::dt_ctor_name(&vt);
+        let x: String = fresh(fr, types::cat2(name.as_str(), "!new").as_str(), encode_decls::sort_of(&vt).as_str());
+        match lowered::struct_fields(&vt, tb) {
+            None => {},
+            Some(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if k < fields.len() { let mut terms: Vec<String> = Vec::new(); flatten(&fields[k], &mut terms, 100000); let ls: Vec<encode_decls::NamedLeaf> = encode_decls::payload_leaves(&vt, name.as_str(), k, &fs[k].ty, tb); for j in 0..ls.len() invariant 0 <= j && j <= ls.len(), { if j < terms.len() { fr.decls.push(types::cat7("(assert (= (", encode_decls::sym(ls[j].name.as_str()).as_str(), " ", x.as_str(), ") ", terms[j].as_str(), "))")); } } } } },
+        }
+        Val::S(x)
+    }
+
+    #[summary("A nonnegative product is at most the product of upper bounds {x} of {a} and {y} of {b}: monotonicity (stage0 MUL_BOUND_LEMMA)")]
+    #[effects(alloc)]
+    fn mul_bound_lemma() -> String {
+        String::from("(=> (and (<= 0 {a}) (<= {a} {x}) (<= 0 {b}) (<= {b} {y})) (<= {p} (* {x} {y})))")
+    }
+
+    #[summary("Facts about a product {p} of {a} and {b}, proved by stage0's tests/lemmas.rs (stage0 MUL_LEMMAS)")]
+    #[effects(alloc)]
+    fn mul_lemmas() -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        v.push(String::from("(= (= {p} 0) (or (= {a} 0) (= {b} 0)))"));
+        v.push(String::from("(=> (and (not (= {a} 0)) (not (= {b} 0))) (= (> {p} 0) (= (> {a} 0) (> {b} 0))))"));
+        v
+    }
+
+    #[summary("The term at position pos of terms, moving past it. Empty text past the end")]
+    #[effects(alloc)]
+    fn next(terms: &[String], pos: &mut usize) -> String {
+        let at: usize = *pos;
+        if at < terms.len() {
+            *pos = at + 1;
+            return terms[at].clone();
+        }
+        String::new()
+    }
+
+    #[summary("`!a` on integer type i (stage0 not_term): every bit flipped, which is linear (-a - 1, or MAX - a unsigned)")]
+    #[effects(alloc)]
+    fn not_term(i: ast::IntTy, a: &str) -> String {
+        if body::signed(i) {
+            return types::cat3("(- (- ", a, ") 1)");
+        }
+        types::cat5("(- ", num(&from_num(consts::max_of(i))).as_str(), " ", a, ")")
+    }
+
+    #[summary("The numeral term of v (stage0 num)")]
+    #[effects(alloc)]
+    #[uses(wide::divisor)]
+    fn num(v: &Int) -> String {
+        let mut s: String = String::new();
+        if v.neg {
+            s.push_str("(- ");
+        }
+        wide::push_radix(&mut s, v.mag, 10);
+        if v.neg {
+            s.push_str(")");
+        }
+        s
+    }
+
+    #[summary("The value of a numeral term, `5` or `(- 5)` (stage0 numeral): None for other text and for a magnitude above the largest i128")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn numeral(t: &str) -> Option<Int> {
+        if !is_numeral(t) {
+            return None;
+        }
+        let d: Digits = digits(t);
+        let mut v: wide::U128 = wide::zero();
+        for i in d.a..d.b
+            invariant d.a <= i && i <= d.b,
+        {
+            let c: u8 = t.as_bytes()[i];
+            if c < 48 || c > 57 {
+                return None;
+            }
+            match wide::mul_add(v, 10, (c - 48) as u64) {
+                None => { return None; },
+                Some(nv) => { v = nv; },
+            }
+        }
+        if v.hi >= 9223372036854775808 {
+            return None;
+        }
+        Some(Int { neg: d.neg && (v.hi != 0 || v.lo != 0), mag: v })
+    }
+
+    #[summary("The kind of an ordering comparison: 1 `<`, 2 `<=`, 3 `>`, 4 `>=`, 0 for the other operations")]
+    #[effects(pure)]
+    fn ord_kind(op: ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 0,
+            ast::BinOp::Sub => 0,
+            ast::BinOp::Mul => 0,
+            ast::BinOp::Div => 0,
+            ast::BinOp::Rem => 0,
+            ast::BinOp::Eq => 0,
+            ast::BinOp::Ne => 0,
+            ast::BinOp::Lt => 1,
+            ast::BinOp::Le => 2,
+            ast::BinOp::Gt => 3,
+            ast::BinOp::Ge => 4,
+            ast::BinOp::And => 0,
+            ast::BinOp::Or => 0,
+            ast::BinOp::Implies => 0,
+            ast::BinOp::BitAnd => 0,
+            ast::BinOp::BitOr => 0,
+            ast::BinOp::BitXor => 0,
+            ast::BinOp::Shl => 0,
+            ast::BinOp::Shr => 0,
+        }
+    }
+
+    #[summary("An ordering comparison of a and b of type t, Rust's Ord (stage0 ord_term): the sort's total order for a type parameter, false < true for bool, integer order otherwise. op is `<`, `<=`, `>` or `>=`")]
+    #[effects(alloc)]
+    fn ord_term(op: ast::BinOp, t: &ast::TypeKind, a: &str, b: &str) -> String {
+        let k: u8 = ord_kind(op);
+        let sh: u8 = encode_decls::shape(t);
+        if sh == 8 {
+            let le: String = match types::param_name(t) {
+                None => String::new(),
+                Some(n) => encode_decls::sym(types::cat3("'", n.as_str(), ".le").as_str()),
+            };
+            if k == 2 {
+                return types::cat7("(", le.as_str(), " ", a, " ", b, ")");
+            }
+            if k == 4 {
+                return types::cat7("(", le.as_str(), " ", b, " ", a, ")");
+            }
+            let mut s: String = if k == 1 {
+                types::cat7("(and (", le.as_str(), " ", a, " ", b, ") (not (= ")
+            } else {
+                types::cat7("(and (", le.as_str(), " ", b, " ", a, ") (not (= ")
+            };
+            s.push_str(types::cat4(a, " ", b, ")))").as_str());
+            return s;
+        }
+        if sh == 1 {
+            if k == 2 {
+                return types::cat5("(=> ", a, " ", b, ")");
+            }
+            if k == 4 {
+                return types::cat5("(=> ", b, " ", a, ")");
+            }
+            if k == 1 {
+                return types::cat5("(and (not ", a, ") ", b, ")");
+            }
+            return types::cat5("(and ", a, " (not ", b, "))");
+        }
+        let o: String = if k == 1 {
+            String::from("<")
+        } else if k == 2 {
+            String::from("<=")
+        } else if k == 3 {
+            String::from(">")
+        } else {
+            String::from(">=")
+        };
+        types::cat7("(", o.as_str(), " ", a, " ", b, ")")
+    }
+
+    #[summary("The s-expression of text s (stage0 smt::parse): the first one of its tokens. None for text that has none or closes a list it did not open")]
+    #[effects(alloc)]
+    fn parse(s: &str) -> Option<Sexp> {
+        let toks: Vec<String> = tokenize(s);
+        let mut pos: usize = 0;
+        parse_at(toks.as_slice(), &mut pos, 100000)
+    }
+
+    #[summary("The s-expression at token pos, moving past it (stage0 smt::parse_at)")]
+    #[effects(alloc)]
+    fn parse_at(toks: &[String], pos: &mut usize, f: usize) -> Option<Sexp>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let at: usize = *pos;
+        if at >= toks.len() {
+            return None;
+        }
+        *pos = at + 1;
+        if toks[at].as_str() == ")" {
+            return None;
+        }
+        if toks[at].as_str() != "(" {
+            return Some(Sexp::Atom(toks[at].clone()));
+        }
+        let mut items: Vec<Sexp> = Vec::new();
+        let mut fuel: usize = toks.len();
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let p: usize = *pos;
+            if p >= toks.len() {
+                return None;
+            }
+            if toks[p].as_str() == ")" {
+                *pos = p + 1;
+                return Some(Sexp::List(items));
+            }
+            match parse_at(toks, pos, f - 1) {
+                None => { return None; },
+                Some(item) => items.push(item),
+            }
+        }
+        None
+    }
+
+    #[summary("The elements and the length of a text value (stage0 text::parts). None for a value that is no array, which the encoder passes none of")]
+    #[effects(alloc)]
+    fn parts(v: &Val) -> Option<Pair> {
+        match v {
+            Val::S(t) => None,
+            Val::A(elems, len) => Some(Pair { a: elems.clone(), b: len.clone() }),
+            Val::Unit => None,
+            Val::Struct(fs) => None,
+            Val::Arr(elem, alen) => None,
+        }
+    }
+
+    #[summary("The numeral 2^k, k below 128")]
+    #[effects(alloc)]
+    fn pow2(k: u32) -> String {
+        let v: wide::U128 = if k < 64 {
+            wide::U128 { hi: 0, lo: 1 << k as u64 }
+        } else if k < 128 {
+            wide::U128 { hi: 1 << (k - 64) as u64, lo: 0 }
+        } else {
+            wide::zero()
+        };
+        num(&Int { neg: false, mag: v })
+    }
+
+    #[summary("Truncating `/` and `%` from one Euclidean div and mod of the same operands (stage0 PRELUDE, ADR-0085): the solver introduces one quotient and remainder per pair, and `%` needs no product with the divisor. At b = 0 both are left unconstrained")]
+    #[effects(alloc)]
+    fn prelude() -> String {
+        String::from("(define-fun bmb_abs ((x Int)) Int (ite (>= x 0) x (- x)))\n(define-fun bmb_tdiv ((a Int) (b Int)) Int (ite (or (>= a 0) (= (mod a b) 0)) (div a b) (ite (> b 0) (+ (div a b) 1) (- (div a b) 1))))\n(define-fun bmb_trem ((a Int) (b Int)) Int (ite (or (>= a 0) (= (mod a b) 0)) (mod a b) (- (mod a b) (bmb_abs b))))")
+    }
+
+    #[summary("SMT-LIB text of an s-expression (stage0 smt::print, the inverse of parse)")]
+    #[effects(alloc)]
+    fn print(e: &Sexp, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match e {
+            Sexp::Atom(a) => a.clone(),
+            Sexp::List(xs) => { let mut s: String = String::from("("); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i > 0 { s.push_str(" "); } s.push_str(print(&xs[i], f - 1).as_str()); } s.push_str(")"); s },
+        }
+    }
+
+    #[summary("What every value of type t named x satisfies: the range of an integer type (stage0 range)")]
+    #[effects(alloc)]
+    fn range(t: &ast::TypeKind, x: &str) -> Option<String> {
+        match body::int_of(t) {
+            None => None,
+            Some(i) => Some(range_int(i, x)),
+        }
+    }
+
+    #[summary("x is a value of integer type i (stage0 range_int)")]
+    #[effects(alloc)]
+    fn range_int(i: ast::IntTy, x: &str) -> String {
+        let mut s: String = types::cat5("(and (<= ", num(&from_num(consts::min_of(i))).as_str(), " ", x, ") (<= ");
+        s.push_str(types::cat4(x, " ", num(&from_num(consts::max_of(i))).as_str(), "))").as_str());
+        s
+    }
+
+    #[summary("s with each occurrence of pat replaced by with, left to right without overlap (Rust's str::replace). pat is not empty")]
+    #[effects(alloc)]
+    fn replace(s: &str, pat: &str, with: &str) -> String {
+        let mut out: String = String::new();
+        let mut from: usize = 0;
+        let mut fuel: usize = s.len();
+        while fuel > 0 && pat.len() > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match decls::first_of(s, pat, from) {
+                None => { fuel = 0; },
+                Some(i) => { out.push_str(lexer::cut(s, from, i).as_str()); out.push_str(with); from = i + pat.len(); },
+            }
+        }
+        out.push_str(lexer::cut(s, from, s.len()).as_str());
+        out
+    }
+
+    #[summary("A whole character ends at position k + m of bytes a with length n: the text ends there or a byte that is no continuation follows (stage0 utf8_at's ends)")]
+    #[effects(alloc)]
+    fn run_ends(a: &str, n: &str, k: &str, m: u64) -> String {
+        let mut s: String = types::cat3("(or (= (+ ", k, " ");
+        std::num::push_u64(&mut s, m);
+        s.push_str(types::cat5(") ", n, ") (not ", cont(at_plus(a, k, m).as_str()).as_str(), "))").as_str());
+        s
+    }
+
+    #[summary("A character of m bytes begins at position k of bytes a with length n: its continuation bytes follow and it ends (stage0 utf8_at's run)")]
+    #[effects(alloc)]
+    fn run_of(a: &str, n: &str, k: &str, m: u64) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        let mut first: String = types::cat3("(< (+ ", k, " ");
+        std::num::push_u64(&mut first, m.saturating_sub(1));
+        first.push_str(types::cat3(") ", n, ")").as_str());
+        parts.push(first);
+        let mut j: u64 = 1;
+        while j < m
+            decreases m - j,
+        {
+            parts.push(cont(at_plus(a, k, j).as_str()));
+            j = j + 1;
+        }
+        parts.push(run_ends(a, n, k, m));
+        types::cat3("(and ", join(parts.as_slice(), " ").as_str(), ")")
+    }
+
+    #[summary("A Unicode scalar value: 0..=0xD7FF or 0xE000..=0x10FFFF (stage0 text::scalar)")]
+    #[effects(alloc)]
+    fn scalar(c: &str) -> String {
+        types::cat5("(or (and (<= 0 ", c, ") (<= ", c, types::cat5(" 55295)) (and (<= 57344 ", c, ") (<= ", c, " 1114111)))").as_str())
+    }
+
+    #[summary("The term of a scalar value (stage0 Val::s): the unit value is true. Empty text for an array or a data value, which the encoder asks of none")]
+    #[effects(alloc)]
+    fn scalar_of(v: &Val) -> String {
+        match v {
+            Val::S(t) => t.clone(),
+            Val::A(elems, len) => String::new(),
+            Val::Unit => String::from("true"),
+            Val::Struct(fs) => String::new(),
+            Val::Arr(elem, alen) => String::new(),
+        }
+    }
+
+    #[summary("`(f a)` as f and a: an application of a symbol to one argument, a selector application in a measure term (stage0 sel_app)")]
+    #[effects(alloc)]
+    fn sel_app(t: &str) -> Option<Pair> {
+        if t.len() < 2 || t.as_bytes()[0] != b'(' || t.as_bytes()[t.len() - 1] != b')' {
+            return None;
+        }
+        let end: usize = t.len() - 1;
+        let from: usize = if end > 1 && t.as_bytes()[1] == b'|' {
+            2
+        } else {
+            1
+        };
+        let stop: u8 = if from == 2 {
+            b'|'
+        } else {
+            b' '
+        };
+        let mut head_end: usize = end;
+        let mut found: bool = false;
+        for i in from..end
+            invariant from <= i && i <= end && head_end <= end,
+        {
+            if !found && t.as_bytes()[i] == stop {
+                found = true;
+                head_end = if from == 2 {
+                    i + 1
+                } else {
+                    i
+                };
+            }
+        }
+        if !found || head_end >= end || t.as_bytes()[head_end] != b' ' {
+            return None;
+        }
+        let arg: usize = head_end + 1;
+        let mut depth: i64 = 0;
+        let mut quoted: bool = false;
+        for j in arg..end
+            invariant arg <= j && j <= end && 0 - (j - arg) <= depth && depth <= j - arg,
+        {
+            let c: u8 = t.as_bytes()[j];
+            if c == b'|' {
+                quoted = !quoted;
+            } else if c == b'(' && !quoted {
+                depth = depth + 1;
+            } else if c == b')' && !quoted {
+                depth = depth - 1;
+            } else if c == b' ' && !quoted && depth == 0 && j + 1 < end {
+                return None;
+            }
+        }
+        Some(Pair { a: lexer::cut(t, 1, head_end), b: lexer::cut(t, arg, end) })
+    }
+
+    #[summary("`(select a i)` as a and i (stage0 select_app)")]
+    #[effects(alloc)]
+    fn select_app(t: &str) -> Option<Pair> {
+        if t.len() < 9 || !starts_at(t, 0, "(select ") || t.as_bytes()[t.len() - 1] != b')' {
+            return None;
+        }
+        let end: usize = t.len() - 1;
+        let mut depth: i64 = 0;
+        let mut quoted: bool = false;
+        for k in 8..end
+            invariant 8 <= k && k <= end && 0 - (k - 8) <= depth && depth <= k - 8,
+        {
+            let c: u8 = t.as_bytes()[k];
+            if c == b'|' {
+                quoted = !quoted;
+            } else if c == b'(' && !quoted {
+                depth = depth + 1;
+            } else if c == b')' && !quoted {
+                depth = depth - 1;
+            } else if c == b' ' && !quoted && depth == 0 {
+                return Some(Pair { a: lexer::cut(t, 8, k), b: lexer::cut(t, k + 1, end) });
+            }
+        }
+        None
+    }
+
+    #[summary("The length of element i of an element template's inner array (stage0 select_len): a fixed length is a constant")]
+    #[effects(alloc)]
+    fn select_len(len: &str, i: &str) -> String {
+        if fixed_len(len) {
+            return String::from(len);
+        }
+        types::cat5("(select ", len, " ", i, ")")
+    }
+
+    #[summary("Element i of a slice of structs (stage0 select_val). An array inside the element: its leaves are arrays over the outer index; a fixed length is a constant, an inner Vec's is one more array. The unit value is no element template")]
+    #[effects(alloc)]
+    fn select_val(elem: &Val, i: &str, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        match elem {
+            Val::S(a) => Val::S(types::cat5("(select ", a.as_str(), " ", i, ")")),
+            Val::A(elems, len) => Val::A(types::cat5("(select ", elems.as_str(), " ", i, ")"), select_len(len.as_str(), i)),
+            Val::Unit => Val::Unit,
+            Val::Struct(fs) => { let mut out: Vec<Val> = Vec::new(); for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { out.push(select_val(&fs[k], i, f - 1)); } Val::Struct(out) },
+            Val::Arr(inner, alen) => Val::Arr(Box::new(select_val(&**inner, i, f - 1)), select_len(alen.as_str(), i)),
+        }
+    }
+
+    #[summary("v with the place at steps from position at on replaced by new (stage0 set_at). A step into a recursive struct reads its fields by its selectors and makes a new value of it (mk_struct). v as it is for a step that does not match its shape, which the checker admits none of")]
+    #[effects(alloc)]
+    fn set_at(v: &Val, steps: &[Step], at: usize, new: &Val, tb: &lowered::Tables, fr: &mut Fresh) -> Val
+        decreases steps.len() - at,
+    {
+        if at >= steps.len() {
+            return new.clone();
+        }
+        match &steps[at] {
+            Step::Field(k) => match v { Val::S(x) => v.clone(), Val::A(xa, xl) => v.clone(), Val::Unit => v.clone(), Val::Struct(fs) => { let mut out: Vec<Val> = Vec::new(); for n in 0..fs.len() invariant 0 <= n && n <= fs.len(), { if n == *k { out.push(set_at(&fs[n], steps, at + 1, new, tb, fr)); } else { out.push(fs[n].clone()); } } Val::Struct(out) }, Val::Arr(xe, xn) => v.clone(), },
+            Step::DataField(k, t) => match v { Val::S(x) => { let dfs: Vec<Val> = dt_fields(t, x.as_str(), tb); let mut out: Vec<Val> = Vec::new(); for n in 0..dfs.len() invariant 0 <= n && n <= dfs.len(), { if n == *k { out.push(set_at(&dfs[n], steps, at + 1, new, tb, fr)); } else { out.push(dfs[n].clone()); } } mk_struct(fr, t, out.as_slice(), tb) }, Val::A(xa, xl) => v.clone(), Val::Unit => v.clone(), Val::Struct(xs) => v.clone(), Val::Arr(xe, xn) => v.clone(), },
+            Step::Index(i) => match v { Val::S(x) => v.clone(), Val::A(elems, len) => { let cur: Val = Val::S(types::cat5("(select ", elems.as_str(), " ", i.as_str(), ")")); let nv: Val = set_at(&cur, steps, at + 1, new, tb, fr); Val::A(types::cat7("(store ", elems.as_str(), " ", i.as_str(), " ", scalar_of(&nv).as_str(), ")"), len.clone()) }, Val::Unit => v.clone(), Val::Struct(xs) => v.clone(), Val::Arr(elem, alen) => { let cur: Val = select_val(&**elem, i.as_str(), 100000); let nv: Val = set_at(&cur, steps, at + 1, new, tb, fr); Val::Arr(Box::new(store_val(&**elem, i.as_str(), &nv, 100000)), alen.clone()) }, },
+        }
+    }
+
+    #[summary("The bit position of byte k of n in little-endian order (le) or big-endian order: 8 * k, or 8 * (n - 1 - k)")]
+    #[effects(pure)]
+    fn shift_of(n: u32, le: bool, k: u32) -> (r: u32)
+        ensures r < 128,
+    {
+        if n > 16 || k >= n {
+            return 0;
+        }
+        if le {
+            return 8 * k;
+        }
+        8 * (n - 1 - k)
+    }
+
+    #[summary("Facts about truncating division, instantiated at every `/` and `%` so the solver needs no nonlinear reasoning for range obligations (stage0 SIGNED_DIV_LEMMAS). Each is proved from the prelude definitions by stage0's tests/lemmas.rs. Placeholders: {a}, {b} operands, {q} quotient term, {r} remainder term. The sixth is the quotient's sign; the last says nonnegative operands divide as SMT div and mod do, which unsigned specifications use")]
+    #[effects(alloc)]
+    fn signed_div_lemmas() -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        v.push(String::from("(=> (= {b} 1) (= {q} {a}))"));
+        v.push(String::from("(=> (= {b} (- 1)) (= {q} (- {a})))"));
+        v.push(String::from("(=> (> (bmb_abs {b}) 1) (<= (* 2 (bmb_abs {q})) (bmb_abs {a})))"));
+        v.push(String::from("(=> (not (= {b} 0)) (< (bmb_abs {r}) (bmb_abs {b})))"));
+        v.push(String::from("(=> (not (= {b} 0)) (or (= {r} 0) (= (>= {r} 0) (>= {a} 0))))"));
+        v.push(String::from("(=> (not (= {b} 0)) (or (= {q} 0) (= (> {q} 0) (= (> {a} 0) (> {b} 0)))))"));
+        v.push(String::from("(=> (and (>= {a} 0) (> {b} 0)) (and (= {q} (div {a} {b})) (= {r} (mod {a} {b}))))"));
+        v
+    }
+
+    #[summary("The parts of s between the bytes sep (Rust's split)")]
+    #[effects(alloc)]
+    fn split(s: &str, sep: u8) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut a: usize = 0;
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len() && a <= i,
+        {
+            if s.as_bytes()[i] == sep {
+                out.push(lexer::cut(s, a, i));
+                a = i + 1;
+            }
+        }
+        out.push(lexer::cut(s, a, s.len()));
+        out
+    }
+
+    #[summary("Whether pat stands at byte i of s")]
+    #[effects(pure)]
+    fn starts_at(s: &str, i: usize, pat: &str) -> bool {
+        if i > s.len() || pat.len() > s.len() - i {
+            return false;
+        }
+        for k in 0..pat.len()
+            invariant 0 <= k && k <= pat.len(),
+        {
+            if s.as_bytes()[i + k] != pat.as_bytes()[k] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The length array of an element template's inner array with element i set to x (stage0 store_len): a fixed length is a constant")]
+    #[effects(alloc)]
+    fn store_len(len: &str, i: &str, x: &str) -> String {
+        if fixed_len(len) {
+            return String::from(len);
+        }
+        types::cat7("(store ", len, " ", i, " ", x, ")")
+    }
+
+    #[summary("The element arrays of a slice of structs with element i set to v (stage0 store_val). The template as it is where the shapes differ, which the encoder passes none of")]
+    #[effects(alloc)]
+    fn store_val(elem: &Val, i: &str, v: &Val, f: usize) -> Val
+        decreases f,
+    {
+        if f == 0 {
+            return Val::Unit;
+        }
+        match elem {
+            Val::S(a) => match v { Val::S(x) => Val::S(types::cat7("(store ", a.as_str(), " ", i, " ", x.as_str(), ")")), Val::A(xa, xl) => elem.clone(), Val::Unit => elem.clone(), Val::Struct(xs) => elem.clone(), Val::Arr(xe, xn) => elem.clone(), },
+            Val::A(elems, len) => match v { Val::S(x) => elem.clone(), Val::A(x, xl) => Val::A(types::cat7("(store ", elems.as_str(), " ", i, " ", x.as_str(), ")"), store_len(len.as_str(), i, xl.as_str())), Val::Unit => elem.clone(), Val::Struct(xs) => elem.clone(), Val::Arr(xe, xn) => elem.clone(), },
+            Val::Unit => Val::Unit,
+            Val::Struct(fs) => match v { Val::S(x) => elem.clone(), Val::A(xa, xl) => elem.clone(), Val::Unit => elem.clone(), Val::Struct(xs) => { let mut out: Vec<Val> = Vec::new(); for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if k < xs.len() { out.push(store_val(&fs[k], i, &xs[k], f - 1)); } } Val::Struct(out) }, Val::Arr(xe, xn) => elem.clone(), },
+            Val::Arr(inner, alen) => match v { Val::S(x) => elem.clone(), Val::A(xa, xl) => elem.clone(), Val::Unit => elem.clone(), Val::Struct(xs) => elem.clone(), Val::Arr(xb, xl) => Val::Arr(Box::new(store_val(&**inner, i, &**xb, f - 1)), store_len(alen.as_str(), i, xl.as_str())), },
+        }
+    }
+
+    #[summary("e with each atom in m replaced by its term (stage0 subst_atoms)")]
+    #[effects(alloc)]
+    fn subst_atoms(e: &Sexp, m: &table::Table<Sexp>, f: usize) -> Sexp
+        decreases f,
+    {
+        if f == 0 {
+            return e.clone();
+        }
+        match e {
+            Sexp::Atom(a) => match m.find(a.as_str()) { None => e.clone(), Some(at) => m.items[at].clone(), },
+            Sexp::List(xs) => { let mut out: Vec<Sexp> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { out.push(subst_atoms(&xs[i], m, f - 1)); } Sexp::List(out) },
+        }
+    }
+
+    #[summary("The declaration and axiom of bmb_shift when text mentions it (stage0 text::text_decls): none otherwise, so a query without text slices is unchanged")]
+    #[effects(alloc)]
+    fn text_decls(text: &str) -> String {
+        if encode_decls::has_text(text, "bmb_shift") {
+            return String::from("(declare-fun bmb_shift ((Array Int Int) Int) (Array Int Int))\n(assert (forall ((a (Array Int Int)) (o Int) (k Int)) (! (= (select (bmb_shift a o) k) (select a (+ k o))) :pattern ((select (bmb_shift a o) k)))))\n");
+        }
+        String::new()
+    }
+
+    #[summary("x as a bit-vector of the width of i (stage0 to_bv): its value modulo 2^w, so a negative value is its two's complement (ADR-0048 §4)")]
+    #[effects(alloc)]
+    fn to_bv(i: ast::IntTy, x: &str) -> String {
+        types::cat5("((_ int2bv ", dec(width(i) as u64).as_str(), ") ", x, ")")
+    }
+
+    #[summary("The tokens of an s-expression (stage0 smt::tokenize): parentheses, and the runs of other characters between them and white space. A bar opens a quoted symbol that runs to the next bar, white space and parentheses included")]
+    #[effects(alloc)]
+    fn tokenize(s: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut open: bool = false;
+        let mut in_bar: bool = false;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant start <= i,
+            decreases s.len() - i,
+        {
+            let c: u8 = s.as_bytes()[i];
+            let mut next: usize = i + 1;
+            let mut space: bool = c >= 9 && c <= 13 || c == 32;
+            if c >= 128 {
+                match std::str::decode_utf8(s, i) {
+                    None => {},
+                    Some(dc) => { if dc.next > i && dc.next <= s.len() { next = dc.next; } space = unicode::whitespace(u32::from(dc.ch)); },
+                }
+            }
+            if in_bar {
+                if c == b'|' {
+                    in_bar = false;
+                }
+            } else if c == b'(' || c == b')' {
+                if open {
+                    out.push(lexer::cut(s, start, i));
+                    open = false;
+                }
+                out.push(lexer::cut(s, i, i + 1));
+            } else if c == b'|' {
+                if !open {
+                    start = i;
+                    open = true;
+                }
+                in_bar = true;
+            } else if space {
+                if open {
+                    out.push(lexer::cut(s, start, i));
+                    open = false;
+                }
+            } else if !open {
+                start = i;
+                open = true;
+            }
+            i = next;
+        }
+        if open {
+            out.push(lexer::cut(s, start, s.len()));
+        }
+        out
+    }
+
+    #[summary("Facts about `/` and `%` of unsigned operands, where they are SMT div and mod (stage0 UNSIGNED_DIV_LEMMAS)")]
+    #[effects(alloc)]
+    fn unsigned_div_lemmas() -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        v.push(String::from("(=> (and (>= {a} 0) (> {b} 0)) (and (<= 0 {q}) (<= {q} {a})))"));
+        v.push(String::from("(=> (> {b} 0) (and (<= 0 {r}) (< {r} {b})))"));
+        v
+    }
+
+    #[summary("Upper bounds of term that top-level conjuncts of the path condition state (term < t, term <= t, t > term, t >= term), newest first, at most two (stage0 upper_bounds and MAX_BOUNDS)")]
+    #[effects(alloc)]
+    fn upper_bounds(pc: &[String], term: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut k: usize = pc.len();
+        while k > 0 && out.len() < 2
+            invariant k <= pc.len(),
+            decreases k,
+        {
+            k = k - 1;
+            match parse(pc[k].as_str()) {
+                None => {},
+                Some(e) => upper_walk(&e, term, &mut out, 100000),
+            }
+        }
+        let mut kept: Vec<String> = Vec::new();
+        for i in 0..out.len()
+            invariant 0 <= i && i <= out.len(),
+        {
+            if i < 2 && (kept.len() == 0 || kept[kept.len() - 1].as_str() != out[i].as_str()) {
+                kept.push(out[i].clone());
+            }
+        }
+        kept
+    }
+
+    #[summary("The bounds of term in conjunct e, through `and` (stage0 upper_bounds's walk)")]
+    #[effects(alloc)]
+    fn upper_walk(e: &Sexp, term: &str, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            Sexp::Atom(a) => {},
+            Sexp::List(xs) => { if xs.len() > 0 { let head: String = match &xs[0] { Sexp::Atom(h) => h.clone(), Sexp::List(hs) => { return; }, }; if head.as_str() == "and" { for i in 1..xs.len() invariant 1 <= i && i <= xs.len(), { upper_walk(&xs[i], term, out, f - 1); } } else if xs.len() == 3 && (head.as_str() == "<" || head.as_str() == "<=") { if print(&xs[1], 100000).as_str() == term { out.push(print(&xs[2], 100000)); } } else if xs.len() == 3 && (head.as_str() == ">" || head.as_str() == ">=") { if print(&xs[2], 100000).as_str() == term { out.push(print(&xs[1], 100000)); } } } },
+        }
+    }
+
+    #[summary("What valid UTF-8 bytes a with length n hold at position k, when it is below the length (stage0 text::utf8_at): the byte is one Rust's str can hold (not 0xC0, 0xC1, above 0xF4); an ASCII byte or a whole character ends there or before a byte that is not a continuation; a first byte has its continuation bytes after it; a continuation byte is not the first of four in a row")]
+    #[effects(alloc)]
+    fn utf8_at(a: &str, n: &str, k: &str) -> String {
+        let b: String = at_plus(a, k, 0);
+        let mut run4: String = types::cat5("(=> (< (+ ", k, " 3) ", n, ") (not (and ");
+        run4.push_str(types::cat5(cont(at_plus(a, k, 1).as_str()).as_str(), " ", cont(at_plus(a, k, 2).as_str()).as_str(), " ", cont(at_plus(a, k, 3).as_str()).as_str()).as_str());
+        run4.push_str(")))");
+        let mut s: String = types::cat5("(=> (and (<= 0 ", k, ") (< ", k, " ");
+        s.push_str(types::cat5(n, ")) (and (not (and (<= 192 ", b.as_str(), ") (<= ", b.as_str()).as_str());
+        s.push_str(types::cat5(" 193))) (<= ", b.as_str(), " 244) (=> (< ", b.as_str(), " 128) ").as_str());
+        s.push_str(types::cat5(run_ends(a, n, k, 1).as_str(), ") (=> (and (<= 194 ", b.as_str(), ") (< ", b.as_str()).as_str());
+        s.push_str(types::cat5(" 224)) ", run_of(a, n, k, 2).as_str(), ") (=> (and (<= 224 ", b.as_str(), ") (< ").as_str());
+        s.push_str(types::cat5(b.as_str(), " 240)) ", run_of(a, n, k, 3).as_str(), ") (=> (<= 240 ", b.as_str()).as_str());
+        s.push_str(types::cat5(") ", run_of(a, n, k, 4).as_str(), ") (=> ", cont(b.as_str()).as_str(), " ").as_str());
+        s.push_str(run4.as_str());
+        s.push_str(")))");
+        s
+    }
+
+    #[summary("What valid UTF-8 bytes a with length n hold just before position i (stage0 text::utf8_before): the first byte begins a character, a continuation byte at i has its first byte at most three bytes before it, and the four bytes before i are as utf8_at has them. Enough to decide whether i is a character boundary from the bytes before it, with no quantifier")]
+    #[effects(alloc)]
+    fn utf8_before(a: &str, n: &str, i: &str) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(types::cat5("(=> (< 0 ", n, ") (not ", cont(types::cat3("(select ", a, " 0)").as_str()).as_str(), "))"));
+        let mut second: String = types::cat5("(=> (and (< 0 ", i, ") (< ", i, " ");
+        second.push_str(types::cat4(n, ") ", cont(types::cat5("(select ", a, " ", i, ")").as_str()).as_str(), ") (or").as_str());
+        let mut o: u64 = 1;
+        while o < 4
+            decreases 4 - o,
+        {
+            second.push_str(types::cat5(" (and (<= ", dec(o).as_str(), " ", i, ") (<= 194 ").as_str());
+            second.push_str(types::cat7("(select ", a, " (- ", i, " ", dec(o).as_str(), "))))").as_str());
+            o = o + 1;
+        }
+        second.push_str("))");
+        parts.push(second);
+        let mut j: u64 = 1;
+        while j < 5
+            decreases 5 - j,
+        {
+            parts.push(utf8_at(a, n, types::cat5("(- ", i, " ", dec(j).as_str(), ")").as_str()));
+            j = j + 1;
+        }
+        types::cat3("(and ", join(parts.as_slice(), " ").as_str(), ")")
+    }
+
+    #[summary("c.len_utf8() (stage0 text::utf8_len)")]
+    #[effects(alloc)]
+    fn utf8_len(c: &str) -> String {
+        types::cat7("(ite (< ", c, " 128) 1 (ite (< ", c, " 2048) 2 (ite (< ", c, " 65536) 3 4)))")
+    }
+
+    #[summary("The width of integer type i in bits")]
+    #[effects(pure)]
+    fn width(i: ast::IntTy) -> (r: u32)
+        ensures r == 8 || r == 16 || r == 32 || r == 64,
+    {
+        match i {
+            ast::IntTy::I8 => 8,
+            ast::IntTy::I16 => 16,
+            ast::IntTy::I32 => 32,
+            ast::IntTy::I64 => 64,
+            ast::IntTy::Isize => 64,
+            ast::IntTy::U8 => 8,
+            ast::IntTy::U16 => 16,
+            ast::IntTy::U32 => 32,
+            ast::IntTy::U64 => 64,
+            ast::IntTy::Usize => 64,
+        }
+    }
+
+    #[summary("x reduced into the range of integer type i, two's complement (stage0 wrap_int)")]
+    #[effects(alloc)]
+    fn wrap_int(i: ast::IntTy, x: &str) -> String {
+        let w: u32 = width(i);
+        let size: String = pow2(w);
+        if body::signed(i) {
+            let half: String = pow2(w - 1);
+            return types::cat7("(- (mod (+ ", x, " ", half.as_str(), ") ", size.as_str(), types::cat3(") ", half.as_str(), ")").as_str());
+        }
+        types::cat5("(mod ", x, " ", size.as_str(), ")")
+    }
+}

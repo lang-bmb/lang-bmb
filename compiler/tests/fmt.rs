@@ -507,6 +507,57 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
+#[path = "../../tests/port/smt_terms_ref.rs"]
+mod smt_terms_ref;
+
+/// The stage0 side of the differential case `smt-terms`
+/// (`tests/port/smt_terms_ref.rs`, also an example of this crate): the
+/// proof encoder's term builders that need no encoder state, each over a
+/// grid of arguments written there, with no solver: one row per call, the
+/// same rows every time. The port prints the same rows from its own
+/// builders (`tests/port/smt_terms.bmb`). The rows below
+/// are one of each kind of builder: numerals past a machine word, a text
+/// reader, a linear and a bit-vector form of a bit operation, a bit method
+/// with a constant amount, an `f64` literal, a lemma, a value of a slice
+/// of structs, a default value read from the tables, and an assignment
+/// into a recursive struct (a new constant with the facts of its fields).
+#[test]
+fn smt_terms_reference_shows_the_term_builders() {
+    let out = smt_terms_ref::rows();
+    assert_eq!(smt_terms_ref::rows(), out);
+    for row in [
+        r#"{"fn":"numeral","args":"(- 170141183460469231731687303715884105727)","out":"(- 170141183460469231731687303715884105727)"}"#,
+        r#"{"fn":"numeral","args":"170141183460469231731687303715884105728","out":null}"#,
+        r#"{"fn":"numeral","args":"(- 0)","out":"0"}"#,
+        r#"{"fn":"fixed_len","args":"+5","out":true}"#,
+        r#"{"fn":"select_app","args":"(select |a b| |i (|)","out":["|a b|","|i (|"]}"#,
+        r#"{"fn":"implication","args":"(=> (and a b) (or c d))","out":["(and a b)","(or c d)"]}"#,
+        r#"{"fn":"range_int","args":"i64 x","out":"(and (<= (- 9223372036854775808) x) (<= x 9223372036854775807))"}"#,
+        r#"{"fn":"wrap_int","args":"u64 x","out":"(mod x 18446744073709551616)"}"#,
+        r#"{"fn":"bit_op","args":"BitAnd u64 a 18446744073709551615","out":["(mod a 18446744073709551616)",[]]}"#,
+        r#"{"fn":"bit_op","args":"Shl i8 a 3","out":["(- (mod (+ (* a 8) 128) 256) 128)",[]]}"#,
+        r#"{"fn":"bit_op","args":"BitXor u8 a b","out":["(bv2nat (bvxor ((_ int2bv 8) a) ((_ int2bv 8) b)))",["(=> (and (and (<= 0 a) (<= a 255)) (and (<= 0 b) (<= b 255))) (and (<= 0 (bv2nat (bvxor ((_ int2bv 8) a) ((_ int2bv 8) b)))) (<= (bv2nat (bvxor ((_ int2bv 8) a) ((_ int2bv 8) b))) 255)))"]]}"#,
+        r#"{"fn":"bit_method","args":"rotate_right u8 (- 3)","out":["(+ (* (mod a 32) 8) (div a 32))",[]]}"#,
+        r#"{"fn":"f64_lit","args":"9221120237041090560","out":"(_ NaN 11 53)"}"#,
+        r#"{"fn":"f64_lit","args":"9223372036854775808","out":"(fp #b1 #b00000000000 #x0000000000000)"}"#,
+        r#"{"fn":"instantiate","args":"unsigned 1","out":"(=> (> (- y) 0) (and (<= 0 {a}{q}) (< {a}{q} (- y))))"}"#,
+        r#"{"fn":"select_val","args":"5","out":{"arr":{"struct":[{"s":"(select xe0 i)"},{"s":"(select xe1 i)"}]},"len":"2"}}"#,
+        r#"{"fn":"default_val","args":"&[g::R]","out":{"a":"((as const (Array Int |g::R|)) |g::R::'arb|)","len":"0"}}"#,
+        r#"{"fn":"leaf_fact","args":"&[u8] v.len","out":"(and (<= 0 v.len) (<= v.len 9223372036854775807))"}"#,
+        r#"{"fn":"set_at","args":"11 DtField(0,&g::R)","out":{"val":{"s":"|R!new@0|"},"decls":["(declare-const |R!new@0| |g::R|)","(assert (= (|g::R::R.0| |R!new@0|) new))","(assert (= (|g::R::R.1.e| |R!new@0|) (|g::R::R.1.e| r)))","(assert (= (|g::R::R.1.len| |R!new@0|) (|g::R::R.1.len| r)))"]}}"#,
+    ] {
+        assert!(out.contains(&format!("{row}\n")), "{row}");
+    }
+    // Every row names its builder, and no builder is left out.
+    let builders: std::collections::BTreeSet<&str> = out
+        .lines()
+        .filter_map(|l| l.strip_prefix("{\"fn\":\""))
+        .filter_map(|l| l.split('"').next())
+        .collect();
+    assert_eq!(builders.len(), 73, "{builders:?}");
+    assert_eq!(out.lines().count(), 4457);
+}
+
 /// `bmb dump runtime`: the code generator's constant IR
 /// texts by name (the port's module is made of them, and its IR is compared
 /// with this compiler's: `tests/port/cases.json`, case `emit`).
