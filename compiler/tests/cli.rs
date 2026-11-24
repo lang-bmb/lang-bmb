@@ -2,6 +2,8 @@
 
 use std::process::{Command, Stdio};
 
+mod common;
+
 /// Output into a closed pipe (`bmb codes | head -1` once `head` has exited)
 /// ends quietly with status 141, as a process killed by SIGPIPE, instead of
 /// panicking with a backtrace.
@@ -574,7 +576,7 @@ fn the_query_dump_is_what_emit_smt_writes_before_the_first_answer() {
         assert!(dump.status.success(), "{file:?}");
         let dump = String::from_utf8_lossy(&dump.stdout).into_owned();
         for row in dump.lines().filter(|l| l.starts_with("{\"queries\":")) {
-            let row = bmb::json::parse(row).unwrap();
+            let row = common::json::parse(row).unwrap();
             let field = |k: &str| row.get(k).and_then(|v| v.as_str()).unwrap().to_string();
             let def = field("queries");
             let path = dir.join(format!("{}.smt2", def.replace("::", ".")));
