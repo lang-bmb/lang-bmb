@@ -1008,8 +1008,8 @@
    "src": "6a9eb8397b2efcdc"
   },
   "tests/verify/fail/widths.bmb": {
-   "out": "882ae3d3c3628fc6",
-   "src": "8171b0d291d9c34e"
+   "out": "35fb58337780a542",
+   "src": "ed0a0b4d3ce8b3a6"
   },
   "tests/verify/pass/arith.bmb": {
    "out": "4b96686a7ea0a5c9",
@@ -1024,8 +1024,8 @@
    "src": "3ce4ee0d99082fa7"
   },
   "tests/verify/pass/bit_vector.bmb": {
-   "out": "0c227c0d9668c208",
-   "src": "1b591e11ae33c733"
+   "out": "d6ca86bf6c389404",
+   "src": "939e202b1385ab1f"
   },
   "tests/verify/pass/bits.bmb": {
    "out": "c7be21d07a2d52f9",
@@ -1172,8 +1172,8 @@
    "src": "db9435e808bbb9da"
   },
   "tests/verify/pass/spec_widening.bmb": {
-   "out": "7378fd8fd263a4c2",
-   "src": "b15e1e2761096c1f"
+   "out": "8a3dda90064f1a8f",
+   "src": "fc5b98311e74596a"
   },
   "tests/verify/pass/strings.bmb": {
    "out": "104b2799ee8343c2",

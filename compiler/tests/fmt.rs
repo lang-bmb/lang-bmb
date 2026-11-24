@@ -562,8 +562,8 @@ mod d {
         r#"(define-fun |d::mid.on| ((|p!p.x| Int) (|p!p.on| Bool)) Bool (ite (and (<= (- 9223372036854775808) |p!p.x|) (<= |p!p.x| 9223372036854775807)) (not |p!p.on|) (|d::mid.on!ext| |p!p.x| |p!p.on|)))"#,
         r#"{"proof_params":"d::grows","decls":["(declare-const |a@0| (Array Int Int))","(declare-const |a.len@0| Int)","(declare-const |p.x@0| Int)","(declare-const |p.on@0| Bool)"],"facts":["(forall ((k Int)) (! (and (<= 0 (select |a@0| k)) (<= (select |a@0| k) 18446744073709551615)) :pattern ((select |a@0| k))))","(and (<= 0 |a.len@0|) (<= |a.len@0| 1152921504606846975))","(and (<= (- 9223372036854775808) |p.x@0|) (<= |p.x@0| 9223372036854775807))"]}"#,
         r#"{"termination":"d::below","decls":["(declare-const |n@0| Int)"],"trivial":[]}"#,
-        r#""msg":"recursive call to `d::below` may not decrease its `decreases` measure","assumptions":["(and (<= 0 |n@0|) (<= |n@0| 18446744073709551615))","(not (= |n@0| 0))"],"goal":"(forall ((|k!0| Int)) (=> (and (and (<= 0 |k!0|) (<= |k!0| 18446744073709551615)) (< |k!0| |n@0|)) (and (<= 0 |n@0|) (< |k!0| |n@0|))))","facts":"","shown":null}"#,
-        r#""assumptions":["(not (= (|d::Node::Node.1.len| |n@0|) 0))"],"goal":"(and (<= 0 0) (< 0 (|d::Node::Node.1.len| |n@0|)))","facts":"(assert (and (<= 0 (|d::Node::Node.1.len| |n@0|)) (<= (|d::Node::Node.1.len| |n@0|) 9223372036854775807)))\n","shown":null}"#,
+        r#""msg":"recursive call to `d::below` may not decrease its `decreases` measure","shared":0,"assumptions":["(and (<= 0 |n@0|) (<= |n@0| 18446744073709551615))","(not (= |n@0| 0))"],"goal":"(forall ((|k!0| Int)) (=> (and (and (<= 0 |k!0|) (<= |k!0| 18446744073709551615)) (< |k!0| |n@0|)) (and (<= 0 |n@0|) (< |k!0| |n@0|))))","facts":"","shown":null,"sub":null}"#,
+        r#""assumptions":["(not (= (|d::Node::Node.1.len| |n@0|) 0))"],"goal":"(and (<= 0 0) (< 0 (|d::Node::Node.1.len| |n@0|)))","facts":"(assert (and (<= 0 (|d::Node::Node.1.len| |n@0|)) (<= (|d::Node::Node.1.len| |n@0|) 9223372036854775807)))\n","shown":null,"sub":null}"#,
     ] {
         assert!(out.contains(row), "{row}\n{out}");
     }
@@ -575,17 +575,17 @@ mod d {
 /// `bmb dump smt` on executable and proof functions: a body has an `exec`
 /// row (declarations, the path condition at the end, the entry values, the
 /// reach points with their path conditions) and an `obl` row per
-/// obligation, built by the encoder the proof pass runs, with no solver; a
-/// body outside the port's frontier (`verify::port_encodes`: one that holds
-/// `assert .. by`) says `encoded: false` and has no rows. The rows below
+/// obligation (its assumptions as the number it shares with the row before
+/// and the rest), built by the encoder the proof pass runs, with no solver.
+/// The rows below
 /// show a `return` on one side of an `if`, a call with a `&mut` argument
 /// (its precondition, the new value and the callee's `ensures` with `old`),
 /// the obligations and lemmas of `%`, a conversion, a type invariant proved
 /// for the result with the value a counterexample would show, a `for` (its
 /// bounds on entry, its havocked variable, the obligations of going back to
 /// the head and its exit as a reach point), a proof fn's body, a `proof`
-/// block that calls it, and a `push` on a `Vec` and on a `String` with a
-/// comparison of the text.
+/// block that calls it, a `push` on a `Vec` and on a `String` with a
+/// comparison of the text, and a sub-proof with its query.
 #[test]
 fn smt_dump_shows_executable_and_proof_bodies() {
     const SRC: &str = r#"#[summary("d")]
@@ -651,19 +651,19 @@ mod d {
         r#"{"def":"d::f","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":["d::small"],"contract":["d::small"],"revealed":["d::small"],"arrays":[false,false,false],"fields":[[],[0]],"encoded":true}"#,
         r#"{"exec":"d::f","decls":["(declare-const |x@0| Int)","(declare-const |c.n@0| Int)","(declare-const |y@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","(and (<= 0 |c.n@0|) (<= |c.n@0| 255))","(|d::low| |c.n@0|)","(|d::small| |x@0|)","(not (< |x@0| 0))","(|d::small| |x@0|)","(and (<= (- 9223372036854775808) |y@0|) (<= |y@0| 9223372036854775807))","(and (|d::small| (- |y@0| 1)) (= |y@0| (+ |x@0| 1)))","(not (= 4 0))","#,
         r#""(|d::low| (bmb_trem |y@0| 4))"],"inputs":[["x",["|x@0|"],"i64"],["c",["|c.n@0|"],"d::Cap"]],"texts":[],"valid":[],"reach":[[0,354,355,"end of the body",["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","#,
-        r#"{"obl":"d::f","code":"E0801","file":0,"lo":485,"hi":496,"msg":"precondition `small` of `d::inc` may not hold","assumptions":["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","(and (<= 0 |c.n@0|) (<= |c.n@0| 255))","(|d::low| |c.n@0|)","(|d::small| |x@0|)","(not (< |x@0| 0))"],"goal":"(|d::small| |x@0|)","facts":"","shown":null}"#,
-        r#""goal":"(not (and (= |y@0| (- 9223372036854775808)) (= 4 (- 1))))","facts":"","shown":null}"#,
-        r#""goal":"(and (<= 0 (bmb_trem |y@0| 4)) (<= (bmb_trem |y@0| 4) 255))","facts":"","shown":null}"#,
-        r#""goal":"(|d::low| (bmb_trem |y@0| 4))","facts":"","shown":["result",["(bmb_trem |y@0| 4)"],"d::Cap"]}"#,
+        r#"{"obl":"d::f","code":"E0801","file":0,"lo":485,"hi":496,"msg":"precondition `small` of `d::inc` may not hold","shared":0,"assumptions":["(and (<= (- 9223372036854775808) |x@0|) (<= |x@0| 9223372036854775807))","(and (<= 0 |c.n@0|) (<= |c.n@0| 255))","(|d::low| |c.n@0|)","(|d::small| |x@0|)","(not (< |x@0| 0))"],"goal":"(|d::small| |x@0|)","facts":"","shown":null,"sub":null}"#,
+        r#""goal":"(not (and (= |y@0| (- 9223372036854775808)) (= 4 (- 1))))","facts":"","shown":null,"sub":null}"#,
+        r#""goal":"(and (<= 0 (bmb_trem |y@0| 4)) (<= (bmb_trem |y@0| 4) 255))","facts":"","shown":null,"sub":null}"#,
+        r#""goal":"(|d::low| (bmb_trem |y@0| 4))","facts":"","shown":["result",["(bmb_trem |y@0| 4)"],"d::Cap"],"sub":null}"#,
         r#"{"exec":"d::inc","decls":["(declare-const |a@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(and (<= (- 9223372036854775808) (+ |a@0| 1)) (<= (+ |a@0| 1) 9223372036854775807))","(and (|d::small| (- (+ |a@0| 1) 1)) (= (+ |a@0| 1) (+ |a@0| 1)))"],"inputs":[["a",["|a@0|"],"&mut i64"]],"texts":[],"valid":[],"reach":[[0,190,193,"end of the body",["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(and (<= (- 9223372036854775808) (+ |a@0| 1)) (<= (+ |a@0| 1) 9223372036854775807))"]]]}"#,
         r#""msg":"postcondition `small(*a - 1) && *a == *old(a) + 1` may not hold""#,
         r#"{"def":"d::sum","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[true,false],"fields":[[]],"encoded":true}"#,
         r#"{"exec":"d::sum","decls":["(declare-const |a@0| (Array Int Int))","(declare-const |a.len@0| Int)","(declare-const |s@0| Int)","(declare-const |i@0| Int)"],"trivial":[],"dead":false,"pc":["#,
         r#""(and (<= 0 |i@0|) (or (<= |i@0| |a.len@0|) (= |i@0| 0)))","(not (< |i@0| |a.len@0|))"],"inputs":[["a",["|a@0|","|a.len@0|"],"&[u8]"]],"texts":[],"valid":[],"reach":[[0,629,705,"exit of the loop",["#,
         r#""(not (< |i@0| |a.len@0|))"]],[0,565,568,"end of the body",["#,
-        r#"{"obl":"d::sum","code":"E0806","file":0,"lo":629,"hi":705,"msg":"loop invariant may not hold on entry","assumptions":["#,
+        r#"{"obl":"d::sum","code":"E0806","file":0,"lo":629,"hi":705,"msg":"loop invariant may not hold on entry","shared":0,"assumptions":["#,
         r#""msg":"loop invariant may not be preserved","#,
-        r#""goal":"(and (<= 0 (- |a.len@0| |i@0|)) (< (- |a.len@0| (+ |i@0| 1)) (- |a.len@0| |i@0|)))","facts":"","shown":null}"#,
+        r#""goal":"(and (<= 0 (- |a.len@0| |i@0|)) (< (- |a.len@0| (+ |i@0| 1)) (- |a.len@0| |i@0|)))","facts":"","shown":null,"sub":null}"#,
         r#"{"def":"d::lemma","kind":"proof fn","inst":false,"unit":"d","sub":[],"uses":[],"context":["d::small"],"contract":["d::small"],"revealed":["d::small"],"arrays":[false,false],"fields":[[]],"encoded":true}"#,
         r#"{"exec":"d::lemma","decls":["(declare-const |a@0| Int)"],"trivial":[],"dead":false,"pc":["(and (<= (- 9223372036854775808) |a@0|) (<= |a@0| 9223372036854775807))","(|d::small| |a@0|)","(=> (> |a@0| 0) (< (- |a@0| 1) |a@0|))","(|d::small| (- |a@0| 1))"],"inputs":[["a",["|a@0|"],"i64"]],"texts":[],"valid":[],"reach":[[0,735,740,"end of the body",["#,
         r#""msg":"precondition `small` of `d::lemma` may not hold","#,
@@ -671,14 +671,14 @@ mod d {
         r#"(store (store (store (store |s@0| (+ |s.len@0| 0) 195) (+ |s.len@0| 1) 169) (+ |s.len@0| 2) 0) (+ |s.len@0| 3) 0)"#,
         r#""(<= 0 |lcp@0|)","#,
         r#""texts":[["|s@0|","|s.len@0|"]],"valid":[],"reach":[[0,907,911,"end of the body",["#,
-        r#"{"def":"d::masked","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[false,false],"fields":[[]],"encoded":false}"#,
+        r#"{"def":"d::masked","kind":"fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[false,false],"fields":[[]],"encoded":true}"#,
+        r#"{"obl":"d::masked","code":"E0818","file":0,"lo":1174,"hi":1209,"msg":"bit-vector assertion may not hold","shared":0,"assumptions":[],"goal":"(= (_ bv0 1) (_ bv0 1))","facts":"","shown":null,"sub":{"logic":"QF_BV","decls":["(declare-const |x| (_ BitVec 32))"],"hyps":[],"goal":"(= (_ bv0 1) (_ bv0 1))","vars":[["|x|","u32"]],"guards":[]}}"#,
     ] {
         assert!(out.contains(row), "{row}\n{out}");
     }
     // The invariant of the `Cap` returned early is on the path already: no
-    // obligation; the body outside the frontier has no rows.
+    // obligation.
     assert_eq!(out.matches("\"code\":\"E0823\"").count(), 1, "{out}");
-    assert!(!out.contains("{\"exec\":\"d::masked\"") && !out.contains("{\"obl\":\"d::masked\""));
 }
 
 #[path = "../../tests/port/smt_terms_ref.rs"]
@@ -686,15 +686,18 @@ mod smt_terms_ref;
 
 /// The stage0 side of the differential case `smt-terms`
 /// (`tests/port/smt_terms_ref.rs`, also an example of this crate): the
-/// proof encoder's term builders that need no encoder state, each over a
-/// grid of arguments written there, with no solver: one row per call, the
+/// proof encoder's term builders that need no encoder state and the
+/// translations of sub-proofs (`subproof`), each over a grid of arguments
+/// written there, with no solver: one row per call, the
 /// same rows every time. The port prints the same rows from its own
 /// builders (`tests/port/smt_terms.bmb`). The rows below
 /// are one of each kind of builder: numerals past a machine word, a text
 /// reader, a linear and a bit-vector form of a bit operation, a bit method
 /// with a constant amount, an `f64` literal, a lemma, a value of a slice
-/// of structs, a default value read from the tables, and an assignment
-/// into a recursive struct (a new constant with the facts of its fields).
+/// of structs, a default value read from the tables, an assignment into
+/// a recursive struct (a new constant with the facts of its fields), the
+/// definition of a bit helper, a model value as a counterexample shows it,
+/// and the bit-vector query of a term that converts an integer to `f64`.
 #[test]
 fn smt_terms_reference_shows_the_term_builders() {
     let out = smt_terms_ref::rows();
@@ -719,6 +722,9 @@ fn smt_terms_reference_shows_the_term_builders() {
         r#"{"fn":"default_val","args":"&[g::R]","out":{"a":"((as const (Array Int |g::R|)) |g::R::'arb|)","len":"0"}}"#,
         r#"{"fn":"leaf_fact","args":"&[u8] v.len","out":"(and (<= 0 v.len) (<= v.len 9223372036854775807))"}"#,
         r#"{"fn":"set_at","args":"11 DtField(0,&g::R)","out":{"val":{"s":"|R!new@0|"},"decls":["(declare-const |R!new@0| |g::R|)","(assert (= (|g::R::R.0| |R!new@0|) new))","(assert (= (|g::R::R.1.e| |R!new@0|) (|g::R::R.1.e| r)))","(assert (= (|g::R::R.1.len| |R!new@0|) (|g::R::R.1.len| r)))"]}}"#,
+        r#"{"fn":"helper_def","args":"bmb_rotl8","out":["(define-fun bmb_rotl8 ((x (_ BitVec 8)) (s (_ BitVec 8))) (_ BitVec 8) (bvor (bvshl x (bvand s (_ bv7 8))) (bvlshr x (bvsub (_ bv8 8) (bvand s (_ bv7 8))))))",8]}"#,
+        r#"{"fn":"render_value","args":"(- 3)","out":"-3"}"#,
+        r#"{"fn":"bit_vector","args":"d:i64 s:u64 o:bool x:f64 y:f64;(f64.lt (f64.from d) (fp #b0 #b01111111111 #x0000000000000))","out":{"logic":"QF_FPBV","decls":["(define-fun f64.lt ((a Float64) (b Float64)) Bool (fp.lt a b))","(declare-const d (_ BitVec 64))","(declare-const s (_ BitVec 64))","(declare-const o Bool)","(declare-const x Float64)","(declare-const y Float64)"],"hyps":[],"goal":"(f64.lt ((_ to_fp 11 53) RNE d) (fp #b0 #b01111111111 #x0000000000000))","guards":[]}}"#,
     ] {
         assert!(out.contains(&format!("{row}\n")), "{row}");
     }
@@ -728,8 +734,8 @@ fn smt_terms_reference_shows_the_term_builders() {
         .filter_map(|l| l.strip_prefix("{\"fn\":\""))
         .filter_map(|l| l.split('"').next())
         .collect();
-    assert_eq!(builders.len(), 73, "{builders:?}");
-    assert_eq!(out.lines().count(), 4457);
+    assert_eq!(builders.len(), 80, "{builders:?}");
+    assert_eq!(out.lines().count(), 6168);
 }
 
 /// `bmb dump runtime`: the code generator's constant IR

@@ -109,7 +109,7 @@ mod encode_spec {
             let mut g: String = types::cat5("(forall (", encode_terms::join(decls.as_slice(), " ").as_str(), ") (=> ", encode_terms::and(inner.as_slice()).as_str(), " ");
             g.push_str(goal.as_str());
             g.push_str("))");
-            self.obls.push(Obl { code: String::from("E0813"), span: span, msg: msg, assumptions: assumptions, goal: g, shown: None });
+            self.obls.push(Obl { code: String::from("E0813"), span: span, msg: msg, assumptions: assumptions, goal: g, shown: None, sub: None });
         }
 
         #[summary("Some(v) when ok, else None, of e's Option type (stage0 Enc::checked)")]
@@ -455,7 +455,7 @@ mod encode_spec {
                     None => {},
                     Some(g) => assumptions.push(g.clone()),
                 }
-                self.obls.push(Obl { code: String::from(code), span: span, msg: String::from(msg), assumptions: assumptions, goal: String::from(goal), shown: None });
+                self.obls.push(Obl { code: String::from(code), span: span, msg: String::from(msg), assumptions: assumptions, goal: String::from(goal), shown: None, sub: None });
             } else {
                 self.trivial.push(Trivial { code: String::from(code), span: span });
             }
@@ -1246,8 +1246,8 @@ mod encode_spec {
     #[summary("A decreases measure: its term, and whether it is the value of a recursive datatype (structural, ADR-0047 §3) rather than an integer")]
     struct Measure { term: String, data: bool }
 
-    #[summary("A proof obligation (stage0 Obl without the sub-proof, which `assert .. by` makes): its diagnostic code, position and message, what is assumed, the goal, and a value the counterexample shows besides the inputs (the one a type invariant obligation is about, E0823)")]
-    struct Obl { code: String, span: source::Span, msg: String, assumptions: Vec<String>, goal: String, shown: Option<Shown> }
+    #[summary("A proof obligation (stage0 Obl): its diagnostic code, position and message, what is assumed, the goal, a value the counterexample shows besides the inputs (the one a type invariant obligation is about, E0823), and for a sub-proof (`assert .. by`, E0818) its own query, or why its assertion has no translation")]
+    struct Obl { code: String, span: source::Span, msg: String, assumptions: Vec<String>, goal: String, shown: Option<Shown>, sub: Option<Result<encode_sub::Query, encode_sub::Refused>> }
 
     #[summary("The payload of a datatype value read as one variant: one value per position, and the range facts of its leaves")]
     struct Payload { vals: Vec<encode_terms::Val>, facts: Vec<String> }
@@ -1266,6 +1266,19 @@ mod encode_spec {
 
     #[summary("An obligation that holds by its own text: nothing is asked")]
     struct Trivial { code: String, span: source::Span }
+
+    #[summary("Each of facts asserted, one per line, once each in order (stage0 assertions over a set)")]
+    #[effects(alloc)]
+    fn assertions(facts: &[String]) -> String {
+        let set: Vec<String> = body::sorted_set(facts);
+        let mut out: String = String::new();
+        for i in 0..set.len()
+            invariant 0 <= i && i <= set.len(),
+        {
+            out.push_str(types::cat3("(assert ", set[i].as_str(), ")\n").as_str());
+        }
+        out
+    }
 
     #[summary("The definition of revealed spec fn path (stage0 Prog::axiom, ADR-0017 §4). A recursive one is a quantified axiom with its application as the pattern. One that is not recursive also has a macro form, (define-fun f (..) (ite guard body (f!ext ..))): the macro form, a marker, the quantified form; the marker says where the queries may take the macro (a leaf that binds an array everywhere, a leaf over scalars in an obligation's probe, a definition that names other spec fns in the probe of a satisfiability check: ADR-0064, ADR-0067, ADR-0072). One definition per SMT function: a struct result has one per leaf")]
     #[effects(alloc)]
@@ -1455,7 +1468,7 @@ mod encode_spec {
         String::from("false")
     }
 
-    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row; for an executable or proof function whose body is encoded an exec row (encode_exec::dump_body); each obligation of a termination or exec row follows as an obl row. encoded is false for a definition whose body this dump does not encode: #[external_body], which has no obligations, and what encode_exec::ported leaves out (a body that holds `assert .. by`). The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
+    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row; for an executable or proof function with a body an exec row (encode_exec::dump_body); each obligation of a termination or exec row follows as an obl row (push_obls). encoded is false for #[external_body] alone, which has no obligations. The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
     #[effects(alloc)]
     fn dump(ck: &body::Checked) -> String {
         let pg: Prog = prog_of(ck);
@@ -1489,7 +1502,7 @@ mod encode_spec {
     fn dump_def(out: &mut String, pg: &Prog, rows: &[encode_decls::Row], path: &str, def: &Def, sig: &types::FnSig, external: &[String]) -> () {
         let is_sp: bool = body::is_spec(def.d.kind);
         let is_pf: bool = body::is_proof(def.d.kind);
-        let is_ex: bool = !is_sp && !def.inst && !types::has(external, path) && encode_exec::ported(&def.d);
+        let is_ex: bool = !is_sp && !def.inst && !types::has(external, path);
         out.push_str("{\"def\":");
         std::json::push_string(out, path);
         out.push_str(",\"kind\":");
@@ -2012,12 +2025,41 @@ mod encode_spec {
         Prog { defs: defs, pr: pr, recursive: ck.b.recursive.clone(), selectors: selectors, struct_ctors: struct_ctors, struct_sels: struct_sels, keys: keys }
     }
 
-    #[summary("The obl rows of the obligations obls of definition path. The struct facts of an obligation are those of its query text: the assumptions asserted, then the goal negated. shown is the value its counterexample adds: its name, its leaves and its type, or null")]
+    #[summary("The obl rows of the obligations obls of definition path. The assumptions of a row are written as the number it shares with the row before it, from the start (none for the first row), and the rest. The struct facts of an obligation are those of its query text (the assumptions asserted, then the goal negated): the facts of each assertion, read once per assumption that the row before lacks. shown is the value its counterexample adds: its name, its leaves and its type, or null. sub is the query of a sub-proof, or null")]
     #[effects(alloc)]
     fn push_obls(out: &mut String, pg: &Prog, path: &str, obls: &[Obl]) -> () {
+        let mut own: Vec<Vec<String>> = Vec::new();
         for i in 0..obls.len()
             invariant 0 <= i && i <= obls.len(),
         {
+            let mut shared: usize = 0;
+            if i > 0 {
+                let before: usize = obls[i - 1].assumptions.len();
+                while shared < before && shared < obls[i].assumptions.len() && obls[i - 1].assumptions[shared].as_str() == obls[i].assumptions[shared].as_str()
+                    invariant shared <= before && shared <= obls[i].assumptions.len(),
+                    decreases before - shared,
+                {
+                    shared = shared + 1;
+                }
+            }
+            own.truncate(shared);
+            let mut rest: Vec<String> = Vec::new();
+            for a in shared..obls[i].assumptions.len()
+                invariant shared <= a,
+            {
+                rest.push(obls[i].assumptions[a].clone());
+                own.push(struct_fact_list(pg, types::cat3("(assert ", obls[i].assumptions[a].as_str(), ")").as_str()));
+            }
+            let mut facts: Vec<String> = struct_fact_list(pg, types::cat3("(assert (not ", obls[i].goal.as_str(), "))").as_str());
+            for a in 0..own.len()
+                invariant 0 <= a && a <= own.len(),
+            {
+                for k in 0..own[a].len()
+                    invariant 0 <= k && k <= own[a].len(),
+                {
+                    facts.push(own[a][k].clone());
+                }
+            }
             out.push_str("{\"obl\":");
             std::json::push_string(out, path);
             out.push_str(",\"code\":");
@@ -2030,26 +2072,23 @@ mod encode_spec {
             std::num::push_u64(out, obls[i].span.hi as u64);
             out.push_str(",\"msg\":");
             std::json::push_string(out, obls[i].msg.as_str());
+            out.push_str(",\"shared\":");
+            std::num::push_u64(out, shared as u64);
             out.push_str(",\"assumptions\":");
-            encode_decls::push_list(out, obls[i].assumptions.as_slice());
+            encode_decls::push_list(out, rest.as_slice());
             out.push_str(",\"goal\":");
             std::json::push_string(out, obls[i].goal.as_str());
-            let mut text: String = String::new();
-            for a in 0..obls[i].assumptions.len()
-                invariant 0 <= a && a <= obls[i].assumptions.len(),
-            {
-                if a > 0 {
-                    text.push_str("\n");
-                }
-                text.push_str(types::cat3("(assert ", obls[i].assumptions[a].as_str(), ")").as_str());
-            }
-            text.push_str(types::cat3("\n(assert (not ", obls[i].goal.as_str(), "))").as_str());
             out.push_str(",\"facts\":");
-            std::json::push_string(out, struct_facts(pg, text.as_str()).as_str());
+            std::json::push_string(out, assertions(facts.as_slice()).as_str());
             out.push_str(",\"shown\":");
             match &obls[i].shown {
                 None => out.push_str("null"),
                 Some(sh) => push_shown(out, sh),
+            }
+            out.push_str(",\"sub\":");
+            match &obls[i].sub {
+                None => out.push_str("null"),
+                Some(sq) => push_sub(out, sq),
             }
             out.push_str("}\n");
         }
@@ -2116,6 +2155,15 @@ mod encode_spec {
         out.push_str(",");
         std::json::push_string(out, types::text(&sh.ty).as_str());
         out.push_str("]");
+    }
+
+    #[summary("The sub-proof of an obligation as an obl row of `bmb dump smt` holds it: the query (its logic, declarations, hypotheses, goal, free variables with their types, guards), or why the assertion has no translation and the spec fns it does not reveal")]
+    #[effects(alloc)]
+    fn push_sub(out: &mut String, sq: &Result<encode_sub::Query, encode_sub::Refused>) -> () {
+        match sq {
+            Ok(q) => { out.push_str("{\"logic\":"); std::json::push_string(out, q.logic.as_str()); out.push_str(",\"decls\":"); encode_decls::push_list(out, q.decls.as_slice()); out.push_str(",\"hyps\":"); encode_decls::push_list(out, q.hyps.as_slice()); out.push_str(",\"goal\":"); std::json::push_string(out, q.goal.as_str()); out.push_str(",\"vars\":["); for i in 0..q.vars.len() invariant 0 <= i && i <= q.vars.len(), { if i > 0 { out.push_str(","); } out.push_str("["); std::json::push_string(out, q.vars[i].sym.as_str()); out.push_str(","); std::json::push_string(out, encode_sub::sort_name(q.vars[i].sort).as_str()); out.push_str("]"); } out.push_str("],\"guards\":"); encode_decls::push_list(out, q.guards.as_slice()); out.push_str("}"); },
+            Err(r) => { out.push_str("{\"error\":"); std::json::push_string(out, r.why.as_str()); out.push_str(",\"hidden\":"); encode_decls::push_list(out, r.hidden.as_slice()); out.push_str("}"); },
+        }
     }
 
     #[summary("The definitions of a trait's spec method u that a context reveals (the trait arm of stage0 Prog::revealed): every impl's definition of it goes to named; the default body goes to out for each instance whose Self has an impl that leaves it out (never a bare type parameter: no impl is known for it)")]
@@ -2238,13 +2286,13 @@ mod encode_spec {
         out
     }
 
-    #[summary("The facts of the recursive struct fields text reads outside a quantifier (stage0 Prog::struct_facts): each selector application's range or length bounds, which every program value meets, once each in the order of their text, as assertions. Ground, so the queries stay free of quantifiers")]
+    #[summary("The facts struct_facts asserts, as terms in the order of their text (the walk of stage0 Prog::struct_fact_set, which holds them as a set)")]
     #[effects(alloc)]
-    fn struct_facts(pg: &Prog, text: &str) -> String {
-        if pg.struct_sels.len() == 0 {
-            return String::new();
-        }
+    fn struct_fact_list(pg: &Prog, text: &str) -> Vec<String> {
         let mut facts: Vec<String> = Vec::new();
+        if pg.struct_sels.len() == 0 {
+            return facts;
+        }
         let cmds: Vec<String> = split_commands(text);
         for i in 0..cmds.len()
             invariant 0 <= i && i <= cmds.len(),
@@ -2254,14 +2302,13 @@ mod encode_spec {
                 Some(e) => facts_walk(&e, &pg.struct_sels, &mut facts, 100000),
             }
         }
-        let set: Vec<String> = body::sorted_set(facts.as_slice());
-        let mut out: String = String::new();
-        for i in 0..set.len()
-            invariant 0 <= i && i <= set.len(),
-        {
-            out.push_str(types::cat3("(assert ", set[i].as_str(), ")\n").as_str());
-        }
-        out
+        facts
+    }
+
+    #[summary("The facts of the recursive struct fields text reads outside a quantifier (stage0 Prog::struct_facts): each selector application's range or length bounds, which every program value meets, once each in order, as assertions. Ground, so the queries stay free of quantifiers")]
+    #[effects(alloc)]
+    fn struct_facts(pg: &Prog, text: &str) -> String {
+        assertions(struct_fact_list(pg, text).as_slice())
     }
 
     #[summary("The bytes of text value v from lo to hi, `&s[lo..hi]` (stage0 Enc::sub_text): the shifted array and the difference. The unit value for a value that is no text, which the checker admits none of")]

@@ -41,4 +41,12 @@ mod wf {
     fn index(i: isize) -> usize {
         i as usize
     }
+
+    // A literal above the largest `i128` is no negative number: nothing of
+    // 64 bits is above it.
+    #[effects(pure)]
+    fn above(x: u64) -> u64 {
+        assert(x > 340282366920938463463374607431768211455);
+        x
+    }
 }

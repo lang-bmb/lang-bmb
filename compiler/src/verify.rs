@@ -747,15 +747,18 @@ pub fn dump_decls(p: &Program, t: &Tables) -> String {
 /// definition as the queries take it, its parts for ground instances, the
 /// struct facts of its text); a recursive one a `termination` row. A proof
 /// fn has a `proof_params` row (the declarations and facts of its
-/// parameters on entry). An executable or proof function whose body is
-/// encoded has an `exec` row: the declarations, the obligations that hold
+/// parameters on entry). An executable or proof function with a body
+/// has an `exec` row: the declarations, the obligations that hold
 /// by their own text, whether the body's end is unreachable, the path
 /// condition there, the entry values, the texts known valid, the validity
 /// functions defined and the reach points (`vacuous_ends`). Each obligation
-/// of a `termination` or `exec` row follows as an `obl` row (`shown` is the
-/// value its counterexample adds). `encoded` is false for a definition whose
-/// body this dump does not encode: `#[external_body]`, which has no
-/// obligations, and what `port_encodes` leaves out.
+/// of a `termination` or `exec` row follows as an `obl` row: its
+/// `assumptions` are those after the first `shared`, which are the row
+/// before's (the path condition grows by its end, so the lists repeat);
+/// `shown` is the value its counterexample adds; `sub` is the query of a
+/// sub-proof, or why its assertion has no translation and the spec fns it
+/// does not reveal. `encoded` is false for `#[external_body]` alone, which
+/// has no obligations.
 pub fn dump_smt(p: &Program, t: &Tables) -> String {
     let q = crate::diag::json_str;
     let raw = |xs: Vec<String>| format!("[{}]", xs.join(","));
@@ -791,7 +794,7 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     for (path, d) in &prog.defs {
         let Some(sig) = t.fns.get(path) else { continue };
         let (name, unit, inst, spec) = (q(path), q(&d.mod_path), d.inst, d.f.kind == FnKind::Spec);
-        let exec = !spec && !inst && !t.external.contains(path) && port_encodes(d.f);
+        let exec = !spec && !inst && !t.external.contains(path);
         let kind = match d.f.kind {
             FnKind::Spec => "spec fn",
             FnKind::Proof => "proof fn",
@@ -873,15 +876,50 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
             );
         }
         out += "}\n";
+        // An obligation's struct facts are those of its query text (the
+        // assumptions asserted, then the goal negated): the union of each
+        // assertion's, read once per assumption that the row before lacks.
+        let mut prev: &[String] = &[];
+        let mut own: Vec<BTreeSet<String>> = Vec::new();
         for o in &enc.obls {
-            let asserts = o.assumptions.iter().map(|a| format!("(assert {a})\n"));
-            let text = format!("{}(assert (not {}))", asserts.collect::<String>(), o.goal);
             let (code, s, msg, goal) = (o.code, o.span, q(&o.msg), q(&o.goal));
-            let (given, facts) = (list(&o.assumptions), q(&prog.struct_facts(&text)));
+            let shared = prev.iter().zip(&o.assumptions).take_while(|(a, b)| a == b);
+            let shared = shared.count();
+            prev = &o.assumptions;
+            let rest = &o.assumptions[shared..];
+            own.truncate(shared);
+            own.extend(
+                rest.iter()
+                    .map(|a| prog.struct_fact_set(&format!("(assert {a})"))),
+            );
+            let mut facts = prog.struct_fact_set(&format!("(assert (not {}))", o.goal));
+            facts.extend(own.iter().flatten().cloned());
+            let (given, facts) = (list(rest), q(&assertions(&facts)));
             let shown = o.shown.as_ref();
             let shown = shown.map_or("null".to_string(), |(n, v, ty)| value(n, v, ty));
+            let sub = match &o.sub {
+                None => "null".to_string(),
+                Some(Err((why, hidden))) => {
+                    format!("{{\"error\":{},\"hidden\":{}}}", q(why), list(hidden))
+                }
+                Some(Ok(b)) => {
+                    let vars = b
+                        .vars
+                        .iter()
+                        .map(|(n, s)| format!("[{},{}]", q(n), q(s.name())));
+                    format!(
+                        "{{\"logic\":{},\"decls\":{},\"hyps\":{},\"goal\":{},\"vars\":{},\"guards\":{}}}",
+                        q(b.logic),
+                        list(&b.decls),
+                        list(&b.hyps),
+                        q(&b.goal),
+                        raw(vars.collect()),
+                        list(&b.guards)
+                    )
+                }
+            };
             out += &format!(
-                "{{\"obl\":{name},\"code\":\"{code}\",\"file\":{},\"lo\":{},\"hi\":{},\"msg\":{msg},\"assumptions\":{given},\"goal\":{goal},\"facts\":{facts},\"shown\":{shown}}}\n",
+                "{{\"obl\":{name},\"code\":\"{code}\",\"file\":{},\"lo\":{},\"hi\":{},\"msg\":{msg},\"shared\":{shared},\"assumptions\":{given},\"goal\":{goal},\"facts\":{facts},\"shown\":{shown},\"sub\":{sub}}}\n",
                 s.file, s.lo, s.hi
             );
         }
@@ -890,32 +928,9 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     out
 }
 
-/// The frontier of the port (`selfhost/encode_exec.bmb`): whether it encodes
-/// the body of function `f`. Not yet: a body that holds `assert .. by`,
-/// whose obligation and assumed fact are the translation `subproof` makes
-/// (the port's next piece). Both sides of `bmb dump smt` compute it from the
-/// syntax, so a body outside it has no rows on either. It goes with that
-/// piece.
-fn port_encodes(f: &FnDef) -> bool {
-    fn plain(b: &Block) -> bool {
-        b.stmts.iter().all(|s| match s {
-            Stmt::Assert { by, .. } => by.is_none(),
-            Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Proof { body, .. } => {
-                plain(body)
-            }
-            _ => true,
-        })
-    }
-    let mut ok = plain(&f.body);
-    each_block_expr(&f.body, &mut |e| {
-        ok &= match &e.kind {
-            ExprKind::Block(b) | ExprKind::If { then: b, .. } | ExprKind::Loop { body: b, .. } => {
-                plain(b)
-            }
-            _ => true,
-        }
-    });
-    ok
+/// Each of `facts` asserted, one per line.
+fn assertions(facts: &BTreeSet<String>) -> String {
+    facts.iter().map(|f| format!("(assert {f})\n")).collect()
 }
 
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).
@@ -2629,6 +2644,16 @@ pub fn num(v: i128) -> String {
     }
 }
 
+/// The numeral of `-v` for a literal `v`: a literal has up to 128 bits, so
+/// its value may lie above `i128`.
+fn neg_lit(v: u128) -> String {
+    if v == 0 {
+        v.to_string()
+    } else {
+        format!("(- {v})")
+    }
+}
+
 fn sort_of(t: &TypeKind) -> String {
     match t {
         TypeKind::Bool => "Bool".into(),
@@ -3924,7 +3949,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             | ExprKind::Break { .. }
             | ExprKind::Continue { .. }
             | ExprKind::Range { .. } => unreachable!("rejected by the checker (E0503)"),
-            ExprKind::Int(v, _) => Val::S(num(*v as i128)),
+            ExprKind::Int(v, _) => Val::S(v.to_string()),
             ExprKind::Float(b) => Val::S(f64_lit(*b)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
@@ -3953,7 +3978,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v, _) = x.kind {
-                    return Val::S(num(-(v as i128)));
+                    return Val::S(neg_lit(v));
                 }
                 Val::S(format!("(- {})", self.spec(x, env, old).s()))
             }
@@ -4556,7 +4581,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                 }
                 Val::Unit
             }
-            ExprKind::Int(v, _) => Val::S(num(*v as i128)),
+            ExprKind::Int(v, _) => Val::S(v.to_string()),
             ExprKind::Float(b) => Val::S(f64_lit(*b)),
             ExprKind::ByteLit(v) => Val::S(v.to_string()),
             // A byte string: its length and every element are known.
@@ -4583,7 +4608,7 @@ impl<'p, 'q> Enc<'p, 'q> {
             }
             ExprKind::Unary(UnOp::Neg, x) => {
                 if let ExprKind::Int(v, _) = x.kind {
-                    return Val::S(num(-(v as i128)));
+                    return Val::S(neg_lit(v));
                 }
                 let t = format!("(- {})", self.eval(x).s());
                 let ty = self.ty(e);
@@ -7472,6 +7497,11 @@ impl<'p> Prog<'p> {
     /// A term of the path condition denotes a value that exists on the path,
     /// whose fields the obligations before it checked.
     fn struct_facts(&self, text: &str) -> String {
+        assertions(&self.struct_fact_set(text))
+    }
+
+    /// The facts `struct_facts` asserts, as terms.
+    fn struct_fact_set(&self, text: &str) -> BTreeSet<String> {
         fn walk(e: &smt::Sexp, sels: &BTreeMap<String, Leaf>, out: &mut BTreeSet<String>) {
             if let smt::Sexp::List(xs) = e {
                 if let [smt::Sexp::Atom(h), _] = xs.as_slice()
@@ -7486,16 +7516,16 @@ impl<'p> Prog<'p> {
                 }
             }
         }
-        if self.struct_sels.is_empty() {
-            return String::new();
-        }
         let mut facts = BTreeSet::new();
+        if self.struct_sels.is_empty() {
+            return facts;
+        }
         for cmd in smt::split_commands(text) {
             if let Some(e) = smt::parse(&cmd) {
                 walk(&e, &self.struct_sels, &mut facts);
             }
         }
-        facts.iter().map(|f| format!("(assert {f})\n")).collect()
+        facts
     }
 
     /// Declarations of every spec fn, as (path, SMT symbol, declaration).

@@ -282,6 +282,20 @@ mod bvp {
         assert(*x == *old(x) ^ 1 ==> *old(x) == *x ^ 1) by (bit_vector);
     }
 
+    spec fn fits(a: i8) -> bool { a < 100 }
+
+    // A variable passed to a parameter of a narrower type: the sub-proof
+    // assumes the argument in the parameter's type, and names the variable
+    // itself there (a plain variable gets no definition of its own).
+    #[effects(pure)]
+    #[uses(fits)]
+    fn narrow(x: i32) -> (r: i32)
+        ensures r == x,
+    {
+        assert(fits(x) ==> x < 100) by (bit_vector);
+        x
+    }
+
     #[effects(pure)]
     fn half_len(s: &[u8]) -> (r: usize)
         ensures r == s.len() / 2,

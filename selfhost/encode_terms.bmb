@@ -809,6 +809,24 @@ mod encode_terms {
         }
     }
 
+    #[summary("The value of field a of an f64 model value, a bit-vector literal `#b..` or `#x..` of exactly w bits (the bits of stage0 smt::fp_value)")]
+    #[effects(pure)]
+    fn fp_field(a: &Sexp, w: usize) -> Option<u64> {
+        match a {
+            Sexp::Atom(t) => { let hex: bool = starts_at(t.as_str(), 0, "#x"); if !hex && !starts_at(t.as_str(), 0, "#b") { return None; } let n: usize = t.len().saturating_sub(2); if hex && n.saturating_mul(4) != w || !hex && n != w || n > 60 { return None; } let mut from: usize = 2; if from < t.len() && t.as_bytes()[from] == 43 { from = 3; } if from >= t.len() { return None; } let mut v: u64 = 0; for k in from..t.len() invariant from <= k && k <= t.len(), { let c: u8 = t.as_bytes()[k]; let d: u64 = if c >= 48 && c <= 57 { (c - 48) as u64 } else if c >= 97 && c <= 102 { (c - 87) as u64 } else if c >= 65 && c <= 70 { (c - 55) as u64 } else { 16 }; if hex && d >= 16 || !hex && d >= 2 { return None; } v = if hex { v << 4 | d } else { v << 1 | d }; } Some(v) },
+            Sexp::List(_) => None,
+        }
+    }
+
+    #[summary("The bits of the f64 a model value of sort Float64 denotes (stage0 smt::fp_value, ADR-0061 §5): `(fp #b0 #b.. #x..)`, `(_ +zero 11 53)`, `(_ -oo 11 53)`, `(_ NaN 11 53)` (the bits of Rust's f64::NAN for NaN). None for another term")]
+    #[effects(alloc)]
+    fn fp_value(v: &Sexp) -> Option<u64> {
+        match v {
+            Sexp::Atom(_) => None,
+            Sexp::List(xs) => { if xs.len() != 4 { return None; } let head: String = match &xs[0] { Sexp::Atom(h) => h.clone(), Sexp::List(_) => { return None; }, }; if head.as_str() == "fp" { let s: u64 = fp_field(&xs[1], 1)?; let e: u64 = fp_field(&xs[2], 11)?; let m: u64 = fp_field(&xs[3], 52)?; return Some(s % 2 << 63 | e % 2048 << 52 | m % 4503599627370496); } if head.as_str() != "_" { return None; } let k: String = match &xs[1] { Sexp::Atom(a) => a.clone(), Sexp::List(_) => { return None; }, }; match &xs[2] { Sexp::Atom(eb) => { if eb.as_str() != "11" { return None; } }, Sexp::List(_) => { return None; }, } match &xs[3] { Sexp::Atom(sb) => { if sb.as_str() != "53" { return None; } }, Sexp::List(_) => { return None; }, } if k.as_str() == "+zero" { Some(0) } else if k.as_str() == "-zero" { Some(9223372036854775808) } else if k.as_str() == "+oo" { Some(9218868437227405312) } else if k.as_str() == "-oo" { Some(18442240474082181120) } else if k.as_str() == "NaN" { Some(9221120237041090560) } else { None } },
+        }
+    }
+
     #[summary("A fresh constant of sort named after base (stage0 Enc::fresh): base@n with the next number of base, declared")]
     #[effects(alloc)]
     fn fresh(fr: &mut Fresh, base: &str, sort: &str) -> String {
@@ -1612,6 +1630,24 @@ mod encode_terms {
         let mut s: String = types::cat5("(and (<= ", num(&from_num(consts::min_of(i))).as_str(), " ", x, ") (<= ");
         s.push_str(types::cat4(x, " ", num(&from_num(consts::max_of(i))).as_str(), "))").as_str());
         s
+    }
+
+    #[summary("A model value as a counterexample shows it (stage0 smt::render_value): `5` as `5`, `(- 5)` as `-5`, a value of type parameter T (an element of its sort, ADR-0046 §4) as `T#1`, an f64 in Rust's shortest form (`0.1`, `-0.0`, `NaN`, `inf`); other terms are printed back")]
+    #[effects(alloc)]
+    fn render_value(v: &Sexp, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match fp_value(v) {
+            None => {},
+            Some(bits) => { if bits / 4503599627370496 % 2048 == 2047 { if bits % 4503599627370496 != 0 { return String::from("NaN"); } if bits >= 9223372036854775808 { return String::from("-inf"); } return String::from("inf"); } return lexer::float_text(bits); },
+        }
+        match v {
+            Sexp::Atom(a) => { if starts_at(a.as_str(), 0, "|'") && a.len() >= 3 && a.as_bytes()[a.len() - 1] == 124 { let inner: String = lexer::cut(a.as_str(), 2, a.len() - 1); match decls::first_of(inner.as_str(), "!val!", 0) { None => {}, Some(at) => { return types::cat3(lexer::cut(inner.as_str(), 0, at).as_str(), "#", lexer::cut(inner.as_str(), at + 5, inner.len()).as_str()); }, } } a.clone() },
+            Sexp::List(xs) => { if xs.len() == 2 { match &xs[0] { Sexp::Atom(m) => { if m.as_str() == "-" { return types::cat2("-", render_value(&xs[1], f - 1).as_str()); } }, Sexp::List(_) => {}, } } let mut s: String = String::from("("); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i > 0 { s.push_str(" "); } s.push_str(render_value(&xs[i], f - 1).as_str()); } s.push_str(")"); s },
+        }
     }
 
     #[summary("s with each occurrence of pat replaced by with, left to right without overlap (Rust's str::replace). pat is not empty")]

@@ -1,0 +1,1769 @@
+#[summary("Proof encoding, sixth piece (port of stage0 compiler/src/subproof.rs, semantics in ADR-0048 §4 and ADR-0061 §5): the query of a sub-proof `assert(e) by (bit_vector)`. The query is a translation of the term the encoder makes of e, a mixed integer and bit-vector term over one symbol per free variable: every integer subterm becomes a two's complement bit-vector wide enough to hold all its values (an interval is kept for each), so `+`, `*`, `div`, `mod`, the truncating bmb_tdiv and bmb_trem, comparisons, bv2nat and int2bv are exact. A spec fn application is unfolded through its body (unfold_spec, which translates the body as the encoder does everywhere); an integer argument not known to be in its parameter's type becomes a hypothesis of the sub-proof and a guard of the assumed fact. stage0 holds intervals as Rust's i128; the port holds each bound as sign and magnitude of 128 bits (encode_terms::Int over wide::U128) and the functions int_* are the checked operations of i128 on it: None exactly where the exact result leaves the range of i128. stage0's unfold closure is the flag unfolds of Tr with the encoder state passed along; its widths are u32 and the port's u64, which saturate where stage0's would overflow (no term of the encoder comes near). On a term the encoder never builds, where stage0 would halt (an operator without operands, an extract whose bounds are reversed, the negation of the least i128), the port refuses the translation. The f of recursive functions is the remaining depth (ADR-0140)")]
+mod encode_sub {
+    #[summary("A bit-vector term and its width")]
+    struct Bits { t: String, w: u64 }
+
+    #[summary("A free constant of a satisfiability query (stage0 subproof::Const): an integer constant the query asserts in this type's range, a bool, or a bit-vector constant of this width")]
+    enum Const { Int(ast::IntTy), Bool, Bv(u64) }
+
+    #[summary("The definition of a bit helper and its width (stage0 helper_def)")]
+    struct Helper { def: String, w: u64 }
+
+    #[summary("An integer term's bit-vector, width and interval (stage0 IntBits)")]
+    struct IntBits { t: String, w: u64, iv: Option<Iv> }
+
+    #[summary("Bounds of an integer term's values (stage0 Interval, when known): lo <= hi, both within i128")]
+    struct Iv { lo: encode_terms::Int, hi: encode_terms::Int }
+
+    #[summary("A constant of a satisfiability query: its symbol and what it is")]
+    struct Named { sym: String, c: Const }
+
+    #[summary("A sub-proof query (stage0 subproof::Query): its logic, the declarations of the free variables and definitions of shared terms, the hypotheses (arguments of unfolded spec fns in their parameters' types, divisors that are not zero), the goal, the free variables, and the hypotheses as integer terms over the free variables' symbols (guards: the enclosing query assumes the assertion under them)")]
+    struct Query { logic: String, decls: Vec<String>, hyps: Vec<String>, goal: String, vars: Vec<Var>, guards: Vec<String> }
+
+    #[summary("Why an assertion has no bit-vector translation, and the spec fns it calls that the definition does not reveal")]
+    struct Refused { why: String, hidden: Vec<String> }
+
+    #[summary("A satisfiability query in QF_BV (stage0 subproof::SatQuery): the script (logic, declarations, assertions), and whether its answer is the original query's both ways (with a hypothesis only its sat is)")]
+    struct SatQuery { script: String, exact: bool }
+
+    #[summary("The sort of a free variable of a sub-proof (stage0 subproof::Sort)")]
+    enum Sort { Int(ast::IntTy), Bool, F64 }
+
+    #[summary("A translated term (stage0 subproof::T): a bool; an integer as a two's complement bit-vector of w bits holding exactly the value, which lies in the interval when that is known; a bit-vector of w bits; an f64 as a (_ FloatingPoint 11 53) term")]
+    enum T { Bool(String), Int(String, u64, Option<Iv>), Bv(String, u64), Fp(String) }
+
+    #[summary("The state of one translation (stage0 subproof::Tr): the translation of each symbol, each placeholder's argument as an integer term (for guards), the declarations, hypotheses and guards so far, the unfolded applications by callee and arguments, the number of placeholders made, the unfolding depth. unfolds says spec fn applications are unfolded (a sub-proof), with the spec fns the definition reveals and those found hidden; without it every application is refused (stage0's closure that unfolds nothing)")]
+    struct Tr { syms: table::Table<T>, args: table::Table<encode_terms::Sexp>, decls: Vec<String>, hyps: Vec<String>, guards: Vec<String>, memo: table::Table<T>, next: u64, depth: u64, unfolds: bool, revealed: Vec<String>, hidden: Vec<String> }
+
+    #[summary("A spec fn's body over placeholder symbols for its parameters (the encoder's translation of the body), and the parameters' sorts (stage0 subproof::Unfolded)")]
+    struct Unfolded { body: encode_terms::Sexp, params: Vec<Sort> }
+
+    #[summary("A free variable of a sub-proof: its symbol and sort")]
+    struct Var { sym: String, sort: Sort }
+
+    #[summary("An application of h to args (stage0 Tr::app): an f64 operation, an f64 literal, integer arithmetic, division, comparison, equality, ite, the connectives, bv2nat, the bit-vector operations and comparisons, a bit helper (whose definition the query then holds), and else a spec fn application (call)")]
+    #[effects(alloc)]
+    fn app(tr: &mut Tr, h: &str, l: &[encode_terms::Sexp], e: &encode_terms::Sexp, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        if encode_terms::starts_at(h, 0, "f64.") {
+            return float(tr, h, l, enc, pg, f - 1);
+        }
+        if h == "fp" {
+            return Ok(T::Fp(encode_terms::print(e, 100000)));
+        }
+        if h == "+" || h == "-" || h == "*" {
+            return arith(tr, h, l, enc, pg, f - 1);
+        }
+        if h == "div" || h == "mod" {
+            return divmod(tr, h, l, enc, pg, f - 1);
+        }
+        if (h == "bmb_tdiv" || h == "bmb_trem") && l.len() - 1 == 2 {
+            return general_div(tr, h, l, enc, pg, f - 1);
+        }
+        if h == "<" || h == "<=" || h == ">" || h == ">=" {
+            return compare(tr, h, l, enc, pg, f - 1);
+        }
+        if h == "=" {
+            return equal(tr, l, enc, pg, f - 1);
+        }
+        if h == "ite" {
+            return ite(tr, l, enc, pg, f - 1);
+        }
+        if h == "and" || h == "or" || h == "xor" || h == "=>" || h == "not" {
+            let bs: Vec<String> = bools(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            return Ok(T::Bool(types::cat5("(", h, " ", encode_terms::join(bs.as_slice(), " ").as_str(), ")")));
+        }
+        if h == "bv2nat" {
+            let one: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            if one.len() == 0 {
+                return Err(untranslated(e));
+            }
+            let iv: Option<Iv> = if one[0].w <= 126 {
+                match wide::sub(wide::pow2(one[0].w), wide::U128 { hi: 0, lo: 1 }) {
+                    None => None,
+                    Some(top) => Some(Iv { lo: int_zero(), hi: encode_terms::Int { neg: false, mag: top } }),
+                }
+            } else {
+                None
+            };
+            return int_term(types::cat3("((_ zero_extend 1) ", one[0].t.as_str(), ")"), one[0].w.saturating_add(1), iv);
+        }
+        if h == "bvnot" || h == "bvneg" {
+            let un: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            if un.len() == 0 {
+                return Err(untranslated(e));
+            }
+            return Ok(T::Bv(types::cat5("(", h, " ", un[0].t.as_str(), ")"), un[0].w));
+        }
+        if bv_binary(h) {
+            let xs: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            if xs.len() == 0 {
+                return Err(String::from("no operands"));
+            }
+            return Ok(T::Bv(types::cat5("(", h, " ", bits_text(xs.as_slice()).as_str(), ")"), xs[0].w));
+        }
+        if h == "concat" {
+            let cs: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            let mut total: u64 = 0;
+            for i in 0..cs.len()
+                invariant 0 <= i && i <= cs.len(),
+            {
+                total = total.saturating_add(cs[i].w);
+            }
+            return Ok(T::Bv(types::cat3("(concat ", bits_text(cs.as_slice()).as_str(), ")"), total));
+        }
+        if bv_compare(h) {
+            let ps: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            return Ok(T::Bool(types::cat5("(", h, " ", bits_text(ps.as_slice()).as_str(), ")")));
+        }
+        match helper_def(h) {
+            None => {},
+            Some(hd) => { let hs: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?; if !types::has(tr.decls.as_slice(), hd.def.as_str()) { tr.decls.push(hd.def.clone()); } return Ok(T::Bv(types::cat5("(", h, " ", bits_text(hs.as_slice()).as_str(), ")"), hd.w)); },
+        }
+        call(tr, h, l, e, enc, pg, f - 1)
+    }
+
+    #[summary("`(op a b ..)` on integers (stage0 Tr::arith), computed at a width that holds it exactly: modulo 2^n the result is exact when it and the operands fit n bits, so the width of the result's interval, if known, is enough")]
+    #[effects(alloc)]
+    fn arith(tr: &mut Tr, op: &str, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        let xs: Vec<IntBits> = ints(tr, l, 1, l.len(), enc, pg, f - 1)?;
+        if xs.len() == 0 {
+            return Err(String::from("an operation without operands"));
+        }
+        let mut t: String = xs[0].t.clone();
+        let mut w: u64 = xs[0].w;
+        let mut iv: Option<Iv> = xs[0].iv;
+        if op == "-" && l.len() - 1 == 1 {
+            let niv: Option<Iv> = match iv {
+                None => None,
+                Some(v) => iv_of(int_neg(v.hi), int_neg(v.lo)),
+            };
+            let nw: u64 = w.saturating_add(1);
+            return int_term(types::cat3("(bvneg ", resize(t.as_str(), w, nw).as_str(), ")"), nw, niv);
+        }
+        for i in 1..xs.len()
+            invariant 1 <= i,
+        {
+            let wu: u64 = xs[i].w;
+            let wide_w: u64 = if w > wu {
+                w
+            } else {
+                wu
+            };
+            let mut ww: u64 = wide_w.saturating_add(1);
+            let mut fun: String = String::from("bvadd");
+            let mut niv: Option<Iv> = None;
+            if op == "+" {
+                niv = match iv {
+                    None => None,
+                    Some(x) => match xs[i].iv { None => None, Some(y) => iv_of(int_add(x.lo, y.lo), int_add(x.hi, y.hi)), },
+                };
+            } else if op == "-" {
+                fun = String::from("bvsub");
+                niv = match iv {
+                    None => None,
+                    Some(x) => match xs[i].iv { None => None, Some(y) => iv_of(int_sub(x.lo, y.hi), int_sub(x.hi, y.lo)), },
+                };
+            } else {
+                ww = w.saturating_add(wu);
+                fun = String::from("bvmul");
+                niv = match iv {
+                    None => None,
+                    Some(x) => match xs[i].iv { None => None, Some(y) => iv_mul(x, y), },
+                };
+            }
+            match niv {
+                None => {},
+                Some(n) => { let need: u64 = bits(n.lo, n.hi); ww = if need > wide_w { need } else { wide_w }; },
+            }
+            if ww > max_width() {
+                return Err(too_wide());
+            }
+            let r: String = types::cat7("(", fun.as_str(), " ", resize(t.as_str(), w, ww).as_str(), " ", resize(xs[i].t.as_str(), wu, ww).as_str(), ")");
+            let nb: IntBits = int_bits(r, ww, niv)?;
+            t = nb.t.clone();
+            w = nb.w;
+            iv = nb.iv;
+        }
+        Ok(T::Int(t, w, iv))
+    }
+
+    #[summary("The text of atom e, None for a list (stage0 atom)")]
+    #[effects(alloc)]
+    fn atom(e: &encode_terms::Sexp) -> Option<String> {
+        match e {
+            encode_terms::Sexp::Atom(a) => Some(a.clone()),
+            encode_terms::Sexp::List(_) => None,
+        }
+    }
+
+    #[summary("Bit k of the argument x of a helper, as a bit-vector of one bit")]
+    #[effects(alloc)]
+    fn bit_at(k: u64) -> String {
+        types::cat5("((_ extract ", encode_terms::dec(k).as_str(), " ", encode_terms::dec(k).as_str(), ") x)")
+    }
+
+    #[summary("Whether bit k of the argument x of a helper is set")]
+    #[effects(alloc)]
+    fn bit_set(k: u64) -> String {
+        types::cat3("(= ", bit_at(k).as_str(), " #b1)")
+    }
+
+    #[summary("Translates the boolean term over the free variables vars into a bit-vector query (stage0 subproof::bit_vector). The f64 operations, defined (ADR-0061 §5), come before the definitions that apply them; the logic has floating point when a variable, an operation or a literal is one. revealed are the spec fns the definition reveals; the result's refusal names those an application needed and did not find among them")]
+    #[effects(alloc)]
+    fn bit_vector(term: &encode_terms::Sexp, vars: &[Var], revealed: &[String], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog) -> Result<Query, Refused> {
+        let mut tr: Tr = new_tr(true, revealed);
+        for i in 0..vars.len()
+            invariant 0 <= i && i <= vars.len(),
+        {
+            tr.decls.push(types::cat5("(declare-const ", vars[i].sym.as_str(), " ", var_decl(vars[i].sort).as_str(), ")"));
+            tr.syms.insert(vars[i].sym.as_str(), var_term(vars[i].sym.as_str(), vars[i].sort));
+        }
+        let goal: String = match term_of(&mut tr, term, enc, pg, 100000) {
+            Ok(g) => match g { T::Bool(b) => b, T::Int(_, _, _) => { return Err(Refused { why: String::from("the assertion is not a `bool`"), hidden: tr.hidden.clone() }); }, T::Bv(_, _) => { return Err(Refused { why: String::from("the assertion is not a `bool`"), hidden: tr.hidden.clone() }); }, T::Fp(_) => { return Err(Refused { why: String::from("the assertion is not a `bool`"), hidden: tr.hidden.clone() }); }, },
+            Err(why) => { return Err(Refused { why: why, hidden: tr.hidden.clone() }); },
+        };
+        let all: String = types::cat5(encode_terms::join(tr.decls.as_slice(), " ").as_str(), " ", encode_terms::join(tr.hyps.as_slice(), " ").as_str(), " ", goal.as_str());
+        let defs: String = encode_terms::f64_decls(all.as_str(), true);
+        let mut decls: Vec<String> = Vec::new();
+        if defs.len() > 0 {
+            decls = lines(defs.as_str());
+        }
+        for i in 0..tr.decls.len()
+            invariant 0 <= i && i <= tr.decls.len(),
+        {
+            decls.push(tr.decls[i].clone());
+        }
+        let mut fp: bool = defs.len() > 0 || encode_decls::has_text(all.as_str(), "(fp ") || encode_decls::has_text(all.as_str(), "(_ NaN") || encode_decls::has_text(all.as_str(), "to_fp");
+        let mut out: Vec<Var> = Vec::new();
+        for i in 0..vars.len()
+            invariant 0 <= i && i <= vars.len(),
+        {
+            match vars[i].sort {
+                Sort::Int(_) => {},
+                Sort::Bool => {},
+                Sort::F64 => { fp = true; },
+            }
+            out.push(Var { sym: vars[i].sym.clone(), sort: vars[i].sort });
+        }
+        let logic: String = if fp {
+            String::from("QF_FPBV")
+        } else {
+            String::from("QF_BV")
+        };
+        Ok(Query { logic: logic, decls: decls, hyps: tr.hyps.clone(), goal: goal, vars: out, guards: tr.guards.clone() })
+    }
+
+    #[summary("The translation of the integer term (no spec fn applications): a bit-vector of the returned width holding its value in two's complement (stage0 subproof::bit_vector_int)")]
+    #[effects(alloc)]
+    fn bit_vector_int(term: &encode_terms::Sexp, vars: &[Var], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog) -> Result<Bits, String> {
+        let none: Vec<String> = Vec::new();
+        let mut tr: Tr = new_tr(false, none.as_slice());
+        for i in 0..vars.len()
+            invariant 0 <= i && i <= vars.len(),
+        {
+            tr.syms.insert(vars[i].sym.as_str(), var_term(vars[i].sym.as_str(), vars[i].sort));
+        }
+        match term_of(&mut tr, term, enc, pg, 100000)? {
+            T::Bool(_) => Err(String::from("not an integer term")),
+            T::Int(t, w, _) => Ok(Bits { t: t, w: w }),
+            T::Bv(_, _) => Err(String::from("not an integer term")),
+            T::Fp(_) => Err(String::from("not an integer term")),
+        }
+    }
+
+    #[summary("The conjunction of the Bool terms asserts over consts as one bit-vector query with the same models (stage0 subproof::bit_vector_sat): every integer subterm a two's complement bit-vector wide enough for its values, as for a sub-proof. Any other symbol (a function, an array, a datatype) and an f64 term have no translation")]
+    #[effects(alloc)]
+    fn bit_vector_sat(asserts: &[encode_terms::Sexp], consts: &[Named], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog) -> Result<SatQuery, String> {
+        let none: Vec<String> = Vec::new();
+        let mut tr: Tr = new_tr(false, none.as_slice());
+        for i in 0..consts.len()
+            invariant 0 <= i && i <= consts.len(),
+        {
+            let s: String = consts[i].sym.clone();
+            match consts[i].c {
+                Const::Int(it) => { tr.decls.push(types::cat5("(declare-const ", s.as_str(), " ", var_decl(Sort::Int(it)).as_str(), ")")); tr.syms.insert(s.as_str(), var_term(s.as_str(), Sort::Int(it))); },
+                Const::Bool => { tr.decls.push(types::cat3("(declare-const ", s.as_str(), " Bool)")); tr.syms.insert(s.as_str(), T::Bool(s.clone())); },
+                Const::Bv(bw) => { tr.decls.push(types::cat5("(declare-const ", s.as_str(), " (_ BitVec ", encode_terms::dec(bw).as_str(), "))")); tr.syms.insert(s.as_str(), T::Bv(s.clone(), bw)); },
+            }
+        }
+        let mut goals: Vec<String> = Vec::new();
+        for i in 0..asserts.len()
+            invariant 0 <= i && i <= asserts.len(),
+        {
+            match term_of(&mut tr, &asserts[i], enc, pg, 100000)? {
+                T::Bool(g) => goals.push(g),
+                T::Int(_, _, _) => { return Err(String::from("an assertion is not a `bool`")); },
+                T::Bv(_, _) => { return Err(String::from("an assertion is not a `bool`")); },
+                T::Fp(_) => { return Err(String::from("an assertion is not a `bool`")); },
+            }
+        }
+        let all: String = types::cat3(encode_terms::join(tr.decls.as_slice(), " ").as_str(), " ", encode_terms::join(goals.as_slice(), " ").as_str());
+        if encode_decls::has_text(all.as_str(), "(fp ") || encode_decls::has_text(all.as_str(), "to_fp") || encode_decls::has_text(all.as_str(), "Float64") {
+            return Err(String::from("`f64` terms are left to the integer query"));
+        }
+        let mut script: String = String::from("(set-logic QF_BV)\n");
+        for i in 0..tr.decls.len()
+            invariant 0 <= i && i <= tr.decls.len(),
+        {
+            script.push_str(tr.decls[i].as_str());
+            script.push_str("\n");
+        }
+        for i in 0..tr.hyps.len()
+            invariant 0 <= i && i <= tr.hyps.len(),
+        {
+            script.push_str(types::cat3("(assert ", tr.hyps[i].as_str(), ")\n").as_str());
+        }
+        for i in 0..goals.len()
+            invariant 0 <= i && i <= goals.len(),
+        {
+            script.push_str(types::cat3("(assert ", goals[i].as_str(), ")\n").as_str());
+        }
+        Ok(SatQuery { script: script, exact: tr.hyps.len() == 0 })
+    }
+
+    #[summary("The fewest bits that hold lo..=hi in two's complement (stage0 bits)")]
+    #[effects(pure)]
+    fn bits(lo: encode_terms::Int, hi: encode_terms::Int) -> (r: u64)
+        ensures 1 <= r && r <= 129,
+    {
+        let a: u64 = bits_one(lo);
+        let b: u64 = bits_one(hi);
+        if a > b {
+            a
+        } else {
+            b
+        }
+    }
+
+    #[summary("The fewest bits that hold v in two's complement: one more than the bits of v, or of -(v + 1) for a negative v")]
+    #[effects(pure)]
+    fn bits_one(v: encode_terms::Int) -> (r: u64)
+        ensures 1 <= r && r <= 129,
+    {
+        if !v.neg {
+            return wide::bit_len(v.mag) + 1;
+        }
+        match wide::sub(v.mag, wide::U128 { hi: 0, lo: 1 }) {
+            None => 1,
+            Some(m) => wide::bit_len(m) + 1,
+        }
+    }
+
+    #[summary("The terms of xs separated by spaces")]
+    #[effects(alloc)]
+    fn bits_text(xs: &[Bits]) -> String {
+        let mut s: String = String::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                s.push_str(" ");
+            }
+            s.push_str(xs[i].t.as_str());
+        }
+        s
+    }
+
+    #[summary("The translations of xs as bools (stage0 Tr::bools): the first that is none refuses")]
+    #[effects(alloc)]
+    fn bools(tr: &mut Tr, xs: &[encode_terms::Sexp], from: usize, to: usize, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<Vec<String>, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        let mut out: Vec<String> = Vec::new();
+        for i in from..to
+            invariant from <= i,
+        {
+            if i >= xs.len() {
+                return Err(deep());
+            }
+            match term_of(tr, &xs[i], enc, pg, f - 1)? {
+                T::Bool(t) => out.push(t),
+                T::Int(_, _, _) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a `bool`")); },
+                T::Bv(_, _) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a `bool`")); },
+                T::Fp(_) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a `bool`")); },
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("Whether h is a bit-vector operation whose result has the width of its first operand")]
+    #[effects(pure)]
+    fn bv_binary(h: &str) -> bool {
+        h == "bvand" || h == "bvor" || h == "bvxor" || h == "bvadd" || h == "bvmul" || h == "bvsub" || h == "bvshl" || h == "bvlshr" || h == "bvashr" || h == "bvudiv" || h == "bvurem" || h == "bvsdiv" || h == "bvsrem" || h == "bvsmod"
+    }
+
+    #[summary("Whether h is a comparison of bit-vectors")]
+    #[effects(pure)]
+    fn bv_compare(h: &str) -> bool {
+        h == "bvult" || h == "bvule" || h == "bvugt" || h == "bvuge" || h == "bvslt" || h == "bvsle" || h == "bvsgt" || h == "bvsge"
+    }
+
+    #[summary("The bit-vector literal of v at w bits")]
+    #[effects(alloc)]
+    fn bv_num(v: u64, w: u64) -> String {
+        types::cat5("(_ bv", encode_terms::dec(v).as_str(), " ", encode_terms::dec(w).as_str(), ")")
+    }
+
+    #[summary("The translations of xs as bit-vectors (stage0 Tr::bvs): the first that is none refuses")]
+    #[effects(alloc)]
+    fn bvs(tr: &mut Tr, xs: &[encode_terms::Sexp], from: usize, to: usize, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<Vec<Bits>, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        let mut out: Vec<Bits> = Vec::new();
+        for i in from..to
+            invariant from <= i,
+        {
+            if i >= xs.len() {
+                return Err(deep());
+            }
+            match term_of(tr, &xs[i], enc, pg, f - 1)? {
+                T::Bool(_) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a bit-vector")); },
+                T::Int(_, _, _) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a bit-vector")); },
+                T::Bv(t, w) => out.push(Bits { t: t, w: w }),
+                T::Fp(_) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not a bit-vector")); },
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("A spec fn application, unfolded through its body (stage0 Tr::call). Each argument that is not a plain symbol is named once (define-fun), so nested applications stay small; an integer argument not known to lie in its parameter's type is a hypothesis of the query and, over the free variables, a guard of the assumed fact. The hypothesis names the argument's definition, or the argument itself when it has none (a plain symbol). The same callee on the same arguments is translated once")]
+    #[effects(alloc)]
+    fn call(tr: &mut Tr, callee: &str, l: &[encode_terms::Sexp], e: &encode_terms::Sexp, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        let mut vals: Vec<T> = Vec::new();
+        let mut key: String = String::from(callee);
+        key.push_str(" ");
+        for i in 0..l.len() - 1
+            invariant 0 <= i,
+        {
+            let v: T = term_of(tr, &l[i + 1], enc, pg, f - 1)?;
+            if i > 0 {
+                key.push_str(" ");
+            }
+            key.push_str(text_of(&v).as_str());
+            vals.push(v);
+        }
+        match tr.memo.find(key.as_str()) {
+            None => {},
+            Some(at) => { return Ok(tr.memo.items[at].clone()); },
+        }
+        if tr.depth >= 64 {
+            return Err(types::cat3("`", callee, "` unfolds more than 64 levels deep"));
+        }
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..l.len() - 1
+            invariant 0 <= i,
+        {
+            if i < vals.len() {
+                let p: String = types::cat3("|a!", encode_terms::dec(tr.next).as_str(), "|");
+                tr.next = tr.next.saturating_add(1);
+                let spaced: bool = encode_decls::has_text(text_of(&vals[i]).as_str(), " ");
+                let bound: T = match &vals[i] {
+                    T::Bool(t) => { if spaced { tr.decls.push(types::cat5("(define-fun ", p.as_str(), " () Bool ", t.as_str(), ")")); T::Bool(p.clone()) } else { T::Bool(t.clone()) } },
+                    T::Int(t, w, iv) => { if spaced { tr.decls.push(types::cat7("(define-fun ", p.as_str(), " () (_ BitVec ", encode_terms::dec(*w).as_str(), ") ", t.as_str(), ")")); T::Int(p.clone(), *w, *iv) } else { T::Int(t.clone(), *w, *iv) } },
+                    T::Bv(t, w) => T::Bv(t.clone(), *w),
+                    T::Fp(t) => { if spaced { tr.decls.push(types::cat5("(define-fun ", p.as_str(), " () Float64 ", t.as_str(), ")")); T::Fp(p.clone()) } else { T::Fp(t.clone()) } },
+                };
+                tr.syms.insert(p.as_str(), bound);
+                tr.args.insert(p.as_str(), l[i + 1].clone());
+                names.push(p);
+            }
+        }
+        let u: Unfolded = match unfold_spec(tr, callee, names.as_slice(), enc, pg)? {
+            None => { return Err(untranslated(e)); },
+            Some(found) => found,
+        };
+        for i in 0..names.len()
+            invariant 0 <= i && i <= names.len(),
+        {
+            if i < vals.len() && i < u.params.len() {
+                match u.params[i] {
+                    Sort::Int(ty) => { match &vals[i] { T::Bool(_) => {}, T::Int(t, w, iv) => { let lo: encode_terms::Int = encode_terms::from_num(consts::min_of(ty)); let hi: encode_terms::Int = encode_terms::from_num(consts::max_of(ty)); let inside: bool = match iv { None => false, Some(known) => !int_less(known.lo, lo) && !int_less(hi, known.hi), }; if !inside { let need: u64 = bits(lo, hi); let ww: u64 = if *w > need { *w } else { need }; let named: String = if encode_decls::has_text(t.as_str(), " ") { names[i].clone() } else { t.clone() }; let x: String = resize(named.as_str(), *w, ww); tr.hyps.push(types::cat7("(and (bvsle ", lit(lo, ww).as_str(), " ", x.as_str(), ") (bvsle ", x.as_str(), types::cat3(" ", lit(hi, ww).as_str(), "))").as_str())); let arg: String = encode_terms::print(&outer(tr, &encode_terms::Sexp::Atom(names[i].clone()), 100000), 100000); tr.guards.push(types::cat7("(and (<= ", encode_terms::num(&lo).as_str(), " ", arg.as_str(), ") (<= ", arg.as_str(), types::cat3(" ", encode_terms::num(&hi).as_str(), "))").as_str())); } }, T::Bv(_, _) => {}, T::Fp(_) => {}, } },
+                    Sort::Bool => {},
+                    Sort::F64 => {},
+                }
+            }
+        }
+        tr.depth = tr.depth.saturating_add(1);
+        let r: Result<T, String> = term_of(tr, &u.body, enc, pg, f - 1);
+        tr.depth = tr.depth.saturating_sub(1);
+        let done: T = r?;
+        tr.memo.insert(key.as_str(), done.clone());
+        Ok(done)
+    }
+
+    #[summary("A comparison of integers (stage0 Tr::compare): the signed comparison of each neighbouring pair at the widest operand's width")]
+    #[effects(alloc)]
+    fn compare(tr: &mut Tr, op: &str, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        let xs: Vec<IntBits> = ints(tr, l, 1, l.len(), enc, pg, f - 1)?;
+        let mut ww: u64 = if xs.len() == 0 {
+            1
+        } else {
+            0
+        };
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].w > ww {
+                ww = xs[i].w;
+            }
+        }
+        let fun: String = if op == "<" {
+            String::from("bvslt")
+        } else if op == "<=" {
+            String::from("bvsle")
+        } else if op == ">" {
+            String::from("bvsgt")
+        } else {
+            String::from("bvsge")
+        };
+        let mut parts: Vec<String> = Vec::new();
+        for i in 1..xs.len()
+            invariant 1 <= i,
+        {
+            parts.push(types::cat7("(", fun.as_str(), " ", resize(xs[i - 1].t.as_str(), xs[i - 1].w, ww).as_str(), " ", resize(xs[i].t.as_str(), xs[i].w, ww).as_str(), ")"));
+        }
+        Ok(T::Bool(conj(parts.as_slice())))
+    }
+
+    #[summary("The conjunction of parts (stage0 conj): `true` of none, the part itself of one")]
+    #[effects(alloc)]
+    fn conj(parts: &[String]) -> String {
+        if parts.len() == 0 {
+            return String::from("true");
+        }
+        if parts.len() == 1 {
+            return parts[0].clone();
+        }
+        types::cat3("(and ", encode_terms::join(parts, " ").as_str(), ")")
+    }
+
+    #[summary("The refusal of a term that nests deeper than the translation follows (ADR-0140)")]
+    #[effects(alloc)]
+    fn deep() -> String {
+        String::from("the term nests too deep")
+    }
+
+    #[summary("`(div a c)` and `(mod a c)` for a positive constant c (stage0 Tr::divmod): floor division, as SMT-LIB's on integers; a power of two is a shift or the low bits. Any other divisor is general_div")]
+    #[effects(alloc)]
+    fn divmod(tr: &mut Tr, op: &str, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        if l.len() - 1 != 2 {
+            return Err(types::cat3("`", op, "` takes two operands"));
+        }
+        let c: encode_terms::Int = match numeral(&l[2]) {
+            None => { return general_div(tr, op, l, enc, pg, f - 1); },
+            Some(n) => { if n.neg || n.mag.hi == 0 && n.mag.lo == 0 { return general_div(tr, op, l, enc, pg, f - 1); } n },
+        };
+        let xs: Vec<IntBits> = ints(tr, l, 1, 2, enc, pg, f - 1)?;
+        if xs.len() == 0 {
+            return Err(deep());
+        }
+        let t: String = xs[0].t.clone();
+        let w: u64 = xs[0].w;
+        let k: u64 = wide::trailing_zeros(c.mag);
+        let pow: bool = wide::equal(c.mag, wide::pow2(k));
+        let cw: u64 = bits(c, c);
+        if op == "div" {
+            let niv: Option<Iv> = match xs[0].iv {
+                None => None,
+                Some(known) => Some(Iv { lo: int_div_euclid(known.lo, c), hi: int_div_euclid(known.hi, c) }),
+            };
+            if pow {
+                if k >= w {
+                    return int_term(types::cat7("(ite (bvslt ", t.as_str(), " ", lit(int_zero(), w).as_str(), ") ", lit(encode_terms::Int { neg: true, mag: wide::U128 { hi: 0, lo: 1 } }, w).as_str(), types::cat3(" ", lit(int_zero(), w).as_str(), ")").as_str()), w, niv);
+                }
+                return int_term(types::cat5("(bvashr ", t.as_str(), " ", lit(int_small(k), w).as_str(), ")"), w, niv);
+            }
+            let dw: u64 = (if w > cw { w } else { cw }).saturating_add(1);
+            let a: String = resize(t.as_str(), w, dw);
+            let cc: String = lit(c, dw);
+            return int_term(types::cat7("(bvsdiv (bvsub ", a.as_str(), " (bvsmod ", a.as_str(), " ", cc.as_str(), types::cat3(")) ", cc.as_str(), ")").as_str()), dw, niv);
+        }
+        let top: encode_terms::Int = match int_sub(c, int_small(1)) {
+            None => int_zero(),
+            Some(v) => v,
+        };
+        let miv: Option<Iv> = Some(Iv { lo: int_zero(), hi: top });
+        if pow {
+            if k == 0 {
+                return Ok(int_lit(int_zero()));
+            }
+            let low: String = types::cat5("((_ extract ", encode_terms::dec(k - 1).as_str(), " 0) ", resize(t.as_str(), w, if w > k { w } else { k }).as_str(), ")");
+            return int_term(types::cat3("((_ zero_extend 1) ", low.as_str(), ")"), k + 1, miv);
+        }
+        let mw: u64 = if w > cw {
+            w
+        } else {
+            cw
+        };
+        int_term(types::cat5("(bvsmod ", resize(t.as_str(), w, mw).as_str(), " ", lit(c, mw).as_str(), ")"), mw, miv)
+    }
+
+    #[summary("Equality (stage0 Tr::equal): of each neighbouring pair, integers at the widest integer's width and the other sorts as they are")]
+    #[effects(alloc)]
+    fn equal(tr: &mut Tr, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        let mut xs: Vec<T> = Vec::new();
+        let mut ww: u64 = 0;
+        for i in 0..l.len() - 1
+            invariant 0 <= i,
+        {
+            let v: T = term_of(tr, &l[i + 1], enc, pg, f - 1)?;
+            match &v {
+                T::Bool(_) => {},
+                T::Int(_, w, _) => { if *w > ww { ww = *w; } },
+                T::Bv(_, _) => {},
+                T::Fp(_) => {},
+            }
+            xs.push(v);
+        }
+        let mut texts: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            match &xs[i] {
+                T::Bool(t) => texts.push(t.clone()),
+                T::Int(t, w, _) => texts.push(resize(t.as_str(), *w, ww)),
+                T::Bv(t, _) => texts.push(t.clone()),
+                T::Fp(t) => texts.push(t.clone()),
+            }
+        }
+        let mut parts: Vec<String> = Vec::new();
+        for i in 1..texts.len()
+            invariant 1 <= i,
+        {
+            parts.push(types::cat5("(= ", texts[i - 1].as_str(), " ", texts[i].as_str(), ")"));
+        }
+        Ok(T::Bool(conj(parts.as_slice())))
+    }
+
+    #[summary("An f64 operation of the encoder (stage0 Tr::float, ADR-0061 §5). It stays an application of its symbol, which the query defines with its IEEE meaning, except f64.from: its integer operand is a signed bit-vector here, which to_fp rounds as sitofp does")]
+    #[effects(alloc)]
+    fn float(tr: &mut Tr, h: &str, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        if h == "f64.from" {
+            let xs: Vec<IntBits> = ints(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            if xs.len() == 0 {
+                return Err(String::from("`f64.from` takes an operand"));
+            }
+            return Ok(T::Fp(types::cat3("((_ to_fp 11 53) RNE ", xs[0].t.as_str(), ")")));
+        }
+        let mut ret: String = String::new();
+        if h == "f64.is_finite" {
+            ret = String::from("Bool");
+        } else {
+            let funs: Vec<encode_terms::F64Fun> = encode_terms::f64_funs();
+            for i in 0..funs.len()
+                invariant 0 <= i && i <= funs.len(),
+            {
+                if ret.len() == 0 && funs[i].name.as_str() == h {
+                    ret = funs[i].ret.clone();
+                }
+            }
+            if ret.len() == 0 {
+                return Err(types::cat3("`", h, "` has no floating-point translation"));
+            }
+        }
+        let mut ts: Vec<String> = Vec::new();
+        for i in 0..l.len() - 1
+            invariant 0 <= i,
+        {
+            match term_of(tr, &l[i + 1], enc, pg, f - 1)? {
+                T::Bool(_) => { return Err(types::cat3("`", encode_terms::print(&l[i + 1], 100000).as_str(), "` is not an `f64`")); },
+                T::Int(_, _, _) => { return Err(types::cat3("`", encode_terms::print(&l[i + 1], 100000).as_str(), "` is not an `f64`")); },
+                T::Bv(_, _) => { return Err(types::cat3("`", encode_terms::print(&l[i + 1], 100000).as_str(), "` is not an `f64`")); },
+                T::Fp(t) => ts.push(t),
+            }
+        }
+        let text: String = types::cat5("(", h, " ", encode_terms::join(ts.as_slice(), " ").as_str(), ")");
+        if ret.as_str() == "Bool" {
+            Ok(T::Bool(text))
+        } else {
+            Ok(T::Fp(text))
+        }
+    }
+
+    #[summary("A division by a term b that may be zero or negative (stage0 Tr::general_div): SMT-LIB's Euclidean div and mod (the code's unsigned `/` and `%`), or the encoder's truncating bmb_tdiv and bmb_trem (the code's signed ones), each exact at a width that holds the operands, |b| and MIN / -1. A divisor that is not a nonzero constant is a hypothesis `b != 0` of the sub-proof and a guard of the assumed fact: the integer theories leave division by zero open. Both operands non-negative are the unsigned operations at the width of their magnitudes")]
+    #[effects(alloc)]
+    fn general_div(tr: &mut Tr, op: &str, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        let xs: Vec<IntBits> = ints(tr, l, 1, l.len(), enc, pg, f - 1)?;
+        if xs.len() != 2 || l.len() - 1 != 2 {
+            return Err(types::cat3("`", op, "` takes two operands"));
+        }
+        let wa: u64 = xs[0].w;
+        let wb: u64 = xs[1].w;
+        let trunc: bool = encode_terms::starts_at(op, 0, "bmb_");
+        let ww: u64 = (if wa > wb { wa } else { wb }).saturating_add(if trunc { 1 } else { 2 });
+        if ww > max_width() {
+            return Err(too_wide());
+        }
+        let open: bool = match numeral(&l[2]) {
+            None => true,
+            Some(num) => num.mag.hi == 0 && num.mag.lo == 0,
+        };
+        if open {
+            let h: String = types::cat5("(not (= ", xs[1].t.as_str(), " ", lit(int_zero(), wb).as_str(), "))");
+            if !types::has(tr.hyps.as_slice(), h.as_str()) {
+                tr.hyps.push(h.clone());
+            }
+            let g: String = types::cat3("(not (= ", encode_terms::print(&outer(tr, &l[2], 100000), 100000).as_str(), " 0))");
+            if !types::has(tr.guards.as_slice(), g.as_str()) {
+                tr.guards.push(g.clone());
+            }
+        }
+        let quotient: bool = op == "div" || op == "bmb_tdiv";
+        match xs[0].iv {
+            None => {},
+            Some(va) => { match xs[1].iv { None => {}, Some(vb) => { if !va.lo.neg && !vb.lo.neg { let len: u64 = wide::bit_len(int_max(va.hi, vb.hi).mag); let nn: u64 = if len < 1 { 1 } else { len }; let a: String = unsigned(xs[0].t.as_str(), wa, nn); let b: String = unsigned(xs[1].t.as_str(), wb, nn); let fun: String = if quotient { String::from("bvudiv") } else { String::from("bvurem") }; let below: encode_terms::Int = match int_sub(vb.hi, int_small(1)) { None => int_zero(), Some(d) => int_max(d, int_zero()), }; let top: encode_terms::Int = if quotient { va.hi } else { int_min(va.hi, below) }; return int_term(types::cat7("((_ zero_extend 1) (", fun.as_str(), " ", a.as_str(), " ", b.as_str(), "))"), nn + 1, Some(Iv { lo: int_zero(), hi: top })); } }, } },
+        }
+        let a: String = resize(xs[0].t.as_str(), wa, ww);
+        let b: String = resize(xs[1].t.as_str(), wb, ww);
+        let zero: String = lit(int_zero(), ww);
+        let ma: Option<encode_terms::Int> = magnitude(xs[0].iv);
+        let mb: Option<encode_terms::Int> = magnitude(xs[1].iv);
+        let around: Option<Iv> = match ma {
+            None => None,
+            Some(am) => Some(Iv { lo: int_flip(am), hi: am }),
+        };
+        if op == "div" || op == "mod" {
+            let abs: String = types::cat7("(ite (bvslt ", b.as_str(), " ", zero.as_str(), ") (bvneg ", b.as_str(), types::cat3(") ", b.as_str(), ")").as_str());
+            let sm: String = types::cat5("(bvsmod ", a.as_str(), " ", abs.as_str(), ")");
+            if op == "mod" {
+                let miv: Option<Iv> = match mb {
+                    None => None,
+                    Some(mm) => Some(Iv { lo: int_zero(), hi: match int_sub(mm, int_small(2)) { None => int_zero(), Some(d) => int_max(d, int_zero()), } }),
+                };
+                return int_term(sm, ww, miv);
+            }
+            return int_term(types::cat7("(bvsdiv (bvsub ", a.as_str(), " ", sm.as_str(), ") ", b.as_str(), ")"), ww, around);
+        }
+        if op == "bmb_tdiv" {
+            return int_term(types::cat5("(bvsdiv ", a.as_str(), " ", b.as_str(), ")"), ww, around);
+        }
+        let riv: Option<Iv> = match ma {
+            None => None,
+            Some(am) => match mb { None => None, Some(bm) => { let k: encode_terms::Int = match int_sub(bm, int_small(1)) { None => am, Some(d) => int_min(am, d), }; Some(Iv { lo: int_flip(k), hi: k }) }, },
+        };
+        int_term(types::cat5("(bvsrem ", a.as_str(), " ", b.as_str(), ")"), ww, riv)
+    }
+
+    #[summary("The bit-vector function the encoder names for a bit method (stage0 helper_def): bmb_ctpop{w}, bmb_clz{w}, bmb_ctz{w}, bmb_bswap{w}, bmb_brev{w} of one argument and bmb_rotl{w}, bmb_rotr{w} of a value and an amount (taken modulo w), for w in 8, 16, 32, 64. Its definition and width; None for any other name")]
+    #[effects(alloc)]
+    fn helper_def(name: &str) -> Option<Helper> {
+        if !encode_terms::starts_at(name, 0, "bmb_") {
+            return None;
+        }
+        let mut at: usize = 4;
+        while at < name.len() && !(name.as_bytes()[at] >= 48 && name.as_bytes()[at] <= 57)
+            invariant 4 <= at,
+            decreases name.len() - at,
+        {
+            at = at + 1;
+        }
+        if at >= name.len() {
+            return None;
+        }
+        let op: String = lexer::cut(name, 4, at);
+        let w: u64 = parse_u32(lexer::cut(name, at, name.len()).as_str())?;
+        if w != 8 && w != 16 && w != 32 && w != 64 {
+            return None;
+        }
+        let ws: String = encode_terms::dec(w);
+        let sort: String = types::cat3("(_ BitVec ", ws.as_str(), ")");
+        let mut body: String = String::new();
+        if op.as_str() == "ctpop" {
+            body.push_str("(bvadd");
+            for k in 0..w
+                invariant 0 <= k && k <= w,
+            {
+                body.push_str(types::cat5(" ((_ zero_extend ", encode_terms::dec(w - 1).as_str(), ") ", bit_at(k).as_str(), ")").as_str());
+            }
+            body.push_str(")");
+        } else if op.as_str() == "clz" {
+            body = bv_num(w, w);
+            for k in 0..w
+                invariant 0 <= k && k <= w,
+            {
+                body = types::cat7("(ite ", bit_set(k).as_str(), " ", bv_num(w - 1 - k, w).as_str(), " ", body.as_str(), ")");
+            }
+        } else if op.as_str() == "ctz" {
+            body = bv_num(w, w);
+            for j in 0..w
+                invariant 0 <= j && j <= w,
+            {
+                let k: u64 = w - 1 - j;
+                body = types::cat7("(ite ", bit_set(k).as_str(), " ", bv_num(k, w).as_str(), " ", body.as_str(), ")");
+            }
+        } else if op.as_str() == "brev" {
+            body.push_str("(concat");
+            for k in 0..w
+                invariant 0 <= k && k <= w,
+            {
+                body.push_str(types::cat2(" ", bit_at(k).as_str()).as_str());
+            }
+            body.push_str(")");
+        } else if op.as_str() == "bswap" && w > 8 {
+            body.push_str("(concat");
+            for b in 0..w / 8
+                invariant 0 <= b && b <= w / 8,
+            {
+                body.push_str(types::cat5(" ((_ extract ", encode_terms::dec(8 * b + 7).as_str(), " ", encode_terms::dec(8 * b).as_str(), ") x)").as_str());
+            }
+            body.push_str(")");
+        } else if op.as_str() == "rotl" || op.as_str() == "rotr" {
+            let s: String = types::cat3("(bvand s ", bv_num(w - 1, w).as_str(), ")");
+            let left: bool = op.as_str() == "rotl";
+            let to: String = if left {
+                String::from("bvshl")
+            } else {
+                String::from("bvlshr")
+            };
+            let back: String = if left {
+                String::from("bvlshr")
+            } else {
+                String::from("bvshl")
+            };
+            let mut def: String = types::cat7("(define-fun ", name, " ((x ", sort.as_str(), ") (s ", sort.as_str(), ")) ");
+            def.push_str(types::cat7(sort.as_str(), " (bvor (", to.as_str(), " x ", s.as_str(), ") (", back.as_str()).as_str());
+            def.push_str(types::cat5(" x (bvsub ", bv_num(w, w).as_str(), " ", s.as_str(), "))))").as_str());
+            return Some(Helper { def: def, w: w });
+        } else {
+            return None;
+        }
+        Some(Helper { def: types::cat7("(define-fun ", name, " ((x ", sort.as_str(), ")) ", sort.as_str(), types::cat3(" ", body.as_str(), ")").as_str()), w: w })
+    }
+
+    #[summary("The definitions of the helpers (helper_def) that text applies, in name order (stage0 helper_defs)")]
+    #[effects(alloc)]
+    fn helper_defs(text: &str) -> String {
+        let mut out: String = String::new();
+        if !encode_decls::has_text(text, "(bmb_") {
+            return out;
+        }
+        let ops: Vec<String> = encode_terms::split("brev bswap clz ctpop ctz rotl rotr", b' ');
+        let ws: Vec<String> = encode_terms::split("16 32 64 8", b' ');
+        for i in 0..ops.len()
+            invariant 0 <= i && i <= ops.len(),
+        {
+            for j in 0..ws.len()
+                invariant 0 <= j && j <= ws.len(),
+            {
+                let name: String = types::cat3("bmb_", ops[i].as_str(), ws[j].as_str());
+                if encode_decls::has_text(text, types::cat3("(", name.as_str(), " ").as_str()) {
+                    match helper_def(name.as_str()) {
+                        None => {},
+                        Some(hd) => { out.push_str(hd.def.as_str()); out.push_str("\n"); },
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("`((_ f k ..) x)` (stage0 Tr::indexed): int2bv, extract, zero_extend, sign_extend and the rotations by a constant")]
+    #[effects(alloc)]
+    fn indexed(tr: &mut Tr, head: &[encode_terms::Sexp], l: &[encode_terms::Sexp], e: &encode_terms::Sexp, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        if head.len() < 2 {
+            return Err(untranslated(e));
+        }
+        let name: String = match atom(&head[1]) {
+            None => String::new(),
+            Some(a) => a,
+        };
+        let mut ks: Vec<u64> = Vec::new();
+        for i in 2..head.len()
+            invariant 2 <= i && i <= head.len(),
+        {
+            let k: Option<u64> = match atom(&head[i]) {
+                None => None,
+                Some(a) => parse_u32(a.as_str()),
+            };
+            match k {
+                None => { return Err(untranslated(e)); },
+                Some(v) => ks.push(v),
+            }
+        }
+        if l.len() - 1 != 1 || ks.len() == 0 {
+            return Err(untranslated(e));
+        }
+        if name.as_str() == "int2bv" {
+            let xs: Vec<IntBits> = ints(tr, l, 1, l.len(), enc, pg, f - 1)?;
+            if xs.len() == 0 {
+                return Err(untranslated(e));
+            }
+            return Ok(T::Bv(resize(xs[0].t.as_str(), xs[0].w, ks[0]), ks[0]));
+        }
+        let bs: Vec<Bits> = bvs(tr, l, 1, l.len(), enc, pg, f - 1)?;
+        if bs.len() == 0 {
+            return Err(untranslated(e));
+        }
+        let mut nw: u64 = bs[0].w;
+        if name.as_str() == "extract" && ks.len() == 2 && ks[0] >= ks[1] {
+            nw = (ks[0] - ks[1]).saturating_add(1);
+        } else if (name.as_str() == "zero_extend" || name.as_str() == "sign_extend") && ks.len() == 1 {
+            nw = bs[0].w.saturating_add(ks[0]);
+        } else if (name.as_str() == "rotate_left" || name.as_str() == "rotate_right") && ks.len() == 1 {
+            nw = bs[0].w;
+        } else {
+            return Err(untranslated(e));
+        }
+        let mut items: Vec<encode_terms::Sexp> = Vec::new();
+        for i in 0..head.len()
+            invariant 0 <= i && i <= head.len(),
+        {
+            items.push(head[i].clone());
+        }
+        Ok(T::Bv(types::cat5("(", encode_terms::print(&encode_terms::Sexp::List(items), 100000).as_str(), " ", bs[0].t.as_str(), ")"), nw))
+    }
+
+    #[summary("a + b in i128 (Rust's checked_add): None when the sum is outside it")]
+    #[effects(pure)]
+    #[uses(int_added, int_made, wide::subtracted, wide::summed)]
+    fn int_add(a: encode_terms::Int, b: encode_terms::Int) -> (r: Option<encode_terms::Int>)
+        ensures int_added(r, a, b),
+    {
+        if a.neg == b.neg {
+            return int_make(a.neg, wide::add(a.mag, b.mag)?);
+        }
+        if wide::less(a.mag, b.mag) {
+            return int_make(b.neg, wide::sub(b.mag, a.mag)?);
+        }
+        int_make(a.neg, wide::sub(a.mag, b.mag)?)
+    }
+
+    #[summary("What int_add returns: the sum of a and b as mathematical integers when it lies in i128, in the port's form (zero is not negative), and None exactly when it does not")]
+    spec fn int_added(r: Option<encode_terms::Int>, a: encode_terms::Int, b: encode_terms::Int) -> bool {
+        match r {
+            None => (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) + (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) < 0 - 170141183460469231731687303715884105728 || (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) + (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) >= 170141183460469231731687303715884105728,
+            Some(y) => (if y.neg { 0 - (y.mag.hi * 18446744073709551616 + y.mag.lo) } else { y.mag.hi * 18446744073709551616 + y.mag.lo }) == (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) + (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) && (!y.neg || y.mag.hi != 0 || y.mag.lo != 0),
+        }
+    }
+
+    #[summary("Whether a < b as mathematical integers")]
+    spec fn int_below(a: encode_terms::Int, b: encode_terms::Int) -> bool {
+        (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) < (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo })
+    }
+
+    #[summary("An integer of w bits, narrowed to its interval's width (stage0 int): refused above the widest bit-vector a translation may make")]
+    #[effects(alloc)]
+    fn int_bits(t: String, w: u64, iv: Option<Iv>) -> Result<IntBits, String> {
+        let mut text: String = t;
+        let mut width: u64 = w;
+        match iv {
+            None => {},
+            Some(v) => { let need: u64 = bits(v.lo, v.hi); if need < w { text = resize(text.as_str(), w, need); width = need; } },
+        }
+        if width > max_width() {
+            return Err(too_wide());
+        }
+        Ok(IntBits { t: text, w: width, iv: iv })
+    }
+
+    #[summary("The floor of a / c for a positive c (Rust's div_euclid)")]
+    #[effects(pure)]
+    fn int_div_euclid(a: encode_terms::Int, c: encode_terms::Int) -> encode_terms::Int {
+        let d: wide::QuoRem = wide::div_rem(a.mag, c.mag);
+        if !a.neg {
+            return encode_terms::Int { neg: false, mag: d.q };
+        }
+        if d.r.hi == 0 && d.r.lo == 0 {
+            return encode_terms::Int { neg: d.q.hi != 0 || d.q.lo != 0, mag: d.q };
+        }
+        match wide::add(d.q, wide::U128 { hi: 0, lo: 1 }) {
+            None => int_zero(),
+            Some(m) => encode_terms::Int { neg: true, mag: m },
+        }
+    }
+
+    #[summary("-a exactly: the magnitude of the least i128 is kept, so the result may be one above the largest i128")]
+    #[effects(pure)]
+    fn int_flip(a: encode_terms::Int) -> (r: encode_terms::Int)
+        ensures r.mag == a.mag && r.neg == (!a.neg && (a.mag.hi != 0 || a.mag.lo != 0)),
+    {
+        encode_terms::Int { neg: !a.neg && (a.mag.hi != 0 || a.mag.lo != 0), mag: a.mag }
+    }
+
+    #[summary("Whether a < b. A zero is zero whatever its sign says")]
+    #[effects(pure)]
+    #[uses(int_below)]
+    fn int_less(a: encode_terms::Int, b: encode_terms::Int) -> (r: bool)
+        ensures r == int_below(a, b),
+    {
+        let an: bool = a.neg && (a.mag.hi != 0 || a.mag.lo != 0);
+        let bn: bool = b.neg && (b.mag.hi != 0 || b.mag.lo != 0);
+        if an != bn {
+            return an;
+        }
+        if an {
+            return wide::less(b.mag, a.mag);
+        }
+        wide::less(a.mag, b.mag)
+    }
+
+    #[summary("The literal v as an integer term (stage0 int_lit): at the fewest bits that hold it")]
+    #[effects(alloc)]
+    fn int_lit(v: encode_terms::Int) -> T {
+        let w: u64 = bits(v, v);
+        T::Int(lit(v, w), w, Some(Iv { lo: v, hi: v }))
+    }
+
+    #[summary("What int_make returns: the integer of sign neg and magnitude mag when it lies in i128 (a magnitude below 2^127, or 2^127 itself when negative), with zero not negative, and None exactly when it does not")]
+    spec fn int_made(r: Option<encode_terms::Int>, neg: bool, mag: wide::U128) -> bool {
+        match r {
+            None => mag.hi * 18446744073709551616 + mag.lo > 170141183460469231731687303715884105728 || !neg && mag.hi * 18446744073709551616 + mag.lo == 170141183460469231731687303715884105728,
+            Some(y) => y.mag == mag && y.neg == (neg && (mag.hi != 0 || mag.lo != 0)) && (mag.hi * 18446744073709551616 + mag.lo < 170141183460469231731687303715884105728 || neg && mag.hi * 18446744073709551616 + mag.lo == 170141183460469231731687303715884105728),
+        }
+    }
+
+    #[summary("The integer of sign neg and magnitude mag, None outside i128. Zero is not negative")]
+    #[effects(pure)]
+    #[uses(int_made)]
+    fn int_make(neg: bool, mag: wide::U128) -> (r: Option<encode_terms::Int>)
+        ensures int_made(r, neg, mag),
+    {
+        if mag.hi < 9223372036854775808 || neg && mag.hi == 9223372036854775808 && mag.lo == 0 {
+            return Some(encode_terms::Int { neg: neg && (mag.hi != 0 || mag.lo != 0), mag: mag });
+        }
+        None
+    }
+
+    #[summary("The larger of a and b")]
+    #[effects(pure)]
+    fn int_max(a: encode_terms::Int, b: encode_terms::Int) -> encode_terms::Int {
+        if int_less(a, b) {
+            b
+        } else {
+            a
+        }
+    }
+
+    #[summary("The smaller of a and b")]
+    #[effects(pure)]
+    fn int_min(a: encode_terms::Int, b: encode_terms::Int) -> encode_terms::Int {
+        if int_less(b, a) {
+            b
+        } else {
+            a
+        }
+    }
+
+    #[summary("a * b in i128 (Rust's checked_mul): None when the product is outside it")]
+    #[effects(pure)]
+    #[uses(int_made, int_multiplied, wide::multiplied)]
+    fn int_mul(a: encode_terms::Int, b: encode_terms::Int) -> (r: Option<encode_terms::Int>)
+        ensures int_multiplied(r, a, b),
+    {
+        int_make(a.neg != b.neg, wide::mul(a.mag, b.mag)?)
+    }
+
+    #[summary("What int_mul returns: the product of a and b as mathematical integers when it lies in i128, and None exactly when it does not")]
+    spec fn int_multiplied(r: Option<encode_terms::Int>, a: encode_terms::Int, b: encode_terms::Int) -> bool {
+        match r {
+            None => (a.mag.hi * 18446744073709551616 + a.mag.lo) * (b.mag.hi * 18446744073709551616 + b.mag.lo) > 170141183460469231731687303715884105728 || a.neg == b.neg && (a.mag.hi * 18446744073709551616 + a.mag.lo) * (b.mag.hi * 18446744073709551616 + b.mag.lo) == 170141183460469231731687303715884105728,
+            Some(y) => y.mag.hi * 18446744073709551616 + y.mag.lo == (a.mag.hi * 18446744073709551616 + a.mag.lo) * (b.mag.hi * 18446744073709551616 + b.mag.lo) && y.neg == (a.neg != b.neg && (y.mag.hi != 0 || y.mag.lo != 0)),
+        }
+    }
+
+    #[summary("-a in i128 (Rust's checked_neg): None for the least i128")]
+    #[effects(pure)]
+    #[uses(int_made, int_negated)]
+    fn int_neg(a: encode_terms::Int) -> (r: Option<encode_terms::Int>)
+        ensures int_negated(r, a),
+    {
+        int_make(!a.neg, a.mag)
+    }
+
+    #[summary("What int_neg returns: -a when it lies in i128, and None exactly for the least i128")]
+    spec fn int_negated(r: Option<encode_terms::Int>, a: encode_terms::Int) -> bool {
+        match r {
+            None => !a.neg && a.mag.hi * 18446744073709551616 + a.mag.lo >= 170141183460469231731687303715884105728 || a.neg && a.mag.hi * 18446744073709551616 + a.mag.lo > 170141183460469231731687303715884105727,
+            Some(y) => y.mag == a.mag && y.neg == (!a.neg && (a.mag.hi != 0 || a.mag.lo != 0)),
+        }
+    }
+
+    #[summary("The integer x")]
+    #[effects(pure)]
+    fn int_small(x: u64) -> encode_terms::Int {
+        encode_terms::Int { neg: false, mag: wide::U128 { hi: 0, lo: x } }
+    }
+
+    #[summary("a - b in i128 (Rust's checked_sub): None when the difference is outside it")]
+    #[effects(pure)]
+    #[uses(int_added, int_subtracted)]
+    fn int_sub(a: encode_terms::Int, b: encode_terms::Int) -> (r: Option<encode_terms::Int>)
+        ensures int_subtracted(r, a, b),
+    {
+        int_add(a, int_flip(b))
+    }
+
+    #[summary("What int_sub returns: a - b as mathematical integers when it lies in i128 (for b whose magnitude is at most 2^127), and None exactly when it does not")]
+    spec fn int_subtracted(r: Option<encode_terms::Int>, a: encode_terms::Int, b: encode_terms::Int) -> bool {
+        match r {
+            None => (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) - (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) < 0 - 170141183460469231731687303715884105728 || (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) - (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) >= 170141183460469231731687303715884105728,
+            Some(y) => (if y.neg { 0 - (y.mag.hi * 18446744073709551616 + y.mag.lo) } else { y.mag.hi * 18446744073709551616 + y.mag.lo }) == (if a.neg { 0 - (a.mag.hi * 18446744073709551616 + a.mag.lo) } else { a.mag.hi * 18446744073709551616 + a.mag.lo }) - (if b.neg { 0 - (b.mag.hi * 18446744073709551616 + b.mag.lo) } else { b.mag.hi * 18446744073709551616 + b.mag.lo }) && (!y.neg || y.mag.hi != 0 || y.mag.lo != 0),
+        }
+    }
+
+    #[summary("An integer term of w bits, narrowed to its interval's width (stage0 int as a term)")]
+    #[effects(alloc)]
+    fn int_term(t: String, w: u64, iv: Option<Iv>) -> Result<T, String> {
+        let b: IntBits = int_bits(t, w, iv)?;
+        Ok(T::Int(b.t.clone(), b.w, b.iv))
+    }
+
+    #[summary("Zero")]
+    #[effects(pure)]
+    fn int_zero() -> encode_terms::Int {
+        encode_terms::Int { neg: false, mag: wide::zero() }
+    }
+
+    #[summary("The translations of xs as integers (stage0 Tr::ints): the first that is none refuses")]
+    #[effects(alloc)]
+    fn ints(tr: &mut Tr, xs: &[encode_terms::Sexp], from: usize, to: usize, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<Vec<IntBits>, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        let mut out: Vec<IntBits> = Vec::new();
+        for i in from..to
+            invariant from <= i,
+        {
+            if i >= xs.len() {
+                return Err(deep());
+            }
+            match term_of(tr, &xs[i], enc, pg, f - 1)? {
+                T::Bool(_) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not an integer")); },
+                T::Int(t, w, iv) => out.push(IntBits { t: t, w: w, iv: iv }),
+                T::Bv(_, _) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not an integer")); },
+                T::Fp(_) => { return Err(types::cat3("`", encode_terms::print(&xs[i], 100000).as_str(), "` is not an integer")); },
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("`(ite c a b)` (stage0 Tr::ite): the branches are of one sort; integers at the wider branch's width with the hull of their intervals")]
+    #[effects(alloc)]
+    fn ite(tr: &mut Tr, l: &[encode_terms::Sexp], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        if l.len() == 0 {
+            return Err(deep());
+        }
+        if l.len() - 1 != 3 {
+            return Err(String::from("`ite` takes three operands"));
+        }
+        let cs: Vec<String> = bools(tr, l, 1, 2, enc, pg, f - 1)?;
+        if cs.len() == 0 {
+            return Err(deep());
+        }
+        let c: String = cs[0].clone();
+        let x: T = term_of(tr, &l[2], enc, pg, f - 1)?;
+        let y: T = term_of(tr, &l[3], enc, pg, f - 1)?;
+        let other: String = text_of(&y);
+        match x {
+            T::Bool(a) => match y { T::Bool(_) => Ok(T::Bool(ite_text(c.as_str(), a.as_str(), other.as_str()))), T::Int(_, _, _) => Err(String::from("`ite` branches of different sorts")), T::Bv(_, _) => Err(String::from("`ite` branches of different sorts")), T::Fp(_) => Err(String::from("`ite` branches of different sorts")), },
+            T::Int(a, wx, ix) => match y { T::Bool(_) => Err(String::from("`ite` branches of different sorts")), T::Int(_, wy, iy) => { let ww: u64 = if wx > wy { wx } else { wy }; let hull: Option<Iv> = match ix { None => None, Some(p) => match iy { None => None, Some(q) => Some(Iv { lo: int_min(p.lo, q.lo), hi: int_max(p.hi, q.hi) }), }, }; int_term(ite_text(c.as_str(), resize(a.as_str(), wx, ww).as_str(), resize(other.as_str(), wy, ww).as_str()), ww, hull) }, T::Bv(_, _) => Err(String::from("`ite` branches of different sorts")), T::Fp(_) => Err(String::from("`ite` branches of different sorts")), },
+            T::Bv(a, w) => match y { T::Bool(_) => Err(String::from("`ite` branches of different sorts")), T::Int(_, _, _) => Err(String::from("`ite` branches of different sorts")), T::Bv(_, _) => Ok(T::Bv(ite_text(c.as_str(), a.as_str(), other.as_str()), w)), T::Fp(_) => Err(String::from("`ite` branches of different sorts")), },
+            T::Fp(a) => match y { T::Bool(_) => Err(String::from("`ite` branches of different sorts")), T::Int(_, _, _) => Err(String::from("`ite` branches of different sorts")), T::Bv(_, _) => Err(String::from("`ite` branches of different sorts")), T::Fp(_) => Ok(T::Fp(ite_text(c.as_str(), a.as_str(), other.as_str()))), },
+        }
+    }
+
+    #[summary("The term `(ite c a b)`")]
+    #[effects(alloc)]
+    fn ite_text(c: &str, a: &str, b: &str) -> String {
+        types::cat7("(ite ", c, " ", a, " ", b, ")")
+    }
+
+    #[summary("The interval of the products of x and y: the least and the largest of the four products of their bounds, None when one is outside i128")]
+    #[effects(pure)]
+    fn iv_mul(x: Iv, y: Iv) -> Option<Iv> {
+        let p1: encode_terms::Int = int_mul(x.lo, y.lo)?;
+        let p2: encode_terms::Int = int_mul(x.lo, y.hi)?;
+        let p3: encode_terms::Int = int_mul(x.hi, y.lo)?;
+        let p4: encode_terms::Int = int_mul(x.hi, y.hi)?;
+        Some(Iv { lo: int_min(int_min(p1, p2), int_min(p3, p4)), hi: int_max(int_max(p1, p2), int_max(p3, p4)) })
+    }
+
+    #[summary("The interval of two bounds, None when either is")]
+    #[effects(pure)]
+    fn iv_of(lo: Option<encode_terms::Int>, hi: Option<encode_terms::Int>) -> Option<Iv> {
+        Some(Iv { lo: lo?, hi: hi? })
+    }
+
+    #[summary("The lines of text (Rust's lines for text whose lines end in a line feed)")]
+    #[effects(alloc)]
+    fn lines(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = encode_terms::split(text, 10);
+        if out.len() > 0 && out[out.len() - 1].len() == 0 {
+            out.pop();
+        }
+        out
+    }
+
+    #[summary("The literal v as w bits (stage0 lit; two's complement, v fits): up to 128 bits the value modulo 2^w; above, a negative value is its 128-bit image sign-extended")]
+    #[effects(alloc)]
+    fn lit(v: encode_terms::Int, w: u64) -> String {
+        if w <= 128 {
+            return types::cat5("(_ bv", unsigned_text(low(twos(v), w)).as_str(), " ", encode_terms::dec(w).as_str(), ")");
+        }
+        if !v.neg {
+            return types::cat5("(_ bv", unsigned_text(v.mag).as_str(), " ", encode_terms::dec(w).as_str(), ")");
+        }
+        types::cat5("((_ sign_extend ", encode_terms::dec(w - 128).as_str(), ") (_ bv", unsigned_text(twos(v)).as_str(), " 128))")
+    }
+
+    #[summary("x modulo 2^w, w at most 128")]
+    #[effects(pure)]
+    fn low(x: wide::U128, w: u64) -> wide::U128 {
+        if w >= 128 {
+            return x;
+        }
+        if w > 64 {
+            let k: u64 = 128 - w;
+            return wide::U128 { hi: x.hi << k >> k, lo: x.lo };
+        }
+        if w == 64 {
+            return wide::U128 { hi: 0, lo: x.lo };
+        }
+        if w == 0 {
+            return wide::zero();
+        }
+        let j: u64 = 64 - w;
+        wide::U128 { hi: 0, lo: x.lo << j >> j }
+    }
+
+    #[summary("One more than the largest magnitude of an interval's bounds, None when unknown or outside i128")]
+    #[effects(pure)]
+    fn magnitude(iv: Option<Iv>) -> Option<encode_terms::Int> {
+        let v: Iv = iv?;
+        let a: encode_terms::Int = int_make(false, v.lo.mag)?;
+        let b: encode_terms::Int = int_make(false, v.hi.mag)?;
+        int_add(int_max(a, b), int_small(1))
+    }
+
+    #[summary("The widest bit-vector a translation may make (stage0 MAX_WIDTH)")]
+    #[effects(pure)]
+    fn max_width() -> u64 {
+        1024
+    }
+
+    #[summary("The value of a bit-vector literal of a model (`#x0f`, `#b101`, `(_ bv5 8)`) as an integer of type i (stage0 model_int)")]
+    #[effects(alloc)]
+    #[uses(wide::small, wide::stepped)]
+    fn model_int(v: &str, i: ast::IntTy) -> Option<encode_terms::Int> {
+        let mut u: wide::U128 = wide::zero();
+        let hex: bool = encode_terms::starts_at(v, 0, "#x");
+        if hex || encode_terms::starts_at(v, 0, "#b") {
+            let base: u64 = if hex {
+                16
+            } else {
+                2
+            };
+            let mut from: usize = 2;
+            if from < v.len() && v.as_bytes()[from] == 43 {
+                from = 3;
+            }
+            if from >= v.len() {
+                return None;
+            }
+            for k in from..v.len()
+                invariant from <= k && k <= v.len(),
+            {
+                let c: u8 = v.as_bytes()[k];
+                let d: u64 = if c >= 48 && c <= 57 {
+                    (c - 48) as u64
+                } else if c >= 97 && c <= 102 {
+                    (c - 87) as u64
+                } else if c >= 65 && c <= 70 {
+                    (c - 55) as u64
+                } else {
+                    16
+                };
+                if d >= base {
+                    return None;
+                }
+                u = wide::mul_add(u, base, d)?;
+            }
+        } else {
+            if !encode_terms::starts_at(v, 0, "(_ bv") || v.len() < 6 || v.as_bytes()[v.len() - 1] != 41 {
+                return None;
+            }
+            let inner: String = lexer::cut(v, 5, v.len() - 1);
+            let words: Vec<String> = words_of(inner.as_str());
+            if words.len() == 0 {
+                return None;
+            }
+            u = parse_u128(words[0].as_str())?;
+        }
+        if u.hi >= 9223372036854775808 {
+            return Some(encode_terms::Int { neg: true, mag: twos(encode_terms::Int { neg: true, mag: u }) });
+        }
+        let top: encode_terms::Int = encode_terms::from_num(consts::max_of(i));
+        if consts::signed(i) && wide::less(top.mag, u) {
+            return int_sub(encode_terms::Int { neg: false, mag: u }, encode_terms::Int { neg: false, mag: wide::pow2(consts::width(i)) });
+        }
+        Some(encode_terms::Int { neg: false, mag: u })
+    }
+
+    #[summary("A translation that knows no symbol yet. unfolds and revealed as in Tr")]
+    #[effects(alloc)]
+    fn new_tr(unfolds: bool, revealed: &[String]) -> Tr {
+        let mut shown: Vec<String> = Vec::new();
+        for i in 0..revealed.len()
+            invariant 0 <= i && i <= revealed.len(),
+        {
+            shown.push(revealed[i].clone());
+        }
+        Tr { syms: table::new::<T>(), args: table::new::<encode_terms::Sexp>(), decls: Vec::new(), hyps: Vec::new(), guards: Vec::new(), memo: table::new::<T>(), next: 0, depth: 0, unfolds: unfolds, revealed: shown, hidden: Vec::new() }
+    }
+
+    #[summary("The value of a numeral term (stage0 subproof numeral): an atom Rust reads as an i128 (digits after an optional sign), or `(- a)` of one")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn numeral(e: &encode_terms::Sexp) -> Option<encode_terms::Int> {
+        match e {
+            encode_terms::Sexp::Atom(a) => parse_i128(a.as_str()),
+            encode_terms::Sexp::List(xs) => { if xs.len() != 2 { return None; } match &xs[0] { encode_terms::Sexp::Atom(m) => { if m.as_str() != "-" { return None; } }, encode_terms::Sexp::List(_) => { return None; }, } match &xs[1] { encode_terms::Sexp::Atom(a) => int_neg(parse_i128(a.as_str())?), encode_terms::Sexp::List(_) => None, } },
+        }
+    }
+
+    #[summary("e with every placeholder replaced by its argument (stage0 Tr::outer): a term over the free variables' symbols")]
+    #[effects(alloc)]
+    fn outer(tr: &Tr, e: &encode_terms::Sexp, f: usize) -> encode_terms::Sexp
+        decreases f,
+    {
+        if f == 0 {
+            return e.clone();
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => match tr.args.find(a.as_str()) { None => e.clone(), Some(at) => outer(tr, &tr.args.items[at], f - 1), },
+            encode_terms::Sexp::List(xs) => { let mut out: Vec<encode_terms::Sexp> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { out.push(outer(tr, &xs[i], f - 1)); } encode_terms::Sexp::List(out) },
+        }
+    }
+
+    #[summary("The i128 Rust reads from text a: digits after an optional `+` or `-`. None for other text and outside i128")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn parse_i128(a: &str) -> Option<encode_terms::Int> {
+        let mut from: usize = 0;
+        let mut neg: bool = false;
+        if a.len() > 0 && (a.as_bytes()[0] == 43 || a.as_bytes()[0] == 45) {
+            neg = a.as_bytes()[0] == 45;
+            from = 1;
+        }
+        if from >= a.len() {
+            return None;
+        }
+        let mut v: wide::U128 = wide::zero();
+        for k in from..a.len()
+            invariant from <= k && k <= a.len(),
+        {
+            let c: u8 = a.as_bytes()[k];
+            if c < 48 || c > 57 {
+                return None;
+            }
+            v = wide::mul_add(v, 10, (c - 48) as u64)?;
+        }
+        int_make(neg, v)
+    }
+
+    #[summary("The u128 Rust reads from text a: digits after an optional `+`")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn parse_u128(a: &str) -> Option<wide::U128> {
+        let mut from: usize = 0;
+        if a.len() > 0 && a.as_bytes()[0] == 43 {
+            from = 1;
+        }
+        if from >= a.len() {
+            return None;
+        }
+        let mut v: wide::U128 = wide::zero();
+        for k in from..a.len()
+            invariant from <= k && k <= a.len(),
+        {
+            let c: u8 = a.as_bytes()[k];
+            if c < 48 || c > 57 {
+                return None;
+            }
+            v = wide::mul_add(v, 10, (c - 48) as u64)?;
+        }
+        Some(v)
+    }
+
+    #[summary("The u32 Rust reads from text a: digits after an optional `+`. None for other text and above the largest u32")]
+    #[effects(pure)]
+    fn parse_u32(a: &str) -> (r: Option<u64>)
+        ensures match r { None => true, Some(v) => v <= 4294967295, },
+    {
+        let mut from: usize = 0;
+        if a.len() > 0 && a.as_bytes()[0] == 43 {
+            from = 1;
+        }
+        if from >= a.len() {
+            return None;
+        }
+        let mut v: u64 = 0;
+        for k in from..a.len()
+            invariant from <= k && k <= a.len() && v <= 4294967295,
+        {
+            let c: u8 = a.as_bytes()[k];
+            if c < 48 || c > 57 {
+                return None;
+            }
+            v = v * 10 + (c - 48) as u64;
+            if v > 4294967295 {
+                return None;
+            }
+        }
+        Some(v)
+    }
+
+    #[summary("t, a two's complement value of from bits, as to bits (stage0 resize; to is enough to hold it when smaller)")]
+    #[effects(alloc)]
+    fn resize(t: &str, from: u64, to: u64) -> String {
+        if to > from {
+            return types::cat5("((_ sign_extend ", encode_terms::dec(to - from).as_str(), ") ", t, ")");
+        }
+        if to < from {
+            return types::cat5("((_ extract ", encode_terms::dec(to.saturating_sub(1)).as_str(), " 0) ", t, ")");
+        }
+        String::from(t)
+    }
+
+    #[summary("The name of a sort's type, as `bmb dump smt` writes it (stage0 Sort::name)")]
+    #[effects(alloc)]
+    fn sort_name(s: Sort) -> String {
+        match s {
+            Sort::Int(i) => body::int_text(i),
+            Sort::Bool => String::from("bool"),
+            Sort::F64 => String::from("f64"),
+        }
+    }
+
+    #[summary("The sort of a value of type t in a sub-proof, None for a type that is not an integer, bool or f64")]
+    #[effects(pure)]
+    fn sort_of(t: &ast::TypeKind) -> Option<Sort> {
+        match t {
+            ast::TypeKind::Int(i) => Some(Sort::Int(*i)),
+            ast::TypeKind::F64 => Some(Sort::F64),
+            ast::TypeKind::Bool => Some(Sort::Bool),
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(_, _) => None,
+            ast::TypeKind::ArrayN(_, _) => None,
+            ast::TypeKind::Slice(_) => None,
+            ast::TypeKind::Ref(_, _) => None,
+            ast::TypeKind::Named(_, _) => None,
+            ast::TypeKind::Vec(_) => None,
+            ast::TypeKind::Box(_) => None,
+            ast::TypeKind::Param(_) => None,
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("The translation of term e (stage0 Tr::term): a numeral is an integer literal; `true` and `false`; a bit-vector literal; a symbol by its translation; an f64 constant; and an application (app, indexed)")]
+    #[effects(alloc)]
+    fn term_of(tr: &mut Tr, e: &encode_terms::Sexp, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog, f: usize) -> Result<T, String>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(deep());
+        }
+        match numeral(e) {
+            None => {},
+            Some(v) => { return Ok(int_lit(v)); },
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => { if a.as_str() == "true" || a.as_str() == "false" { return Ok(T::Bool(a.clone())); } if encode_terms::starts_at(a.as_str(), 0, "#b") { return Ok(T::Bv(a.clone(), a.len().saturating_sub(2) as u64)); } if encode_terms::starts_at(a.as_str(), 0, "#x") { return Ok(T::Bv(a.clone(), (a.len().saturating_sub(2) as u64).saturating_mul(4))); } match tr.syms.find(a.as_str()) { None => Err(types::cat3("`", a.as_str(), "` has no bit-vector translation")), Some(at) => Ok(tr.syms.items[at].clone()), } },
+            encode_terms::Sexp::List(xs) => { if xs.len() == 0 { return Err(String::from("empty term")); } match &xs[0] { encode_terms::Sexp::Atom(h) => { if h.as_str() == "_" { underscore(xs.as_slice(), e) } else { app(tr, h.as_str(), xs.as_slice(), e, enc, pg, f - 1) } }, encode_terms::Sexp::List(head) => indexed(tr, head.as_slice(), xs.as_slice(), e, enc, pg, f - 1), } },
+        }
+    }
+
+    #[summary("The text of a translated term")]
+    #[effects(alloc)]
+    fn text_of(v: &T) -> String {
+        match v {
+            T::Bool(t) => t.clone(),
+            T::Int(t, _, _) => t.clone(),
+            T::Bv(t, _) => t.clone(),
+            T::Fp(t) => t.clone(),
+        }
+    }
+
+    #[summary("The refusal of a term that needs more bits than the widest bit-vector")]
+    #[effects(alloc)]
+    fn too_wide() -> String {
+        String::from("a term needs more than 1024 bits as a bit-vector")
+    }
+
+    #[summary("v as Rust's `v as u128`: the magnitude, or its two's complement in 128 bits for a negative value")]
+    #[effects(pure)]
+    fn twos(v: encode_terms::Int) -> wide::U128 {
+        if !v.neg {
+            return v.mag;
+        }
+        if v.mag.lo == 0 {
+            if v.mag.hi == 0 {
+                return wide::zero();
+            }
+            return wide::U128 { hi: 18446744073709551615 - v.mag.hi + 1, lo: 0 };
+        }
+        wide::U128 { hi: 18446744073709551615 - v.mag.hi, lo: 18446744073709551615 - v.mag.lo + 1 }
+    }
+
+    #[summary("`(_ bvN w)`, a bit-vector literal, and `(_ NaN 11 53)` and its kin, the f64 constants (the `_` arm of stage0 Tr::term)")]
+    #[effects(alloc)]
+    fn underscore(xs: &[encode_terms::Sexp], e: &encode_terms::Sexp) -> Result<T, String> {
+        if xs.len() == 3 {
+            match atom(&xs[1]) {
+                None => {},
+                Some(v) => { match atom(&xs[2]) { None => {}, Some(ws) => { if encode_terms::starts_at(v.as_str(), 0, "bv") { return match parse_u32(ws.as_str()) { None => Err(String::from("bad literal width")), Some(w) => Ok(T::Bv(encode_terms::print(e, 100000), w)), }; } }, } },
+            }
+        }
+        if xs.len() == 4 {
+            match atom(&xs[1]) {
+                None => {},
+                Some(v) => { match atom(&xs[2]) { None => {}, Some(eb) => { match atom(&xs[3]) { None => {}, Some(sb) => { if eb.as_str() == "11" && sb.as_str() == "53" && (v.as_str() == "NaN" || v.as_str() == "+zero" || v.as_str() == "-zero" || v.as_str() == "+oo" || v.as_str() == "-oo") { return Ok(T::Fp(encode_terms::print(e, 100000))); } }, } }, } },
+            }
+        }
+        Err(untranslated(e))
+    }
+
+    #[summary("The body of the spec fn whose SMT symbol is callee, over the placeholders ps for its parameters, for a sub-proof (stage0 Enc::unfold_spec). Only a non-recursive, non-generic spec fn of integers, f64s and bools that the definition reveals (#[uses]) unfolds; its body is translated as the encoder translates it everywhere (spec_block), in its own unit. None for a symbol that is no spec fn's, and where the translation unfolds nothing; a refusal for a spec fn that does not unfold, which names an unrevealed one as hidden_predicates does: local in the definition's own unit")]
+    #[effects(alloc)]
+    fn unfold_spec(tr: &mut Tr, callee: &str, ps: &[String], enc: &mut encode_spec::Enc, pg: &encode_spec::Prog) -> Result<Option<Unfolded>, String> {
+        if !tr.unfolds {
+            return Ok(None);
+        }
+        let mut found: Option<usize> = None;
+        let mut path: String = String::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match found {
+                None => { match pg.defs.nth(n) { None => {}, Some(at) => { if body::is_spec(pg.defs.items[at].d.kind) { let k: String = pg.defs.key(n); if encode_decls::sym(k.as_str()).as_str() == callee { found = Some(at); path = k.clone(); } } }, } },
+                Some(_) => {},
+            }
+        }
+        let at: usize = match found {
+            None => { return Ok(None); },
+            Some(a) => a,
+        };
+        if at >= pg.defs.items.len() {
+            return Ok(None);
+        }
+        let sig: usize = match pg.pr.t.fns.find(path.as_str()) {
+            None => { return Ok(None); },
+            Some(si) => si,
+        };
+        if pg.defs.items[at].inst || pg.pr.t.fns.items[sig].generics.len() > 0 {
+            return Err(types::cat3("`", path.as_str(), "` is generic: a bit-vector sub-proof unfolds spec fns of integers, `f64`s and `bool`s"));
+        }
+        if !types::has(tr.revealed.as_slice(), path.as_str()) {
+            let prefix: String = types::cat2(enc.spec_mod.as_str(), "::");
+            let mut local: String = path.clone();
+            if encode_terms::starts_at(path.as_str(), 0, prefix.as_str()) {
+                let rest: String = lexer::cut(path.as_str(), prefix.len(), path.len());
+                if !encode_decls::has_text(rest.as_str(), "::") {
+                    local = rest.clone();
+                }
+            }
+            tr.hidden.push(local);
+            return Err(types::cat3("`", path.as_str(), "` is not revealed (the sub-proof unfolds the spec fns the assertion calls)"));
+        }
+        if pg.recursive.has(path.as_str()) {
+            return Err(types::cat3("`", path.as_str(), "` is recursive: a bit-vector sub-proof unfolds only non-recursive spec fns"));
+        }
+        let mut params: Vec<Sort> = Vec::new();
+        let mut scalar: bool = true;
+        for i in 0..pg.pr.t.fns.items[sig].params.len()
+            invariant 0 <= i && i <= pg.pr.t.fns.items[sig].params.len(),
+        {
+            match sort_of(&pg.pr.t.fns.items[sig].params[i]) {
+                None => { scalar = false; },
+                Some(s) => params.push(s),
+            }
+        }
+        match sort_of(&pg.pr.t.fns.items[sig].ret) {
+            None => { scalar = false; },
+            Some(_) => {},
+        }
+        if !scalar {
+            return Err(types::cat3("`", path.as_str(), "` takes or returns a value that is not an integer, `f64` or `bool`"));
+        }
+        let mut env: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        for i in 0..pg.defs.items[at].d.params.len()
+            invariant 0 <= i && i <= pg.defs.items[at].d.params.len(),
+        {
+            if i < ps.len() {
+                env.insert(pg.defs.items[at].d.params[i].name.name.as_str(), encode_terms::Val::S(ps[i].clone()));
+            }
+        }
+        let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        let saved_sub: types::Subst = enc.tsub.clone();
+        let saved_mod: String = enc.spec_mod.clone();
+        enc.tsub = types::Subst { names: Vec::new(), tys: Vec::new() };
+        enc.spec_mod = pg.defs.items[at].unit.clone();
+        let text: String = encode_terms::scalar_of(&enc.spec_block(&pg.defs.items[at].d.body, &env, &none, pg, 100000));
+        enc.spec_mod = saved_mod;
+        enc.tsub = saved_sub;
+        match encode_terms::parse(text.as_str()) {
+            None => Err(types::cat3("`", path.as_str(), "` has no SMT term")),
+            Some(sx) => Ok(Some(Unfolded { body: sx, params: params })),
+        }
+    }
+
+    #[summary("t, a non-negative two's complement value of w bits, as n bits that hold its magnitude (the un of stage0 general_div)")]
+    #[effects(alloc)]
+    fn unsigned(t: &str, w: u64, n: u64) -> String {
+        if w > n {
+            return types::cat5("((_ extract ", encode_terms::dec(n.saturating_sub(1)).as_str(), " 0) ", t, ")");
+        }
+        resize(t, w, n)
+    }
+
+    #[summary("The decimal text of v")]
+    #[effects(alloc)]
+    #[uses(wide::divisor)]
+    fn unsigned_text(v: wide::U128) -> String {
+        let mut s: String = String::new();
+        wide::push_radix(&mut s, v, 10);
+        s
+    }
+
+    #[summary("The refusal of a term that has no translation")]
+    #[effects(alloc)]
+    fn untranslated(e: &encode_terms::Sexp) -> String {
+        types::cat3("`", encode_terms::print(e, 100000).as_str(), "` has no bit-vector translation")
+    }
+
+    #[summary("The declared sort of a free variable (stage0 var)")]
+    #[effects(alloc)]
+    fn var_decl(sort: Sort) -> String {
+        match sort {
+            Sort::Int(i) => types::cat3("(_ BitVec ", encode_terms::dec(consts::width(i)).as_str(), ")"),
+            Sort::Bool => String::from("Bool"),
+            Sort::F64 => String::from("Float64"),
+        }
+    }
+
+    #[summary("The translation of the free variable s (stage0 var): an unsigned value gets a zero sign bit")]
+    #[effects(alloc)]
+    fn var_term(s: &str, sort: Sort) -> T {
+        match sort {
+            Sort::Int(i) => { let iv: Option<Iv> = Some(Iv { lo: encode_terms::from_num(consts::min_of(i)), hi: encode_terms::from_num(consts::max_of(i)) }); if consts::signed(i) { T::Int(String::from(s), consts::width(i), iv) } else { T::Int(types::cat3("((_ zero_extend 1) ", s, ")"), encode_terms::width(i) as u64 + 1, iv) } },
+            Sort::Bool => T::Bool(String::from(s)),
+            Sort::F64 => T::Fp(String::from(s)),
+        }
+    }
+
+    #[summary("The parts of text between runs of white space (Rust's split_whitespace over ASCII)")]
+    #[effects(alloc)]
+    fn words_of(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut open: bool = false;
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len() && start <= i,
+        {
+            let c: u8 = text.as_bytes()[i];
+            if c >= 9 && c <= 13 || c == 32 {
+                if open {
+                    out.push(lexer::cut(text, start, i));
+                    open = false;
+                }
+            } else if !open {
+                start = i;
+                open = true;
+            }
+        }
+        if open {
+            out.push(lexer::cut(text, start, text.len()));
+        }
+        out
+    }
+}

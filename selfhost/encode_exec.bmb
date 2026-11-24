@@ -1,4 +1,4 @@
-#[summary("Proof encoding, fourth and fifth pieces (port of the executable side of stage0 compiler/src/verify.rs, of verify/invariants.rs and of the code of verify/text.rs, semantics in ADR-0017, ADR-0049, ADR-0050, ADR-0060 §2 and ADR-0062 §2): the symbolic state of an executable or proof definition (Exec, the fields of stage0 Enc that code reads, around the state of specifications), its entry (parameters, the refinement of a trait's contract, requires), the values and obligations of expressions (Exec::eval, split by kind of expression), branches and their merge, calls with their contracts, places, loops (loop_core and its parts, the jumps out of them), ghost code (proof fn bodies and proof blocks), the operations that change a Vec or a String, the operations of text, the validity of values of types with invariants, and the exec rows of `bmb dump smt`. `assert .. by` is the next piece (stage0 subproof): ported says whether a body holds none, and stage0's dump asks the same question (verify::port_encodes). stage0's closures over the encoder (branch) are a start, a turn and a join around the two sides; its thread-local switches are fields of Exec; a loop's condition and decreases clause are passed as copies, since no struct or Option holds a reference. The f of recursive functions is the remaining depth (ADR-0140)")]
+#[summary("Proof encoding, fourth to sixth pieces (port of the executable side of stage0 compiler/src/verify.rs, of verify/invariants.rs and of the code of verify/text.rs, semantics in ADR-0017, ADR-0049, ADR-0050, ADR-0060 §2 and ADR-0062 §2): the symbolic state of an executable or proof definition (Exec, the fields of stage0 Enc that code reads, around the state of specifications), its entry (parameters, the refinement of a trait's contract, requires), the values and obligations of expressions (Exec::eval, split by kind of expression), branches and their merge, calls with their contracts, places, loops (loop_core and its parts, the jumps out of them), ghost code (proof fn bodies and proof blocks), the operations that change a Vec or a String, the operations of text, the validity of values of types with invariants, `assert .. by` with the reads and free variables of its assertion (sub_proof; the query itself is encode_sub), and the exec rows of `bmb dump smt`. stage0's closures over the encoder (branch) are a start, a turn and a join around the two sides; its thread-local switches are fields of Exec; a loop's condition and decreases clause are passed as copies, since no struct or Option holds a reference. The f of recursive functions is the remaining depth (ADR-0140)")]
 mod encode_exec {
     #[summary("A branch that was entered (the start of stage0 Enc::branch): the locals before it, the length of the path condition before it, and its condition")]
     struct Branch { vars: table::Table<encode_terms::Val>, n: usize, c: String }
@@ -7,6 +7,146 @@ mod encode_exec {
     struct Exec { enc: encode_spec::Enc, vars: table::Table<encode_terms::Val>, var_rank: table::Table<usize>, was: table::Table<encode_terms::Val>, entry_measure: Option<encode_spec::Measure>, inputs: Vec<encode_spec::Shown>, dead: bool, ghost: bool, texts: Vec<encode_terms::Pair>, valid_decl: table::Table<bool>, valid_depth: u64, valid_defs: Vec<encode_spec::AxiomParts>, valid_memo: table::Table<bool>, reaching: bool, reach: Vec<Reach>, trust: Option<Trust>, loops: Vec<VLoop> }
 
     impl Exec {
+        #[summary("abstract_reads for block b (stage0 Enc::abstract_block): each `let` binds its name for what follows it")]
+        #[effects(alloc)]
+        fn abstract_block(self: &Exec, b: &ast::Block, bound: &mut Vec<String>, reads: &mut Vec<Read>, pg: &encode_spec::Prog, f: usize) -> ast::Block
+            decreases f,
+        {
+            if f == 0 {
+                return b.clone();
+            }
+            let n: usize = bound.len();
+            let mut stmts: Vec<ast::Stmt> = Vec::new();
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                match &b.stmts[i] {
+                    ast::Stmt::Let(sl) => { let init: ast::Expr = self.abstract_reads(&sl.init, bound, reads, pg, f - 1); bound.push(sl.name.name.clone()); stmts.push(ast::Stmt::Let(ast::Let { mutable: sl.mutable, name: sl.name.clone(), ty: sl.ty.clone(), ty_missing: sl.ty_missing, init: init, span: sl.span })); },
+                    ast::Stmt::Assign(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::While(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::For(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::Assert(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::Assume(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::Proof(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::LetFields(_) => stmts.push(b.stmts[i].clone()),
+                    ast::Stmt::Expr(_) => stmts.push(b.stmts[i].clone()),
+                }
+            }
+            let tail: Option<Box<ast::Expr>> = match &b.tail {
+                None => None,
+                Some(t) => Some(Box::new(self.abstract_reads(&**t, bound, reads, pg, f - 1))),
+            };
+            bound.truncate(n);
+            ast::Block { stmts: stmts, tail: tail, span: b.span }
+        }
+
+        #[summary("e with each scalar read of another value (an element, a field, a value behind a reference, a method of a non-scalar receiver) that names no `let` of the assertion replaced by a variable, one per distinct read by its text, listed in reads with the read (stage0 Enc::abstract_reads). The variable keeps the read's span, so it has the read's type. The read's text names it, which no local's name can be; a text that an SMT quoted symbol cannot hold (`|`, `\\`) is named by its number")]
+        #[effects(alloc)]
+        fn abstract_reads(self: &Exec, e: &ast::Expr, bound: &mut Vec<String>, reads: &mut Vec<Read>, pg: &encode_spec::Prog, f: usize) -> ast::Expr
+            decreases f,
+        {
+            if f == 0 {
+                return e.clone();
+            }
+            let read: bool = match &e.kind {
+                ast::ExprKind::Int(_, _) => false,
+                ast::ExprKind::Float(_) => false,
+                ast::ExprKind::ByteLit(_) => false,
+                ast::ExprKind::ByteStr(_) => false,
+                ast::ExprKind::StrLit(_) => false,
+                ast::ExprKind::CharLit(_) => false,
+                ast::ExprKind::Bool(_) => false,
+                ast::ExprKind::Unit => false,
+                ast::ExprKind::Var(_) => false,
+                ast::ExprKind::Call(_) => false,
+                ast::ExprKind::Method(rm) => !types::is_scalar(&self.enc.ty(&*rm.recv, pg)),
+                ast::ExprKind::Index(_, _) => true,
+                ast::ExprKind::Unary(_, _) => false,
+                ast::ExprKind::Binary(_, _, _) => false,
+                ast::ExprKind::Ref(_, _) => false,
+                ast::ExprKind::If(_) => false,
+                ast::ExprKind::Block(_) => false,
+                ast::ExprKind::Array(_) => false,
+                ast::ExprKind::Repeat(_) => false,
+                ast::ExprKind::Old(_) => false,
+                ast::ExprKind::Quant(_) => false,
+                ast::ExprKind::Trigger(_) => false,
+                ast::ExprKind::Closure(_) => false,
+                ast::ExprKind::StructLit(_) => false,
+                ast::ExprKind::Path(_) => false,
+                ast::ExprKind::Deref(_) => true,
+                ast::ExprKind::Field(_, _) => true,
+                ast::ExprKind::Match(_) => false,
+                ast::ExprKind::Return(_) => false,
+                ast::ExprKind::Try(_) => false,
+                ast::ExprKind::Loop(_) => false,
+                ast::ExprKind::Break(_) => false,
+                ast::ExprKind::Continue(_) => false,
+                ast::ExprKind::Range(_) => false,
+                ast::ExprKind::Error => false,
+            };
+            if read && types::is_scalar(&self.enc.ty(e, pg)) && !body::any_bound(e, bound.as_slice()) {
+                let text: String = fmt::expr_text(e);
+                let mut at: usize = reads.len();
+                for i in 0..reads.len()
+                    invariant 0 <= i && i <= reads.len() && at <= reads.len(),
+                {
+                    if at == reads.len() && reads[i].text.as_str() == text.as_str() {
+                        at = i;
+                    }
+                }
+                if at == reads.len() {
+                    let name: String = if encode_decls::has_text(text.as_str(), "|") || encode_decls::has_text(text.as_str(), "\\") {
+                        types::cat2("read#", encode_terms::dec(reads.len() as u64).as_str())
+                    } else {
+                        text.clone()
+                    };
+                    reads.push(Read { name: name, e: e.clone(), text: text.clone() });
+                }
+                if at < reads.len() {
+                    return ast::Expr { kind: ast::ExprKind::Var(ast::Ident { name: reads[at].name.clone(), span: e.span }), span: e.span };
+                }
+                return e.clone();
+            }
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => e.clone(),
+                ast::ExprKind::Float(_) => e.clone(),
+                ast::ExprKind::ByteLit(_) => e.clone(),
+                ast::ExprKind::ByteStr(_) => e.clone(),
+                ast::ExprKind::StrLit(_) => e.clone(),
+                ast::ExprKind::CharLit(_) => e.clone(),
+                ast::ExprKind::Bool(_) => e.clone(),
+                ast::ExprKind::Unit => e.clone(),
+                ast::ExprKind::Var(_) => e.clone(),
+                ast::ExprKind::Call(c) => { let mut cargs: Vec<ast::Expr> = Vec::new(); for i in 0..c.args.len() invariant 0 <= i && i <= c.args.len(), { cargs.push(self.abstract_reads(&c.args[i], bound, reads, pg, f - 1)); } ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: c.path.clone(), targs: c.targs.clone(), args: cargs, method: c.method }), span: e.span } },
+                ast::ExprKind::Method(m) => { let nr: ast::Expr = self.abstract_reads(&*m.recv, bound, reads, pg, f - 1); let mut margs: Vec<ast::Expr> = Vec::new(); for i in 0..m.args.len() invariant 0 <= i && i <= m.args.len(), { margs.push(self.abstract_reads(&m.args[i], bound, reads, pg, f - 1)); } ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(nr), name: m.name.clone(), args: margs }), span: e.span } },
+                ast::ExprKind::Index(_, _) => e.clone(),
+                ast::ExprKind::Unary(op, x) => ast::Expr { kind: ast::ExprKind::Unary(*op, Box::new(self.abstract_reads(&**x, bound, reads, pg, f - 1))), span: e.span },
+                ast::ExprKind::Binary(bop, a, b) => { let na: ast::Expr = self.abstract_reads(&**a, bound, reads, pg, f - 1); let nb: ast::Expr = self.abstract_reads(&**b, bound, reads, pg, f - 1); ast::Expr { kind: ast::ExprKind::Binary(*bop, Box::new(na), Box::new(nb)), span: e.span } },
+                ast::ExprKind::Ref(_, _) => e.clone(),
+                ast::ExprKind::If(ie) => { let nc: ast::Expr = self.abstract_reads(&*ie.cond, bound, reads, pg, f - 1); let nt: ast::Block = self.abstract_block(&ie.then, bound, reads, pg, f - 1); let ne: Option<Box<ast::Expr>> = match &ie.els { None => None, Some(el) => Some(Box::new(self.abstract_reads(&**el, bound, reads, pg, f - 1))), }; ast::Expr { kind: ast::ExprKind::If(ast::If { cond: Box::new(nc), then: nt, els: ne }), span: e.span } },
+                ast::ExprKind::Block(blk) => ast::Expr { kind: ast::ExprKind::Block(self.abstract_block(blk, bound, reads, pg, f - 1)), span: e.span },
+                ast::ExprKind::Array(_) => e.clone(),
+                ast::ExprKind::Repeat(_) => e.clone(),
+                ast::ExprKind::Old(_) => e.clone(),
+                ast::ExprKind::Quant(_) => e.clone(),
+                ast::ExprKind::Trigger(_) => e.clone(),
+                ast::ExprKind::Closure(_) => e.clone(),
+                ast::ExprKind::StructLit(_) => e.clone(),
+                ast::ExprKind::Path(_) => e.clone(),
+                ast::ExprKind::Deref(_) => e.clone(),
+                ast::ExprKind::Field(_, _) => e.clone(),
+                ast::ExprKind::Match(_) => e.clone(),
+                ast::ExprKind::Return(_) => e.clone(),
+                ast::ExprKind::Try(_) => e.clone(),
+                ast::ExprKind::Loop(_) => e.clone(),
+                ast::ExprKind::Break(_) => e.clone(),
+                ast::ExprKind::Continue(_) => e.clone(),
+                ast::ExprKind::Range(_) => e.clone(),
+                ast::ExprKind::Error => e.clone(),
+            }
+        }
+
         #[summary("Records text value v as valid UTF-8 where it enters the definition (stage0 Enc::assume_text): a parameter, a call's result, a &mut argument after the call. No obligation goes with it (ADR-0050 §3)")]
         #[effects(alloc)]
         fn assume_text(self: &mut Exec, v: &encode_terms::Val) -> () {
@@ -1238,6 +1378,84 @@ mod encode_exec {
             }
         }
 
+        #[summary("The free variables of block b of a `by (bit_vector)` assertion (stage0 Enc::free_block)")]
+        #[effects(alloc)]
+        fn free_block(self: &Exec, b: &ast::Block, bound: &mut Vec<String>, out: &mut table::Table<encode_sub::Sort>, pg: &encode_spec::Prog, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let n: usize = bound.len();
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                match &b.stmts[i] {
+                    ast::Stmt::Let(sl) => { self.free_scalars(&sl.init, bound, out, pg, f - 1); bound.push(sl.name.name.clone()); },
+                    ast::Stmt::Assign(_) => {},
+                    ast::Stmt::While(_) => {},
+                    ast::Stmt::For(_) => {},
+                    ast::Stmt::Assert(_) => {},
+                    ast::Stmt::Assume(_) => {},
+                    ast::Stmt::Proof(_) => {},
+                    ast::Stmt::LetFields(_) => {},
+                    ast::Stmt::Expr(_) => {},
+                }
+            }
+            match &b.tail {
+                None => {},
+                Some(t) => self.free_scalars(&**t, bound, out, pg, f - 1),
+            }
+            bound.truncate(n);
+        }
+
+        #[summary("The free variables of a `by (bit_vector)` assertion (integers, f64s and bools, E0515) with their sorts (stage0 Enc::free_scalars); bound are the `let`s around")]
+        #[effects(alloc)]
+        fn free_scalars(self: &Exec, e: &ast::Expr, bound: &mut Vec<String>, out: &mut table::Table<encode_sub::Sort>, pg: &encode_spec::Prog, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => { if !types::has(bound.as_slice(), id.name.as_str()) { let sort: encode_sub::Sort = match encode_sub::sort_of(&self.enc.ty(e, pg)) { None => encode_sub::Sort::Bool, Some(s) => s, }; out.insert(id.name.as_str(), sort); } },
+                ast::ExprKind::Call(c) => { for i in 0..c.args.len() invariant 0 <= i && i <= c.args.len(), { self.free_scalars(&c.args[i], bound, out, pg, f - 1); } },
+                ast::ExprKind::Method(m) => { self.free_scalars(&*m.recv, bound, out, pg, f - 1); for i in 0..m.args.len() invariant 0 <= i && i <= m.args.len(), { self.free_scalars(&m.args[i], bound, out, pg, f - 1); } },
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, x) => self.free_scalars(&**x, bound, out, pg, f - 1),
+                ast::ExprKind::Binary(_, a, b) => { self.free_scalars(&**a, bound, out, pg, f - 1); self.free_scalars(&**b, bound, out, pg, f - 1); },
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(ie) => { self.free_scalars(&*ie.cond, bound, out, pg, f - 1); self.free_block(&ie.then, bound, out, pg, f - 1); match &ie.els { None => {}, Some(el) => self.free_scalars(&**el, bound, out, pg, f - 1), } },
+                ast::ExprKind::Block(blk) => self.free_block(blk, bound, out, pg, f - 1),
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+
         #[summary("Ghost code (stage0 Enc::ghost_expr, ADR-0062 §2): `if` and `match` branch on specifications (the facts proved on a side hold under its condition), a block runs its statements, a call of a proof fn proves its preconditions and assumes its ensures, and any other expression is a specification with no effect")]
         #[effects(alloc)]
         fn ghost_expr(self: &mut Exec, e: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> ()
@@ -2197,7 +2415,7 @@ mod encode_exec {
             g
         }
 
-        #[summary("A statement of code (stage0 Enc::stmt): `let` binds the value of its initializer, in ghost code a specification value; an assignment evaluates the value, then the place and its bounds, as Rust does; `assert` is an obligation (E0810) and then a fact; `assume` is a trusted fact (ADR-0029 §2), only in a pass that trusts; `while` and `for` are loops (loop_core, stmt_for); a `proof` block is ghost code (proof_block). `assert .. by` is the next piece and does nothing here: a body inside the frontier holds none (ported)")]
+        #[summary("A statement of code (stage0 Enc::stmt): `let` binds the value of its initializer, in ghost code a specification value; an assignment evaluates the value, then the place and its bounds, as Rust does; `assert` is an obligation (E0810) and then a fact; `assume` is a trusted fact (ADR-0029 §2), only in a pass that trusts; `while` and `for` are loops (loop_core, stmt_for); a `proof` block is ghost code (proof_block). `assert .. by` is a sub-proof (sub_proof)")]
         #[effects(alloc)]
         fn stmt(self: &mut Exec, s: &ast::Stmt, pg: &encode_spec::Prog, f: usize) -> ()
             decreases f,
@@ -2210,7 +2428,7 @@ mod encode_exec {
                 ast::Stmt::Assign(sa) => { let av: encode_terms::Val = self.eval(&sa.value, pg, f - 1); self.write_place(&sa.target, &av, true, pg, f - 1); },
                 ast::Stmt::While(w) => { let wc: Option<ast::Expr> = Some(w.cond.clone()); let ws: Option<ForStep> = None; self.loop_core(&w.label, &wc, w.invariants.as_slice(), &w.measure, &w.body, &ws, w.span, pg, f - 1); },
                 ast::Stmt::For(fo) => self.stmt_for(fo, pg, f - 1),
-                ast::Stmt::Assert(sx) => { let plain: bool = match &sx.by { None => true, Some(prover) => false, }; if plain { let env: table::Table<encode_terms::Val> = self.vars.clone(); let was: table::Table<encode_terms::Val> = self.was.clone(); let g: String = encode_terms::scalar_of(&self.enc.spec_expr(&sx.cond, &env, &was, pg, 100000)); self.oblige("E0810", sx.span, "assertion may not hold", g.as_str()); } },
+                ast::Stmt::Assert(sx) => { match &sx.by { None => { let env: table::Table<encode_terms::Val> = self.vars.clone(); let was: table::Table<encode_terms::Val> = self.was.clone(); let g: String = encode_terms::scalar_of(&self.enc.spec_expr(&sx.cond, &env, &was, pg, 100000)); self.oblige("E0810", sx.span, "assertion may not hold", g.as_str()); }, Some(_) => self.sub_proof(&sx.cond, sx.span, pg), } },
                 ast::Stmt::Assume(su) => { if self.trusts_assumptions() { let uenv: table::Table<encode_terms::Val> = self.vars.clone(); let uwas: table::Table<encode_terms::Val> = self.was.clone(); let ug: String = encode_terms::scalar_of(&self.enc.spec_expr(&su.cond, &uenv, &uwas, pg, 100000)); self.enc.pc.push(ug); } },
                 ast::Stmt::Proof(pb) => self.proof_block(&pb.body, pg, f - 1),
                 ast::Stmt::LetFields(sms_letfields0) => {},
@@ -2268,6 +2486,67 @@ mod encode_exec {
             let o: String = encode_terms::scalar_of(&encode_spec::variant_value(&t, "Ok", payload.as_slice()));
             let r: String = encode_terms::scalar_of(&encode_spec::variant_value(&t, "Err", payload.as_slice()));
             encode_terms::Val::S(encode_terms::ite(ok.as_str(), o.as_str(), r.as_str()))
+        }
+
+        #[summary("`assert(e) by (bit_vector)` (stage0 Enc::sub_proof, ADR-0048 §4): e is proved in a query of its own (encode_sub::bit_vector) that sees its free variables only, each over its whole type, and none of the path's facts. Elements, fields and the like are variables of the sub-proof (abstract_reads). The query translates the very term the enclosing query then assumes, under the free variables' ranges and the guards of unfolded spec fns (true of every value of code). Code, a `proof` block and a proof fn body treat it alike")]
+        #[effects(alloc)]
+        fn sub_proof(self: &mut Exec, cond: &ast::Expr, span: source::Span, pg: &encode_spec::Prog) -> () {
+            let mut reads: Vec<Read> = Vec::new();
+            let mut bound: Vec<String> = Vec::new();
+            let bv_cond: ast::Expr = self.abstract_reads(cond, &mut bound, &mut reads, pg, 100000);
+            let mut free: table::Table<encode_sub::Sort> = table::new::<encode_sub::Sort>();
+            let mut around: Vec<String> = Vec::new();
+            self.free_scalars(&bv_cond, &mut around, &mut free, pg, 100000);
+            let mut env: table::Table<encode_terms::Val> = self.vars.clone();
+            let was: table::Table<encode_terms::Val> = self.was.clone();
+            for i in 0..reads.len()
+                invariant 0 <= i && i <= reads.len(),
+            {
+                let rv: encode_terms::Val = self.enc.spec_expr(&reads[i].e, &env, &was, pg, 100000);
+                env.insert(reads[i].name.as_str(), rv);
+            }
+            let mut fresh: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            let mut vars: Vec<encode_sub::Var> = Vec::new();
+            for n in 0..free.len()
+                invariant 0 <= n,
+            {
+                match free.nth(n) {
+                    None => {},
+                    Some(at) => { let name: String = free.key(n); fresh.insert(name.as_str(), encode_terms::Val::S(encode_decls::sym(name.as_str()))); vars.push(encode_sub::Var { sym: encode_decls::sym(name.as_str()), sort: free.items[at] }); },
+                }
+            }
+            let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            let term: String = encode_terms::scalar_of(&self.enc.spec_expr(&bv_cond, &fresh, &none, pg, 100000));
+            let fact: String = encode_terms::scalar_of(&self.enc.spec_expr(cond, &env, &was, pg, 100000));
+            let revealed: Vec<String> = match pg.defs.find(self.enc.path.as_str()) {
+                None => Vec::new(),
+                Some(d) => encode_spec::revealed(pg, self.enc.path.as_str(), &pg.defs.items[d].d, self.enc.spec_mod.as_str()),
+            };
+            let query: Result<encode_sub::Query, encode_sub::Refused> = match encode_terms::parse(term.as_str()) {
+                None => Err(encode_sub::Refused { why: String::from("the assertion has no SMT term"), hidden: Vec::new() }),
+                Some(sx) => encode_sub::bit_vector(&sx, vars.as_slice(), revealed.as_slice(), &mut self.enc, pg),
+            };
+            let mut real: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+            let mut ante: Vec<String> = Vec::new();
+            for n in 0..free.len()
+                invariant 0 <= n,
+            {
+                match free.nth(n) {
+                    None => {},
+                    Some(at) => { let name: String = free.key(n); match env.find(name.as_str()) { None => {}, Some(ev) => { let here: String = encode_terms::scalar_of(&env.items[ev]); match encode_terms::parse(here.as_str()) { None => {}, Some(hx) => real.insert(encode_decls::sym(name.as_str()).as_str(), hx), } match free.items[at] { encode_sub::Sort::Int(it) => ante.push(encode_terms::range_int(it, here.as_str())), encode_sub::Sort::Bool => {}, encode_sub::Sort::F64 => {}, } }, } },
+                }
+            }
+            let mut goal: String = String::from("false");
+            match &query {
+                Ok(q) => { goal = q.goal.clone(); for i in 0..q.guards.len() invariant 0 <= i && i <= q.guards.len(), { match encode_terms::parse(q.guards[i].as_str()) { None => {}, Some(gx) => ante.push(encode_terms::print(&encode_terms::subst_atoms(&gx, &real, 100000), 100000)), } } },
+                Err(_) => {},
+            }
+            self.enc.obls.push(encode_spec::Obl { code: String::from("E0818"), span: span, msg: String::from("bit-vector assertion may not hold"), assumptions: Vec::new(), goal: goal, shown: None, sub: Some(query) });
+            if ante.len() == 0 {
+                self.enc.pc.push(fact);
+            } else {
+                self.enc.pc.push(types::cat5("(=> ", encode_terms::and(ante.as_slice()).as_str(), " ", fact.as_str(), ")"));
+            }
         }
 
         #[summary("s.push_str(t) and s.push(c) on a String place recv whose value is rv (stage0 Enc::text_change, ADR-0050 §2): the bytes change by characters. A growth that returns left the length within the maximum (the run time ends the program otherwise, ADR-0124). push_str gives a fresh array stated equal to both parts; push stores the four bytes of c: of a constant its encoding, otherwise an ASCII value itself and fresh lead and continuation bytes (utf8_classes)")]
@@ -2732,6 +3011,9 @@ mod encode_exec {
     #[summary("A reach point (stage0 Enc::reach): where, what it is, and the path condition there")]
     struct Reach { span: source::Span, what: String, pc: Vec<String> }
 
+    #[summary("A scalar read that an `assert .. by` takes as a variable of its sub-proof: the variable's name, the read, and the read's text")]
+    struct Read { name: String, e: ast::Expr, text: String }
+
     #[summary("One side of a branch that has run (the middle of stage0 Enc::branch): the locals it left, the facts it added to the path condition, whether it returned")]
     struct Side { vars: table::Table<encode_terms::Val>, facts: Vec<String>, dead: bool }
 
@@ -2892,7 +3174,7 @@ mod encode_exec {
         Some(out)
     }
 
-    #[summary("The rows of an executable or proof function d of unit whose body is encoded, for `bmb dump smt` (the exec part of stage0 verify::dump_smt): an exec row with the declarations, the obligations that hold by their own text, whether the end of the body is unreachable, the path condition there, the entry values, the texts known valid, the validity functions defined and the reach points with their path conditions (recorded as under stage0 vacuous_ends); then an obl row per obligation")]
+    #[summary("The rows of an executable or proof function d of unit, for `bmb dump smt` (the exec part of stage0 verify::dump_smt): an exec row with the declarations, the obligations that hold by their own text, whether the end of the body is unreachable, the path condition there, the entry values, the texts known valid, the validity functions defined and the reach points with their path conditions (recorded as under stage0 vacuous_ends); then an obl row per obligation")]
     #[effects(alloc)]
     fn dump_body(out: &mut String, pg: &encode_spec::Prog, path: &str, d: &ast::FnDef, unit: &str) -> () {
         let mut ex: Exec = new_exec(pg, path, unit);
@@ -3168,166 +3450,6 @@ mod encode_exec {
         match pg.pr.t.fns.find(path) {
             None => Vec::new(),
             Some(at) => pg.pr.t.fns.items[at].params.clone(),
-        }
-    }
-
-    #[summary("Whether no statement of block b, nor of the loops and proof blocks among its statements, is `assert .. by` (the plain of stage0 port_encodes)")]
-    #[effects(pure)]
-    fn plain(b: &ast::Block, f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        for i in 0..b.stmts.len()
-            invariant 0 <= i && i <= b.stmts.len(),
-        {
-            let ok: bool = match &b.stmts[i] {
-                ast::Stmt::Let(pb_l) => true,
-                ast::Stmt::Assign(pb_a) => true,
-                ast::Stmt::While(w) => plain(&w.body, f - 1),
-                ast::Stmt::For(fo) => plain(&fo.body, f - 1),
-                ast::Stmt::Assert(sx) => { match &sx.by { None => true, Some(prover) => false, } },
-                ast::Stmt::Assume(pb_u) => true,
-                ast::Stmt::Proof(pf) => plain(&pf.body, f - 1),
-                ast::Stmt::LetFields(pb_f) => true,
-                ast::Stmt::Expr(pb_e) => true,
-            };
-            if !ok {
-                return false;
-            }
-        }
-        true
-    }
-
-    #[summary("The frontier of the port (stage0 verify::port_encodes): whether the body of function d is encoded. Not yet: a body that holds `assert .. by`, whose obligation and assumed fact are the translation of the sub-proof (stage0 subproof, the next piece). Read from the syntax, specification parts included, as stage0 reads it: a body outside it has no rows on either side of `bmb dump smt`. It goes with that piece")]
-    #[effects(pure)]
-    fn ported(d: &ast::FnDef) -> bool {
-        plain(&d.body, 100000) && ported_block(&d.body, 100000)
-    }
-
-    #[summary("ported for the expressions of block b (the walk of stage0 each_block_expr): of each statement, of the loops and proof blocks among them, and the tail")]
-    #[effects(pure)]
-    fn ported_block(b: &ast::Block, f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        for i in 0..b.stmts.len()
-            invariant 0 <= i && i <= b.stmts.len(),
-        {
-            let ok: bool = match &b.stmts[i] {
-                ast::Stmt::Let(sl) => ported_expr(&sl.init, f - 1),
-                ast::Stmt::Assign(sa) => ported_expr(&sa.target, f - 1) && ported_expr(&sa.value, f - 1),
-                ast::Stmt::While(w) => ported_expr(&w.cond, f - 1) && ported_exprs(w.invariants.as_slice(), f - 1) && ported_some(&w.measure, f - 1) && ported_block(&w.body, f - 1),
-                ast::Stmt::For(fo) => ported_expr(&fo.lo, f - 1) && ported_expr(&fo.hi, f - 1) && ported_exprs(fo.invariants.as_slice(), f - 1) && ported_block(&fo.body, f - 1),
-                ast::Stmt::Assert(sx) => ported_expr(&sx.cond, f - 1),
-                ast::Stmt::Assume(su) => ported_expr(&su.cond, f - 1),
-                ast::Stmt::Proof(pf) => ported_block(&pf.body, f - 1),
-                ast::Stmt::LetFields(lf) => ported_expr(&lf.init, f - 1),
-                ast::Stmt::Expr(x) => ported_expr(x, f - 1),
-            };
-            if !ok {
-                return false;
-            }
-        }
-        match &b.tail {
-            None => true,
-            Some(t) => ported_expr(&**t, f - 1),
-        }
-    }
-
-    #[summary("ported for expression e and every expression inside it (the walk of stage0 each_expr with the test of port_encodes at each node: the block of a block expression, of an `if` and of a `loop` is plain): a closure is not entered")]
-    #[effects(pure)]
-    fn ported_expr(e: &ast::Expr, f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        match &e.kind {
-            ast::ExprKind::Int(pee_int0, pee_int1) => true,
-            ast::ExprKind::Float(pee_float0) => true,
-            ast::ExprKind::ByteLit(pee_bytelit0) => true,
-            ast::ExprKind::ByteStr(pee_bytestr0) => true,
-            ast::ExprKind::StrLit(pee_strlit0) => true,
-            ast::ExprKind::CharLit(pee_charlit0) => true,
-            ast::ExprKind::Bool(pee_bool0) => true,
-            ast::ExprKind::Unit => true,
-            ast::ExprKind::Var(pee_var0) => true,
-            ast::ExprKind::Call(c) => ported_exprs(c.args.as_slice(), f - 1),
-            ast::ExprKind::Method(mc) => ported_expr(&*mc.recv, f - 1) && ported_exprs(mc.args.as_slice(), f - 1),
-            ast::ExprKind::Index(ib, ii) => ported_expr(&**ib, f - 1) && ported_expr(&**ii, f - 1),
-            ast::ExprKind::Unary(uop, ux) => ported_expr(&**ux, f - 1),
-            ast::ExprKind::Binary(op, l, r) => ported_expr(&**l, f - 1) && ported_expr(&**r, f - 1),
-            ast::ExprKind::Ref(pe_m, rx) => ported_expr(&**rx, f - 1),
-            ast::ExprKind::If(x) => plain(&x.then, 100000) && ported_expr(&*x.cond, f - 1) && ported_block(&x.then, f - 1) && ported_opt(&x.els, f - 1),
-            ast::ExprKind::Block(b) => plain(b, 100000) && ported_block(b, f - 1),
-            ast::ExprKind::Array(items) => ported_exprs(items.as_slice(), f - 1),
-            ast::ExprKind::Repeat(rp) => ported_expr(&*rp.value, f - 1),
-            ast::ExprKind::Old(ox) => ported_expr(&**ox, f - 1),
-            ast::ExprKind::Quant(qu) => ported_expr(&*qu.body, f - 1),
-            ast::ExprKind::Trigger(gx) => ported_expr(&**gx, f - 1),
-            ast::ExprKind::Closure(pee_closure0) => true,
-            ast::ExprKind::StructLit(lit) => { for i in 0..lit.fields.len() invariant 0 <= i && i <= lit.fields.len(), { if !ported_expr(&lit.fields[i].value, f - 1) { return false; } } ported_opt(&lit.rest, f - 1) },
-            ast::ExprKind::Path(pee_path0) => true,
-            ast::ExprKind::Deref(dx) => ported_expr(&**dx, f - 1),
-            ast::ExprKind::Field(fb, fname) => ported_expr(&**fb, f - 1),
-            ast::ExprKind::Match(mx) => { if !ported_expr(&*mx.scrut, f - 1) { return false; } for j in 0..mx.arms.len() invariant 0 <= j && j <= mx.arms.len(), { if !ported_expr(&mx.arms[j].body, f - 1) { return false; } } true },
-            ast::ExprKind::Return(rv) => ported_opt(rv, f - 1),
-            ast::ExprKind::Try(tx) => ported_expr(&**tx, f - 1),
-            ast::ExprKind::Loop(lp) => plain(&lp.body, 100000) && ported_exprs(lp.invariants.as_slice(), f - 1) && ported_opt(&lp.measure, f - 1) && ported_block(&lp.body, f - 1),
-            ast::ExprKind::Break(bk) => ported_opt(&bk.value, f - 1),
-            ast::ExprKind::Continue(pee_continue0) => true,
-            ast::ExprKind::Range(rg) => ported_expr(&*rg.lo, f - 1) && ported_expr(&*rg.hi, f - 1),
-            ast::ExprKind::Error => true,
-        }
-    }
-
-    #[summary("ported for each of xs")]
-    #[effects(pure)]
-    fn ported_exprs(xs: &[ast::Expr], f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        for i in 0..xs.len()
-            invariant 0 <= i && i <= xs.len(),
-        {
-            if !ported_expr(&xs[i], f - 1) {
-                return false;
-            }
-        }
-        true
-    }
-
-    #[summary("ported for an expression that may be absent")]
-    #[effects(pure)]
-    fn ported_opt(o: &Option<Box<ast::Expr>>, f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        match o {
-            None => true,
-            Some(x) => ported_expr(&**x, f - 1),
-        }
-    }
-
-    #[summary("ported for the decreases clause of a `while`, which may be absent")]
-    #[effects(pure)]
-    fn ported_some(o: &Option<ast::Expr>, f: usize) -> bool
-        decreases f,
-    {
-        if f == 0 {
-            return false;
-        }
-        match o {
-            None => true,
-            Some(x) => ported_expr(x, f - 1),
         }
     }
 

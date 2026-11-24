@@ -1,0 +1,410 @@
+#[summary("Sub-proofs `assert(e) by (bit_vector)`: the operators of each class at each width and sign (arithmetic with its intervals at the bounds of the types, signed and unsigned division and remainder by constants, powers of two and variables, bit operations and shifts, comparisons, the connectives, `if` and `let`), the bit and wrapping methods (the helpers a query defines), conversions, `f64` operations, conversions and constants, the reads that are variables of the sub-proof (elements, fields, lengths, values behind references, the same read twice, a read whose text an SMT symbol cannot hold), spec fns that unfold (named by the assertion itself and so revealed, nested, the same application twice, an argument of a wider type than its parameter as a hypothesis and a guard, a product wider than 128 bits), the spec fns that do not unfold (not revealed, of this unit, of an inner unit and of another unit, recursive, generic, with a struct parameter, with a struct result whose leaf function is no spec fn's symbol, a body that reads an array, deeper than the unfolding limit, one whose body holds a quantifier, whose bound variable is typed by the name alone: as nothing where the definition has no such local, as the local's type where it has), a term too wide for a bit-vector, and sub-proofs in a loop, in a branch, in a `proof` block and in a proof fn")]
+mod sub {
+    struct Pt { x: i32, y: u8 }
+
+    struct Line { a: Pt, n: [u16; 4] }
+
+    spec fn low(x: u32) -> u32 { x & 255 }
+
+    spec fn both(x: u32, y: u32) -> bool { low(x) == low(y) }
+
+    spec fn small(a: i8) -> bool { a < 100 }
+
+    spec fn tiny(a: u8, b: i16) -> bool { a < 16 && b > -3 }
+
+    spec fn wide(a: i64) -> bool { a != 7 }
+
+    spec fn ratio(a: i32, b: i32) -> i32 { a / b + a % b }
+
+    spec fn near(x: f64, y: f64) -> bool { x <= y || y <= x }
+
+    spec fn pick(c: char) -> usize { if c == 'a' { 0 } else { 1 } }
+
+    spec fn is_a(c: char) -> bool { c == 'a' }
+
+    spec fn hidden(x: u32) -> bool { x != 3 }
+
+    spec fn outer_h(x: u32) -> bool { hidden(x) }
+
+    spec fn outer_v(x: u32) -> bool { other::veiled(x) }
+
+    spec fn outer_i(x: u32) -> bool { sub::inner::deepest(x) }
+
+    spec fn px(p: Pt) -> i32 { p.x }
+
+    spec fn via(x: i32) -> i32 { px(Pt { x: x, y: 0 }) }
+
+    spec fn mk(x: i32) -> Pt { Pt { x: x, y: 0 } }
+
+    spec fn through(x: i32) -> i32 { mk(x).x }
+
+    spec fn third(i: usize) -> i64 { [7, 8, 9][i] }
+
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    spec fn same<T>(x: T, y: T) -> bool { x == y }
+
+    spec fn mark(i: u64) -> bool { i >= 0 }
+
+    spec fn all_marked(n: u64) -> bool {
+        forall|i: u64| #[trigger] mark(i) ==> i <= n || mark(n)
+    }
+
+    spec fn deep0(x: u8) -> bool { deep1(x) }
+
+    spec fn deep1(x: u8) -> bool { deep2(x) }
+
+    spec fn deep2(x: u8) -> bool { deep3(x) }
+
+    spec fn deep3(x: u8) -> bool { deep4(x) }
+
+    spec fn deep4(x: u8) -> bool { deep5(x) }
+
+    spec fn deep5(x: u8) -> bool { deep6(x) }
+
+    spec fn deep6(x: u8) -> bool { deep7(x) }
+
+    spec fn deep7(x: u8) -> bool { deep8(x) }
+
+    spec fn deep8(x: u8) -> bool { deep9(x) }
+
+    spec fn deep9(x: u8) -> bool { deep10(x) }
+
+    spec fn deep10(x: u8) -> bool { deep11(x) }
+
+    spec fn deep11(x: u8) -> bool { deep12(x) }
+
+    spec fn deep12(x: u8) -> bool { deep13(x) }
+
+    spec fn deep13(x: u8) -> bool { deep14(x) }
+
+    spec fn deep14(x: u8) -> bool { deep15(x) }
+
+    spec fn deep15(x: u8) -> bool { deep16(x) }
+
+    spec fn deep16(x: u8) -> bool { deep17(x) }
+
+    spec fn deep17(x: u8) -> bool { deep18(x) }
+
+    spec fn deep18(x: u8) -> bool { deep19(x) }
+
+    spec fn deep19(x: u8) -> bool { deep20(x) }
+
+    spec fn deep20(x: u8) -> bool { deep21(x) }
+
+    spec fn deep21(x: u8) -> bool { deep22(x) }
+
+    spec fn deep22(x: u8) -> bool { deep23(x) }
+
+    spec fn deep23(x: u8) -> bool { deep24(x) }
+
+    spec fn deep24(x: u8) -> bool { deep25(x) }
+
+    spec fn deep25(x: u8) -> bool { deep26(x) }
+
+    spec fn deep26(x: u8) -> bool { deep27(x) }
+
+    spec fn deep27(x: u8) -> bool { deep28(x) }
+
+    spec fn deep28(x: u8) -> bool { deep29(x) }
+
+    spec fn deep29(x: u8) -> bool { deep30(x) }
+
+    spec fn deep30(x: u8) -> bool { deep31(x) }
+
+    spec fn deep31(x: u8) -> bool { deep32(x) }
+
+    spec fn deep32(x: u8) -> bool { deep33(x) }
+
+    spec fn deep33(x: u8) -> bool { deep34(x) }
+
+    spec fn deep34(x: u8) -> bool { deep35(x) }
+
+    spec fn deep35(x: u8) -> bool { deep36(x) }
+
+    spec fn deep36(x: u8) -> bool { deep37(x) }
+
+    spec fn deep37(x: u8) -> bool { deep38(x) }
+
+    spec fn deep38(x: u8) -> bool { deep39(x) }
+
+    spec fn deep39(x: u8) -> bool { deep40(x) }
+
+    spec fn deep40(x: u8) -> bool { deep41(x) }
+
+    spec fn deep41(x: u8) -> bool { deep42(x) }
+
+    spec fn deep42(x: u8) -> bool { deep43(x) }
+
+    spec fn deep43(x: u8) -> bool { deep44(x) }
+
+    spec fn deep44(x: u8) -> bool { deep45(x) }
+
+    spec fn deep45(x: u8) -> bool { deep46(x) }
+
+    spec fn deep46(x: u8) -> bool { deep47(x) }
+
+    spec fn deep47(x: u8) -> bool { deep48(x) }
+
+    spec fn deep48(x: u8) -> bool { deep49(x) }
+
+    spec fn deep49(x: u8) -> bool { deep50(x) }
+
+    spec fn deep50(x: u8) -> bool { deep51(x) }
+
+    spec fn deep51(x: u8) -> bool { deep52(x) }
+
+    spec fn deep52(x: u8) -> bool { deep53(x) }
+
+    spec fn deep53(x: u8) -> bool { deep54(x) }
+
+    spec fn deep54(x: u8) -> bool { deep55(x) }
+
+    spec fn deep55(x: u8) -> bool { deep56(x) }
+
+    spec fn deep56(x: u8) -> bool { deep57(x) }
+
+    spec fn deep57(x: u8) -> bool { deep58(x) }
+
+    spec fn deep58(x: u8) -> bool { deep59(x) }
+
+    spec fn deep59(x: u8) -> bool { deep60(x) }
+
+    spec fn deep60(x: u8) -> bool { deep61(x) }
+
+    spec fn deep61(x: u8) -> bool { deep62(x) }
+
+    spec fn deep62(x: u8) -> bool { deep63(x) }
+
+    spec fn deep63(x: u8) -> bool { deep64(x) }
+
+    spec fn deep64(x: u8) -> bool { deep65(x) }
+
+    spec fn deep65(x: u8) -> bool { x < 200 }
+
+    #[effects(pure)]
+    fn signed8(a: i8, b: i8) -> () {
+        assert(a + b - b == a) by (bit_vector);
+        assert(a * b == b * a) by (bit_vector);
+        assert(-(-a) == a) by (bit_vector);
+        assert(a - 1 < a) by (bit_vector);
+        assert(a + 127 >= -1) by (bit_vector);
+        assert(b != 0 ==> a / b * b + a % b == a) by (bit_vector);
+        assert(a / 4 * 4 + a % 4 == a) by (bit_vector);
+        assert(a / 3 <= 42 && a % 3 < 3) by (bit_vector);
+        assert(a / -2 >= -63 && a % -2 > -2) by (bit_vector);
+        assert(a / 1 == a && a % 1 == 0) by (bit_vector);
+        assert(a & b <= a | b || a < 0 || b < 0) by (bit_vector);
+        assert(a ^ a == 0 && !a == -a - 1) by (bit_vector);
+        assert(a << 1 >> 1 == a || a < -64 || a > 63) by (bit_vector);
+        assert(a >> 7 == 0 || a >> 7 == -1) by (bit_vector);
+        assert((a < b || a == b || a > b) && (a <= b || a >= b) && a != b + 1) by (bit_vector);
+        assert(i8::MIN <= a && a <= i8::MAX) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn unsigned8(p: u8, q: u8) -> () {
+        assert(p + q >= p) by (bit_vector);
+        assert(p * q >= 0 && p - q <= 255) by (bit_vector);
+        assert(q != 0 ==> p / q * q + p % q == p) by (bit_vector);
+        assert(p / 16 == p >> 4 && p % 16 == p & 15) by (bit_vector);
+        assert(p / 7 <= 36 && p % 7 <= 6) by (bit_vector);
+        assert(p / 1 == p && p % 1 == 0 && p % 2 <= 1) by (bit_vector);
+        assert(p & q <= p && p | q >= p && p ^ q <= 255 && !p == 255 - p) by (bit_vector);
+        assert(p << 3 >> 3 == p & 31) by (bit_vector);
+        assert(p >> q <= p || q >= 8) by (bit_vector);
+        assert(p << q >= 0 || q >= 8) by (bit_vector);
+        assert(u8::MAX - p >= 0 && u8::MIN <= p) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn widths(b: i16, c: i32, d: i64, e: isize, q: u16, r: u32, s: u64, t: usize) -> () {
+        assert(b * b >= 0 && b + b - b == b) by (bit_vector);
+        assert(c * c >= 0 && c / 1000 * 1000 + c % 1000 == c) by (bit_vector);
+        assert(d + 1 > d && d - 1 < d && d * 2 == d + d) by (bit_vector);
+        assert(d / 2 * 2 + d % 2 == d && d / 9223372036854775807 <= 1) by (bit_vector);
+        assert(e / 4096 <= e || e < 0) by (bit_vector);
+        assert(q * q <= 4294836225 && q % 1024 < 1024) by (bit_vector);
+        assert(r * r * r >= r || r == 0) by (bit_vector);
+        assert(s + s == 2 * s && s * s >= s) by (bit_vector);
+        assert(s / 3 <= 6148914691236517205 && s % 4294967296 <= 4294967295) by (bit_vector);
+        assert(t - t == 0 && t / 2 <= t) by (bit_vector);
+        assert(i64::MIN <= d && d <= i64::MAX && s <= u64::MAX && usize::MAX >= t) by (bit_vector);
+        assert(c as i64 + d - d == c as i64 && q as u32 <= 65535) by (bit_vector);
+        assert(d != 0 ==> i64::MIN / d <= i64::MAX || d == -1) by (bit_vector);
+        assert(s & 4095 == s % 4096 && s >> 12 == s / 4096 && r << 4 >> 4 <= r) by (bit_vector);
+        assert(d ^ d == 0 && (d & 1 == 0 || d & 1 == 1) && d >> 63 >= -1) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn mixed(a: i8, d: i64, p: u8, s: u64, o: bool, n: bool) -> () {
+        assert((o && n ==> o) && (o || !o) && (o == n || o != n) && (o & n == n & o) && (o | n) == (n | o) && (o ^ o) == false) by (bit_vector);
+        assert((if o { a } else { 0 - a }) <= 128) by (bit_vector);
+        assert((if a < 0 { p } else { 255 - p }) <= 255) by (bit_vector);
+        assert({ let h: i8 = a / 2; let k: i8 = h + h; k == a || k + 1 == a || k - 1 == a }) by (bit_vector);
+        assert(o < n ==> !o) by (bit_vector);
+        assert(s * s * s * s == s * s * (s * s)) by (bit_vector);
+        assert(d * d * d * d * d * d * d * d * d * d * d * d * d * d * d * d * d == d * d * d * d * d * d * d * d * d * d * d * d * d * d * d * d * d) by (bit_vector);
+        assert(s * s / (s + 1) <= s) by (bit_vector);
+        assert(s * s % 8 == (s % 8) * (s % 8) % 8) by (bit_vector);
+        assert(d * d / d == d || d == 0) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn methods(p: u8, q: u16, r: u32, s: u64, c: i32, k: u32) -> () {
+        assert(p.wrapping_add(1).wrapping_sub(1) == p) by (bit_vector);
+        assert(c.wrapping_mul(2) == c.wrapping_add(c)) by (bit_vector);
+        assert(r.rotate_left(k).rotate_right(k) == r) by (bit_vector);
+        assert(s.rotate_left(8) == s << 8 | s >> 56) by (bit_vector);
+        assert(q.swap_bytes().swap_bytes() == q && p.swap_bytes() == p) by (bit_vector);
+        assert(r.count_ones() + r.count_zeros() == 32) by (bit_vector);
+        assert(s.leading_zeros() <= 64 && s.trailing_zeros() <= 64) by (bit_vector);
+        assert(p.leading_ones() <= 8 && p.trailing_ones() <= 8) by (bit_vector);
+        assert(r.reverse_bits().reverse_bits() == r) by (bit_vector);
+        assert(r.wrapping_shl(k) == r << (k & 31) && r.wrapping_shr(33) == r >> 1) by (bit_vector);
+        assert(c.saturating_add(1) >= c && p.saturating_sub(1) <= p) by (bit_vector);
+        assert(r.is_power_of_two() ==> r.count_ones() == 1) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn floats(x: f64, y: f64, d: i64, c: i32) -> () {
+        assert(x + y == y + x || x.is_nan() || y.is_nan() || !(x + y).is_finite()) by (bit_vector);
+        assert(x - x == 0.0 || !x.is_finite()) by (bit_vector);
+        assert(x * 1.0 == x || x.is_nan()) by (bit_vector);
+        assert(x / 2.0 <= x || x < 0.0 || x.is_nan()) by (bit_vector);
+        assert(-(-x) == x || x.is_nan()) by (bit_vector);
+        assert(x.abs() >= 0.0 || x.is_nan()) by (bit_vector);
+        assert(x.sqrt() >= 0.0 || x < 0.0 || x.is_nan()) by (bit_vector);
+        assert(x.min(y) <= x.max(y) || x.is_nan() || y.is_nan()) by (bit_vector);
+        assert(x < y || x >= y || x.is_nan() || y.is_nan()) by (bit_vector);
+        assert(x > y ==> y <= x) by (bit_vector);
+        assert(f64::from(c) + 1.0 > f64::from(c)) by (bit_vector);
+        assert(f64::NAN != f64::NAN && f64::INFINITY > f64::MAX && f64::NEG_INFINITY < f64::MIN && f64::EPSILON > 0.0 && f64::MIN_POSITIVE > 0.0) by (bit_vector);
+        assert(d == 3 ==> x * 0.0 == 0.0 || !x.is_finite()) by (bit_vector);
+        assert(f64::from(c) == 2.5 ==> c == 2) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn floats_alone(c: i32) -> () {
+        assert(f64::from(c) <= 2147483647.0) by (bit_vector);
+        assert(1.5 + 1.5 == 3.0) by (bit_vector);
+        assert(f64::NAN != 0.0) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn reads(a: &[u8], i: usize, l: &Line, r: &u32, w: &mut i64, v: &Vec<u16>, t: &str) -> ()
+        requires i < a.len(), v.len() > 2,
+    {
+        assert(a[i] & 15 <= a[i]) by (bit_vector);
+        assert(a[i] ^ a[i] == 0 && a[0] | a[i] >= a[i]) by (bit_vector);
+        assert(l.a.x + 0 == l.a.x && l.a.y <= 255 && l.n[1] & l.n[2] <= l.n[1]) by (bit_vector);
+        assert(*r >> 4 <= *r && *w - *w == 0) by (bit_vector);
+        assert(a.len() / 2 <= a.len() && v.len() & 1 <= 1 && v[0] ^ v[1] <= 65535) by (bit_vector);
+        assert(a[i | 1] == a[i | 1] && a[pick('\\')] <= 255) by (bit_vector);
+        assert(t.len() + 0 == t.len() && (t.is_char_boundary(i) || !t.is_char_boundary(i))) by (bit_vector);
+        assert({ let m: u8 = 15; a[i] & m <= m }) by (bit_vector);
+        *w = *w / 2;
+        assert(*w | 1 != 0) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    #[uses(low, both, small, tiny, wide, ratio, near)]
+    fn unfolds(x: u32, y: u32, a: i8, c: i32, d: i64, p: u8, s: u64, f: f64) -> () {
+        assert(low(x) <= 255) by (bit_vector);
+        assert(both(x, x) && (both(x, y) ==> both(y, x))) by (bit_vector);
+        assert(low(low(x)) == low(x) && low(x + 0) == low(x)) by (bit_vector);
+        assert(small(a) || a >= 100) by (bit_vector);
+        assert(small(c) ==> c < 100) by (bit_vector);
+        assert(small(c + 1) ==> c < 99) by (bit_vector);
+        assert(tiny(p, a) || p >= 16 || a <= -3) by (bit_vector);
+        assert(tiny(x, d) ==> x < 16) by (bit_vector);
+        assert(tiny(s * s, d * d) ==> s < 4) by (bit_vector);
+        assert(wide(s * s) || s * s == 7) by (bit_vector);
+        assert(wide(d) == wide(d) && wide(7) == false) by (bit_vector);
+        assert(c != 0 ==> ratio(c, c) == 1) by (bit_vector);
+        assert(ratio(c, 2) <= c || c < 0) by (bit_vector);
+        assert(ratio(d, s) == ratio(d, s)) by (bit_vector);
+        assert(near(f, 1.0) || f.is_nan()) by (bit_vector);
+        assert(near(f + 1.0, f64::from(c)) || f.is_nan()) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    #[uses(count, is_a, all_marked, other::far, outer_h, outer_v, outer_i, px, via, mk, through, third, deep0, deep1, deep2, deep3, deep4, deep5, deep6, deep7, deep8, deep9, deep10, deep11, deep12, deep13, deep14, deep15, deep16, deep17, deep18, deep19, deep20, deep21, deep22, deep23, deep24, deep25, deep26, deep27, deep28, deep29, deep30, deep31, deep32, deep33, deep34, deep35, deep36, deep37, deep38, deep39, deep40, deep41, deep42, deep43, deep44, deep45, deep46, deep47, deep48, deep49, deep50, deep51, deep52, deep53, deep54, deep55, deep56, deep57, deep58, deep59, deep60, deep61, deep62, deep63, deep64, deep65)]
+    fn refused(x: u32, n: u64, p: u8, ch: char, s: u64, c: i32, t: usize) -> () {
+        assert(outer_h(x) || x == 3) by (bit_vector);
+        assert(outer_v(x) || x == 3) by (bit_vector);
+        assert(outer_i(x) || x == 3) by (bit_vector);
+        assert(via(c) == c) by (bit_vector);
+        assert(through(c) == c) by (bit_vector);
+        assert(t < 3 ==> third(t) >= 7) by (bit_vector);
+        assert(other::far(x) >= x) by (bit_vector);
+        assert(count(n) >= 0) by (bit_vector);
+        assert(same::<u32>(x, x)) by (bit_vector);
+        assert(is_a(ch) || !is_a(ch)) by (bit_vector);
+        assert(deep0(p) || p >= 200) by (bit_vector);
+        assert(deep1(p) || p >= 200) by (bit_vector);
+        assert(all_marked(n) || !all_marked(n)) by (bit_vector);
+        assert(s * s * s * s * s * s * s * s * s * s * s * s * s * s * s * s * s >= 0) by (bit_vector);
+        assert(x + 1 == x) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn direct(x: u32) -> () {
+        assert(hidden(x) || x == 3) by (bit_vector);
+        assert(other::veiled(x) || x == 3) by (bit_vector);
+        assert(outer_h(x) == hidden(x)) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    #[uses(all_marked)]
+    fn binder<T>(i: T, n: u64) -> T {
+        assert(all_marked(n) == all_marked(n)) by (bit_vector);
+        i
+    }
+
+    #[effects(pure)]
+    #[uses(low)]
+    fn placed(a: &[u32], lim: u32) -> (r: u32) {
+        let mut acc: u32 = 0;
+        for i in 0..a.len()
+            invariant acc <= 255,
+        {
+            assert(low(a[i]) <= 255 && (acc ^ low(a[i])) <= 255 || acc > 255) by (bit_vector);
+            if a[i] < lim {
+                assert(a[i] & 1 <= 1) by (bit_vector);
+                acc = (acc ^ a[i]) & 255;
+            } else {
+                proof {
+                    assert(lim >> 1 <= lim) by (bit_vector);
+                }
+            }
+        }
+        acc
+    }
+
+    #[summary("An inner unit: a spec fn of it that is not revealed is named by its path")]
+    mod inner {
+        spec fn deepest(x: u32) -> bool { x != 3 }
+    }
+
+    proof fn lemma(a: u16, b: u16)
+        requires a <= b,
+        ensures a & b <= b,
+    {
+        assert(a & b <= b) by (bit_vector);
+        if a == b {
+            assert(a ^ b == 0 ==> a == b) by (bit_vector);
+        }
+    }
+}
+
+#[summary("A unit whose spec fns another unit's sub-proofs name")]
+mod other {
+    spec fn far(x: u32) -> u32 { x | 1 }
+
+    spec fn veiled(x: u32) -> bool { x != 3 }
+}

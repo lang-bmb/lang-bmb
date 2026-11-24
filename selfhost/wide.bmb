@@ -2,7 +2,103 @@
 mod wide {
     struct DivRem { q: U128, r: u64 }
 
+    #[summary("Quotient and remainder of a division of two 128-bit values")]
+    struct QuoRem { q: U128, r: U128 }
+
     struct U128 { hi: u64, lo: u64 }
+
+    #[summary("a + b. None when the sum does not fit in 128 bits")]
+    #[effects(pure)]
+    #[uses(summed)]
+    fn add(a: U128, b: U128) -> (r: Option<U128>)
+        ensures summed(r, a, b),
+    {
+        let mut lo: u64 = 0;
+        let mut c: u64 = 0;
+        if a.lo > 18446744073709551615 - b.lo {
+            lo = a.lo - (18446744073709551615 - b.lo) - 1;
+            c = 1;
+        } else {
+            lo = a.lo + b.lo;
+        }
+        if a.hi > 18446744073709551615 - b.hi {
+            return None;
+        }
+        let h: u64 = a.hi + b.hi;
+        if h > 18446744073709551615 - c {
+            return None;
+        }
+        Some(U128 { hi: h + c, lo: lo })
+    }
+
+    #[summary("Number of bits of a: 0 for 0, 128 for a value with the top bit set (128 minus Rust's leading_zeros)")]
+    #[effects(pure)]
+    fn bit_len(a: U128) -> (r: u64)
+        ensures r <= 128,
+    {
+        if a.hi != 0 {
+            return 64 + bit_len64(a.hi);
+        }
+        bit_len64(a.lo)
+    }
+
+    #[summary("Number of bits of x: 0 for 0")]
+    #[effects(pure)]
+    fn bit_len64(x: u64) -> (r: u64)
+        ensures r <= 64,
+    {
+        let mut top: u64 = x;
+        let mut k: u64 = 0;
+        while top != 0 && k < 64
+            invariant k <= 64,
+            decreases 64 - k,
+        {
+            top = top / 2;
+            k = k + 1;
+        }
+        k
+    }
+
+    #[summary("Quotient and remainder of a by b (schoolbook division, one bit at a time from the top). For b = 0 the quotient is 0 and the remainder a")]
+    #[effects(pure)]
+    fn div_rem(a: U128, b: U128) -> QuoRem {
+        if b.hi == 0 && b.lo == 0 {
+            return QuoRem { q: zero(), r: a };
+        }
+        if a.hi == 0 && b.hi == 0 {
+            return QuoRem { q: U128 { hi: 0, lo: a.lo / b.lo }, r: U128 { hi: 0, lo: a.lo % b.lo } };
+        }
+        let mut q: U128 = zero();
+        let mut r: U128 = zero();
+        let mut k: u64 = 128;
+        while k > 0
+            invariant k <= 128,
+            decreases k,
+        {
+            k = k - 1;
+            let bit: u64 = if k >= 64 {
+                (a.hi >> k - 64) % 2
+            } else {
+                (a.lo >> k) % 2
+            };
+            let carry: bool = r.hi >= 9223372036854775808;
+            r = U128 { hi: r.hi % 9223372036854775808 * 2 + r.lo / 9223372036854775808, lo: r.lo % 9223372036854775808 * 2 + bit };
+            if carry || !less(r, b) {
+                let borrow: u64 = if r.lo < b.lo {
+                    1
+                } else {
+                    0
+                };
+                r = U128 { hi: r.hi.wrapping_sub(b.hi).wrapping_sub(borrow), lo: r.lo.wrapping_sub(b.lo) };
+                if k >= 64 {
+                    q = U128 { hi: q.hi | 1 << k - 64, lo: q.lo };
+                } else {
+                    q = U128 { hi: q.hi, lo: q.lo | 1 << k };
+                }
+            }
+        }
+        QuoRem { q: q, r: r }
+    }
 
     #[effects(pure)]
     #[uses(divided, divisor)]
@@ -32,6 +128,68 @@ mod wide {
         2 <= d && d <= 16
     }
 
+    #[summary("Whether a = b")]
+    #[effects(pure)]
+    fn equal(a: U128, b: U128) -> (r: bool)
+        ensures r == (a.hi == b.hi && a.lo == b.lo),
+    {
+        a.hi == b.hi && a.lo == b.lo
+    }
+
+    #[summary("Whether a < b")]
+    #[effects(pure)]
+    fn less(a: U128, b: U128) -> (r: bool)
+        ensures r == (a.hi * 18446744073709551616 + a.lo < b.hi * 18446744073709551616 + b.lo),
+    {
+        a.hi < b.hi || a.hi == b.hi && a.lo < b.lo
+    }
+
+    #[summary("a * b. None when the product does not fit in 128 bits")]
+    #[effects(pure)]
+    #[uses(multiplied, product, summed)]
+    fn mul(a: U128, b: U128) -> (r: Option<U128>)
+        ensures multiplied(r, a, b),
+    {
+        if a.hi != 0 && b.hi != 0 {
+            return None;
+        }
+        let x: U128 = if a.hi != 0 {
+            a
+        } else {
+            b
+        };
+        let y: u64 = if a.hi != 0 {
+            b.lo
+        } else {
+            a.lo
+        };
+        let top: U128 = mul64(x.hi, y);
+        if top.hi != 0 {
+            return None;
+        }
+        add(U128 { hi: top.lo, lo: 0 }, mul64(x.lo, y))
+    }
+
+    #[summary("a * b of two 64-bit values, from the four products of their 32-bit halves")]
+    #[effects(pure)]
+    #[uses(product)]
+    fn mul64(a: u64, b: u64) -> (r: U128)
+        ensures product(r, a, b),
+    {
+        let a0: u64 = a % 4294967296;
+        let a1: u64 = a / 4294967296;
+        let b0: u64 = b % 4294967296;
+        let b1: u64 = b / 4294967296;
+        assert(a0 <= 4294967295 && a1 <= 4294967295 && b0 <= 4294967295 && b1 <= 4294967295);
+        let p00: u64 = a0 * b0;
+        let p01: u64 = a0 * b1;
+        let p10: u64 = a1 * b0;
+        let p11: u64 = a1 * b1;
+        let mid: u64 = p01 + p00 / 4294967296;
+        let mid2: u64 = p10 + mid % 4294967296;
+        U128 { hi: p11 + mid / 4294967296 + mid2 / 4294967296, lo: mid2 % 4294967296 * 4294967296 + p00 % 4294967296 }
+    }
+
     #[effects(pure)]
     #[uses(small, stepped)]
     fn mul_add(v: U128, base: u64, d: u64) -> (r: Option<U128>)
@@ -48,6 +206,29 @@ mod wide {
             return None;
         }
         Some(U128 { hi: v.hi * base + c, lo: lo })
+    }
+
+    spec fn multiplied(r: Option<U128>, a: U128, b: U128) -> bool {
+        match r {
+            None => (a.hi * 18446744073709551616 + a.lo) * (b.hi * 18446744073709551616 + b.lo) >= 18446744073709551616 * 18446744073709551616,
+            Some(y) => y.hi * 18446744073709551616 + y.lo == (a.hi * 18446744073709551616 + a.lo) * (b.hi * 18446744073709551616 + b.lo),
+        }
+    }
+
+    #[summary("2^k. Zero for k of 128 or more")]
+    #[effects(pure)]
+    fn pow2(k: u64) -> U128 {
+        if k < 64 {
+            U128 { hi: 0, lo: 1 << k }
+        } else if k < 128 {
+            U128 { hi: 1 << k - 64, lo: 0 }
+        } else {
+            zero()
+        }
+    }
+
+    spec fn product(r: U128, a: u64, b: u64) -> bool {
+        r.hi * 18446744073709551616 + r.lo == a * b
     }
 
     #[effects(alloc)]
@@ -97,6 +278,60 @@ mod wide {
             None => (v.hi * 18446744073709551616 + v.lo) * base + d >= 18446744073709551616 * 18446744073709551616,
             Some(y) => y.hi * 18446744073709551616 + y.lo == (v.hi * 18446744073709551616 + v.lo) * base + d,
         }
+    }
+
+    #[summary("a - b. None when a < b")]
+    #[effects(pure)]
+    #[uses(subtracted)]
+    fn sub(a: U128, b: U128) -> (r: Option<U128>)
+        ensures subtracted(r, a, b),
+    {
+        if a.hi < b.hi || a.hi == b.hi && a.lo < b.lo {
+            return None;
+        }
+        if a.lo >= b.lo {
+            return Some(U128 { hi: a.hi - b.hi, lo: a.lo - b.lo });
+        }
+        Some(U128 { hi: a.hi - b.hi - 1, lo: 18446744073709551615 - b.lo + a.lo + 1 })
+    }
+
+    spec fn subtracted(r: Option<U128>, a: U128, b: U128) -> bool {
+        match r {
+            None => a.hi * 18446744073709551616 + a.lo < b.hi * 18446744073709551616 + b.lo,
+            Some(y) => y.hi * 18446744073709551616 + y.lo + b.hi * 18446744073709551616 + b.lo == a.hi * 18446744073709551616 + a.lo,
+        }
+    }
+
+    spec fn summed(r: Option<U128>, a: U128, b: U128) -> bool {
+        match r {
+            None => a.hi * 18446744073709551616 + a.lo + b.hi * 18446744073709551616 + b.lo >= 18446744073709551616 * 18446744073709551616,
+            Some(y) => y.hi * 18446744073709551616 + y.lo == a.hi * 18446744073709551616 + a.lo + b.hi * 18446744073709551616 + b.lo,
+        }
+    }
+
+    #[summary("Number of zero bits below the lowest set bit of a (Rust's trailing_zeros): 128 for 0")]
+    #[effects(pure)]
+    fn trailing_zeros(a: U128) -> (r: u64)
+        ensures r <= 128,
+    {
+        let mut x: u64 = a.lo;
+        let mut k: u64 = 0;
+        if a.lo == 0 {
+            if a.hi == 0 {
+                return 128;
+            }
+            x = a.hi;
+            k = 64;
+        }
+        let base: u64 = k;
+        while x % 2 == 0 && k < base + 63
+            invariant base <= k && k <= base + 63 && base <= 64,
+            decreases base + 63 - k,
+        {
+            x = x / 2;
+            k = k + 1;
+        }
+        k
     }
 
     #[effects(pure)]

@@ -45,6 +45,17 @@ pub enum Sort {
     F64,
 }
 
+impl Sort {
+    /// The type's name (`bmb dump smt`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Sort::Int(i) => i.name(),
+            Sort::Bool => "bool",
+            Sort::F64 => "f64",
+        }
+    }
+}
+
 /// A spec fn's body over placeholder symbols for its parameters (the
 /// encoder's translation of the body), and the parameters' sorts.
 pub struct Unfolded {
@@ -1043,15 +1054,17 @@ impl Tr<'_, '_> {
             return Err(format!("`{}` has no bit-vector translation", print(e)));
         };
         for ((p, v), sort) in names.iter().zip(&vals).zip(&u.params) {
-            let (Sort::Int(ty), T::Int { w, iv, .. }) = (sort, v) else {
+            let (Sort::Int(ty), T::Int { t, w, iv }) = (sort, v) else {
                 continue;
             };
+            // A term without a space has no definition: it stands for itself.
+            let named = if t.contains(' ') { p } else { t };
             let (min, max) = (ty.min_value(), ty.max_value());
             if iv.is_some_and(|(lo, hi)| min <= lo && hi <= max) {
                 continue;
             }
             let ww = (*w).max(bits(min, max));
-            let x = resize(p, *w, ww);
+            let x = resize(named, *w, ww);
             self.hyps.push(format!(
                 "(and (bvsle {} {x}) (bvsle {x} {}))",
                 lit(min, ww),
