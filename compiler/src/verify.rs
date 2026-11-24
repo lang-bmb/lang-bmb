@@ -745,15 +745,38 @@ pub fn dump_decls(p: &Program, t: &Tables) -> String {
 /// parameters and result hold an array, the field positions of its struct
 /// parameters). A spec fn that is not generic has an `axiom` row (its
 /// definition as the queries take it, its parts for ground instances, the
-/// struct facts of its text); a recursive one a `termination` row and an
-/// `obl` row per obligation. A proof fn has a `proof_params` row (the
-/// declarations and facts of its parameters on entry). `encoded` is false
-/// for a definition whose body this dump does not encode (executable and
-/// proof functions).
+/// struct facts of its text); a recursive one a `termination` row. A proof
+/// fn has a `proof_params` row (the declarations and facts of its
+/// parameters on entry). An executable function whose body is encoded has an
+/// `exec` row: the declarations, the obligations that hold by their own
+/// text, whether the body's end is unreachable, the path condition there,
+/// the entry values, the texts known valid and the validity functions
+/// defined. Each obligation of a `termination` or `exec` row follows as an
+/// `obl` row (`shown` is the value its counterexample adds). `encoded` is
+/// false for a definition whose body this dump does not encode: proof
+/// functions, `#[external_body]` and what `port_encodes` leaves out.
 pub fn dump_smt(p: &Program, t: &Tables) -> String {
     let q = crate::diag::json_str;
     let raw = |xs: Vec<String>| format!("[{}]", xs.join(","));
     let list = |xs: &[String]| raw(xs.iter().map(|x| q(x)).collect());
+    let value = |n: &str, v: &Val, ty: &TypeKind| {
+        let mut terms = Vec::new();
+        flatten(v, &mut terms);
+        format!(
+            "[{},{},{}]",
+            q(n),
+            list(&terms),
+            q(&crate::check::ty_str(ty))
+        )
+    };
+    let part = |a: &AxiomParts| {
+        let (sym, guard, body, sort, rec) =
+            (q(&a.sym), q(&a.guard), q(&a.body), q(&a.sort), a.recursive);
+        let (params, binders) = (list(&a.params), list(&a.binders));
+        format!(
+            "{{\"sym\":{sym},\"params\":{params},\"binders\":{binders},\"guard\":{guard},\"body\":{body},\"sort\":{sort},\"recursive\":{rec}}}"
+        )
+    };
     let view = prepare(p, t);
     let t = &view;
     let prog = prog_of(p, t);
@@ -765,6 +788,8 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     for (path, d) in &prog.defs {
         let Some(sig) = t.fns.get(path) else { continue };
         let (name, unit, inst, spec) = (q(path), q(&d.mod_path), d.inst, d.f.kind == FnKind::Spec);
+        let exec = d.f.kind == FnKind::Exec && !inst && !t.external.contains(path);
+        let exec = exec && port_encodes(d.f, t);
         let kind = match d.f.kind {
             FnKind::Spec => "spec fn",
             FnKind::Proof => "proof fn",
@@ -785,18 +810,17 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
         let ctx = list(&context_of(path, d.f, &d.mod_path, t));
         let specs = list(&Vec::from_iter(contract_specs(p, t, path)));
         let shown = list(&prog.revealed(path, d.f, &d.mod_path));
+        let encoded = spec || exec;
         out += &format!(
-            "{{\"def\":{name},\"kind\":\"{kind}\",\"inst\":{inst},\"unit\":{unit},\"sub\":{sub},\"uses\":{uses},\"context\":{ctx},\"contract\":{specs},\"revealed\":{shown},\"arrays\":{arrays},\"fields\":{fields},\"encoded\":{spec}}}\n"
+            "{{\"def\":{name},\"kind\":\"{kind}\",\"inst\":{inst},\"unit\":{unit},\"sub\":{sub},\"uses\":{uses},\"context\":{ctx},\"contract\":{specs},\"revealed\":{shown},\"arrays\":{arrays},\"fields\":{fields},\"encoded\":{encoded}}}\n"
         );
         if spec && sig.generics.is_empty() {
             let (text, parts) = prog.axiom(path);
-            let parts = parts.iter().map(|a| {
-                let (sym, guard, body, sort, rec) = (q(&a.sym), q(&a.guard), q(&a.body), q(&a.sort), a.recursive);
-                let (params, binders) = (list(&a.params), list(&a.binders));
-                format!("{{\"sym\":{sym},\"params\":{params},\"binders\":{binders},\"guard\":{guard},\"body\":{body},\"sort\":{sort},\"recursive\":{rec}}}")
-            });
-            let (parts, facts, text) =
-                (raw(parts.collect()), q(&prog.struct_facts(&text)), q(&text));
+            let (parts, facts, text) = (
+                raw(parts.iter().map(part).collect()),
+                q(&prog.struct_facts(&text)),
+                q(&text),
+            );
             out += &format!(
                 "{{\"axiom\":{name},\"text\":{text},\"facts\":{facts},\"parts\":{parts}}}\n"
             );
@@ -809,32 +833,89 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
             let (decls, facts) = (list(&enc.decls), list(&enc.pc));
             out += &format!("{{\"proof_params\":{name},\"decls\":{decls},\"facts\":{facts}}}\n");
         }
-        let (Some(comp), Some(dec)) = (t.recursive.get(path), &d.f.decreases) else {
-            continue;
+        let row = match (t.recursive.get(path), &d.f.decreases) {
+            _ if exec => {
+                enc.exec_body(d.f);
+                "exec"
+            }
+            (Some(comp), Some(dec)) if spec && !inst => {
+                enc.termination(d.f, *comp, dec);
+                "termination"
+            }
+            _ => continue,
         };
-        if !spec || d.inst {
-            continue;
-        }
-        enc.termination(d.f, *comp, dec);
-        let at = |s: Span| format!("{},{},{}", s.file, s.lo, s.hi);
-        let trivial = enc
-            .trivial
-            .iter()
-            .map(|(c, s)| format!("[{},{}]", q(c), at(*s)));
+        let trivial = enc.trivial.iter();
+        let trivial = trivial.map(|(c, s)| format!("[{},{},{},{}]", q(c), s.file, s.lo, s.hi));
         let (decls, trivial) = (list(&enc.decls), raw(trivial.collect()));
-        out += &format!("{{\"termination\":{name},\"decls\":{decls},\"trivial\":{trivial}}}\n");
+        out += &format!("{{\"{row}\":{name},\"decls\":{decls},\"trivial\":{trivial}");
+        if exec {
+            let inputs = enc.inputs.iter().map(|(n, v, ty)| value(n, v, ty));
+            let texts = enc
+                .texts
+                .iter()
+                .map(|(a, n)| format!("[{},{}]", q(a), q(n)));
+            let (inputs, texts, pc) = (raw(inputs.collect()), raw(texts.collect()), list(&enc.pc));
+            let valid = raw(enc.valid_defs.iter().map(part).collect());
+            out += &format!(
+                ",\"dead\":{},\"pc\":{pc},\"inputs\":{inputs},\"texts\":{texts},\"valid\":{valid}",
+                enc.dead
+            );
+        }
+        out += "}\n";
         for o in &enc.obls {
             let asserts = o.assumptions.iter().map(|a| format!("(assert {a})\n"));
             let text = format!("{}(assert (not {}))", asserts.collect::<String>(), o.goal);
             let (code, s, msg, goal) = (o.code, o.span, q(&o.msg), q(&o.goal));
             let (given, facts) = (list(&o.assumptions), q(&prog.struct_facts(&text)));
+            let shown = o.shown.as_ref();
+            let shown = shown.map_or("null".to_string(), |(n, v, ty)| value(n, v, ty));
             out += &format!(
-                "{{\"obl\":{name},\"code\":\"{code}\",\"file\":{},\"lo\":{},\"hi\":{},\"msg\":{msg},\"assumptions\":{given},\"goal\":{goal},\"facts\":{facts}}}\n",
+                "{{\"obl\":{name},\"code\":\"{code}\",\"file\":{},\"lo\":{},\"hi\":{},\"msg\":{msg},\"assumptions\":{given},\"goal\":{goal},\"facts\":{facts},\"shown\":{shown}}}\n",
                 s.file, s.lo, s.hi
             );
         }
     }
     out
+}
+
+/// The frontier of the port (`selfhost/encode_exec.bmb`): whether it encodes
+/// the body of executable function `f` yet. Not yet: a loop, `break` and
+/// `continue`, a `proof` block, `assert .. by`, the methods that change a
+/// `Vec` or a `String` (`push`, `pop`, `truncate`, `copy_within`,
+/// `push_str`), a comparison or a range slice of text and
+/// `String::from_utf8`. Both sides of `bmb dump smt` compute it from the
+/// syntax (specification parts included) and the checker's table of text,
+/// so a body outside it has no rows on either. It shrinks to nothing as the
+/// port's next pieces arrive, and goes then.
+fn port_encodes(f: &FnDef, t: &Tables) -> bool {
+    let plain = |b: &Block| {
+        b.stmts.iter().all(|s| match s {
+            Stmt::Let { .. } | Stmt::Assign { .. } | Stmt::Expr(_) | Stmt::Assume { .. } => true,
+            Stmt::Assert { by, .. } => by.is_none(),
+            _ => false,
+        })
+    };
+    let text = |e: &Expr| t.text.contains(&(e.span.file, e.span.lo, e.span.hi));
+    let mut ok = plain(&f.body);
+    each_block_expr(&f.body, &mut |e| {
+        ok &= match &e.kind {
+            ExprKind::Loop { .. } | ExprKind::Break { .. } | ExprKind::Continue { .. } => false,
+            ExprKind::Block(b) | ExprKind::If { then: b, .. } => plain(b),
+            ExprKind::Method { name, .. } => !matches!(
+                name.name.as_str(),
+                "push" | "pop" | "truncate" | "copy_within" | "push_str"
+            ),
+            ExprKind::Binary(op, l, r) => !(op.is_cmp() && (text(l) || text(r))),
+            ExprKind::Index { base, index } => {
+                !(matches!(index.kind, ExprKind::Range { .. }) && text(base))
+            }
+            ExprKind::Call { path, .. } => {
+                !(path.len() == 2 && path[0].name == "String" && path[1].name == "from_utf8")
+            }
+            _ => true,
+        }
+    });
+    ok
 }
 
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).
@@ -5186,6 +5267,29 @@ impl<'p, 'q> Enc<'p, 'q> {
             .collect()
     }
 
+    /// The obligations of the executable function `f` (this encoder's
+    /// definition): on the entry state, the refinement of its trait's
+    /// contract, then the body under its `requires` and the postconditions
+    /// where it ends.
+    fn exec_body(&mut self, f: &FnDef) {
+        self.entry_params(f);
+        if let Some((decl, rsub)) = refinement_of(self.prog.t, &self.path) {
+            self.refines(f, &decl, rsub, RefineAt::Trait);
+        }
+        let req = self.entry_requires(f);
+        self.pc.extend(req);
+        let (env, old) = self.cur_env();
+        if let Some(dec) = &f.decreases {
+            self.entry_measure = Some(self.measure(dec, &env, &old));
+        }
+        let result = self.block(&f.body);
+        if !self.dead {
+            self.mark_reach(f.name.span, "end of the body");
+            let at = f.body.tail.as_ref().map_or(f.name.span, |t| t.span);
+            self.post_check(result, at, "at the end of the body");
+        }
+    }
+
     /// The value behind a `&mut` parameter after the function: the callee
     /// may change the place, the elements of a slice but never its length;
     /// a `&mut Vec<T>` or a `&mut String` also its length (text is bytes
@@ -8683,22 +8787,7 @@ fn verify_pass(
                     axioms.push((spec_key(&u, t), ax));
                     axiom_parts.extend(parts);
                 }
-                enc.entry_params(d.f);
-                if let Some((decl, rsub)) = refinement_of(t, path) {
-                    enc.refines(d.f, &decl, rsub, RefineAt::Trait);
-                }
-                let req = enc.entry_requires(d.f);
-                enc.pc.extend(req);
-                let (env, old) = enc.cur_env();
-                if let Some(dec) = &d.f.decreases {
-                    enc.entry_measure = Some(enc.measure(dec, &env, &old));
-                }
-                let result = enc.block(&d.f.body);
-                if !enc.dead {
-                    enc.mark_reach(d.f.name.span, "end of the body");
-                    let at = d.f.body.tail.as_ref().map_or(d.f.name.span, |t| t.span);
-                    enc.post_check(result, at, "at the end of the body");
-                }
+                enc.exec_body(d.f);
             }
         }
 

@@ -1,0 +1,152 @@
+#[summary("Type invariants in code (the validity of values): parameters assumed valid on entry (a struct with an invariant, a struct that holds one, an enum with an invariant and a payload's, a generic type's instance, a type parameter's uninterpreted validity, arrays and Vecs of them by a quantifier nested by depth, Option and Result of them, a recursive enum and a recursive struct by a validity function), obligations where a value leaves (an argument of a call, the result at the end, at a `return` and at a `?`, a &mut parameter at every exit; none for a conjunct the path already holds), a value built with its constructor (its payload is the argument), a call's result and the value behind a &mut argument assumed valid, a value from outside")]
+mod inv {
+    #[invariant(within)]
+    struct Span { lo: i64, hi: i64 }
+
+    struct Pair { a: Span, b: Span, n: u8 }
+
+    #[invariant(positive)]
+    enum Amount { Zero, Some1(i64), Range(Span) }
+
+    #[invariant(fits)]
+    struct Stack<T: Copy> { items: [T; 4], len: usize }
+
+    #[invariant(sorted)]
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    #[invariant(counted)]
+    struct Tree { kids: Vec<Tree>, n: u32 }
+
+    spec fn within(s: &Span) -> bool { 0 <= s.lo && s.lo <= s.hi }
+
+    spec fn positive(a: &Amount) -> bool {
+        match a {
+            Amount::Zero => true,
+            Amount::Some1(v) => *v > 0,
+            Amount::Range(s) => s.lo > 0,
+        }
+    }
+
+    spec fn fits<T: Copy>(s: &Stack<T>) -> bool { s.len <= 4 }
+
+    spec fn sorted(l: &List) -> bool {
+        match l {
+            List::Nil => true,
+            List::Cons(h, t) => *h >= 0,
+        }
+    }
+
+    spec fn counted(t: &Tree) -> bool { t.n < 100 }
+
+    spec fn nonneg(w: i64) -> bool { w >= 0 }
+
+    #[effects(pure)]
+    fn width(s: Span) -> (w: i64)
+        ensures nonneg(w),
+    {
+        s.hi - s.lo
+    }
+
+    #[effects(pure)]
+    fn make(a: i64, b: i64) -> (r: Span) {
+        if a <= b {
+            return Span { lo: a, hi: b };
+        }
+        Span { lo: b, hi: a }
+    }
+
+    #[effects(pure)]
+    fn grow(s: &mut Span, by: i64) -> (r: i64) {
+        s.hi = s.hi + by;
+        if by < 0 {
+            return 0;
+        }
+        s.lo
+    }
+
+    #[effects(pure)]
+    fn caller(a: i64, p: &mut Pair) -> (r: i64) {
+        let mut s: Span = make(a, 5);
+        let g: i64 = grow(&mut s, 1);
+        let h: i64 = grow(&mut p.a, g);
+        let raw: Span = Span { lo: 3, hi: a };
+        let w: i64 = width(raw) + width(s) + width(p.b);
+        p.b = Span { lo: 1, hi: 0 };
+        w
+    }
+
+    #[effects(pure)]
+    fn amounts(x: Amount, y: &Amount, v: i64, s: Span) -> (r: Amount) {
+        let made: Amount = Amount::Some1(v);
+        let held: Amount = Amount::Range(s);
+        let none: Amount = Amount::Zero;
+        if v > 10 { made } else if v > 5 { held } else { x }
+    }
+
+    #[effects(pure)]
+    fn opt(o: Option<Span>, v: i64) -> (r: Option<Span>) {
+        let s: Span = o?;
+        if v > 0 { Some(Span { lo: v, hi: s.hi }) } else { None }
+    }
+
+    #[effects(pure)]
+    fn res(o: Result<Span, Amount>, e: Result<u8, Span>) -> (r: Result<i64, Amount>) {
+        let s: Span = o?;
+        Ok(s.lo)
+    }
+
+    #[effects(pure)]
+    fn stacks<T: Copy>(s: &Stack<T>, t: T, u: Stack<u8>, vs: &[T]) -> (r: Stack<T>) {
+        let fresh: Stack<T> = Stack { items: [t; 4], len: 5 };
+        let n: u8 = top(&u);
+        let again: T = keep::<T>(t);
+        fresh
+    }
+
+    #[effects(pure)]
+    fn top(s: &Stack<u8>) -> (r: u8) {
+        s.items[0]
+    }
+
+    #[effects(pure)]
+    fn keep<U: Copy>(u: U) -> (r: U) {
+        u
+    }
+
+    #[effects(alloc)]
+    fn many(xs: [Span; 3], v: &Vec<Span>, grid: &[[Span; 2]], ps: &mut Vec<Pair>, os: &[Option<Span>]) -> (r: [Span; 2]) {
+        let a: Span = xs[0];
+        let w: i64 = if v.len() > 0 { width(v[0]) } else { 0 };
+        let all: i64 = widths(v.as_slice());
+        [a, Span { lo: w, hi: all }]
+    }
+
+    #[effects(pure)]
+    fn widths(v: &[Span]) -> (r: i64) {
+        0
+    }
+
+    #[effects(alloc)]
+    fn lists(l: List, t: Tree, h: i64) -> (r: List) {
+        let longer: List = List::Cons(h, Box::new(l));
+        let n: u32 = size(&t);
+        let leaf: Tree = Tree { kids: Vec::new(), n: n + 1 };
+        let m: u32 = size(&leaf);
+        longer
+    }
+
+    #[effects(pure)]
+    fn size(t: &Tree) -> (r: u32) {
+        t.n
+    }
+
+    #[effects(pure)]
+    fn head(l: &List) -> (r: i64)
+        ensures nonneg(r),
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(h, t) => *h,
+        }
+    }
+}

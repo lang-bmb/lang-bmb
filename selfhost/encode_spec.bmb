@@ -1,4 +1,4 @@
-#[summary("Proof encoding, third piece (port of the encoder's core of stage0 compiler/src/verify.rs and of verify/text.rs, semantics in ADR-0017): the program as the encoder holds it (Prog), the symbolic state of one definition (Enc), the terms of specification expressions (Enc::spec_expr, stage0 Enc::spec), the definitions of spec fns as the queries take them (axiom), the termination obligations of recursive spec fns, and `bmb dump smt`. The bodies of executable and proof functions are the next pieces, and Enc has only the fields this piece reads. A struct holds no reference, so Prog is passed to each method; stage0's closures over the encoder (in_unit, in_def) are a save and a restore around the call. The f of recursive functions is the remaining depth (ADR-0140)")]
+#[summary("Proof encoding, third piece (port of the encoder's core of stage0 compiler/src/verify.rs and of verify/text.rs, semantics in ADR-0017): the program as the encoder holds it (Prog), the symbolic state of one definition (Enc), the terms of specification expressions (Enc::spec_expr, stage0 Enc::spec), the definitions of spec fns as the queries take them (axiom), the termination obligations of recursive spec fns, and `bmb dump smt`. The bodies of executable functions are encode_exec, whose state wraps Enc; Enc has only the fields specifications read. The bodies of proof functions are a later piece. A struct holds no reference, so Prog is passed to each method; stage0's closures over the encoder (in_unit, in_def) are a save and a restore around the call. The f of recursive functions is the remaining depth (ADR-0140)")]
 mod encode_spec {
     #[summary("A spec fn's definition (the result of stage0 Prog::axiom): the text the queries take, and one part per SMT function for ground instances")]
     struct Axiom { text: String, parts: Vec<AxiomParts> }
@@ -109,7 +109,7 @@ mod encode_spec {
             let mut g: String = types::cat5("(forall (", encode_terms::join(decls.as_slice(), " ").as_str(), ") (=> ", encode_terms::and(inner.as_slice()).as_str(), " ");
             g.push_str(goal.as_str());
             g.push_str("))");
-            self.obls.push(Obl { code: String::from("E0813"), span: span, msg: msg, assumptions: assumptions, goal: g });
+            self.obls.push(Obl { code: String::from("E0813"), span: span, msg: msg, assumptions: assumptions, goal: g, shown: None });
         }
 
         #[summary("Some(v) when ok, else None, of e's Option type (stage0 Enc::checked)")]
@@ -370,7 +370,7 @@ mod encode_spec {
             !pg.pr.t.fns.has(encode_decls::resolve_in(&pg.pr.t, path, self.spec_mod.as_str()).as_str())
         }
 
-        #[summary("The type of local name of the definition, in the query's types (stage0 Enc::local_ty): from the checker's table of locals, under the generic definition's path for an instance; else a parameter's written type. stage0 then looks for a `let` of that name in the body, which only the encoding of code reaches (its locals after a callee's contract was translated): the error type here, left to that piece")]
+        #[summary("The type of local name of the definition, in the query's types (stage0 Enc::local_ty): from the checker's table of locals, under the generic definition's path for an instance; else a parameter's written type; else the written type of a `let` of that name in the body (find_let), which a name of another definition's contract reaches while code is encoded; else the error type")]
         #[effects(alloc)]
         fn local_ty(self: &Enc, name: &str, pg: &Prog) -> ast::TypeKind {
             let base: String = match pg.pr.insts.find(self.path.as_str()) {
@@ -383,7 +383,7 @@ mod encode_spec {
             }
             match pg.defs.find(self.path.as_str()) {
                 None => ast::TypeKind::Error,
-                Some(d) => { for i in 0..pg.defs.items[d].d.params.len() invariant 0 <= i && i <= pg.defs.items[d].d.params.len(), { if pg.defs.items[d].d.params[i].name.name.as_str() == name { return pg.defs.items[d].d.params[i].ty.kind.clone(); } } ast::TypeKind::Error },
+                Some(d) => { for i in 0..pg.defs.items[d].d.params.len() invariant 0 <= i && i <= pg.defs.items[d].d.params.len(), { if pg.defs.items[d].d.params[i].name.name.as_str() == name { return pg.defs.items[d].d.params[i].ty.kind.clone(); } } match find_let(&pg.defs.items[d].d.body, name, 100000) { None => ast::TypeKind::Error, Some(t) => t, } },
             }
         }
 
@@ -455,7 +455,7 @@ mod encode_spec {
                     None => {},
                     Some(g) => assumptions.push(g.clone()),
                 }
-                self.obls.push(Obl { code: String::from(code), span: span, msg: String::from(msg), assumptions: assumptions, goal: String::from(goal) });
+                self.obls.push(Obl { code: String::from(code), span: span, msg: String::from(msg), assumptions: assumptions, goal: String::from(goal), shown: None });
             } else {
                 self.trivial.push(Trivial { code: String::from(code), span: span });
             }
@@ -1241,14 +1241,17 @@ mod encode_spec {
     #[summary("A decreases measure: its term, and whether it is the value of a recursive datatype (structural, ADR-0047 §3) rather than an integer")]
     struct Measure { term: String, data: bool }
 
-    #[summary("A proof obligation (stage0 Obl without the sub-proof and the shown value, which code makes): its diagnostic code, position and message, what is assumed, and the goal")]
-    struct Obl { code: String, span: source::Span, msg: String, assumptions: Vec<String>, goal: String }
+    #[summary("A proof obligation (stage0 Obl without the sub-proof, which `assert .. by` makes): its diagnostic code, position and message, what is assumed, the goal, and a value the counterexample shows besides the inputs (the one a type invariant obligation is about, E0823)")]
+    struct Obl { code: String, span: source::Span, msg: String, assumptions: Vec<String>, goal: String, shown: Option<Shown> }
 
     #[summary("The payload of a datatype value read as one variant: one value per position, and the range facts of its leaves")]
     struct Payload { vals: Vec<encode_terms::Val>, facts: Vec<String> }
 
     #[summary("The program as the encoder holds it (stage0 Prog): the definitions and instances by path, the encoder's tables, the recursion component of each recursive definition, the constructor of every datatype selector, the constructors of recursive structs, the leaf of every recursive struct selector, and each spec fn's path with what marks it in a query text (stage0 computes the marks where it reads them)")]
     struct Prog { defs: table::Table<Def>, pr: encode_decls::Prepared, recursive: table::Table<usize>, selectors: table::Table<String>, struct_ctors: table::Table<bool>, struct_sels: table::Table<encode_decls::Leaf>, keys: Vec<encode_terms::Pair> }
+
+    #[summary("A value with the name a counterexample or a dump row gives it, and its type")]
+    struct Shown { name: String, v: encode_terms::Val, ty: ast::TypeKind }
 
     #[summary("The declaration of a spec fn (a row of stage0 Prog::spec_decls): path, what marks it in a query text, the declarations of its SMT functions")]
     struct SpecDecl { path: String, key: String, decl: String }
@@ -1447,7 +1450,7 @@ mod encode_spec {
         String::from("false")
     }
 
-    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row and an obl row per obligation. encoded is false for a definition whose body this dump does not encode (executable and proof functions). The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
+    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row; for an executable function whose body is encoded an exec row (encode_exec::dump_body); each obligation of a termination or exec row follows as an obl row. encoded is false for a definition whose body this dump does not encode: proof functions, #[external_body], and what encode_exec::ported leaves out. The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
     #[effects(alloc)]
     fn dump(ck: &body::Checked) -> String {
         let pg: Prog = prog_of(ck);
@@ -1470,7 +1473,7 @@ mod encode_spec {
         {
             match pg.defs.nth(n) {
                 None => {},
-                Some(at) => { let path: String = pg.defs.key(n); match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => dump_def(&mut out, &pg, rows.as_slice(), path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig]), } },
+                Some(at) => { let path: String = pg.defs.key(n); match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => dump_def(&mut out, &pg, rows.as_slice(), path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig], ck.b.external.as_slice()), } },
             }
         }
         out
@@ -1478,9 +1481,10 @@ mod encode_spec {
 
     #[summary("The rows of one definition of `bmb dump smt`")]
     #[effects(alloc)]
-    fn dump_def(out: &mut String, pg: &Prog, rows: &[encode_decls::Row], path: &str, def: &Def, sig: &types::FnSig) -> () {
+    fn dump_def(out: &mut String, pg: &Prog, rows: &[encode_decls::Row], path: &str, def: &Def, sig: &types::FnSig, external: &[String]) -> () {
         let is_sp: bool = body::is_spec(def.d.kind);
         let is_pf: bool = body::is_proof(def.d.kind);
+        let is_ex: bool = !is_sp && !is_pf && !def.inst && !types::has(external, path) && encode_exec::ported(&def.d, pg);
         out.push_str("{\"def\":");
         std::json::push_string(out, path);
         out.push_str(",\"kind\":");
@@ -1546,7 +1550,7 @@ mod encode_spec {
             out.push_str("]");
         }
         out.push_str("],\"encoded\":");
-        decls::push_bool(out, is_sp);
+        decls::push_bool(out, is_sp || is_ex);
         out.push_str("}\n");
         if is_sp && sig.generics.len() == 0 {
             let ax: Axiom = axiom(pg, path);
@@ -1563,21 +1567,7 @@ mod encode_spec {
                 if i > 0 {
                     out.push_str(",");
                 }
-                out.push_str("{\"sym\":");
-                std::json::push_string(out, ax.parts[i].sym.as_str());
-                out.push_str(",\"params\":");
-                encode_decls::push_list(out, ax.parts[i].params.as_slice());
-                out.push_str(",\"binders\":");
-                encode_decls::push_list(out, ax.parts[i].binders.as_slice());
-                out.push_str(",\"guard\":");
-                std::json::push_string(out, ax.parts[i].guard.as_str());
-                out.push_str(",\"body\":");
-                std::json::push_string(out, ax.parts[i].body.as_str());
-                out.push_str(",\"sort\":");
-                std::json::push_string(out, ax.parts[i].sort.as_str());
-                out.push_str(",\"recursive\":");
-                decls::push_bool(out, ax.parts[i].recursive);
-                out.push_str("}");
+                push_part(out, &ax.parts[i]);
             }
             out.push_str("]}\n");
         }
@@ -1596,6 +1586,10 @@ mod encode_spec {
             encode_decls::push_list(out, enc.pc.as_slice());
             out.push_str("}\n");
         }
+        if is_ex {
+            encode_exec::dump_body(out, pg, path, &def.d, def.unit.as_str());
+            return;
+        }
         if !is_sp || def.inst {
             return;
         }
@@ -1605,67 +1599,7 @@ mod encode_spec {
         };
         match &def.d.measure {
             None => {},
-            Some(dec) => { enc.termination(&def.d, comp, dec, pg); dump_termination(out, pg, path, &enc); },
-        }
-    }
-
-    #[summary("The termination row and the obl rows of a recursive spec fn. The struct facts of an obligation are those of its query text: the assumptions asserted, then the goal negated")]
-    #[effects(alloc)]
-    fn dump_termination(out: &mut String, pg: &Prog, path: &str, enc: &Enc) -> () {
-        out.push_str("{\"termination\":");
-        std::json::push_string(out, path);
-        out.push_str(",\"decls\":");
-        encode_decls::push_list(out, enc.fr.decls.as_slice());
-        out.push_str(",\"trivial\":[");
-        for i in 0..enc.trivial.len()
-            invariant 0 <= i && i <= enc.trivial.len(),
-        {
-            if i > 0 {
-                out.push_str(",");
-            }
-            out.push_str("[");
-            std::json::push_string(out, enc.trivial[i].code.as_str());
-            out.push_str(",");
-            std::num::push_u64(out, enc.trivial[i].span.file as u64);
-            out.push_str(",");
-            std::num::push_u64(out, enc.trivial[i].span.lo as u64);
-            out.push_str(",");
-            std::num::push_u64(out, enc.trivial[i].span.hi as u64);
-            out.push_str("]");
-        }
-        out.push_str("]}\n");
-        for i in 0..enc.obls.len()
-            invariant 0 <= i && i <= enc.obls.len(),
-        {
-            out.push_str("{\"obl\":");
-            std::json::push_string(out, path);
-            out.push_str(",\"code\":");
-            std::json::push_string(out, enc.obls[i].code.as_str());
-            out.push_str(",\"file\":");
-            std::num::push_u64(out, enc.obls[i].span.file as u64);
-            out.push_str(",\"lo\":");
-            std::num::push_u64(out, enc.obls[i].span.lo as u64);
-            out.push_str(",\"hi\":");
-            std::num::push_u64(out, enc.obls[i].span.hi as u64);
-            out.push_str(",\"msg\":");
-            std::json::push_string(out, enc.obls[i].msg.as_str());
-            out.push_str(",\"assumptions\":");
-            encode_decls::push_list(out, enc.obls[i].assumptions.as_slice());
-            out.push_str(",\"goal\":");
-            std::json::push_string(out, enc.obls[i].goal.as_str());
-            let mut text: String = String::new();
-            for a in 0..enc.obls[i].assumptions.len()
-                invariant 0 <= a && a <= enc.obls[i].assumptions.len(),
-            {
-                if a > 0 {
-                    text.push_str("\n");
-                }
-                text.push_str(types::cat3("(assert ", enc.obls[i].assumptions[a].as_str(), ")").as_str());
-            }
-            text.push_str(types::cat3("\n(assert (not ", enc.obls[i].goal.as_str(), "))").as_str());
-            out.push_str(",\"facts\":");
-            std::json::push_string(out, struct_facts(pg, text.as_str()).as_str());
-            out.push_str("}\n");
+            Some(dec) => { enc.termination(&def.d, comp, dec, pg); push_row_head(out, "termination", path, &enc); out.push_str("}\n"); push_obls(out, pg, path, enc.obls.as_slice()); },
         }
     }
 
@@ -1714,6 +1648,105 @@ mod encode_spec {
             encode_terms::Val::Struct(fs) => fs.clone(),
             encode_terms::Val::Arr(fo_arr0, fo_arr1) => Vec::new(),
         }
+    }
+
+    #[summary("The declared type of local name, wherever its `let` is in block b (stage0 find_let): names are unique within a function, so the first one found in the order of the text is the one. Statements first, then the tail")]
+    #[effects(alloc)]
+    fn find_let(b: &ast::Block, name: &str, f: usize) -> Option<ast::TypeKind>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            let found: Option<ast::TypeKind> = match &b.stmts[i] {
+                ast::Stmt::Let(sl) => { if sl.name.name.as_str() == name { Some(sl.ty.kind.clone()) } else { find_let_expr(&sl.init, name, f - 1) } },
+                ast::Stmt::Assign(sa) => { match find_let_expr(&sa.target, name, f - 1) { None => find_let_expr(&sa.value, name, f - 1), Some(ta) => Some(ta), } },
+                ast::Stmt::While(sw) => { match find_let_expr(&sw.cond, name, f - 1) { None => { match find_let_exprs(sw.invariants.as_slice(), name, f - 1) { None => { let in_dec: Option<ast::TypeKind> = match &sw.measure { None => None, Some(wd) => find_let_expr(wd, name, f - 1), }; match in_dec { None => find_let(&sw.body, name, f - 1), Some(tw3) => Some(tw3), } }, Some(tw2) => Some(tw2), } }, Some(tw) => Some(tw), } },
+                ast::Stmt::For(sf) => { match find_let_expr(&sf.lo, name, f - 1) { None => { match find_let_expr(&sf.hi, name, f - 1) { None => { match find_let_exprs(sf.invariants.as_slice(), name, f - 1) { None => find_let(&sf.body, name, f - 1), Some(tf3) => Some(tf3), } }, Some(tf2) => Some(tf2), } }, Some(tf) => Some(tf), } },
+                ast::Stmt::Assert(sx) => find_let_expr(&sx.cond, name, f - 1),
+                ast::Stmt::Assume(sm) => find_let_expr(&sm.cond, name, f - 1),
+                ast::Stmt::Proof(sp) => find_let(&sp.body, name, f - 1),
+                ast::Stmt::LetFields(slf) => find_let_expr(&slf.init, name, f - 1),
+                ast::Stmt::Expr(se) => find_let_expr(se, name, f - 1),
+            };
+            match found {
+                None => {},
+                Some(t) => { return Some(t); },
+            }
+        }
+        match &b.tail {
+            None => None,
+            Some(tail) => find_let_expr(&**tail, name, f - 1),
+        }
+    }
+
+    #[summary("find_let inside expression e (stage0 find_let_expr): its parts in the order of the text. A closure, the base of a struct literal and the clauses of a `loop` are not entered")]
+    #[effects(alloc)]
+    fn find_let_expr(e: &ast::Expr, name: &str, f: usize) -> Option<ast::TypeKind>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(fee_int0, fee_int1) => None,
+            ast::ExprKind::Float(fee_float0) => None,
+            ast::ExprKind::ByteLit(fee_bytelit0) => None,
+            ast::ExprKind::ByteStr(fee_bytestr0) => None,
+            ast::ExprKind::StrLit(fee_strlit0) => None,
+            ast::ExprKind::CharLit(fee_charlit0) => None,
+            ast::ExprKind::Bool(fee_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(fee_var0) => None,
+            ast::ExprKind::Call(c) => find_let_exprs(c.args.as_slice(), name, f - 1),
+            ast::ExprKind::Method(mc) => { match find_let_expr(&*mc.recv, name, f - 1) { None => find_let_exprs(mc.args.as_slice(), name, f - 1), Some(tm) => Some(tm), } },
+            ast::ExprKind::Index(ib, ii) => { match find_let_expr(&**ib, name, f - 1) { None => find_let_expr(&**ii, name, f - 1), Some(tx) => Some(tx), } },
+            ast::ExprKind::Unary(uop, ux) => find_let_expr(&**ux, name, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => { match find_let_expr(&**bl, name, f - 1) { None => find_let_expr(&**br, name, f - 1), Some(tb) => Some(tb), } },
+            ast::ExprKind::Ref(rm, rx) => find_let_expr(&**rx, name, f - 1),
+            ast::ExprKind::If(x) => { match find_let_expr(&*x.cond, name, f - 1) { None => { match find_let(&x.then, name, f - 1) { None => { match &x.els { None => None, Some(el) => find_let_expr(&**el, name, f - 1), } }, Some(ti2) => Some(ti2), } }, Some(ti) => Some(ti), } },
+            ast::ExprKind::Block(b) => find_let(b, name, f - 1),
+            ast::ExprKind::Array(items) => find_let_exprs(items.as_slice(), name, f - 1),
+            ast::ExprKind::Repeat(rp) => find_let_expr(&*rp.value, name, f - 1),
+            ast::ExprKind::Old(ox) => find_let_expr(&**ox, name, f - 1),
+            ast::ExprKind::Quant(qu) => find_let_expr(&*qu.body, name, f - 1),
+            ast::ExprKind::Trigger(gx) => find_let_expr(&**gx, name, f - 1),
+            ast::ExprKind::Closure(fee_closure0) => None,
+            ast::ExprKind::StructLit(lit) => { for i in 0..lit.fields.len() invariant 0 <= i && i <= lit.fields.len(), { match find_let_expr(&lit.fields[i].value, name, f - 1) { None => {}, Some(ts) => { return Some(ts); }, } } None },
+            ast::ExprKind::Path(fee_path0) => None,
+            ast::ExprKind::Deref(dx) => find_let_expr(&**dx, name, f - 1),
+            ast::ExprKind::Field(fb, fname) => find_let_expr(&**fb, name, f - 1),
+            ast::ExprKind::Match(mx) => { match find_let_expr(&*mx.scrut, name, f - 1) { None => { for i in 0..mx.arms.len() invariant 0 <= i && i <= mx.arms.len(), { match find_let_expr(&mx.arms[i].body, name, f - 1) { None => {}, Some(ta2) => { return Some(ta2); }, } } None }, Some(tm2) => Some(tm2), } },
+            ast::ExprKind::Return(rv) => { match rv { None => None, Some(rx2) => find_let_expr(&**rx2, name, f - 1), } },
+            ast::ExprKind::Try(tx2) => find_let_expr(&**tx2, name, f - 1),
+            ast::ExprKind::Loop(lp) => find_let(&lp.body, name, f - 1),
+            ast::ExprKind::Break(bk) => { match &bk.value { None => None, Some(bx) => find_let_expr(&**bx, name, f - 1), } },
+            ast::ExprKind::Continue(fee_continue0) => None,
+            ast::ExprKind::Range(rg) => { match find_let_expr(&*rg.lo, name, f - 1) { None => find_let_expr(&*rg.hi, name, f - 1), Some(tr) => Some(tr), } },
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("find_let inside each of xs in order")]
+    #[effects(alloc)]
+    fn find_let_exprs(xs: &[ast::Expr], name: &str, f: usize) -> Option<ast::TypeKind>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            match find_let_expr(&xs[i], name, f - 1) {
+                None => {},
+                Some(t) => { return Some(t); },
+            }
+        }
+        None
     }
 
     #[summary("The operand a (the term of e) of a bit operation on i as the operation reads it (stage0 image, ADR-0090): a value outside i, which specification arithmetic may produce, stands for its two's complement image at the width of i. Terms of values of i stay as they are")]
@@ -1972,6 +2005,112 @@ mod encode_spec {
             }
         }
         Prog { defs: defs, pr: pr, recursive: ck.b.recursive.clone(), selectors: selectors, struct_ctors: struct_ctors, struct_sels: struct_sels, keys: keys }
+    }
+
+    #[summary("The obl rows of the obligations obls of definition path. The struct facts of an obligation are those of its query text: the assumptions asserted, then the goal negated. shown is the value its counterexample adds: its name, its leaves and its type, or null")]
+    #[effects(alloc)]
+    fn push_obls(out: &mut String, pg: &Prog, path: &str, obls: &[Obl]) -> () {
+        for i in 0..obls.len()
+            invariant 0 <= i && i <= obls.len(),
+        {
+            out.push_str("{\"obl\":");
+            std::json::push_string(out, path);
+            out.push_str(",\"code\":");
+            std::json::push_string(out, obls[i].code.as_str());
+            out.push_str(",\"file\":");
+            std::num::push_u64(out, obls[i].span.file as u64);
+            out.push_str(",\"lo\":");
+            std::num::push_u64(out, obls[i].span.lo as u64);
+            out.push_str(",\"hi\":");
+            std::num::push_u64(out, obls[i].span.hi as u64);
+            out.push_str(",\"msg\":");
+            std::json::push_string(out, obls[i].msg.as_str());
+            out.push_str(",\"assumptions\":");
+            encode_decls::push_list(out, obls[i].assumptions.as_slice());
+            out.push_str(",\"goal\":");
+            std::json::push_string(out, obls[i].goal.as_str());
+            let mut text: String = String::new();
+            for a in 0..obls[i].assumptions.len()
+                invariant 0 <= a && a <= obls[i].assumptions.len(),
+            {
+                if a > 0 {
+                    text.push_str("\n");
+                }
+                text.push_str(types::cat3("(assert ", obls[i].assumptions[a].as_str(), ")").as_str());
+            }
+            text.push_str(types::cat3("\n(assert (not ", obls[i].goal.as_str(), "))").as_str());
+            out.push_str(",\"facts\":");
+            std::json::push_string(out, struct_facts(pg, text.as_str()).as_str());
+            out.push_str(",\"shown\":");
+            match &obls[i].shown {
+                None => out.push_str("null"),
+                Some(sh) => push_shown(out, sh),
+            }
+            out.push_str("}\n");
+        }
+    }
+
+    #[summary("One part of a definition as a row of `bmb dump smt` holds it")]
+    #[effects(alloc)]
+    fn push_part(out: &mut String, p: &AxiomParts) -> () {
+        out.push_str("{\"sym\":");
+        std::json::push_string(out, p.sym.as_str());
+        out.push_str(",\"params\":");
+        encode_decls::push_list(out, p.params.as_slice());
+        out.push_str(",\"binders\":");
+        encode_decls::push_list(out, p.binders.as_slice());
+        out.push_str(",\"guard\":");
+        std::json::push_string(out, p.guard.as_str());
+        out.push_str(",\"body\":");
+        std::json::push_string(out, p.body.as_str());
+        out.push_str(",\"sort\":");
+        std::json::push_string(out, p.sort.as_str());
+        out.push_str(",\"recursive\":");
+        decls::push_bool(out, p.recursive);
+        out.push_str("}");
+    }
+
+    #[summary("The head of a termination or exec row of `bmb dump smt`, without its closing brace: the declarations made and the obligations that hold by their own text")]
+    #[effects(alloc)]
+    fn push_row_head(out: &mut String, row: &str, path: &str, enc: &Enc) -> () {
+        out.push_str("{\"");
+        out.push_str(row);
+        out.push_str("\":");
+        std::json::push_string(out, path);
+        out.push_str(",\"decls\":");
+        encode_decls::push_list(out, enc.fr.decls.as_slice());
+        out.push_str(",\"trivial\":[");
+        for i in 0..enc.trivial.len()
+            invariant 0 <= i && i <= enc.trivial.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            std::json::push_string(out, enc.trivial[i].code.as_str());
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.file as u64);
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.lo as u64);
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.hi as u64);
+            out.push_str("]");
+        }
+        out.push_str("]");
+    }
+
+    #[summary("A named value of a row of `bmb dump smt`: its name, its leaves as SMT terms and its type")]
+    #[effects(alloc)]
+    fn push_shown(out: &mut String, sh: &Shown) -> () {
+        let mut terms: Vec<String> = Vec::new();
+        encode_terms::flatten(&sh.v, &mut terms, 100000);
+        out.push_str("[");
+        std::json::push_string(out, sh.name.as_str());
+        out.push_str(",");
+        encode_decls::push_list(out, terms.as_slice());
+        out.push_str(",");
+        std::json::push_string(out, types::text(&sh.ty).as_str());
+        out.push_str("]");
     }
 
     #[summary("The definitions of a trait's spec method u that a context reveals (the trait arm of stage0 Prog::revealed): every impl's definition of it goes to named; the default body goes to out for each instance whose Self has an impl that leaves it out (never a bare type parameter: no impl is known for it)")]

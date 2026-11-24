@@ -1,0 +1,239 @@
+#[summary("Calls in code: preconditions and postconditions of callees (a named predicate, a predicate with a quantifier, a clause written as an expression), &mut arguments (a scalar, a field, an element, a slice, a Vec that may grow, text), old in ensures, generic calls, trait methods by static dispatch (an impl's function, a default body, a bounded type parameter), the refinement of a trait's contract, recursion with an integer and a structural measure, mutual recursion, built-in functions (print_f64's bound, a value from outside, input and output, std::process::exit)")]
+mod calls {
+    struct Acc { total: i64, n: u32 }
+
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    trait Sized2 {
+        #[effects(pure)]
+        fn size(self: &Self) -> (r: u64)
+            ensures at_most(r, 100);
+
+        #[effects(pure)]
+        fn twice(self: &Self) -> (r: u64)
+            ensures at_most(r, 200),
+        {
+            let s: u64 = self.size();
+            s + s
+        }
+    }
+
+    impl Sized2 for Acc {
+        #[effects(pure)]
+        fn size(self: &Acc) -> (r: u64)
+            ensures at_most(r, 50),
+        {
+            if self.n < 50 { self.n as u64 } else { 50 }
+        }
+    }
+
+    impl Sized2 for List {
+        #[effects(pure)]
+        fn size(self: &List) -> (r: u64)
+            requires nonempty(self),
+            ensures at_most(r, 100),
+        {
+            1
+        }
+
+        #[effects(pure)]
+        fn twice(self: &List) -> (r: u64)
+            ensures at_most(r, 2),
+        {
+            2
+        }
+    }
+
+    spec fn at_most(r: u64, n: u64) -> bool { r <= n }
+
+    spec fn nonempty(l: &List) -> bool {
+        match l {
+            List::Nil => false,
+            List::Cons(h, t) => true,
+        }
+    }
+
+    spec fn small(a: i64) -> bool { -1000 < a && a < 1000 }
+
+    spec fn grew(now: i64, before: i64) -> bool { now == before + 1 }
+
+    spec fn among(a: &[i64], r: i64) -> bool { exists|j: usize| j < a.len() && #[trigger] a[j] == r }
+
+    spec fn cleared(now: &[i64], before: &[i64]) -> bool { forall|k: usize| k < now.len() ==> #[trigger] now[k] == 0 || now[k] == before[k] }
+
+    spec fn all_small(a: &[i64]) -> bool { forall|k: usize| k < a.len() ==> small(#[trigger] a[k]) }
+
+    #[effects(pure)]
+    fn inc(a: i64) -> (r: i64)
+        requires small(a),
+        ensures grew(r, a),
+    {
+        a + 1
+    }
+
+    #[effects(pure)]
+    fn bump(a: &mut i64) -> ()
+        requires small(*a),
+        ensures grew(*a, *old(a)),
+    {
+        *a = *a + 1;
+    }
+
+    #[effects(pure)]
+    fn first(a: &[i64]) -> (r: i64)
+        requires a.len() > 0 && all_small(a),
+        ensures small(r) && among(a, r),
+    {
+        a[0]
+    }
+
+    #[effects(pure)]
+    fn clear(a: &mut [i64]) -> ()
+        ensures cleared(a, old(a)),
+    {
+    }
+
+    #[effects(alloc)]
+    fn refill(v: &mut Vec<i64>, s: &mut String, n: usize) -> (r: usize)
+        ensures v.len() >= n && r == old(v).len(),
+    {
+        v.len()
+    }
+
+    #[effects(pure)]
+    fn use_inc(x: i64) -> (r: i64)
+        requires small(x) && x < 500,
+        ensures r == x + 2,
+    {
+        let y: i64 = inc(x);
+        inc(y)
+    }
+
+    #[effects(pure)]
+    fn use_bump(acc: &mut Acc, xs: &mut [i64], i: usize) -> (r: i64)
+        requires i < xs.len() && small(acc.total) && small(xs[i]),
+        ensures grew(acc.total, old(acc).total),
+    {
+        let mut local: i64 = 0;
+        bump(&mut local);
+        bump(&mut acc.total);
+        bump(&mut xs[i]);
+        local + xs[i]
+    }
+
+    #[effects(pure)]
+    fn use_first(a: &[i64], j: usize) -> (r: i64)
+        requires all_small(a) && a.len() > 2,
+    {
+        let k: i64 = first(a);
+        k
+    }
+
+    #[effects(pure)]
+    fn use_first_param(a: &[i64], k: u8) -> (r: i64)
+        requires a.len() > 2,
+    {
+        first(a) + k as i64
+    }
+
+    #[effects(pure)]
+    fn use_clear(a: &mut [i64], b: [i64; 4]) -> (r: i64)
+        requires a.len() == 4,
+        ensures r == 0 || r == old(a)[1],
+    {
+        let mut c: [i64; 4] = b;
+        clear(a);
+        clear(&mut c);
+        a[1]
+    }
+
+    #[effects(alloc)]
+    fn use_refill(n: usize) -> (r: usize) {
+        let mut v: Vec<i64> = Vec::new();
+        let mut s: String = String::new();
+        let was: usize = refill(&mut v, &mut s, n);
+        v.len() - was
+    }
+
+    #[effects(pure)]
+    fn pick<T: Copy>(a: T, b: T, first: bool) -> (r: T)
+        ensures r == a || r == b,
+    {
+        if first { a } else { b }
+    }
+
+    #[effects(pure)]
+    fn use_pick(x: u8, p: Acc, q: Acc) -> (r: u8) {
+        let chosen: Acc = pick::<Acc>(p, q, true);
+        let n: u32 = pick::<u32>(chosen.n, 7, false);
+        pick::<u8>(x, 3, n > 1)
+    }
+
+    #[effects(pure)]
+    fn measure<S: Sized2>(s: &S) -> (r: u64)
+        ensures at_most(r, 300),
+    {
+        s.size() + s.twice()
+    }
+
+    #[effects(pure)]
+    fn use_traits(a: &Acc, l: &List) -> (r: u64) {
+        let x: u64 = a.size();
+        let y: u64 = a.twice();
+        let z: u64 = l.size();
+        let w: u64 = l.twice();
+        x + y + z + w + measure::<Acc>(a)
+    }
+
+    #[effects(pure)]
+    fn fact(n: u64) -> (r: u64)
+        requires n < 10,
+        ensures r >= 1,
+        decreases n,
+    {
+        if n == 0 { 1 } else { n * fact(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn length(l: &List) -> (r: u64)
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(h, t) => length(&**t).saturating_add(1),
+        }
+    }
+
+    #[effects(pure)]
+    fn even(n: u32) -> (r: bool)
+        decreases n,
+    {
+        if n == 0 { true } else { odd(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn odd(n: u32) -> (r: bool)
+        decreases n,
+    {
+        if n == 0 { false } else { even(n - 1) }
+    }
+
+    #[effects(io)]
+    fn show(x: f64, digits: u32, n: i64) -> () {
+        print_i64(n);
+        print_f64(x, digits);
+        print_str("done");
+    }
+
+    #[effects(alloc, io, nondet, panic)]
+    fn outside(buf: &mut Vec<u8>, name: &str) -> (r: u64) {
+        let t: u64 = std::time::monotonic_ms();
+        let home: Option<String> = std::env::var(name);
+        let args: Vec<String> = std::env::args();
+        let got: Result<usize, std::io::Error> = std::io::read_to_end(buf);
+        if args.len() > 3 {
+            std::process::exit(2);
+        }
+        t
+    }
+}

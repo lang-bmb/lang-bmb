@@ -1,0 +1,143 @@
+#[summary("Data in code: struct literals (fields written out of declaration order by position) and field reads, a recursive struct (a fresh constant with its selectors stated, a field written through its selectors), enum variants with and without payload, None and Some, Box::new and reading through a Box, array literals of scalars, of structs and of enums, repeats of a scalar and of a struct, indexing with its bounds obligation and the range of the element read, slices of an array, a Vec and a slice by range (`&v[a..b]`, the bounds obligation), Vec::new and Vec::with_capacity (its capacity obligation) of scalars and of structs, len, as_slice, clone, the same of String, std::mem::replace and std::mem::swap on locals, fields and elements, byte strings and string literals as plain values, as_bytes and as_str, len of text, is_char_boundary, len_utf8, char::from_u32, u32::from of a char, char literals")]
+mod data {
+    struct Pt { x: i64, y: u8 }
+
+    struct Seg { a: Pt, b: Pt, tag: [u8; 2] }
+
+    struct Node { v: i64, next: Vec<Node> }
+
+    struct Tree { root: Option<Box<Tree>>, n: u32 }
+
+    enum Shape { Dot, Circle(u32), Rect(Pt, Pt), Poly(Vec<Pt>) }
+
+    #[effects(pure)]
+    fn build(a: i64, b: u8) -> (r: Seg) {
+        let p: Pt = Pt { x: a + 1, y: b };
+        let q: Pt = Pt { x: p.x, y: p.y / 2 };
+        Seg { a: p, b: q, tag: [b, 0] }
+    }
+
+    #[effects(pure)]
+    fn read(s: &Seg, t: Seg) -> (r: i64) {
+        let d: i64 = s.a.x - s.b.x;
+        let e: u8 = t.tag[1] + s.tag[0];
+        d + t.b.x
+    }
+
+    #[effects(alloc)]
+    fn node(v: i64, more: Vec<Node>) -> (r: Node) {
+        let mut n: Node = Node { v: v + 1, next: more };
+        n.v = n.v * 2;
+        n
+    }
+
+    #[effects(pure)]
+    fn node_read(n: &Node, i: usize) -> (r: i64)
+        requires i < n.next.len(),
+    {
+        n.v + n.next[i].v
+    }
+
+    #[effects(alloc)]
+    fn tree(t: Tree, k: u32) -> (r: Tree) {
+        let leaf: Tree = Tree { root: None, n: k };
+        let up: Tree = Tree { root: Some(Box::new(leaf)), n: t.n + 1 };
+        Tree { root: Some(Box::new(up)), n: 0 }
+    }
+
+    #[effects(pure)]
+    fn boxed(b: Box<Pt>, o: Option<Box<Pt>>) -> (r: i64) {
+        let p: Pt = *b;
+        match o {
+            None => p.x,
+            Some(inner) => inner.x + p.x,
+        }
+    }
+
+    #[effects(alloc)]
+    fn shapes(a: u32, p: Pt, q: Pt) -> (r: [Shape; 3]) {
+        let d: Shape = Shape::Dot;
+        let c: Shape = Shape::Circle(a * 2);
+        let n: Option<u32> = None;
+        let s: Option<u32> = Some(a);
+        let e: Result<u8, i64> = Err(p.x);
+        let o: Result<u8, i64> = Ok(q.y);
+        let v: Vec<Pt> = Vec::new();
+        [d, Shape::Rect(p, q), Shape::Poly(v)]
+    }
+
+    #[effects(pure)]
+    fn arrays(a: u8, b: i64, p: Pt, i: usize) -> (r: i64) {
+        let xs: [u8; 3] = [a, 1, a / 2];
+        let ys: [i64; 4] = [b; 4];
+        let ps: [Pt; 2] = [Pt { x: b, y: a }, p];
+        let qs: [Pt; 3] = [Pt { x: 1, y: 2 }; 3];
+        let grid: [[u8; 3]; 2] = [xs, [0; 3]];
+        let os: [Option<u8>; 2] = [None, Some(a)];
+        let bs: [bool; 2] = [true, a > 3];
+        let fs: [f64; 2] = [1.5, 0.0];
+        ys[i] + ps[1].x + qs[i].x + (grid[1][i] as i64) + (xs[2] as i64)
+    }
+
+    #[effects(pure)]
+    fn total(s: &[u8]) -> (r: usize) {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn chars(s: &str) -> (r: usize) {
+        s.len()
+    }
+
+    #[effects(alloc)]
+    fn ranges(a: [u8; 8], v: Vec<u8>, s: &[u8], lo: usize, hi: usize) -> (r: usize)
+        requires lo <= hi && hi <= s.len(),
+    {
+        let x: usize = total(&a[2..6]);
+        let y: usize = total(&v[lo..hi]);
+        let z: usize = total(&s[lo..hi]);
+        let w: usize = total(&a[lo..8]);
+        x + y + z + w
+    }
+
+    #[effects(alloc)]
+    fn vecs(n: usize, src: &Vec<u8>, pts: &Vec<Pt>) -> (r: usize) {
+        let a: Vec<u8> = Vec::new();
+        let b: Vec<i64> = Vec::with_capacity(n);
+        let c: Vec<Pt> = Vec::with_capacity(4);
+        let d: Vec<Vec<u8>> = Vec::new();
+        let e: Vec<u8> = src.clone();
+        let s: String = String::new();
+        let t: String = String::with_capacity(n);
+        let first: u8 = if src.len() > 0 { src[0] } else { 0 };
+        a.len() + b.len() + c.len() + d.len() + e.len() + total(src.as_slice()) + s.len() + pts.len()
+    }
+
+    #[effects(pure)]
+    fn swaps(p: &mut Pt, xs: &mut [i64], i: usize, j: usize) -> (r: i64)
+        requires i < xs.len() && j < xs.len(),
+    {
+        let mut a: i64 = 1;
+        let mut b: i64 = 2;
+        std::mem::swap(&mut a, &mut b);
+        let was: i64 = std::mem::replace(&mut a, 7);
+        let px: i64 = std::mem::replace(&mut p.x, was);
+        let xi: i64 = std::mem::replace(&mut xs[i], px);
+        std::mem::swap(&mut xs[j], &mut b);
+        std::mem::swap(&mut p.x, &mut a);
+        xi + b
+    }
+
+    #[effects(alloc)]
+    fn text(s: &str, t: &String, c: char, i: usize, x: u32) -> (r: usize) {
+        let n: usize = total(b"hello") + chars("world") + total(s.as_bytes()) + chars(t.as_str());
+        let u: usize = s.len() + t.len();
+        let at: bool = s.is_char_boundary(i) && t.is_char_boundary(0);
+        let w: usize = c.len_utf8() + 'z'.len_utf8();
+        let k: Option<char> = char::from_u32(x);
+        let v: u32 = u32::from(c) + u32::from('a');
+        let owned: String = String::from("text");
+        let by: u8 = b'q';
+        n + u + w + owned.len()
+    }
+}

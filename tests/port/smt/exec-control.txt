@@ -1,0 +1,214 @@
+#[summary("Control in code: `if` merges of scalars, structs, arrays and Vecs (a small term stays an ite, a large one is bound to a merge constant, a local equal on both sides is kept), `if` without else, a side that returns (one side, both sides, nested), `return` on the right of && and ||, blocks with `let`s, `match` on enums with payloads (range facts of the bindings, the last arm under the others' negations), a match on &mut that writes its bindings back, a match inside an arm, `?` on Option and Result (the side that leaves owes the postconditions), assert and assume, assignments to a local, a field, an element and a field of an element, code after a `return`")]
+mod control {
+    struct Pt { x: i64, y: i64 }
+
+    struct Grid { cells: [u8; 4], origin: Pt, on: bool }
+
+    enum Shape { Dot, Circle(u32), Rect(Pt, Pt), Tags([u8; 2]) }
+
+    spec fn ok(r: i64) -> bool { r >= 0 }
+
+    spec fn kept(now: i64, before: i64) -> bool { now >= before }
+
+    spec fn bounded(x: i64, a: i64) -> bool { x >= 0 && a < 1000 }
+
+    #[effects(pure)]
+    fn len_of(s: &[u8]) -> (r: usize) {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn abs(a: i64) -> (r: i64)
+        requires a > -1000,
+        ensures ok(r),
+    {
+        if a < 0 { -a } else { a }
+    }
+
+    #[effects(pure)]
+    fn merges(a: i64, b: i64, p: Pt, q: Pt, xs: [u8; 4], ys: [u8; 4], va: Vec<u8>, vb: Vec<u8>) -> (r: i64)
+        requires -100 < a && a < 100 && -100 < b && b < 100,
+    {
+        let mut m: i64 = 0;
+        let mut same: i64 = 5;
+        let mut big: i64 = 0;
+        let mut pt: Pt = Pt { x: 0, y: 0 };
+        let mut arr: [u8; 4] = xs;
+        if a < b {
+            m = a;
+            same = 5;
+            big = a * 2 + b * 3 - a * 5 + b * 7 - 11;
+            pt = p;
+            arr = ys;
+        } else {
+            m = b;
+            big = b * 2 + a * 3 - b * 5 + a * 7 - 13;
+            pt = q;
+        }
+        let pick: Pt = if a == b { p } else { q };
+        let vv: Vec<u8> = if a > 0 { va } else { vb };
+        let sl: usize = len_of(vv.as_slice());
+        let one: [u8; 4] = if b > 0 { arr } else { [1, 2, 3, 4] };
+        if m > 0 {
+            m = m - 1;
+        }
+        let again: i64 = if big > 0 { big + m } else { big - m };
+        m + same + pick.x + pt.y + again
+    }
+
+    #[effects(pure)]
+    fn early(a: i64, b: i64) -> (r: i64)
+        requires a > -1000 && b > -1000,
+        ensures ok(r),
+    {
+        if a < 0 {
+            return 0;
+        }
+        let c: i64 = if b < 0 { return a; } else { b };
+        if c > 100 {
+            if a > 100 {
+                return 100;
+            } else {
+                return c;
+            }
+        }
+        let d: bool = a > 5 && { return 5; };
+        let e: bool = a < 3 || { return 3; };
+        a
+    }
+
+    #[effects(pure)]
+    fn both(a: bool) -> (r: i64)
+        ensures ok(r),
+    {
+        if a {
+            return 1;
+        } else {
+            return 2;
+        }
+        let dead: i64 = -1;
+        dead
+    }
+
+    #[effects(pure)]
+    fn blocks(a: u8) -> (r: u8) {
+        let b: u8 = {
+            let c: u8 = a / 2;
+            let d: u8 = c / 2;
+            c + d
+        };
+        {
+            let e: u8 = b;
+        }
+        b
+    }
+
+    #[effects(pure)]
+    fn area(s: &Shape) -> (r: i64)
+        ensures ok(r),
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 3 * (*c as i64),
+            Shape::Rect(a, b) => (b.x - a.x) * (b.y - a.y),
+            Shape::Tags(t) => ((*t)[0] as i64) + ((*t)[1] as i64),
+        }
+    }
+
+    #[effects(pure)]
+    fn grow(s: &mut Shape, d: u32) -> (r: bool) {
+        match s {
+            Shape::Dot => false,
+            Shape::Circle(c) => {
+                *c = *c + d;
+                true
+            },
+            Shape::Rect(a, b) => {
+                b.x = b.x + 1;
+                a.y = 0;
+                true
+            },
+            Shape::Tags(t) => {
+                (*t)[1] = 7;
+                false
+            },
+        }
+    }
+
+    #[effects(pure)]
+    fn nested(s: Shape, o: Option<Shape>) -> (r: u32) {
+        let first: u32 = match o {
+            None => 0,
+            Some(inner) => match inner {
+                Shape::Dot => 1,
+                Shape::Circle(c) => c,
+                Shape::Rect(a, b) => 2,
+                Shape::Tags(t) => 3,
+            },
+        };
+        match s {
+            Shape::Dot => first,
+            Shape::Circle(c) => {
+                if c > first {
+                    return c;
+                }
+                first
+            },
+            Shape::Rect(a, b) => 4,
+            Shape::Tags(t) => 5,
+        }
+    }
+
+    #[effects(pure)]
+    fn half(n: i64) -> (r: Option<i64>) {
+        if n % 2 == 0 { Some(n / 2) } else { None }
+    }
+
+    #[effects(pure)]
+    fn digit(d: u8) -> (r: Result<i64, u8>) {
+        if d >= 48 && d <= 57 { Ok((d - 48) as i64) } else { Err(d) }
+    }
+
+    #[effects(pure)]
+    fn quarter(n: i64) -> (r: Option<i64>) {
+        let h: i64 = half(n)?;
+        half(h)
+    }
+
+    #[effects(pure)]
+    fn two(a: u8, b: u8) -> (r: Result<i64, u8>) {
+        let x: i64 = digit(a)?;
+        let y: i64 = digit(b)?;
+        Ok(x * 10 + y)
+    }
+
+    #[effects(panic)]
+    fn facts(a: i64, xs: &[i64]) -> (r: i64)
+        requires xs.len() > 1,
+        ensures kept(r, a),
+    {
+        assert(xs.len() > 0);
+        #[rationale(kind = boundary, "the test needs a trusted fact")]
+        assume(bounded(xs[0], a));
+        assert(xs[0] + 1 > 0);
+        a + xs[0]
+    }
+
+    #[effects(pure)]
+    fn assign(g: &mut Grid, ps: &mut [Pt], i: usize, v: u8) -> (r: u8)
+        requires i < 4 && ps.len() > 2,
+    {
+        let mut n: u8 = v;
+        n = n / 2;
+        g.on = n > 3;
+        g.origin.x = 1;
+        g.origin = Pt { x: 2, y: g.origin.x };
+        g.cells[i] = n;
+        g.cells[0] = g.cells[i];
+        ps[1].y = ps[0].x;
+        ps[i] = Pt { x: 0, y: 0 };
+        let mut local: [Pt; 2] = [Pt { x: 1, y: 2 }, Pt { x: 3, y: 4 }];
+        local[1].x = ps[2].y;
+        g.cells[3]
+    }
+}

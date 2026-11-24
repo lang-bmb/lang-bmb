@@ -1,0 +1,2501 @@
+#[summary("Proof encoding, fourth piece (port of the executable side of stage0 compiler/src/verify.rs and of verify/invariants.rs, semantics in ADR-0017, ADR-0049 §3 and ADR-0060 §2): the symbolic state of an executable definition (Exec, the fields of stage0 Enc that code reads, around the state of specifications), its entry (parameters, the refinement of a trait's contract, requires), the values and obligations of expressions (Exec::eval, split by kind of expression), branches and their merge, calls with their contracts, places, the validity of values of types with invariants, and the exec rows of `bmb dump smt`. Loops, proof blocks, sub-proofs, the methods that change a Vec or a String and the operations of text are the next pieces: ported says whether a body stays inside this one, and stage0's dump asks the same question (verify::port_encodes). stage0's closures over the encoder (branch) are a start, a turn and a join around the two sides; its thread-local switches are fields of Exec. The f of recursive functions is the remaining depth (ADR-0140)")]
+mod encode_exec {
+    #[summary("A branch that was entered (the start of stage0 Enc::branch): the locals before it, the length of the path condition before it, and its condition")]
+    struct Branch { vars: table::Table<encode_terms::Val>, n: usize, c: String }
+
+    #[summary("Symbolic state of one executable definition (stage0 Enc, the fields code reads). enc is the state specifications read: the declarations, the path condition, the obligations. vars are the locals, var_rank the order in which each was first bound (ADR-0063 §2), was the values behind &mut parameters on entry (`old`), entry_measure the decreases measure on entry, inputs the entry values of the parameters in order. dead says the current path has returned (ADR-0049 §3). ghost says ghost code is being encoded (ADR-0062 §2; the next piece sets it). texts are the text values known valid UTF-8, bytes and length. valid_decl are the validity symbols declared, valid_depth the nesting depth of element quantifiers, valid_defs the definitions of the recursive types' validity functions, valid_memo whether a type has a validity, by its text (a RefCell of stage0 Prog: a memo, so each definition may fill its own). reaching and reach are stage0's thread-local REACH and the points it records; trust is its thread-local TRUST, None trusting everything")]
+    struct Exec { enc: encode_spec::Enc, vars: table::Table<encode_terms::Val>, var_rank: table::Table<usize>, was: table::Table<encode_terms::Val>, entry_measure: Option<encode_spec::Measure>, inputs: Vec<encode_spec::Shown>, dead: bool, ghost: bool, texts: Vec<encode_terms::Pair>, valid_decl: table::Table<bool>, valid_depth: u64, valid_defs: Vec<encode_spec::AxiomParts>, valid_memo: table::Table<bool>, reaching: bool, reach: Vec<Reach>, trust: Option<Trust> }
+
+    impl Exec {
+        #[summary("Records text value v as valid UTF-8 where it enters the definition (stage0 Enc::assume_text): a parameter, a call's result, a &mut argument after the call. No obligation goes with it (ADR-0050 §3)")]
+        #[effects(alloc)]
+        fn assume_text(self: &mut Exec, v: &encode_terms::Val) -> () {
+            match encode_terms::parts(v) {
+                None => {},
+                Some(p) => { let mut known: bool = false; for i in 0..self.texts.len() invariant 0 <= i && i <= self.texts.len(), { if self.texts[i].a.as_str() == p.a.as_str() && self.texts[i].b.as_str() == p.b.as_str() { known = true; } } if !known { self.texts.push(p.clone()); } },
+            }
+        }
+
+        #[summary("Assumes v of type t valid (stage0 Enc::assume_valid): a new value of code. Ghost code assumes nothing")]
+        #[effects(alloc)]
+        fn assume_valid(self: &mut Exec, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog) -> () {
+            if self.ghost {
+                return;
+            }
+            let facts: Vec<String> = self.valid(v, t, pg, 100000);
+            extend(&mut self.enc.pc, facts.as_slice());
+        }
+
+        #[summary("The value behind a &mut parameter after the callee (stage0 Enc::behind_mut_after): it may change the place, the elements of a slice but never its length; a &mut Vec<T> or a &mut String also its length when grows is set. before is the value on entry, ty the parameter's type")]
+        #[effects(alloc)]
+        fn behind_mut_after(self: &mut Exec, base: &str, before: &encode_terms::Val, ty: &ast::TypeKind, grows: bool, pg: &encode_spec::Prog) -> encode_terms::Val {
+            let e: ast::TypeKind = encode_decls::elem_ty(ty);
+            match before {
+                encode_terms::Val::S(bmv_s0) => self.enc.fresh_val(base, ty, pg, 100000),
+                encode_terms::Val::A(bm_elems, len) => { let elems: String = self.enc.fresh_elems(base, &e, false); let nl: String = self.new_len(base, len.as_str(), &e, grows); encode_terms::Val::A(elems, nl) },
+                encode_terms::Val::Unit => self.enc.fresh_val(base, ty, pg, 100000),
+                encode_terms::Val::Struct(bmv_struct0) => self.enc.fresh_val(base, ty, pg, 100000),
+                encode_terms::Val::Arr(bm_elem, alen) => { let elem: encode_terms::Val = self.enc.fresh_struct_elems(base, &e, pg); let al: String = self.new_len(base, alen.as_str(), &e, grows); encode_terms::Val::Arr(Box::new(elem), al) },
+            }
+        }
+
+        #[summary("Binds local k to v, noting when it was first bound (stage0 Enc::bind_var)")]
+        #[effects(alloc)]
+        fn bind_var(self: &mut Exec, k: &str, v: encode_terms::Val) -> () {
+            if !self.var_rank.has(k) {
+                let r: usize = self.var_rank.len();
+                self.var_rank.insert(k, r);
+            }
+            self.vars.insert(k, v);
+        }
+
+        #[summary("A bit method in code (stage0 Enc::bit_method_code): the operand is a named bit-vector, and the term's facts are assumed. The amount is converted as in a specification, so the two read alike for the congruence facts. A constant amount is linear and names nothing")]
+        #[effects(alloc)]
+        fn bit_method_code(self: &mut Exec, m: &str, i: ast::IntTy, a: &str, n: &Option<String>) -> String {
+            let constant: bool = match n {
+                None => false,
+                Some(nn) => encode_spec::is_num(nn.as_str()),
+            };
+            let none: Option<String> = None;
+            if constant || m == "swap_bytes" && body::bits(i) == 8 {
+                return encode_terms::method_term(m, i, a, "", n, &none);
+            }
+            let xa: String = self.operand_bv(i, a);
+            let xn: Option<String> = match n {
+                None => None,
+                Some(amount) => Some(encode_terms::to_bv(i, amount.as_str())),
+            };
+            let t: String = encode_terms::method_term(m, i, a, xa.as_str(), n, &xn);
+            let facts: Vec<String> = encode_terms::method_facts(m, i, a, t.as_str());
+            extend(&mut self.enc.pc, facts.as_slice());
+            t
+        }
+
+        #[summary("The value of block b in code (stage0 Enc::block): its statements in order, then its tail. What follows a `return` on this path does not run")]
+        #[effects(alloc)]
+        fn block(self: &mut Exec, b: &ast::Block, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                if self.dead {
+                    return encode_terms::Val::Unit;
+                }
+                self.stmt(&b.stmts[i], pg, f - 1);
+            }
+            if self.dead {
+                return encode_terms::Val::Unit;
+            }
+            match &b.tail {
+                None => encode_terms::Val::Unit,
+                Some(t) => self.eval(&**t, pg, f - 1),
+            }
+        }
+
+        #[summary("The first side of a branch on c has run (the middle of stage0 Enc::branch): what it left is taken, and the second side starts from the state before the branch under the negation of c")]
+        #[effects(alloc)]
+        fn branch_else(self: &mut Exec, b: &Branch) -> Side {
+            let side: Side = Side { vars: self.vars.clone(), facts: tail(self.enc.pc.as_slice(), b.n.saturating_add(1)), dead: self.dead };
+            self.vars = b.vars.clone();
+            self.dead = false;
+            self.enc.pc.truncate(b.n);
+            self.enc.pc.push(types::cat3("(not ", b.c.as_str(), ")"));
+            side
+        }
+
+        #[summary("Both sides of a branch on c have run, the first leaving first with value tv, the second leaving the current state with value ev (the end of stage0 Enc::branch): the state and the value after the join. A side that returned does not reach the join (ADR-0049 §3): the path goes on under the other side's condition and facts, and the names that side bound end with it. Otherwise every local of before is merged in the order they were first bound, and each side's facts hold under its condition")]
+        #[effects(alloc)]
+        fn branch_join(self: &mut Exec, b: &Branch, first: &Side, tv: encode_terms::Val, ev: encode_terms::Val, ty: &ast::TypeKind, pg: &encode_spec::Prog) -> encode_terms::Val {
+            let else_vars: table::Table<encode_terms::Val> = self.vars.clone();
+            let else_facts: Vec<String> = tail(self.enc.pc.as_slice(), b.n.saturating_add(1));
+            let else_dead: bool = self.dead;
+            self.dead = false;
+            self.enc.pc.truncate(b.n);
+            let not_c: String = types::cat3("(not ", b.c.as_str(), ")");
+            if first.dead && else_dead {
+                self.dead = true;
+                self.vars = b.vars.clone();
+                return tv;
+            }
+            if first.dead {
+                self.vars = retain(&else_vars, &b.vars);
+                self.enc.pc.push(not_c.clone());
+                extend(&mut self.enc.pc, else_facts.as_slice());
+                return ev;
+            }
+            if else_dead {
+                self.vars = retain(&first.vars, &b.vars);
+                self.enc.pc.push(b.c.clone());
+                extend(&mut self.enc.pc, first.facts.as_slice());
+                return tv;
+            }
+            let names: Vec<String> = self.in_binding_order(&b.vars);
+            let mut merged: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            for i in 0..names.len()
+                invariant 0 <= i && i <= names.len(),
+            {
+                let x: encode_terms::Val = var_of(&first.vars, names[i].as_str());
+                let y: encode_terms::Val = var_of(&else_vars, names[i].as_str());
+                let t: ast::TypeKind = if same_val(&x, &y, 100000) {
+                    ast::TypeKind::Error
+                } else {
+                    self.enc.local_ty(names[i].as_str(), pg)
+                };
+                let v: encode_terms::Val = self.merge(b.c.as_str(), &x, &y, &t, pg, 100000);
+                merged.insert(names[i].as_str(), v);
+            }
+            self.vars = merged;
+            let then_g: Vec<String> = encode_terms::guarded(b.c.as_str(), first.facts.as_slice());
+            extend(&mut self.enc.pc, then_g.as_slice());
+            let else_g: Vec<String> = encode_terms::guarded(not_c.as_str(), else_facts.as_slice());
+            extend(&mut self.enc.pc, else_g.as_slice());
+            self.merge(b.c.as_str(), &tv, &ev, ty, pg, 100000)
+        }
+
+        #[summary("Enters a branch on c (the start of stage0 Enc::branch): the first side runs under c")]
+        #[effects(alloc)]
+        fn branch_start(self: &mut Exec, c: &str) -> Branch {
+            let b: Branch = Branch { vars: self.vars.clone(), n: self.enc.pc.len(), c: String::from(c) };
+            self.enc.pc.push(String::from(c));
+            b
+        }
+
+        #[summary("A call of a function (stage0 Enc::call). A generic callee's contract is read under the call's type arguments; a trait method's is its impl's when Self is known. The arguments are evaluated in order (in ghost code they are specifications); then a built-in function has its own rules (call_builtin) and a definition its contract (call_def)")]
+        #[effects(alloc)]
+        fn call(self: &mut Exec, path: &[ast::Ident], args: &[ast::Expr], span: source::Span, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let mut target: String = encode_decls::resolve_in(&pg.pr.t, path, self.enc.unit.as_str());
+            let mut csub: types::Subst = self.enc.call_subst(target.as_str(), span, pg);
+            match pg.pr.t.fns.find(target.as_str()) {
+                None => {},
+                Some(sg) => { match &pg.pr.t.fns.items[sg].trait_of { None => {}, Some(tr) => { let mut targs: Vec<ast::TypeKind> = Vec::new(); for i in 0..pg.pr.t.fns.items[sg].generics.len() invariant 0 <= i && i <= pg.pr.t.fns.items[sg].generics.len(), { match types::sub_get(&csub, pg.pr.t.fns.items[sg].generics[i].name.as_str()) { None => targs.push(ast::TypeKind::Error), Some(ta) => targs.push(ta), } } let d: body::Dispatched = encode_decls::dispatched(&pg.pr.t, target.as_str(), targs.as_slice()); csub = match pg.pr.t.fns.find(d.path.as_str()) { None => types::Subst { names: Vec::new(), tys: Vec::new() }, Some(dg) => encode_decls::zip(pg.pr.t.fns.items[dg].generics.as_slice(), d.args.as_slice()), }; target = d.path.clone(); }, } },
+            }
+            let mut argv: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                if self.ghost {
+                    let env: table::Table<encode_terms::Val> = self.vars.clone();
+                    let was: table::Table<encode_terms::Val> = self.was.clone();
+                    argv.push(self.enc.spec_expr(&args[i], &env, &was, pg, 100000));
+                } else {
+                    argv.push(self.eval(&args[i], pg, f - 1));
+                }
+            }
+            match pg.defs.find(target.as_str()) {
+                None => self.call_builtin(target.as_str(), args, argv.as_slice(), span, pg, f - 1),
+                Some(at) => self.call_def(target.as_str(), &pg.defs.items[at], &csub, args, argv.as_slice(), span, pg, f - 1),
+            }
+        }
+
+        #[summary("A call of built-in function target, which has no definition (the built-in part of stage0 Enc::call). std::process::exit ends the path (ADR-0091): the postconditions are not owed on it. A value from outside is any value of its type; input and output change a &mut buffer to any valid value of its type and give any value of the result type (ADR-0091 §3). print_f64 has its precision bound (E0801). Anything else has no contract")]
+        #[effects(alloc)]
+        fn call_builtin(self: &mut Exec, target: &str, args: &[ast::Expr], argv: &[encode_terms::Val], span: source::Span, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            if target == "std::process::exit" && !self.ghost {
+                self.dead = true;
+            }
+            let result: String = types::cat2(target, ".result");
+            if target == "std::env::args" || target == "std::env::var" || target == "std::time::monotonic_ms" {
+                let t: ast::TypeKind = ret_of(pg, target);
+                let v: encode_terms::Val = self.enc.fresh_val(result.as_str(), &t, pg, 100000);
+                self.assume_valid(&v, &t, pg);
+                return v;
+            }
+            if moves::starts_with(target, "std::io::") || moves::starts_with(target, "std::fs::") || moves::starts_with(target, "std::process::") {
+                let ptys: Vec<ast::TypeKind> = params_of(pg, target);
+                for i in 0..ptys.len()
+                    invariant 0 <= i && i <= ptys.len(),
+                {
+                    if i < args.len() && mut_ref(&ptys[i]) && has_root(&args[i]) {
+                        let mut steps: Vec<encode_terms::Step> = Vec::new();
+                        let root: String = self.place(&args[i], &mut steps, false, pg, f - 1);
+                        let nv: encode_terms::Val = self.enc.fresh_val(root.as_str(), &ptys[i], pg, 100000);
+                        self.assume_valid(&nv, &ptys[i], pg);
+                        if text_at(pg, target, i) {
+                            self.assume_text(&nv);
+                        }
+                        let cur: encode_terms::Val = var_of(&self.vars, root.as_str());
+                        let whole: encode_terms::Val = encode_terms::set_at(&cur, steps.as_slice(), 0, &nv, &pg.pr.t, &mut self.enc.fr);
+                        self.bind_var(root.as_str(), whole);
+                    }
+                }
+                let rt: ast::TypeKind = ret_of(pg, target);
+                let r: encode_terms::Val = self.enc.fresh_val(result.as_str(), &rt, pg, 100000);
+                self.assume_valid(&r, &rt, pg);
+                return r;
+            }
+            if target == "print_f64" && !self.ghost && argv.len() > 1 {
+                let d: String = encode_terms::scalar_of(&argv[1]);
+                self.oblige("E0801", span, "`print_f64` may get more than 65535 decimals (Rust panics)", types::cat3("(<= ", d.as_str(), " 65535)").as_str());
+            }
+            encode_terms::Val::Unit
+        }
+
+        #[summary("A call of definition def at path target with the values argv of the arguments args (the contract part of stage0 Enc::call). Every argument leaves the caller's hands valid (E0823); a lemma's arguments lie in its parameter types (E0819, ADR-0062 §2); each precondition holds (E0801); a call into the caller's recursion component decreases the measure (E0809). Then the callee has run: the value behind each &mut argument is new and valid, the result is a fresh valid value, and the postconditions are facts unless the pass does not trust the callee (ADR-0029 §2)")]
+        #[effects(alloc)]
+        fn call_def(self: &mut Exec, target: &str, def: &encode_spec::Def, csub: &types::Subst, args: &[ast::Expr], argv: &[encode_terms::Val], span: source::Span, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            let pre_env: table::Table<encode_terms::Val> = encode_spec::bind_params(&def.d, argv);
+            let mut param_tys: Vec<ast::TypeKind> = Vec::new();
+            let sig_tys: Vec<ast::TypeKind> = params_of(pg, target);
+            for i in 0..sig_tys.len()
+                invariant 0 <= i && i <= sig_tys.len(),
+            {
+                param_tys.push(types::subst(&sig_tys[i], csub));
+            }
+            for i in 0..args.len()
+                invariant 0 <= i && i <= args.len(),
+            {
+                if i < argv.len() && i < param_tys.len() {
+                    self.oblige_valid_arg(&args[i], target, &argv[i], &param_tys[i], pg);
+                }
+            }
+            if body::is_proof(def.d.kind) {
+                for i in 0..args.len()
+                    invariant 0 <= i && i <= args.len(),
+                {
+                    if i < argv.len() && i < param_tys.len() {
+                        let tf: Vec<String> = encode_spec::type_facts(&argv[i], &param_tys[i], pg, 100000);
+                        for k in 0..tf.len()
+                            invariant 0 <= k && k <= tf.len(),
+                        {
+                            if !types::has(self.enc.pc.as_slice(), tf[k].as_str()) {
+                                self.oblige("E0819", args[i].span, types::cat7("argument `", fmt::expr_text(&args[i]).as_str(), "` of `", target, "` may be outside `", types::text(&param_tys[i]).as_str(), "`").as_str(), tf[k].as_str());
+                            }
+                        }
+                    }
+                }
+            }
+            for i in 0..def.d.pre.len()
+                invariant 0 <= i && i <= def.d.pre.len(),
+            {
+                let g: String = self.spec_in(def.unit.as_str(), csub, &def.d.pre[i], &pre_env, &none, pg);
+                self.oblige("E0801", span, types::cat5("precondition `", pred_name(&def.d.pre[i]).as_str(), "` of `", target, "` may not hold").as_str(), g.as_str());
+            }
+            match pg.recursive.find(target) {
+                None => {},
+                Some(rc) => { match &def.d.measure { None => {}, Some(dm) => { if encode_spec::same_comp(pg, self.enc.path.as_str(), pg.recursive.items[rc]) { let em: Option<encode_spec::Measure> = self.entry_measure.clone(); match em { None => {}, Some(m0) => { let saved_sub: types::Subst = self.enc.tsub.clone(); let saved_mod: String = self.enc.spec_mod.clone(); self.enc.tsub = csub.clone(); self.enc.spec_mod = def.unit.clone(); let m1: encode_spec::Measure = self.enc.measure(dm, &pre_env, &none, pg, 100000); self.enc.spec_mod = saved_mod; self.enc.tsub = saved_sub; let goal: String = encode_spec::decrease_goal(pg, &m0, &m1); self.oblige("E0809", span, types::cat3("recursive call to `", target, "` may not decrease its measure").as_str(), goal.as_str()); }, } } }, } },
+            }
+            let mut post_args: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..argv.len()
+                invariant 0 <= i && i <= argv.len(),
+            {
+                post_args.push(argv[i].clone());
+            }
+            let mut old_env: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            for i in 0..def.d.params.len()
+                invariant 0 <= i && i <= def.d.params.len(),
+            {
+                if i < args.len() && i < argv.len() && i < param_tys.len() && mut_ref(&def.d.params[i].ty.kind) && has_root(&args[i]) {
+                    let mut steps: Vec<encode_terms::Step> = Vec::new();
+                    let root: String = self.place(&args[i], &mut steps, false, pg, f - 1);
+                    let grows: bool = match body::ref_inner(&def.d.params[i].ty.kind) {
+                        None => false,
+                        Some(inner) => growable(&inner),
+                    };
+                    let nv: encode_terms::Val = self.behind_mut_after(root.as_str(), &argv[i], &param_tys[i], grows, pg);
+                    old_env.insert(def.d.params[i].name.name.as_str(), argv[i].clone());
+                    self.assume_valid(&nv, &param_tys[i], pg);
+                    if text_at(pg, target, i) {
+                        self.assume_text(&nv);
+                    }
+                    let cur: encode_terms::Val = var_of(&self.vars, root.as_str());
+                    let whole: encode_terms::Val = encode_terms::set_at(&cur, steps.as_slice(), 0, &nv, &pg.pr.t, &mut self.enc.fr);
+                    self.bind_var(root.as_str(), whole);
+                    if i < post_args.len() {
+                        post_args[i] = nv.clone();
+                    }
+                }
+            }
+            let mut post_env: table::Table<encode_terms::Val> = encode_spec::bind_params(&def.d, post_args.as_slice());
+            let ret_ty: ast::TypeKind = types::subst(&ret_of(pg, target), csub);
+            let result: encode_terms::Val = self.enc.fresh_val(types::cat2(target, ".result").as_str(), &ret_ty, pg, 100000);
+            self.assume_valid(&result, &ret_ty, pg);
+            if text_ret(pg, target) {
+                self.assume_text(&result);
+            }
+            match &def.d.ret.name {
+                None => {},
+                Some(rn) => post_env.insert(rn.name.as_str(), result.clone()),
+            }
+            if self.trusts_callee(target) {
+                for i in 0..def.d.post.len()
+                    invariant 0 <= i && i <= def.d.post.len(),
+                {
+                    let g: String = self.spec_in(def.unit.as_str(), csub, &def.d.post[i], &post_env, &old_env, pg);
+                    self.enc.pc.push(g);
+                }
+            }
+            result
+        }
+
+        #[summary("`&v[lo..hi]` of an array, Vec or slice in code (stage0 Enc::elem_slice): the bounds obligation (E0805, Rust's panics on a range that starts after its end or ends past the length) and the elements from lo, the shifted array")]
+        #[effects(alloc)]
+        fn elem_slice(self: &mut Exec, e: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let v: encode_terms::Val = self.eval(base, pg, f - 1);
+            let a: String = encode_terms::scalar_of(&self.eval(lo, pg, f - 1));
+            let b: String = encode_terms::scalar_of(&self.eval(hi, pg, f - 1));
+            let n: String = encode_spec::len_of(&v);
+            self.oblige("E0805", e.span, "the range may be out of bounds", types::cat5("(and (<= ", a.as_str(), " ", b.as_str(), types::cat5(") (<= ", b.as_str(), " ", n.as_str(), "))").as_str()).as_str());
+            encode_spec::sub_text(&v, a.as_str(), b.as_str())
+        }
+
+        #[summary("The entry state of the executable function d, this state's definition (stage0 Enc::entry_params): each parameter is a fresh value in its type's range, valid (ADR-0060 §2: its caller proved it) and, where it is text, valid UTF-8 (ADR-0050 §3); the value behind a &mut parameter is also its `old`. The parameters are inputs, in order")]
+        #[effects(alloc)]
+        fn entry_params(self: &mut Exec, d: &ast::FnDef, pg: &encode_spec::Prog) -> () {
+            let path: String = self.enc.path.clone();
+            for i in 0..d.params.len()
+                invariant 0 <= i && i <= d.params.len(),
+            {
+                let name: String = d.params[i].name.name.clone();
+                let ty: ast::TypeKind = self.enc.local_ty(name.as_str(), pg);
+                let v: encode_terms::Val = self.enc.fresh_val(name.as_str(), &ty, pg, 100000);
+                self.assume_valid(&v, &ty, pg);
+                if text_at(pg, path.as_str(), i) {
+                    self.assume_text(&v);
+                }
+                if mut_ref(&d.params[i].ty.kind) {
+                    self.was.insert(name.as_str(), v.clone());
+                }
+                self.inputs.push(encode_spec::Shown { name: name.clone(), v: v.clone(), ty: ty });
+                self.bind_var(name.as_str(), v);
+            }
+        }
+
+        #[summary("The requires clauses of d on the entry state (stage0 Enc::entry_requires), one term per clause")]
+        #[effects(alloc)]
+        fn entry_requires(self: &mut Exec, d: &ast::FnDef, pg: &encode_spec::Prog) -> Vec<String> {
+            let env: table::Table<encode_terms::Val> = self.vars.clone();
+            let was: table::Table<encode_terms::Val> = self.was.clone();
+            let mut out: Vec<String> = Vec::new();
+            for i in 0..d.pre.len()
+                invariant 0 <= i && i <= d.pre.len(),
+            {
+                out.push(encode_terms::scalar_of(&self.enc.spec_expr(&d.pre[i], &env, &was, pg, 100000)));
+            }
+            out
+        }
+
+        #[summary("The value of expression e in code, with its obligations and what the path learns (stage0 Enc::eval): one function per kind of expression. Ghost code is the next piece, as are loops and the jumps out of them: the unit value for those and for a construct of specifications, none of which a body inside the frontier holds (ported)")]
+        #[effects(alloc)]
+        fn eval(self: &mut Exec, e: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            if self.ghost {
+                return encode_terms::Val::Unit;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(v, ev_r) => encode_terms::Val::S(encode_terms::num(&encode_terms::Int { neg: false, mag: *v })),
+                ast::ExprKind::Float(bits) => encode_terms::Val::S(encode_terms::f64_lit(*bits)),
+                ast::ExprKind::ByteLit(bl) => encode_terms::Val::S(encode_terms::dec(*bl as u64)),
+                ast::ExprKind::ByteStr(bs) => encode_terms::Val::A(encode_terms::byte_array(bs.as_slice()), encode_terms::dec(bs.len() as u64)),
+                ast::ExprKind::StrLit(sl) => encode_terms::Val::A(encode_terms::byte_array(sl.as_bytes()), encode_terms::dec(sl.len() as u64)),
+                ast::ExprKind::CharLit(ch) => encode_terms::Val::S(encode_terms::dec(*ch as u64)),
+                ast::ExprKind::Bool(on) => { if *on { encode_terms::Val::S(String::from("true")) } else { encode_terms::Val::S(String::from("false")) } },
+                ast::ExprKind::Unit => encode_terms::Val::Unit,
+                ast::ExprKind::Var(id) => { if id.name == "None" && !self.vars.has("None") { let no: Vec<encode_terms::Val> = Vec::new(); encode_spec::variant_value(&self.enc.ty(e, pg), "None", no.as_slice()) } else { var_of(&self.vars, id.name.as_str()) } },
+                ast::ExprKind::Call(c) => self.eval_call(e, c, pg, f - 1),
+                ast::ExprKind::Method(mc) => self.eval_method(e, mc, pg, f - 1),
+                ast::ExprKind::Index(ib, ii) => self.eval_index(e, &**ib, &**ii, pg, f - 1),
+                ast::ExprKind::Unary(uop, ux) => self.eval_unary(e, *uop, &**ux, pg, f - 1),
+                ast::ExprKind::Binary(bop, lhs, rhs) => self.eval_binary(e, *bop, &**lhs, &**rhs, pg, f - 1),
+                ast::ExprKind::Ref(ev_m, rx) => self.eval(&**rx, pg, f - 1),
+                ast::ExprKind::If(ifx) => self.eval_if(e, ifx, pg, f - 1),
+                ast::ExprKind::Block(b) => self.block(b, pg, f - 1),
+                ast::ExprKind::Array(items) => self.eval_array(e, items.as_slice(), pg, f - 1),
+                ast::ExprKind::Repeat(rp) => self.eval_repeat(e, rp, pg, f - 1),
+                ast::ExprKind::Old(eve_old0) => encode_terms::Val::Unit,
+                ast::ExprKind::Quant(eve_quant0) => encode_terms::Val::Unit,
+                ast::ExprKind::Trigger(eve_trigger0) => encode_terms::Val::Unit,
+                ast::ExprKind::Closure(eve_closure0) => encode_terms::Val::Unit,
+                ast::ExprKind::StructLit(lit) => self.eval_struct_lit(e, lit, pg, f - 1),
+                ast::ExprKind::Path(segs) => self.enc.spec_path(e, segs.as_slice(), pg),
+                ast::ExprKind::Deref(dx) => self.eval(&**dx, pg, f - 1),
+                ast::ExprKind::Field(fb, fname) => self.eval_field(&**fb, fname.name.as_str(), pg, f - 1),
+                ast::ExprKind::Match(mx) => self.eval_match(e, mx, pg, f - 1),
+                ast::ExprKind::Return(rv) => self.eval_return(e, rv, pg, f - 1),
+                ast::ExprKind::Try(tx) => self.eval_try(e, &**tx, pg, f - 1),
+                ast::ExprKind::Loop(eve_loop0) => encode_terms::Val::Unit,
+                ast::ExprKind::Break(eve_break0) => encode_terms::Val::Unit,
+                ast::ExprKind::Continue(eve_continue0) => encode_terms::Val::Unit,
+                ast::ExprKind::Range(eve_range0) => encode_terms::Val::Unit,
+                ast::ExprKind::Error => encode_terms::Val::Unit,
+            }
+        }
+
+        #[summary("An array literal in code (the Array arms of stage0 Enc::eval). An array of structs or enums is fresh element arrays with each item stored, so no default value is needed; an array of scalars is a constant array of the type's default with each item stored")]
+        #[effects(alloc)]
+        fn eval_array(self: &mut Exec, e: &ast::Expr, items: &[ast::Expr], pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let elem: ast::TypeKind = encode_decls::elem_ty(&self.enc.ty(e, pg));
+            let agg: bool = encode_decls::agg_elem(&elem, &pg.pr.t);
+            let len: String = encode_terms::dec(items.len() as u64);
+            if body::is_named(&elem) || agg {
+                let mut vals: Vec<encode_terms::Val> = Vec::new();
+                for i in 0..items.len()
+                    invariant 0 <= i && i <= items.len(),
+                {
+                    vals.push(self.eval(&items[i], pg, f - 1));
+                }
+                let mut arr: encode_terms::Val = if agg {
+                    self.enc.fresh_struct_elems("arr", &elem, pg)
+                } else {
+                    encode_terms::Val::S(encode_terms::fresh(&mut self.enc.fr, "arr.e", types::cat3("(Array Int ", encode_decls::sort_of(&elem).as_str(), ")").as_str()))
+                };
+                for k in 0..vals.len()
+                    invariant 0 <= k && k <= vals.len(),
+                {
+                    arr = encode_terms::store_val(&arr, encode_terms::dec(k as u64).as_str(), &vals[k], 100000);
+                }
+                return encode_spec::whole_array(arr, len.clone());
+            }
+            let mut elems: String = types::cat5("((as const (Array Int ", encode_decls::sort_of(&elem).as_str(), ")) ", encode_terms::default_of(&elem).as_str(), ")");
+            for k in 0..items.len()
+                invariant 0 <= k && k <= items.len(),
+            {
+                let v: String = encode_terms::scalar_of(&self.eval(&items[k], pg, f - 1));
+                elems = types::cat7("(store ", elems.as_str(), " ", encode_terms::dec(k as u64).as_str(), " ", v.as_str(), ")");
+            }
+            encode_terms::Val::A(elems, len)
+        }
+
+        #[summary("A binary operation in code (the Binary arms of stage0 Enc::eval). `&&` and `||` short-circuit: the right operand runs only when it matters, what it learns holds whenever it ran, and one that returned leaves the left value on the path where it did not run. f64 arithmetic is total (ADR-0061 §3). A bit operation has its shift obligation and, unless it is linear, a bit-vector term with its facts. `/` and `%` have a divisor obligation (E0804) and their lemmas; the arithmetic results must lie in the type (E0803)")]
+        #[effects(alloc)]
+        fn eval_binary(self: &mut Exec, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let k: u8 = encode_spec::op_code(op);
+            if k == 11 || k == 12 {
+                let lt: String = encode_terms::scalar_of(&self.eval(l, pg, f - 1));
+                let n: usize = self.enc.pc.len();
+                let guard: String = if k == 11 {
+                    lt.clone()
+                } else {
+                    types::cat3("(not ", lt.as_str(), ")")
+                };
+                self.enc.pc.push(guard.clone());
+                let rt: String = encode_terms::scalar_of(&self.eval(r, pg, f - 1));
+                if self.dead {
+                    self.dead = false;
+                    self.enc.pc.truncate(n);
+                    self.enc.pc.push(types::cat3("(not ", guard.as_str(), ")"));
+                    return encode_terms::Val::S(lt);
+                }
+                let facts: Vec<String> = tail(self.enc.pc.as_slice(), n.saturating_add(1));
+                self.enc.pc.truncate(n);
+                let lifted: Vec<String> = encode_terms::guarded(guard.as_str(), facts.as_slice());
+                extend(&mut self.enc.pc, lifted.as_slice());
+                if k == 11 {
+                    return encode_terms::Val::S(types::cat5("(and ", lt.as_str(), " ", rt.as_str(), ")"));
+                }
+                return encode_terms::Val::S(types::cat5("(or ", lt.as_str(), " ", rt.as_str(), ")"));
+            }
+            let ty: ast::TypeKind = self.enc.ty(l, pg);
+            let a: String = encode_terms::scalar_of(&self.eval(l, pg, f - 1));
+            let b: String = encode_terms::scalar_of(&self.eval(r, pg, f - 1));
+            if body::is_f64(&ty) {
+                return match encode_terms::f64_binary(op, a.as_str(), b.as_str()) { None => encode_terms::Val::Unit, Some(ft) => encode_terms::Val::S(ft), };
+            }
+            if k == 14 {
+                return self.eval_bits(e, op, r, &ty, a.as_str(), b.as_str(), pg);
+            }
+            if k == 5 {
+                return encode_terms::Val::S(types::cat5("(= ", a.as_str(), " ", b.as_str(), ")"));
+            }
+            if k == 6 {
+                return encode_terms::Val::S(types::cat5("(not (= ", a.as_str(), " ", b.as_str(), "))"));
+            }
+            if k >= 7 && k <= 10 {
+                return encode_terms::Val::S(encode_terms::ord_term(op, &ty, a.as_str(), b.as_str()));
+            }
+            let signed: bool = codegen::is_signed(&ty);
+            let t: String = if k == 0 {
+                types::cat5("(+ ", a.as_str(), " ", b.as_str(), ")")
+            } else if k == 1 {
+                types::cat5("(- ", a.as_str(), " ", b.as_str(), ")")
+            } else if k == 2 {
+                self.enc.mul_facts(a.as_str(), b.as_str());
+                types::cat5("(* ", a.as_str(), " ", b.as_str(), ")")
+            } else if k == 3 || k == 4 {
+                self.eval_div(e, k == 4, r, &ty, signed, a.as_str(), b.as_str())
+            } else {
+                return encode_terms::Val::Unit;
+            };
+            match encode_terms::range(&ty, t.as_str()) {
+                None => {},
+                Some(rg) => self.oblige("E0803", e.span, types::cat5("`", body::op_symbol(op).as_str(), "` may overflow `", types::text(&ty).as_str(), "`").as_str(), rg.as_str()),
+            }
+            encode_terms::Val::S(t)
+        }
+
+        #[summary("A bit operation or a shift a op b in code on operands of type ty (the bit part of the Binary arm of stage0 Enc::eval): on bool the connective; on an integer the shift obligation, then the linear form where there is one, else the bit-vector term over the named operands with its facts")]
+        #[effects(alloc)]
+        fn eval_bits(self: &mut Exec, e: &ast::Expr, op: ast::BinOp, amount: &ast::Expr, ty: &ast::TypeKind, a: &str, b: &str, pg: &encode_spec::Prog) -> encode_terms::Val {
+            let i: ast::IntTy = match body::int_of(ty) {
+                None => { return encode_terms::Val::S(encode_terms::bool_bit(op, a, b)); },
+                Some(found) => found,
+            };
+            if body::is_shift(op) {
+                self.shift_obligation(e, op, i, amount, b, pg);
+            }
+            match encode_terms::linear_bit(op, i, a, b) {
+                None => {},
+                Some(lin) => { return encode_terms::Val::S(lin); },
+            }
+            let xa: String = self.operand_bv(i, a);
+            let xb: String = self.operand_bv(i, b);
+            let t: String = encode_terms::bv_term(op, i, xa.as_str(), xb.as_str());
+            let facts: Vec<String> = encode_terms::bit_facts(op, i, a, b, t.as_str());
+            extend(&mut self.enc.pc, facts.as_slice());
+            encode_terms::Val::S(t)
+        }
+
+        #[summary("A call expression in code (the Call arms of stage0 Enc::eval): Vec::new and its kin, the built-ins of text and char that are plain values, Box::new, an integer from its bytes, f64::from (E0815 for a 64-bit source), std::mem::replace and swap, a variant with its payload; otherwise a call of a function (call). String::from_utf8 is outside the frontier")]
+        #[effects(alloc)]
+        fn eval_call(self: &mut Exec, e: &ast::Expr, c: &ast::Call, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let two: bool = c.path.len() == 2;
+            let p0: String = if c.path.len() > 0 {
+                c.path[0].name.clone()
+            } else {
+                String::new()
+            };
+            let p1: String = if c.path.len() > 1 {
+                c.path[1].name.clone()
+            } else {
+                String::new()
+            };
+            let one_arg: bool = c.args.len() > 0;
+            if two && (p0 == "Vec" || p0 == "String") && (p1 == "new" || p1 == "with_capacity") {
+                return self.vec_new(e, c, pg, f - 1);
+            }
+            if body::text_builtin(c.path.as_slice()) || two && p0 == "u32" && p1 == "from" {
+                if !one_arg {
+                    return encode_terms::Val::Unit;
+                }
+                let tv: encode_terms::Val = self.eval(&c.args[0], pg, f - 1);
+                if p1 == "from_utf8" {
+                    return encode_terms::Val::Unit;
+                }
+                if p1 == "from_u32" {
+                    return self.enc.char_from_u32(e, encode_terms::scalar_of(&tv).as_str(), pg);
+                }
+                return tv;
+            }
+            if body::is_box_new(c.path.as_slice()) {
+                if one_arg {
+                    return self.eval(&c.args[0], pg, f - 1);
+                }
+                return encode_terms::Val::Unit;
+            }
+            match body::from_bytes_int(c.path.as_slice()) {
+                None => {},
+                Some(it) => { if one_arg { let bv: encode_terms::Val = self.eval(&c.args[0], pg, f - 1); return encode_terms::from_bytes_val(it, p1 == "from_le_bytes", &bv); } return encode_terms::Val::Unit; },
+            }
+            if body::is_f64_from(c.path.as_slice()) {
+                if !one_arg {
+                    return encode_terms::Val::Unit;
+                }
+                let fv: String = encode_terms::scalar_of(&self.eval(&c.args[0], pg, f - 1));
+                return match body::int_of(&self.enc.ty(&c.args[0], pg)) { None => encode_terms::Val::S(fv), Some(src) => { if body::bits(src) == 64 { let ex: String = encode_terms::f64_exact(); self.oblige("E0815", e.span, types::cat3("`f64::from` of `", body::int_text(src).as_str(), "` may not be exact (|x| <= 2^53)").as_str(), types::cat5("(and (<= (- ", ex.as_str(), ") ", fv.as_str(), types::cat5(") (<= ", fv.as_str(), " ", ex.as_str(), "))").as_str()).as_str()); } encode_terms::Val::S(types::cat3("(f64.from ", fv.as_str(), ")")) }, };
+            }
+            if body::mem_op(c.path.as_slice()) {
+                return self.mem_call(last_name(c.path.as_slice()) == "replace", c.args.as_slice(), pg, f - 1);
+            }
+            if self.enc.is_variant(c.path.as_slice(), pg) {
+                let mut vals: Vec<encode_terms::Val> = Vec::new();
+                for i in 0..c.args.len()
+                    invariant 0 <= i && i <= c.args.len(),
+                {
+                    vals.push(self.eval(&c.args[i], pg, f - 1));
+                }
+                return encode_spec::variant_value(&self.enc.ty(e, pg), last_name(c.path.as_slice()).as_str(), vals.as_slice());
+            }
+            self.call(c.path.as_slice(), c.args.as_slice(), e.span, pg, f - 1)
+        }
+
+        #[summary("`/` (or `%` when rem) of a by b in code on operands of type ty (the Div and Rem part of stage0 Enc::eval): the divisor is not zero (E0804, at the divisor r), a signed `%` is not MIN % -1 (E0803), and the lemmas of the quotient and the remainder are facts. Truncating on signed operands, SMT's on unsigned ones. The term")]
+        #[effects(alloc)]
+        fn eval_div(self: &mut Exec, e: &ast::Expr, rem: bool, r: &ast::Expr, ty: &ast::TypeKind, signed: bool, a: &str, b: &str) -> String {
+            self.oblige("E0804", r.span, "divisor may be zero", types::cat3("(not (= ", b, " 0))").as_str());
+            if rem && signed {
+                match body::int_of(ty) {
+                    None => {},
+                    Some(it) => self.oblige("E0803", e.span, types::cat3("`", body::int_text(it).as_str(), "::MIN % -1` may occur").as_str(), types::cat7("(not (and (= ", a, " ", encode_terms::num(&encode_terms::from_num(consts::min_of(it))).as_str(), ") (= ", b, " (- 1))))").as_str()),
+                }
+            }
+            let q: String = if signed {
+                types::cat5("(bmb_tdiv ", a, " ", b, ")")
+            } else {
+                types::cat5("(div ", a, " ", b, ")")
+            };
+            let m: String = if signed {
+                types::cat5("(bmb_trem ", a, " ", b, ")")
+            } else {
+                types::cat5("(mod ", a, " ", b, ")")
+            };
+            let lemmas: Vec<String> = if signed {
+                encode_terms::signed_div_lemmas()
+            } else {
+                encode_terms::unsigned_div_lemmas()
+            };
+            for i in 0..lemmas.len()
+                invariant 0 <= i && i <= lemmas.len(),
+            {
+                self.enc.pc.push(encode_terms::instantiate(lemmas[i].as_str(), a, b, q.as_str(), m.as_str()));
+            }
+            if rem {
+                m
+            } else {
+                q
+            }
+        }
+
+        #[summary("A field read in code (the Field arm of stage0 Enc::eval): the field's value of a struct held as leaves, the selector's of a recursive struct (its facts are added to each query, struct_facts). A place under & or &mut has no recorded type: its type is read from the place")]
+        #[effects(alloc)]
+        fn eval_field(self: &mut Exec, base: &ast::Expr, name: &str, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let recorded: ast::TypeKind = self.enc.ty(base, pg);
+            let bt: ast::TypeKind = if types::is_error(&recorded) {
+                self.place_ty(base, pg, f - 1)
+            } else {
+                recorded
+            };
+            let k: usize = encode_decls::field_index(&bt, &pg.pr.t, name);
+            let bv: encode_terms::Val = self.eval(base, pg, f - 1);
+            match &bv {
+                encode_terms::Val::S(x) => { if encode_decls::dt_struct(&bt, &pg.pr.t) { let dfs: Vec<encode_terms::Val> = encode_terms::dt_fields(&lowered::value_ty(&bt), x.as_str(), &pg.pr.t); if k < dfs.len() { dfs[k].clone() } else { encode_terms::Val::Unit } } else { encode_terms::Val::Unit } },
+                encode_terms::Val::A(efv_a0, efv_a1) => encode_terms::Val::Unit,
+                encode_terms::Val::Unit => encode_terms::Val::Unit,
+                encode_terms::Val::Struct(fs) => { if k < fs.len() { fs[k].clone() } else { encode_terms::Val::Unit } },
+                encode_terms::Val::Arr(efv_arr0, efv_arr1) => encode_terms::Val::Unit,
+            }
+        }
+
+        #[summary("An `if` in code (the If arm of stage0 Enc::eval): both sides from the same state, merged under the condition")]
+        #[effects(alloc)]
+        fn eval_if(self: &mut Exec, e: &ast::Expr, x: &ast::If, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let c: String = encode_terms::scalar_of(&self.eval(&*x.cond, pg, f - 1));
+            let t: ast::TypeKind = self.enc.ty(e, pg);
+            let b: Branch = self.branch_start(c.as_str());
+            let tv: encode_terms::Val = self.block(&x.then, pg, f - 1);
+            let first: Side = self.branch_else(&b);
+            let ev: encode_terms::Val = match &x.els {
+                None => encode_terms::Val::Unit,
+                Some(el) => self.eval(&**el, pg, f - 1),
+            };
+            self.branch_join(&b, &first, tv, ev, &t, pg)
+        }
+
+        #[summary("An index in code (the Index arms of stage0 Enc::eval): `&v[a..b]` of an array is its slice (a slice of text is outside the frontier); `a[i]` has its bounds obligation (E0805), and the element read is in its range, leaf by leaf for an aggregate")]
+        #[effects(alloc)]
+        fn eval_index(self: &mut Exec, e: &ast::Expr, base: &ast::Expr, index: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            match codegen::range_of(index) {
+                None => {},
+                Some(rg) => { return self.elem_slice(e, base, &*rg.lo, &*rg.hi, pg, f - 1); },
+            }
+            let bv: encode_terms::Val = self.eval(base, pg, f - 1);
+            let i: String = encode_terms::scalar_of(&self.eval(index, pg, f - 1));
+            let len: String = encode_spec::len_of(&bv);
+            self.oblige("E0805", e.span, "index may be out of bounds", types::cat7("(and (<= 0 ", i.as_str(), ") (< ", i.as_str(), " ", len.as_str(), "))").as_str());
+            match &bv {
+                encode_terms::Val::S(eiv_s0) => encode_terms::Val::Unit,
+                encode_terms::Val::A(elems, ei_l) => { let t: String = types::cat5("(select ", elems.as_str(), " ", i.as_str(), ")"); match encode_terms::range(&self.enc.ty(e, pg), t.as_str()) { None => {}, Some(r) => self.enc.pc.push(r), } encode_terms::Val::S(t) },
+                encode_terms::Val::Unit => encode_terms::Val::Unit,
+                encode_terms::Val::Struct(eiv_struct0) => encode_terms::Val::Unit,
+                encode_terms::Val::Arr(elem, ei_n) => { let v: encode_terms::Val = encode_terms::select_val(&**elem, i.as_str(), 100000); let et: ast::TypeKind = self.enc.ty(e, pg); let mut ls: Vec<encode_decls::NamedLeaf> = Vec::new(); encode_decls::leaves(&et, &pg.pr.t, "", &mut ls, 100000); let mut terms: Vec<String> = Vec::new(); encode_terms::flatten(&v, &mut terms, 100000); for j in 0..ls.len() invariant 0 <= j && j <= ls.len(), { if j < terms.len() { match encode_terms::leaf_fact(&ls[j].leaf, terms[j].as_str()) { None => {}, Some(fact) => self.enc.pc.push(fact), } } } v },
+            }
+        }
+
+        #[summary("An executable `match` (the Match arm of stage0 Enc::eval). For a match on &mut (ADR-0055) the arm's bindings are written back to the scrutinee's place at its end")]
+        #[effects(alloc)]
+        fn eval_match(self: &mut Exec, e: &ast::Expr, x: &ast::Match, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let sv: String = encode_terms::scalar_of(&self.eval(&*x.scrut, pg, f - 1));
+            let st: ast::TypeKind = self.enc.ty(&*x.scrut, pg);
+            let t: ast::TypeKind = self.enc.ty(e, pg);
+            let back: Option<ast::Expr> = if mut_ref(&st) {
+                match body::ref_of(&*x.scrut) {
+                    None => Some(copy_expr(&*x.scrut)),
+                    Some(inner) => Some(inner),
+                }
+            } else {
+                None
+            };
+            self.match_arms(sv.as_str(), &st, x.arms.as_slice(), 0, &t, &back, pg, f - 1)
+        }
+
+        #[summary("A built-in method call in code (the Method arms of stage0 Enc::eval): T::try_from(x).unwrap() with its range obligation (E0815) and .ok() as an Option (ADR-0028); len; the views of a Vec and of text, and clone; is_char_boundary and len_utf8; the methods of f64; the bit methods through a named bit-vector; the bytes of an integer; the arithmetic methods (a checked one is an Option, with its lemmas). The methods that change a Vec or a String are outside the frontier")]
+        #[effects(alloc)]
+        fn eval_method(self: &mut Exec, e: &ast::Expr, x: &ast::Method, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let m: String = x.name.name.clone();
+            match codegen::conv_parts(&*x.recv) {
+                None => {},
+                Some(cv) => { let v: String = encode_terms::scalar_of(&self.eval(&cv.arg, pg, f - 1)); let st: ast::TypeKind = self.enc.ty(&cv.arg, pg); let target: ast::TypeKind = ast::TypeKind::Int(cv.target); let r: String = encode_terms::range_int(cv.target, v.as_str()); if m == "unwrap" { if body::conv_obligation(&st, &target) { self.oblige("E0815", e.span, types::cat3("conversion to `", types::text(&target).as_str(), "` may be out of range").as_str(), r.as_str()); } return encode_terms::Val::S(v); } return self.enc.checked(e, r.as_str(), v.as_str(), pg); },
+            }
+            let rv: encode_terms::Val = self.eval(&*x.recv, pg, f - 1);
+            if m == "len" {
+                return match &rv { encode_terms::Val::S(mlv_s0) => encode_terms::Val::Unit, encode_terms::Val::A(ml_e, al) => encode_terms::Val::S(al.clone()), encode_terms::Val::Unit => encode_terms::Val::Unit, encode_terms::Val::Struct(mlv_struct0) => encode_terms::Val::Unit, encode_terms::Val::Arr(ml_t, tl) => encode_terms::Val::S(tl.clone()), };
+            }
+            if m == "as_slice" || m == "as_mut_slice" || m == "clone" || m == "as_str" || m == "as_bytes" {
+                return rv;
+            }
+            if m == "push_str" || m == "push" || m == "pop" || m == "truncate" || m == "copy_within" {
+                return encode_terms::Val::Unit;
+            }
+            let first: Option<String> = if m == "len_utf8" || x.args.len() == 0 {
+                None
+            } else {
+                Some(encode_terms::scalar_of(&self.eval(&x.args[0], pg, f - 1)))
+            };
+            let arg: String = match &first {
+                None => String::new(),
+                Some(a0) => a0.clone(),
+            };
+            if m == "is_char_boundary" {
+                return match encode_terms::parts(&rv) { None => encode_terms::Val::Unit, Some(p) => encode_terms::Val::S(encode_terms::boundary(p.a.as_str(), p.b.as_str(), arg.as_str())), };
+            }
+            let r: String = encode_terms::scalar_of(&rv);
+            if m == "len_utf8" {
+                self.enc.pc.push(encode_terms::scalar(r.as_str()));
+                return encode_terms::Val::S(encode_terms::utf8_len(r.as_str()));
+            }
+            let rt: ast::TypeKind = self.enc.ty(&*x.recv, pg);
+            if body::is_f64(&lowered::value_ty(&rt)) {
+                return encode_terms::Val::S(encode_terms::f64_method(m.as_str(), r.as_str(), &first));
+            }
+            let i: ast::IntTy = match body::int_of(&rt) {
+                None => { return encode_terms::Val::Unit; },
+                Some(found) => found,
+            };
+            if m == "checked_shl" || m == "checked_shr" {
+                let w: String = if m == "checked_shl" {
+                    String::from("wrapping_shl")
+                } else {
+                    String::from("wrapping_shr")
+                };
+                let sv: String = self.bit_method_code(w.as_str(), i, r.as_str(), &first);
+                return self.enc.checked(e, types::cat5("(< ", arg.as_str(), " ", encode_terms::dec(body::bits(i) as u64).as_str(), ")").as_str(), sv.as_str(), pg);
+            }
+            if m == "to_be_bytes" || m == "to_le_bytes" {
+                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str());
+            }
+            if m == "is_power_of_two" {
+                let no_amount: Option<String> = None;
+                let ones: String = self.bit_method_code("count_ones", i, r.as_str(), &no_amount);
+                return encode_terms::Val::S(types::cat3("(= ", ones.as_str(), " 1)"));
+            }
+            if body::bit_method(m.as_str()) != 0 {
+                return encode_terms::Val::S(self.bit_method_code(m.as_str(), i, r.as_str(), &first));
+            }
+            if encode_decls::ends_with(m.as_str(), "_mul") {
+                self.enc.mul_facts(r.as_str(), arg.as_str());
+            }
+            let im: encode_terms::IntMethod = encode_terms::int_method(m.as_str(), i, r.as_str(), arg.as_str());
+            if im.checked {
+                extend(&mut self.enc.pc, im.lemmas.as_slice());
+                return self.enc.checked(e, im.ok.as_str(), im.v.as_str(), pg);
+            }
+            encode_terms::Val::S(im.v.clone())
+        }
+
+        #[summary("`[v; N]` in code (the Repeat arms of stage0 Enc::eval): one constant array, or one per leaf of an aggregate element value")]
+        #[effects(alloc)]
+        fn eval_repeat(self: &mut Exec, e: &ast::Expr, x: &ast::Repeat, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let elem: ast::TypeKind = encode_decls::elem_ty(&self.enc.ty(e, pg));
+            let count: String = encode_terms::num(&encode_terms::Int { neg: false, mag: x.count });
+            let v: encode_terms::Val = self.eval(&*x.value, pg, f - 1);
+            if encode_decls::agg_elem(&elem, &pg.pr.t) {
+                return encode_terms::Val::Arr(Box::new(encode_terms::const_elems(&elem, &v, &pg.pr.t, 100000)), count);
+            }
+            encode_terms::Val::A(types::cat5("((as const (Array Int ", encode_decls::sort_of(&elem).as_str(), ")) ", encode_terms::scalar_of(&v).as_str(), ")"), count)
+        }
+
+        #[summary("`return x` in code (the Return arm of stage0 Enc::eval): the postconditions hold here, and the path ends (ADR-0049 §3)")]
+        #[effects(alloc)]
+        fn eval_return(self: &mut Exec, e: &ast::Expr, x: &Option<Box<ast::Expr>>, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let v: encode_terms::Val = match x {
+                None => encode_terms::Val::Unit,
+                Some(rx) => self.eval(&**rx, pg, f - 1),
+            };
+            if !self.dead {
+                self.post_check(&v, e.span, "at this `return`", pg);
+                self.dead = true;
+            }
+            encode_terms::Val::Unit
+        }
+
+        #[summary("A struct literal in code (the StructLit arm of stage0 Enc::eval): the fields are evaluated as written, the value is in declaration order; a recursive struct is a fresh constant with its selectors stated (mk_struct)")]
+        #[effects(alloc)]
+        fn eval_struct_lit(self: &mut Exec, e: &ast::Expr, x: &ast::StructLit, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let t: ast::TypeKind = self.enc.ty(e, pg);
+            let mut at: Vec<usize> = Vec::new();
+            let mut vals: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..x.fields.len()
+                invariant 0 <= i && i <= x.fields.len(),
+            {
+                let v: encode_terms::Val = self.eval(&x.fields[i].value, pg, f - 1);
+                at.push(encode_decls::field_index(&t, &pg.pr.t, x.fields[i].name.name.as_str()));
+                vals.push(v);
+            }
+            let count: usize = match lowered::struct_fields(&t, &pg.pr.t) {
+                None => 0,
+                Some(fs) => fs.len(),
+            };
+            let mut out: Vec<encode_terms::Val> = Vec::new();
+            for k in 0..count
+                invariant 0 <= k && k <= count,
+            {
+                for i in 0..at.len()
+                    invariant 0 <= i && i <= at.len(),
+                {
+                    if at[i] == k && i < vals.len() {
+                        out.push(vals[i].clone());
+                    }
+                }
+            }
+            for i in 0..at.len()
+                invariant 0 <= i && i <= at.len(),
+            {
+                if at[i] >= count && i < vals.len() {
+                    out.push(vals[i].clone());
+                }
+            }
+            if encode_decls::dt_struct(&t, &pg.pr.t) {
+                return encode_terms::mk_struct(&mut self.enc.fr, &t, out.as_slice(), &pg.pr.t);
+            }
+            encode_terms::Val::Struct(out)
+        }
+
+        #[summary("`x?` in code (the Try arm of stage0 Enc::eval, ADR-0049 §3), encoded as its expansion: match x { None => return None, Some(v) => v } and Ok(v) => v, Err(e) => return Err(e), the arms in declaration order. The side that leaves builds the function's result type and owes the postconditions")]
+        #[effects(alloc)]
+        fn eval_try(self: &mut Exec, e: &ast::Expr, x: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let sv: String = encode_terms::scalar_of(&self.eval(x, pg, f - 1));
+            let st: ast::TypeKind = self.enc.ty(x, pg);
+            let option: bool = body::try_variants(&st) == 1;
+            let t: ast::TypeKind = self.enc.ty(e, pg);
+            if option {
+                let b: Branch = self.branch_start(types::cat5("((_ is ", encode_decls::ctor(&st, "None").as_str(), ") ", sv.as_str(), ")").as_str());
+                let tv: encode_terms::Val = self.try_leave(e, &st, "None", sv.as_str(), pg);
+                let first: Side = self.branch_else(&b);
+                let ev: encode_terms::Val = self.try_go_on(&st, "Some", sv.as_str(), pg);
+                return self.branch_join(&b, &first, tv, ev, &t, pg);
+            }
+            let b2: Branch = self.branch_start(types::cat5("((_ is ", encode_decls::ctor(&st, "Ok").as_str(), ") ", sv.as_str(), ")").as_str());
+            let tv2: encode_terms::Val = self.try_go_on(&st, "Ok", sv.as_str(), pg);
+            let first2: Side = self.branch_else(&b2);
+            let ev2: encode_terms::Val = self.try_leave(e, &st, "Err", sv.as_str(), pg);
+            self.branch_join(&b2, &first2, tv2, ev2, &t, pg)
+        }
+
+        #[summary("A unary operation in code (the Unary arms of stage0 Enc::eval): the negation of an f64 is total, of a literal its numeral, of another integer an overflow obligation (E0803); `!` flips every bit of an integer and negates a bool")]
+        #[effects(alloc)]
+        fn eval_unary(self: &mut Exec, e: &ast::Expr, op: ast::UnOp, x: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let xt: ast::TypeKind = self.enc.ty(x, pg);
+            if body::is_neg(op) {
+                if body::is_f64(&xt) {
+                    let fv: String = encode_terms::scalar_of(&self.eval(x, pg, f - 1));
+                    return encode_terms::Val::S(encode_spec::f64_neg(x, fv.as_str()));
+                }
+                match encode_spec::int_lit(x) {
+                    None => {},
+                    Some(mag) => { return encode_terms::Val::S(encode_terms::num(&encode_terms::Int { neg: mag.hi != 0 || mag.lo != 0, mag: mag })); },
+                }
+                let t: String = types::cat3("(- ", encode_terms::scalar_of(&self.eval(x, pg, f - 1)).as_str(), ")");
+                match encode_terms::range(&self.enc.ty(e, pg), t.as_str()) {
+                    None => {},
+                    Some(r) => self.oblige("E0803", e.span, "negation may overflow", r.as_str()),
+                }
+                return encode_terms::Val::S(t);
+            }
+            let v: String = encode_terms::scalar_of(&self.eval(x, pg, f - 1));
+            match body::int_of(&xt) {
+                None => encode_terms::Val::S(types::cat3("(not ", v.as_str(), ")")),
+                Some(i) => encode_terms::Val::S(encode_terms::not_term(i, v.as_str())),
+            }
+        }
+
+        #[summary("The obligations of the executable function d, this state's definition (stage0 Enc::exec_body): on the entry state, the refinement of its trait's contract, then the body under its requires and the postconditions where it ends")]
+        #[effects(alloc)]
+        fn exec_body(self: &mut Exec, d: &ast::FnDef, pg: &encode_spec::Prog) -> () {
+            self.entry_params(d, pg);
+            match encode_decls::refinement_of(&pg.pr.t, self.enc.path.as_str()) {
+                None => {},
+                Some(rf) => self.refines(d, rf.base.as_str(), &rf.sub, 0, pg),
+            }
+            let req: Vec<String> = self.entry_requires(d, pg);
+            extend(&mut self.enc.pc, req.as_slice());
+            match &d.measure {
+                None => {},
+                Some(dec) => { let env: table::Table<encode_terms::Val> = self.vars.clone(); let was: table::Table<encode_terms::Val> = self.was.clone(); let m: encode_spec::Measure = self.enc.measure(dec, &env, &was, pg, 100000); self.entry_measure = Some(m); },
+            }
+            let result: encode_terms::Val = self.block(&d.body, pg, 100000);
+            if !self.dead {
+                self.mark_reach(d.name.span, "end of the body");
+                let at: source::Span = match &d.body.tail {
+                    None => d.name.span,
+                    Some(t) => t.span,
+                };
+                self.post_check(&result, at, "at the end of the body", pg);
+            }
+        }
+
+        #[summary("The obligations at an exit of the function (stage0 Enc::exit_valid, ADR-0060 §2, with the postconditions): its result and the current value of each &mut parameter are valid")]
+        #[effects(alloc)]
+        fn exit_valid(self: &mut Exec, result: &encode_terms::Val, span: source::Span, how: &str, pg: &encode_spec::Prog) -> () {
+            let at: usize = match pg.defs.find(self.enc.path.as_str()) {
+                None => { return; },
+                Some(found) => found,
+            };
+            if body::is_spec(pg.defs.items[at].d.kind) || body::is_proof(pg.defs.items[at].d.kind) {
+                return;
+            }
+            let ret: ast::TypeKind = self.ret_ty(pg);
+            self.oblige_valid(span, types::cat2("the result ", how).as_str(), "result", result, &ret, pg);
+            for i in 0..pg.defs.items[at].d.params.len()
+                invariant 0 <= i && i <= pg.defs.items[at].d.params.len(),
+            {
+                if mut_ref(&pg.defs.items[at].d.params[i].ty.kind) {
+                    let name: String = pg.defs.items[at].d.params[i].name.name.clone();
+                    match self.vars.find(name.as_str()) {
+                        None => {},
+                        Some(vi) => { let v: encode_terms::Val = self.vars.items[vi].clone(); let ty: ast::TypeKind = self.enc.local_ty(name.as_str(), pg); self.oblige_valid(span, types::cat4("`*", name.as_str(), "` (a `&mut` parameter) ", how).as_str(), types::cat2("*", name.as_str()).as_str(), &v, &ty, pg); },
+                    }
+                }
+            }
+        }
+
+        #[summary("The keys of vars in the order they were first bound (stage0 Enc::in_binding_order, ADR-0063 §2), so that a renamed local leaves the query text the same. A name never bound through bind_var comes last, in key order")]
+        #[effects(alloc)]
+        fn in_binding_order(self: &Exec, vars: &table::Table<encode_terms::Val>) -> Vec<String> {
+            let mut slots: Vec<String> = Vec::new();
+            let mut used: Vec<bool> = Vec::new();
+            let ranks: usize = self.var_rank.len();
+            for i in 0..ranks
+                invariant 0 <= i && i <= ranks,
+            {
+                slots.push(String::new());
+                used.push(false);
+            }
+            let mut rest: Vec<String> = Vec::new();
+            for n in 0..vars.len()
+                invariant 0 <= n,
+            {
+                let k: String = vars.key(n);
+                let r: usize = match self.var_rank.find(k.as_str()) {
+                    None => slots.len(),
+                    Some(at) => self.var_rank.items[at],
+                };
+                if r < slots.len() && r < used.len() {
+                    slots[r] = k;
+                    used[r] = true;
+                } else {
+                    rest.push(k);
+                }
+            }
+            let mut out: Vec<String> = Vec::new();
+            for i in 0..slots.len()
+                invariant 0 <= i && i <= slots.len(),
+            {
+                if i < used.len() && used[i] {
+                    out.push(slots[i].clone());
+                }
+            }
+            extend(&mut out, rest.as_slice());
+            out
+        }
+
+        #[summary("The invariant atom of v of type t, if t has one (stage0 Enc::inv_app): the predicate, an instance for a generic type, applied to the leaves of v")]
+        #[effects(alloc)]
+        fn inv_app(self: &Exec, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog) -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            match inv_target(t, &pg.pr.t) {
+                None => {},
+                Some(target) => { let mut flat: Vec<String> = Vec::new(); encode_terms::flatten(v, &mut flat, 100000); let fnm: String = encode_decls::sym(target.as_str()); if flat.len() == 0 { out.push(fnm); } else { out.push(types::cat5("(", fnm.as_str(), " ", encode_terms::join(flat.as_slice(), " ").as_str(), ")")); } },
+            }
+            out
+        }
+
+        #[summary("Records the path condition here as a reach point when the pass asks for them (stage0 Enc::mark_reach, under vacuous_ends)")]
+        #[effects(alloc)]
+        fn mark_reach(self: &mut Exec, span: source::Span, what: &str) -> () {
+            if self.reaching {
+                let mut pc: Vec<String> = self.enc.pc.clone();
+                extend(&mut pc, self.enc.spec_pc.as_slice());
+                self.reach.push(Reach { span: span, what: String::from(what), pc: pc });
+            }
+        }
+
+        #[summary("Arms i.. of an executable `match` on sv of type st (stage0 Enc::match_arms): each arm runs under its tester, the last one under the others' negations (arms are exhaustive), with its bindings and their range facts")]
+        #[effects(alloc)]
+        fn match_arms(self: &mut Exec, sv: &str, st: &ast::TypeKind, arms: &[ast::Arm], i: usize, t: &ast::TypeKind, back: &Option<ast::Expr>, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            if i >= arms.len() {
+                return encode_terms::Val::Unit;
+            }
+            let v: String = last_name(arms[i].pat.path.as_slice());
+            if i + 1 == arms.len() {
+                return self.run_arm(sv, st, &arms[i], v.as_str(), back, pg, f - 1);
+            }
+            let b: Branch = self.branch_start(types::cat5("((_ is ", encode_decls::ctor(st, v.as_str()).as_str(), ") ", sv, ")").as_str());
+            let tv: encode_terms::Val = self.run_arm(sv, st, &arms[i], v.as_str(), back, pg, f - 1);
+            let first: Side = self.branch_else(&b);
+            let ev: encode_terms::Val = self.match_arms(sv, st, arms, i + 1, t, back, pg, f - 1);
+            self.branch_join(&b, &first, tv, ev, t, pg)
+        }
+
+        #[summary("std::mem::replace(&mut p, v), the old value of p, which now holds v; std::mem::swap(&mut a, &mut b) exchanges the values of two places (stage0 Enc::mem_call, ADR-0047 §2). Both values are read before either place is written")]
+        #[effects(alloc)]
+        fn mem_call(self: &mut Exec, replace: bool, args: &[ast::Expr], pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            if args.len() < 2 {
+                return encode_terms::Val::Unit;
+            }
+            let p0: ast::Expr = match body::ref_of(&args[0]) {
+                None => args[0].clone(),
+                Some(x0) => x0,
+            };
+            let p1: ast::Expr = match body::ref_of(&args[1]) {
+                None => args[1].clone(),
+                Some(x1) => x1,
+            };
+            let was: encode_terms::Val = self.eval(&p0, pg, f - 1);
+            let new: encode_terms::Val = if replace {
+                self.eval(&args[1], pg, f - 1)
+            } else {
+                self.eval(&p1, pg, f - 1)
+            };
+            self.write_place(&p0, &new, true, pg, f - 1);
+            if replace {
+                return was;
+            }
+            self.write_place(&p1, &was, true, pg, f - 1);
+            encode_terms::Val::Unit
+        }
+
+        #[summary("ite(c, a, b) of two values of type t (stage0 Enc::merge). A scalar or element term above 24 atoms is bound to a fresh constant, so that later merges refer to it instead of copying it: copying doubles the term at every sequential `if`. The size is in atoms, not characters, so a renamed local binds the same merges (ADR-0063 §2). The error type for t says the two are the same or have no sort")]
+        #[effects(alloc)]
+        fn merge(self: &mut Exec, c: &str, a: &encode_terms::Val, b: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return a.clone();
+            }
+            match a {
+                encode_terms::Val::S(x) => match b { encode_terms::Val::S(y) => { let term: String = encode_terms::ite(c, x.as_str(), y.as_str()); if size(term.as_str()) > 24 && !types::is_error(t) && !decls::is_unit(t) && !encode_decls::is_array(t) { let v: String = encode_terms::fresh(&mut self.enc.fr, "merge", encode_decls::sort_of(t).as_str()); self.enc.pc.push(types::cat5("(= ", v.as_str(), " ", term.as_str(), ")")); encode_terms::Val::S(v) } else { encode_terms::Val::S(term) } }, encode_terms::Val::A(mbv_a0, mbv_a1) => a.clone(), encode_terms::Val::Unit => a.clone(), encode_terms::Val::Struct(mbv_struct0) => a.clone(), encode_terms::Val::Arr(mbv_arr0, mbv_arr1) => a.clone(), },
+                encode_terms::Val::A(e1, l1) => match b { encode_terms::Val::S(mcv_s0) => a.clone(), encode_terms::Val::A(e2, l2) => { let mut elems: String = encode_terms::ite(c, e1.as_str(), e2.as_str()); if size(elems.as_str()) > 24 && encode_decls::is_array(t) { let av: String = encode_terms::fresh(&mut self.enc.fr, "merge", types::cat3("(Array Int ", encode_decls::sort_of(&encode_decls::elem_ty(t)).as_str(), ")").as_str()); self.enc.pc.push(types::cat5("(= ", av.as_str(), " ", elems.as_str(), ")")); elems = av; } encode_terms::Val::A(elems, encode_terms::ite(c, l1.as_str(), l2.as_str())) }, encode_terms::Val::Unit => a.clone(), encode_terms::Val::Struct(mcv_struct0) => a.clone(), encode_terms::Val::Arr(mcv_arr0, mcv_arr1) => a.clone(), },
+                encode_terms::Val::Unit => a.clone(),
+                encode_terms::Val::Struct(xs) => match b { encode_terms::Val::S(mdv_s0) => a.clone(), encode_terms::Val::A(mdv_a0, mdv_a1) => a.clone(), encode_terms::Val::Unit => a.clone(), encode_terms::Val::Struct(ys) => { let fs: Option<Vec<types::FieldSig>> = encode_decls::flat_fields(t, &pg.pr.t); let mut out: Vec<encode_terms::Val> = Vec::new(); for k in 0..xs.len() invariant 0 <= k && k <= xs.len(), { if k < ys.len() { let ft: ast::TypeKind = match &fs { None => ast::TypeKind::Error, Some(fl) => { if k < fl.len() && !same_val(&xs[k], &ys[k], 100000) { fl[k].ty.clone() } else { ast::TypeKind::Error } }, }; let known: bool = match &fs { None => true, Some(fl2) => k < fl2.len(), }; if known { out.push(self.merge(c, &xs[k], &ys[k], &ft, pg, f - 1)); } } } encode_terms::Val::Struct(out) }, encode_terms::Val::Arr(mdv_arr0, mdv_arr1) => a.clone(), },
+                encode_terms::Val::Arr(xe, xl) => match b { encode_terms::Val::S(mev_s0) => a.clone(), encode_terms::Val::A(mev_a0, mev_a1) => a.clone(), encode_terms::Val::Unit => a.clone(), encode_terms::Val::Struct(mev_struct0) => a.clone(), encode_terms::Val::Arr(ye, yl) => encode_terms::ite_val(c, a, b, 100000), },
+            }
+        }
+
+        #[summary("Whether a value of t has a validity other than `true` (stage0 Prog::needs_valid): some type it holds, itself included, has an invariant or is a type parameter. Remembered by the type's text")]
+        #[effects(alloc)]
+        fn needs_valid(self: &mut Exec, t: &ast::TypeKind, pg: &encode_spec::Prog) -> bool {
+            let key: String = types::text(t);
+            match self.valid_memo.find(key.as_str()) {
+                None => {},
+                Some(at) => { return self.valid_memo.items[at]; },
+            }
+            let mut seen: table::Table<bool> = table::new::<bool>();
+            let mut todo: Vec<ast::TypeKind> = Vec::new();
+            todo.push(t.clone());
+            let mut found: bool = false;
+            let mut fuel: usize = 1000000000;
+            while todo.len() > 0 && fuel > 0 && !found
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                match todo.pop() {
+                    None => {},
+                    Some(u) => { let has_inv: bool = match inv_target(&u, &pg.pr.t) { None => false, Some(iv) => true, }; if encode_decls::shape(&u) == 8 || has_inv { found = true; } else { let k: String = types::text(&u); if !seen.has(k.as_str()) { seen.insert(k.as_str(), true); let more: Vec<ast::TypeKind> = encode_decls::holds(&u, &pg.pr.t); body::push_all(&mut todo, more.as_slice()); } } },
+                }
+            }
+            self.valid_memo.insert(key.as_str(), found);
+            found
+        }
+
+        #[summary("The length after a callee that took the value by &mut (the new_len closure of stage0 Enc::behind_mut_after): the same length, or for a growable value a fresh one within the bounds of a length")]
+        #[effects(alloc)]
+        fn new_len(self: &mut Exec, base: &str, len: &str, e: &ast::TypeKind, grows: bool) -> String {
+            if !grows {
+                return String::from(len);
+            }
+            let l: String = encode_terms::fresh(&mut self.enc.fr, types::cat2(base, ".len").as_str(), "Int");
+            self.enc.pc.push(types::cat7("(and (<= 0 ", l.as_str(), ") (<= ", l.as_str(), " ", encode_terms::len_max(e).as_str(), "))"));
+            l
+        }
+
+        #[summary("The obligation that goal holds here (stage0 Enc::oblige)")]
+        #[effects(alloc)]
+        fn oblige(self: &mut Exec, code: &str, span: source::Span, msg: &str, goal: &str) -> () {
+            let none: Option<String> = None;
+            self.enc.oblige_given(code, span, msg, &none, goal);
+        }
+
+        #[summary("The obligation that v of type t is valid where it leaves the function at span (stage0 Enc::oblige_valid, E0823): what names the place in the message, shown the value in a counterexample. Ghost code owes nothing")]
+        #[effects(alloc)]
+        fn oblige_valid(self: &mut Exec, span: source::Span, what: &str, shown: &str, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog) -> () {
+            if self.ghost {
+                return;
+            }
+            let goals: Vec<String> = self.valid_goals(v, t, pg);
+            if goals.len() == 0 {
+                return;
+            }
+            self.push_valid(span, what, shown, v, t, goals.as_slice());
+        }
+
+        #[summary("oblige_valid for argument a of a call of callee (stage0 Boundary::Arg): the text of the argument is written only when there is an obligation")]
+        #[effects(alloc)]
+        fn oblige_valid_arg(self: &mut Exec, a: &ast::Expr, callee: &str, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog) -> () {
+            if self.ghost {
+                return;
+            }
+            let goals: Vec<String> = self.valid_goals(v, t, pg);
+            if goals.len() == 0 {
+                return;
+            }
+            self.push_valid(a.span, types::cat5("argument `", fmt::expr_text(a).as_str(), "` of `", callee, "`").as_str(), "argument", v, t, goals.as_slice());
+        }
+
+        #[summary("A bit-vector of the width of i standing for operand x of a bit operation in code (stage0 Enc::operand_bv): a literal, or a fresh constant whose value is stated (x is in range there, as every value of code is, and a shift amount is below the width by its obligation)")]
+        #[effects(alloc)]
+        fn operand_bv(self: &mut Exec, i: ast::IntTy, x: &str) -> String {
+            let w: u32 = encode_terms::width(i);
+            match encode_terms::numeral(x) {
+                None => {},
+                Some(v) => { return types::cat5("(_ bv", encode_terms::dec(low_bits(&v, w)).as_str(), " ", encode_terms::dec(w as u64).as_str(), ")"); },
+            }
+            let c: String = encode_terms::fresh(&mut self.enc.fr, "'bv", types::cat3("(_ BitVec ", encode_terms::dec(w as u64).as_str(), ")").as_str());
+            self.enc.pc.push(types::cat5("(= (bv2nat ", c.as_str(), ") ", encode_terms::bv_value(i, x).as_str(), ")"));
+            c
+        }
+
+        #[summary("The variable a place expression writes, and the steps from it to the place (stage0 Enc::place): fields, *p (the reference is its value) and array elements, whose index is checked against the length when check is set (E0805). Empty text for an expression that is no place, which the checker admits none of")]
+        #[effects(alloc)]
+        fn place(self: &mut Exec, e: &ast::Expr, steps: &mut Vec<encode_terms::Step>, check: bool, pg: &encode_spec::Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            match &e.kind {
+                ast::ExprKind::Int(ple_int0, ple_int1) => String::new(),
+                ast::ExprKind::Float(ple_float0) => String::new(),
+                ast::ExprKind::ByteLit(ple_bytelit0) => String::new(),
+                ast::ExprKind::ByteStr(ple_bytestr0) => String::new(),
+                ast::ExprKind::StrLit(ple_strlit0) => String::new(),
+                ast::ExprKind::CharLit(ple_charlit0) => String::new(),
+                ast::ExprKind::Bool(ple_bool0) => String::new(),
+                ast::ExprKind::Unit => String::new(),
+                ast::ExprKind::Var(id) => id.name.clone(),
+                ast::ExprKind::Call(ple_call0) => String::new(),
+                ast::ExprKind::Method(mc) => self.place(&*mc.recv, steps, check, pg, f - 1),
+                ast::ExprKind::Index(ib, ii) => { let iroot: String = self.place(&**ib, steps, check, pg, f - 1); let len: String = encode_spec::len_of(&self.eval(&**ib, pg, f - 1)); let i: String = encode_terms::scalar_of(&self.eval(&**ii, pg, f - 1)); if check { self.oblige("E0805", e.span, "index may be out of bounds", types::cat7("(and (<= 0 ", i.as_str(), ") (< ", i.as_str(), " ", len.as_str(), "))").as_str()); } steps.push(encode_terms::Step::Index(i)); iroot },
+                ast::ExprKind::Unary(ple_unary0, ple_unary1) => String::new(),
+                ast::ExprKind::Binary(ple_binary0, ple_binary1, ple_binary2) => String::new(),
+                ast::ExprKind::Ref(pl_m, rx) => self.place(&**rx, steps, check, pg, f - 1),
+                ast::ExprKind::If(ple_if0) => String::new(),
+                ast::ExprKind::Block(ple_block0) => String::new(),
+                ast::ExprKind::Array(ple_array0) => String::new(),
+                ast::ExprKind::Repeat(ple_repeat0) => String::new(),
+                ast::ExprKind::Old(ple_old0) => String::new(),
+                ast::ExprKind::Quant(ple_quant0) => String::new(),
+                ast::ExprKind::Trigger(ple_trigger0) => String::new(),
+                ast::ExprKind::Closure(ple_closure0) => String::new(),
+                ast::ExprKind::StructLit(ple_structlit0) => String::new(),
+                ast::ExprKind::Path(ple_path0) => String::new(),
+                ast::ExprKind::Deref(dx) => self.place(&**dx, steps, check, pg, f - 1),
+                ast::ExprKind::Field(fb, fname) => { let root: String = self.place(&**fb, steps, check, pg, f - 1); let bt: ast::TypeKind = self.place_ty(&**fb, pg, f - 1); let k: usize = encode_decls::field_index(&bt, &pg.pr.t, fname.name.as_str()); if encode_decls::dt_struct(&bt, &pg.pr.t) { steps.push(encode_terms::Step::DataField(k, lowered::value_ty(&bt))); } else { steps.push(encode_terms::Step::Field(k)); } root },
+                ast::ExprKind::Match(ple_match0) => String::new(),
+                ast::ExprKind::Return(ple_return0) => String::new(),
+                ast::ExprKind::Try(ple_try0) => String::new(),
+                ast::ExprKind::Loop(ple_loop0) => String::new(),
+                ast::ExprKind::Break(ple_break0) => String::new(),
+                ast::ExprKind::Continue(ple_continue0) => String::new(),
+                ast::ExprKind::Range(ple_range0) => String::new(),
+                ast::ExprKind::Error => String::new(),
+            }
+        }
+
+        #[summary("The type of a place expression (stage0 Enc::place_ty): the checker does not record them")]
+        #[effects(alloc)]
+        fn place_ty(self: &Exec, e: &ast::Expr, pg: &encode_spec::Prog, f: usize) -> ast::TypeKind
+            decreases f,
+        {
+            if f == 0 {
+                return ast::TypeKind::Error;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(pte_int0, pte_int1) => self.enc.ty(e, pg),
+                ast::ExprKind::Float(pte_float0) => self.enc.ty(e, pg),
+                ast::ExprKind::ByteLit(pte_bytelit0) => self.enc.ty(e, pg),
+                ast::ExprKind::ByteStr(pte_bytestr0) => self.enc.ty(e, pg),
+                ast::ExprKind::StrLit(pte_strlit0) => self.enc.ty(e, pg),
+                ast::ExprKind::CharLit(pte_charlit0) => self.enc.ty(e, pg),
+                ast::ExprKind::Bool(pte_bool0) => self.enc.ty(e, pg),
+                ast::ExprKind::Unit => self.enc.ty(e, pg),
+                ast::ExprKind::Var(id) => self.enc.local_ty(id.name.as_str(), pg),
+                ast::ExprKind::Call(pte_call0) => self.enc.ty(e, pg),
+                ast::ExprKind::Method(pte_method0) => self.enc.ty(e, pg),
+                ast::ExprKind::Index(ib, ii) => encode_decls::elem_ty(&self.place_ty(&**ib, pg, f - 1)),
+                ast::ExprKind::Unary(pte_unary0, pte_unary1) => self.enc.ty(e, pg),
+                ast::ExprKind::Binary(pte_binary0, pte_binary1, pte_binary2) => self.enc.ty(e, pg),
+                ast::ExprKind::Ref(pt_m, rx) => { let rt: ast::TypeKind = self.place_ty(&**rx, pg, f - 1); match body::ref_inner(&rt) { None => rt, Some(ri) => ri, } },
+                ast::ExprKind::If(pte_if0) => self.enc.ty(e, pg),
+                ast::ExprKind::Block(pte_block0) => self.enc.ty(e, pg),
+                ast::ExprKind::Array(pte_array0) => self.enc.ty(e, pg),
+                ast::ExprKind::Repeat(pte_repeat0) => self.enc.ty(e, pg),
+                ast::ExprKind::Old(pte_old0) => self.enc.ty(e, pg),
+                ast::ExprKind::Quant(pte_quant0) => self.enc.ty(e, pg),
+                ast::ExprKind::Trigger(pte_trigger0) => self.enc.ty(e, pg),
+                ast::ExprKind::Closure(pte_closure0) => self.enc.ty(e, pg),
+                ast::ExprKind::StructLit(pte_structlit0) => self.enc.ty(e, pg),
+                ast::ExprKind::Path(pte_path0) => self.enc.ty(e, pg),
+                ast::ExprKind::Deref(dx) => { let dt: ast::TypeKind = self.place_ty(&**dx, pg, f - 1); match body::ref_inner(&dt) { None => dt, Some(di) => di, } },
+                ast::ExprKind::Field(fb, fname) => { let bt: ast::TypeKind = self.place_ty(&**fb, pg, f - 1); let k: usize = encode_decls::field_index(&bt, &pg.pr.t, fname.name.as_str()); match lowered::struct_fields(&bt, &pg.pr.t) { None => ast::TypeKind::Error, Some(fs) => { if k < fs.len() { fs[k].ty.clone() } else { ast::TypeKind::Error } }, } },
+                ast::ExprKind::Match(pte_match0) => self.enc.ty(e, pg),
+                ast::ExprKind::Return(pte_return0) => self.enc.ty(e, pg),
+                ast::ExprKind::Try(pte_try0) => self.enc.ty(e, pg),
+                ast::ExprKind::Loop(pte_loop0) => self.enc.ty(e, pg),
+                ast::ExprKind::Break(pte_break0) => self.enc.ty(e, pg),
+                ast::ExprKind::Continue(pte_continue0) => self.enc.ty(e, pg),
+                ast::ExprKind::Range(pte_range0) => self.enc.ty(e, pg),
+                ast::ExprKind::Error => self.enc.ty(e, pg),
+            }
+        }
+
+        #[summary("The postconditions of the function at a point where it returns result (stage0 Enc::post_check): the end of the body, or a `return` or `?` (ADR-0049 §3). Each ensures clause is an obligation (E0802), and what the function lets go is valid (ADR-0060 §2)")]
+        #[effects(alloc)]
+        fn post_check(self: &mut Exec, result: &encode_terms::Val, at: source::Span, how: &str, pg: &encode_spec::Prog) -> () {
+            let d: usize = match pg.defs.find(self.enc.path.as_str()) {
+                None => { return; },
+                Some(found) => found,
+            };
+            let mut env: table::Table<encode_terms::Val> = self.vars.clone();
+            let was: table::Table<encode_terms::Val> = self.was.clone();
+            match &pg.defs.items[d].d.ret.name {
+                None => {},
+                Some(rn) => env.insert(rn.name.as_str(), result.clone()),
+            }
+            for i in 0..pg.defs.items[d].d.post.len()
+                invariant 0 <= i && i <= pg.defs.items[d].d.post.len(),
+            {
+                let g: String = encode_terms::scalar_of(&self.enc.spec_expr(&pg.defs.items[d].d.post[i], &env, &was, pg, 100000));
+                self.oblige("E0802", pg.defs.items[d].d.post[i].span, types::cat3("postcondition `", pred_name(&pg.defs.items[d].d.post[i]).as_str(), "` may not hold").as_str(), g.as_str());
+            }
+            self.exit_valid(result, at, how, pg);
+        }
+
+        #[summary("The obligation E0823 with goals, the conjuncts of the validity of v that the path does not hold yet (the end of stage0 Enc::oblige_valid); the counterexample shows v")]
+        #[effects(alloc)]
+        fn push_valid(self: &mut Exec, span: source::Span, what: &str, shown: &str, v: &encode_terms::Val, t: &ast::TypeKind, goals: &[String]) -> () {
+            let ty: String = types::text(&lowered::value_ty(t));
+            let n: usize = self.enc.obls.len();
+            self.oblige("E0823", span, types::cat4("type invariant of `", ty.as_str(), "` may not hold for ", what).as_str(), encode_terms::and(goals).as_str());
+            if n < self.enc.obls.len() {
+                self.enc.obls[n].shown = Some(encode_spec::Shown { name: String::from(shown), v: v.clone(), ty: t.clone() });
+            }
+        }
+
+        #[summary("What the counterexample of a version comparison shows (the shown value of stage0 Enc::refines): the result, or for a `()` function the new value behind its first &mut parameter")]
+        #[effects(alloc)]
+        fn refine_shown(self: &Exec, d: &ast::FnDef, post: &table::Table<encode_terms::Val>, result: &encode_terms::Val, ret: &ast::TypeKind, pg: &encode_spec::Prog) -> encode_spec::Shown {
+            if decls::is_unit(ret) {
+                for i in 0..d.params.len()
+                    invariant 0 <= i && i <= d.params.len(),
+                {
+                    if mut_ref(&d.params[i].ty.kind) {
+                        return encode_spec::Shown { name: types::cat2(d.params[i].name.name.as_str(), " after"), v: var_of(post, d.params[i].name.name.as_str()), ty: self.enc.local_ty(d.params[i].name.name.as_str(), pg) };
+                    }
+                }
+            }
+            let name: String = match &d.ret.name {
+                None => String::from("result"),
+                Some(rn) => rn.name.clone(),
+            };
+            encode_spec::Shown { name: name, v: result.clone(), ty: ret.clone() }
+        }
+
+        #[summary("The refinement obligations of trait impl function d against trait method decl (stage0 Enc::refines, ADR-0046 §4, E0817), on its entry values. Nothing for a decl that has no definition row")]
+        #[effects(alloc)]
+        fn refines(self: &mut Exec, d: &ast::FnDef, decl: &str, tsub: &types::Subst, at: u8, pg: &encode_spec::Prog) -> () {
+            match pg.defs.find(decl) {
+                None => {},
+                Some(td) => self.refines_with(d, decl, &pg.defs.items[td], tsub, at, pg),
+            }
+        }
+
+        #[summary("refines against the definition row td of decl: the trait's requires imply each of d's, and the trait's requires with d's ensures imply each of the trait's ensures, on a new result and new values behind &mut parameters. Parameters match by position; tsub states the trait's contract for d. Nothing is assumed afterwards. at says where the obligations stand (stage0 RefineAt): 0 a trait impl function against its trait, the ensures obligations at the function's name; 1 and 2 two versions of a definition, each obligation at its clause with the result shown in a counterexample, 2 comparing the ensures on d's own requires")]
+        #[effects(alloc)]
+        fn refines_with(self: &mut Exec, d: &ast::FnDef, decl: &str, td: &encode_spec::Def, tsub: &types::Subst, at: u8, pg: &encode_spec::Prog) -> () {
+            if td.d.pre.len() == 0 && td.d.post.len() == 0 && d.pre.len() == 0 {
+                return;
+            }
+            let saved: Vec<String> = self.enc.pc.clone();
+            let env: table::Table<encode_terms::Val> = self.vars.clone();
+            let was: table::Table<encode_terms::Val> = self.was.clone();
+            let tenv: table::Table<encode_terms::Val> = by_trait(&env, &td.d, d);
+            let told: table::Table<encode_terms::Val> = by_trait(&was, &td.d, d);
+            let mut treq: Vec<String> = Vec::new();
+            for i in 0..td.d.pre.len()
+                invariant 0 <= i && i <= td.d.pre.len(),
+            {
+                treq.push(self.spec_in(td.unit.as_str(), tsub, &td.d.pre[i], &tenv, &told, pg));
+            }
+            let pre: String = encode_terms::and(treq.as_slice());
+            for i in 0..d.pre.len()
+                invariant 0 <= i && i <= d.pre.len(),
+            {
+                let g: String = encode_terms::scalar_of(&self.enc.spec_expr(&d.pre[i], &env, &was, pg, 100000));
+                self.oblige("E0817", d.pre[i].span, types::cat5("precondition `", pred_name(&d.pre[i]).as_str(), "` is not implied by the preconditions of `", decl, "`").as_str(), types::cat5("(=> ", pre.as_str(), " ", g.as_str(), ")").as_str());
+                self.enc.pc = saved.clone();
+            }
+            if td.d.post.len() > 0 {
+                let mut post: table::Table<encode_terms::Val> = env.clone();
+                for i in 0..d.params.len()
+                    invariant 0 <= i && i <= d.params.len(),
+                {
+                    if mut_ref(&d.params[i].ty.kind) {
+                        let pty: ast::TypeKind = self.enc.local_ty(d.params[i].name.name.as_str(), pg);
+                        let pv: encode_terms::Val = self.enc.fresh_val(types::cat2(d.params[i].name.name.as_str(), ".post").as_str(), &pty, pg, 100000);
+                        post.insert(d.params[i].name.name.as_str(), pv);
+                    }
+                }
+                let ret: ast::TypeKind = self.ret_ty(pg);
+                let result: encode_terms::Val = self.enc.fresh_val("result.post", &ret, pg, 100000);
+                let mut ipost: table::Table<encode_terms::Val> = post.clone();
+                match &d.ret.name {
+                    None => {},
+                    Some(rn) => ipost.insert(rn.name.as_str(), result.clone()),
+                }
+                let mut assumed: Vec<String> = Vec::new();
+                if at == 2 {
+                    for i in 0..d.pre.len()
+                        invariant 0 <= i && i <= d.pre.len(),
+                    {
+                        assumed.push(encode_terms::scalar_of(&self.enc.spec_expr(&d.pre[i], &env, &was, pg, 100000)));
+                    }
+                } else {
+                    extend(&mut assumed, treq.as_slice());
+                }
+                for i in 0..d.post.len()
+                    invariant 0 <= i && i <= d.post.len(),
+                {
+                    assumed.push(encode_terms::scalar_of(&self.enc.spec_expr(&d.post[i], &ipost, &was, pg, 100000)));
+                }
+                let mut tpost: table::Table<encode_terms::Val> = by_trait(&post, &td.d, d);
+                match &td.d.ret.name {
+                    None => {},
+                    Some(tn) => tpost.insert(tn.name.as_str(), result.clone()),
+                }
+                let hyp: String = encode_terms::and(assumed.as_slice());
+                let base: Vec<String> = self.enc.pc.clone();
+                for i in 0..td.d.post.len()
+                    invariant 0 <= i && i <= td.d.post.len(),
+                {
+                    let tg: String = self.spec_in(td.unit.as_str(), tsub, &td.d.post[i], &tpost, &told, pg);
+                    let span: source::Span = if at == 0 {
+                        d.name.span
+                    } else {
+                        td.d.post[i].span
+                    };
+                    let n: usize = self.enc.obls.len();
+                    self.oblige("E0817", span, types::cat5("postcondition `", pred_name(&td.d.post[i]).as_str(), "` of `", decl, "` may not hold").as_str(), types::cat5("(=> ", hyp.as_str(), " ", tg.as_str(), ")").as_str());
+                    if at != 0 && n < self.enc.obls.len() {
+                        let sh: encode_spec::Shown = self.refine_shown(d, &post, &result, &ret, pg);
+                        self.enc.obls[n].shown = Some(sh);
+                    }
+                    self.enc.pc = base.clone();
+                }
+            }
+            self.enc.pc = saved;
+        }
+
+        #[summary("The result type of this state's definition, in the query's types")]
+        #[effects(alloc)]
+        fn ret_ty(self: &Exec, pg: &encode_spec::Prog) -> ast::TypeKind {
+            types::subst(&ret_of(pg, self.enc.path.as_str()), &self.enc.tsub)
+        }
+
+        #[summary("One arm of an executable `match` on sv of type st, read as variant v (the run closure of stage0 Enc::match_arms): the payload's range facts hold, the bindings are locals, the body runs; for a match on &mut the bindings as they are at the end are written back to the scrutinee's place back")]
+        #[effects(alloc)]
+        fn run_arm(self: &mut Exec, sv: &str, st: &ast::TypeKind, arm: &ast::Arm, v: &str, back: &Option<ast::Expr>, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let pl: encode_spec::Payload = encode_spec::payload(pg, st, v, sv);
+            extend(&mut self.enc.pc, pl.facts.as_slice());
+            for k in 0..arm.pat.binds.len()
+                invariant 0 <= k && k <= arm.pat.binds.len(),
+            {
+                if k < pl.vals.len() {
+                    match &arm.pat.binds[k] {
+                        None => {},
+                        Some(id) => self.bind_var(id.name.as_str(), pl.vals[k].clone()),
+                    }
+                }
+            }
+            let r: encode_terms::Val = self.eval(&arm.body, pg, f - 1);
+            match back {
+                None => {},
+                Some(place) => { let mut now: Vec<encode_terms::Val> = Vec::new(); for k in 0..arm.pat.binds.len() invariant 0 <= k && k <= arm.pat.binds.len(), { if k < pl.vals.len() { match &arm.pat.binds[k] { None => now.push(pl.vals[k].clone()), Some(bid) => now.push(var_of(&self.vars, bid.name.as_str())), } } } let new: encode_terms::Val = encode_spec::variant_value(st, v, now.as_slice()); self.write_place(place, &new, false, pg, f - 1); },
+            }
+            r
+        }
+
+        #[summary("A shift amount s (of any integer type) must be in 0..w, w the width of the shifted value's type i (stage0 Enc::shift_obligation, ADR-0048 §2: Rust's debug build panics there, so it is an overflow obligation, E0803). A constant amount is decided here")]
+        #[effects(alloc)]
+        fn shift_obligation(self: &mut Exec, e: &ast::Expr, op: ast::BinOp, i: ast::IntTy, amount: &ast::Expr, s: &str, pg: &encode_spec::Prog) -> () {
+            let w: u32 = encode_terms::width(i);
+            let ws: String = encode_terms::dec(w as u64);
+            let goal: String = match encode_terms::numeral(s) {
+                None => { if codegen::is_signed(&self.enc.ty(amount, pg)) { types::cat7("(and (<= 0 ", s, ") (< ", s, " ", ws.as_str(), "))") } else { types::cat5("(< ", s, " ", ws.as_str(), ")") } },
+                Some(k) => { let zero: bool = k.mag.hi == 0 && k.mag.lo == 0; if (zero || !k.neg) && k.mag.hi == 0 && k.mag.lo < w as u64 { String::from("true") } else { String::from("false") } },
+            };
+            self.oblige("E0803", e.span, types::cat5("`", body::op_symbol(op).as_str(), "` may overflow `", body::int_text(i).as_str(), types::cat2("`: the shift amount may be outside 0..", ws.as_str()).as_str()).as_str(), goal.as_str());
+        }
+
+        #[summary("The term of specification e of another definition (stage0 Enc::in_def around Enc::spec): translated in its unit, its type parameters substituted by sub")]
+        #[effects(alloc)]
+        fn spec_in(self: &mut Exec, unit: &str, sub: &types::Subst, e: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &encode_spec::Prog) -> String {
+            let saved_sub: types::Subst = self.enc.tsub.clone();
+            let saved_mod: String = self.enc.spec_mod.clone();
+            self.enc.tsub = sub.clone();
+            self.enc.spec_mod = String::from(unit);
+            let g: String = encode_terms::scalar_of(&self.enc.spec_expr(e, env, was, pg, 100000));
+            self.enc.spec_mod = saved_mod;
+            self.enc.tsub = saved_sub;
+            g
+        }
+
+        #[summary("A statement of code (stage0 Enc::stmt): `let` binds the value of its initializer; an assignment evaluates the value, then the place and its bounds, as Rust does; `assert` is an obligation (E0810) and then a fact; `assume` is a trusted fact (ADR-0029 §2), only in a pass that trusts. Loops, proof blocks and `assert .. by` are the next pieces and do nothing here: a body inside the frontier holds none (ported)")]
+        #[effects(alloc)]
+        fn stmt(self: &mut Exec, s: &ast::Stmt, pg: &encode_spec::Prog, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            match s {
+                ast::Stmt::Let(sl) => { let v: encode_terms::Val = self.eval(&sl.init, pg, f - 1); self.bind_var(sl.name.name.as_str(), v); },
+                ast::Stmt::Assign(sa) => { let av: encode_terms::Val = self.eval(&sa.value, pg, f - 1); self.write_place(&sa.target, &av, true, pg, f - 1); },
+                ast::Stmt::While(sms_while0) => {},
+                ast::Stmt::For(sms_for0) => {},
+                ast::Stmt::Assert(sx) => { let plain: bool = match &sx.by { None => true, Some(prover) => false, }; if plain { let env: table::Table<encode_terms::Val> = self.vars.clone(); let was: table::Table<encode_terms::Val> = self.was.clone(); let g: String = encode_terms::scalar_of(&self.enc.spec_expr(&sx.cond, &env, &was, pg, 100000)); self.oblige("E0810", sx.span, "assertion may not hold", g.as_str()); } },
+                ast::Stmt::Assume(su) => { if self.trusts_assumptions() { let uenv: table::Table<encode_terms::Val> = self.vars.clone(); let uwas: table::Table<encode_terms::Val> = self.was.clone(); let ug: String = encode_terms::scalar_of(&self.enc.spec_expr(&su.cond, &uenv, &uwas, pg, 100000)); self.enc.pc.push(ug); } },
+                ast::Stmt::Proof(sms_proof0) => {},
+                ast::Stmt::LetFields(sms_letfields0) => {},
+                ast::Stmt::Expr(x) => { self.eval(x, pg, f - 1); },
+            }
+        }
+
+        #[summary("Whether the current pass assumes `assume` facts (stage0 trusts_assumptions)")]
+        #[effects(pure)]
+        fn trusts_assumptions(self: &Exec) -> bool {
+            match &self.trust {
+                None => true,
+                Some(t) => t.trusted,
+            }
+        }
+
+        #[summary("Whether the current pass assumes the ensures of callee path (stage0 trusts_callee)")]
+        #[effects(pure)]
+        fn trusts_callee(self: &Exec, path: &str) -> bool {
+            match &self.trust {
+                None => true,
+                Some(t) => t.trusted || !types::has(t.untrusted.as_slice(), path),
+            }
+        }
+
+        #[summary("The side of `x?` that goes on (the go_on closure of stage0 Enc::eval): sv is variant ok of st, and the value is its payload, in its range")]
+        #[effects(alloc)]
+        fn try_go_on(self: &mut Exec, st: &ast::TypeKind, ok: &str, sv: &str, pg: &encode_spec::Prog) -> encode_terms::Val {
+            let pl: encode_spec::Payload = encode_spec::payload(pg, st, ok, sv);
+            extend(&mut self.enc.pc, pl.facts.as_slice());
+            if pl.vals.len() > 0 {
+                pl.vals[0].clone()
+            } else {
+                encode_terms::Val::Unit
+            }
+        }
+
+        #[summary("The side of `x?` that leaves (the leave closure of stage0 Enc::eval): sv is variant bad of st, the function returns that variant of its own result type with the same payload, the postconditions hold there, and the path ends")]
+        #[effects(alloc)]
+        fn try_leave(self: &mut Exec, e: &ast::Expr, st: &ast::TypeKind, bad: &str, sv: &str, pg: &encode_spec::Prog) -> encode_terms::Val {
+            let rt: ast::TypeKind = self.ret_ty(pg);
+            let pl: encode_spec::Payload = encode_spec::payload(pg, st, bad, sv);
+            extend(&mut self.enc.pc, pl.facts.as_slice());
+            let r: encode_terms::Val = encode_spec::variant_value(&rt, bad, pl.vals.as_slice());
+            self.post_check(&r, e.span, "at this `?`", pg);
+            self.dead = true;
+            encode_terms::Val::Unit
+        }
+
+        #[summary("The conjuncts of the validity of v of type t (stage0 Enc::valid, ADR-0060 §2), none when t has no invariant anywhere: a type parameter's is an uninterpreted predicate, declared on first use; an array's is quantified over its elements; a struct held as leaves has its invariant atom and its fields'; a datatype on a cycle has a validity function; another datatype one level of its variants")]
+        #[effects(alloc)]
+        fn valid(self: &mut Exec, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog, f: usize) -> Vec<String>
+            decreases f,
+        {
+            if f == 0 {
+                return Vec::new();
+            }
+            if !self.needs_valid(t, pg) {
+                return Vec::new();
+            }
+            let arr: bool = encode_decls::is_array(t);
+            if !arr {
+                match body::ref_inner(t) {
+                    None => {},
+                    Some(inner) => { return self.valid(v, &inner, pg, f - 1); },
+                }
+            }
+            match param_name(t) {
+                None => {},
+                Some(pn) => { let pf: String = encode_decls::sym(types::cat3("'", pn.as_str(), ".valid").as_str()); if !self.valid_decl.has(pf.as_str()) { self.valid_decl.insert(pf.as_str(), true); self.enc.fr.decls.push(types::cat5("(declare-fun ", pf.as_str(), " (", encode_decls::sort_of(t).as_str(), ") Bool)")); } let mut one: Vec<String> = Vec::new(); one.push(types::cat5("(", pf.as_str(), " ", encode_terms::scalar_of(v).as_str(), ")")); return one; },
+            }
+            if arr {
+                return self.valid_array(v, t, pg, f - 1);
+            }
+            match encode_decls::flat_fields(t, &pg.pr.t) {
+                None => {},
+                Some(fs) => { match v { encode_terms::Val::S(vsv_s0) => {}, encode_terms::Val::A(vsv_a0, vsv_a1) => {}, encode_terms::Val::Unit => {}, encode_terms::Val::Struct(xs) => { let mut out: Vec<String> = self.inv_app(v, t, pg); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < xs.len() { let more: Vec<String> = self.valid(&xs[i], &fs[i].ty, pg, f - 1); extend(&mut out, more.as_slice()); } } return out; }, encode_terms::Val::Arr(vsv_arr0, vsv_arr1) => {}, } },
+            }
+            let c: String = match v {
+                encode_terms::Val::S(x) => x.clone(),
+                encode_terms::Val::A(vcv_a0, vcv_a1) => { return Vec::new(); },
+                encode_terms::Val::Unit => { return Vec::new(); },
+                encode_terms::Val::Struct(vcv_struct0) => { return Vec::new(); },
+                encode_terms::Val::Arr(vcv_arr0, vcv_arr1) => { return Vec::new(); },
+            };
+            if rec_valid(t, &pg.pr.t) {
+                let vf: String = self.valid_fn(t, pg, f - 1);
+                let mut app: Vec<String> = Vec::new();
+                app.push(types::cat5("(", vf.as_str(), " ", c.as_str(), ")"));
+                return app;
+            }
+            self.valid_dt(c.as_str(), t, pg, f - 1)
+        }
+
+        #[summary("The validity of array value v of type t (the array part of stage0 Enc::valid): every element below the length is valid, triggered on the element read. The bound name is by nesting depth: the same value has the same text, so a fact already on the path is not proved again")]
+        #[effects(alloc)]
+        fn valid_array(self: &mut Exec, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog, f: usize) -> Vec<String>
+            decreases f,
+        {
+            if f == 0 {
+                return Vec::new();
+            }
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            let k: String = encode_decls::sym(types::cat2("valid!k", encode_terms::dec(self.valid_depth).as_str()).as_str());
+            let mut pats: Vec<String> = Vec::new();
+            let len: String = encode_spec::len_of(v);
+            let elem: encode_terms::Val = match v {
+                encode_terms::Val::S(vav_s0) => { return Vec::new(); },
+                encode_terms::Val::A(elems, va_l) => { let x: String = types::cat5("(select ", elems.as_str(), " ", k.as_str(), ")"); pats.push(x.clone()); encode_terms::Val::S(x) },
+                encode_terms::Val::Unit => { return Vec::new(); },
+                encode_terms::Val::Struct(vav_struct0) => { return Vec::new(); },
+                encode_terms::Val::Arr(el, va_n) => { let mut ls: Vec<String> = Vec::new(); encode_terms::flatten_elem(&**el, &mut ls, 100000); for i in 0..ls.len() invariant 0 <= i && i <= ls.len(), { pats.push(types::cat5("(select ", ls[i].as_str(), " ", k.as_str(), ")")); } encode_terms::select_val(&**el, k.as_str(), 100000) },
+            };
+            self.valid_depth = self.valid_depth.saturating_add(1);
+            let inner: Vec<String> = self.valid(&elem, &e, pg, f - 1);
+            if self.valid_depth > 0 {
+                self.valid_depth = self.valid_depth - 1;
+            }
+            let mut out: Vec<String> = Vec::new();
+            if inner.len() == 0 {
+                return out;
+            }
+            let mut ps: Vec<String> = Vec::new();
+            for i in 0..pats.len()
+                invariant 0 <= i && i <= pats.len(),
+            {
+                ps.push(types::cat3(":pattern (", pats[i].as_str(), ")"));
+            }
+            out.push(types::cat5("(forall ((", k.as_str(), " Int)) (! (=> (and (<= 0 ", k.as_str(), types::cat5(") (< ", k.as_str(), " ", len.as_str(), types::cat5(")) ", encode_terms::and(inner.as_slice()).as_str(), ") ", encode_terms::join(ps.as_slice(), " ").as_str(), "))").as_str()).as_str()));
+            out
+        }
+
+        #[summary("The validity of datatype value c of type t, one level (stage0 Enc::valid_dt): its invariant, and each variant's payloads (a recursive struct's fields) when it is that variant. A value written with its constructor is that variant, and its payloads are the arguments")]
+        #[effects(alloc)]
+        fn valid_dt(self: &mut Exec, c: &str, t: &ast::TypeKind, pg: &encode_spec::Prog, f: usize) -> Vec<String>
+            decreases f,
+        {
+            if f == 0 {
+                return Vec::new();
+            }
+            let mut out: Vec<String> = self.inv_app(&encode_terms::Val::S(String::from(c)), t, pg);
+            if encode_decls::dt_struct(t, &pg.pr.t) {
+                match lowered::struct_fields(t, &pg.pr.t) {
+                    None => {},
+                    Some(fs) => { let xs: Vec<encode_terms::Val> = encode_terms::dt_fields(&lowered::value_ty(t), c, &pg.pr.t); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i < fs.len() { let fv: Vec<String> = self.valid(&xs[i], &fs[i].ty, pg, f - 1); extend(&mut out, fv.as_slice()); } } },
+                }
+                return out;
+            }
+            let vs: Vec<types::VariantSig> = match lowered::enum_variants(t, &pg.pr.t) {
+                None => Vec::new(),
+                Some(found) => found,
+            };
+            let mut built: usize = vs.len();
+            for i in 0..vs.len()
+                invariant 0 <= i && i <= vs.len(),
+            {
+                let k: String = encode_decls::ctor(t, vs[i].name.as_str());
+                if built == vs.len() && (c == k.as_str() || moves::starts_with(c, types::cat3("(", k.as_str(), " ").as_str())) {
+                    built = i;
+                }
+            }
+            for i in 0..vs.len()
+                invariant 0 <= i && i <= vs.len(),
+            {
+                let mut any: bool = false;
+                for j in 0..vs[i].tys.len()
+                    invariant 0 <= j && j <= vs[i].tys.len(),
+                {
+                    if !any && self.needs_valid(&vs[i].tys[j], pg) {
+                        any = true;
+                    }
+                }
+                if (built == vs.len() || built == i) && any {
+                    let args: Option<Vec<encode_terms::Val>> = if built == i {
+                        ctor_args(c, vs[i].tys.as_slice(), &pg.pr.t)
+                    } else {
+                        None
+                    };
+                    let vals: Vec<encode_terms::Val> = match args {
+                        None => { let pl: encode_spec::Payload = encode_spec::payload(pg, t, vs[i].name.as_str(), c); pl.vals.clone() },
+                        Some(found_args) => found_args,
+                    };
+                    let mut inner: Vec<String> = Vec::new();
+                    for j in 0..vals.len()
+                        invariant 0 <= j && j <= vals.len(),
+                    {
+                        if j < vs[i].tys.len() {
+                            let pv: Vec<String> = self.valid(&vals[j], &vs[i].tys[j], pg, f - 1);
+                            extend(&mut inner, pv.as_slice());
+                        }
+                    }
+                    if inner.len() > 0 {
+                        if built == i {
+                            extend(&mut out, inner.as_slice());
+                        } else {
+                            out.push(types::cat7("(=> ((_ is ", encode_decls::ctor(t, vs[i].name.as_str()).as_str(), ") ", c, ") ", encode_terms::and(inner.as_slice()).as_str(), ")"));
+                        }
+                    }
+                }
+            }
+            out
+        }
+
+        #[summary("The validity function of recursive datatype t, declared and defined (for ground instances) on first use (stage0 Enc::valid_fn)")]
+        #[effects(alloc)]
+        fn valid_fn(self: &mut Exec, t: &ast::TypeKind, pg: &encode_spec::Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::new();
+            }
+            let vt: ast::TypeKind = lowered::value_ty(t);
+            let name: String = encode_decls::sym(types::cat2(types::text(&vt).as_str(), ".'valid").as_str());
+            if !self.valid_decl.has(name.as_str()) {
+                self.valid_decl.insert(name.as_str(), true);
+                let sort: String = encode_decls::sort_of(&vt);
+                self.enc.fr.decls.push(types::cat5("(declare-fun ", name.as_str(), " (", sort.as_str(), ") Bool)"));
+                let x: String = encode_decls::sym("valid!x");
+                let inner: Vec<String> = self.valid_dt(x.as_str(), &vt, pg, f - 1);
+                let mut params: Vec<String> = Vec::new();
+                params.push(x.clone());
+                let mut binders: Vec<String> = Vec::new();
+                binders.push(types::cat5("(", x.as_str(), " ", sort.as_str(), ")"));
+                self.valid_defs.push(encode_spec::AxiomParts { sym: name.clone(), params: params, binders: binders, guard: String::from("true"), body: encode_terms::and(inner.as_slice()), sort: String::from("Bool"), recursive: true });
+            }
+            name
+        }
+
+        #[summary("The conjuncts of the validity of v of type t that are not on the path condition yet")]
+        #[effects(alloc)]
+        fn valid_goals(self: &mut Exec, v: &encode_terms::Val, t: &ast::TypeKind, pg: &encode_spec::Prog) -> Vec<String> {
+            let all: Vec<String> = self.valid(v, t, pg, 100000);
+            let mut goals: Vec<String> = Vec::new();
+            for i in 0..all.len()
+                invariant 0 <= i && i <= all.len(),
+            {
+                if !types::has(self.enc.pc.as_slice(), all[i].as_str()) {
+                    goals.push(all[i].clone());
+                }
+            }
+            goals
+        }
+
+        #[summary("Vec::new() and Vec::with_capacity(n), and the same of String (stage0 Enc::vec_new): length 0, elements unknown; a capacity above the maximum length is E0816 (Rust panics)")]
+        #[effects(alloc)]
+        fn vec_new(self: &mut Exec, e: &ast::Expr, c: &ast::Call, pg: &encode_spec::Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let el: ast::TypeKind = encode_decls::elem_ty(&self.enc.ty(e, pg));
+            if c.path.len() > 1 && c.path[1].name == "with_capacity" && c.args.len() > 0 {
+                let n: String = encode_terms::scalar_of(&self.eval(&c.args[0], pg, f - 1));
+                self.oblige("E0816", e.span, "the capacity may exceed the maximum length of a `Vec`", types::cat5("(<= ", n.as_str(), " ", encode_terms::len_max(&el).as_str(), ")").as_str());
+            }
+            if encode_decls::agg_elem(&el, &pg.pr.t) {
+                return encode_terms::Val::Arr(Box::new(self.enc.fresh_struct_elems("vec", &el, pg)), String::from("0"));
+            }
+            encode_terms::Val::A(self.enc.fresh_elems("vec", &el, false), String::from("0"))
+        }
+
+        #[summary("Writes new to place expression e (the place, set_at and bind_var steps of stage0 Enc::stmt, mem_call and match_arms): the variable's value with the place replaced is bound to the variable")]
+        #[effects(alloc)]
+        fn write_place(self: &mut Exec, e: &ast::Expr, new: &encode_terms::Val, check: bool, pg: &encode_spec::Prog, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let mut steps: Vec<encode_terms::Step> = Vec::new();
+            let root: String = self.place(e, &mut steps, check, pg, f - 1);
+            let cur: encode_terms::Val = var_of(&self.vars, root.as_str());
+            let nv: encode_terms::Val = encode_terms::set_at(&cur, steps.as_slice(), 0, new, &pg.pr.t, &mut self.enc.fr);
+            self.bind_var(root.as_str(), nv);
+        }
+    }
+
+    #[summary("A reach point (stage0 Enc::reach): where, what it is, and the path condition there")]
+    struct Reach { span: source::Span, what: String, pc: Vec<String> }
+
+    #[summary("One side of a branch that has run (the middle of stage0 Enc::branch): the locals it left, the facts it added to the path condition, whether it returned")]
+    struct Side { vars: table::Table<encode_terms::Val>, facts: Vec<String>, dead: bool }
+
+    #[summary("The trust of the pass being run (stage0 TrustPass, ADR-0029 §2): whether trusted facts enter the proof, and the callees that are not proved, sorted")]
+    struct Trust { trusted: bool, untrusted: Vec<String> }
+
+    #[summary("The values of m by the trait method's parameter names (the by_trait closure of stage0 Enc::refines): the trait method tf and the impl function d match by position")]
+    #[effects(alloc)]
+    fn by_trait(m: &table::Table<encode_terms::Val>, tf: &ast::FnDef, d: &ast::FnDef) -> table::Table<encode_terms::Val> {
+        let mut out: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        for i in 0..tf.params.len()
+            invariant 0 <= i && i <= tf.params.len(),
+        {
+            if i < d.params.len() {
+                match m.find(d.params[i].name.name.as_str()) {
+                    None => {},
+                    Some(at) => out.insert(tf.params[i].name.name.as_str(), m.items[at].clone()),
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("Whether m is a method that changes the length of a Vec or a String, which this piece does not encode")]
+    #[effects(pure)]
+    fn changes_length(m: &str) -> bool {
+        m == "push" || m == "pop" || m == "truncate" || m == "copy_within" || m == "push_str"
+    }
+
+    #[summary("A copy of expression e")]
+    #[effects(alloc)]
+    fn copy_expr(e: &ast::Expr) -> ast::Expr {
+        e.clone()
+    }
+
+    #[summary("The payloads of constructor application c, a variant with payload types tys (the built case of stage0 Enc::valid_dt): its arguments are the leaves of the payloads in order. None for text that is no application")]
+    #[effects(alloc)]
+    fn ctor_args(c: &str, tys: &[ast::TypeKind], tb: &lowered::Tables) -> Option<Vec<encode_terms::Val>> {
+        let mut terms: Vec<String> = Vec::new();
+        let mut list: bool = false;
+        match encode_terms::parse(c) {
+            None => {},
+            Some(sx) => { match &sx { encode_terms::Sexp::Atom(ca_a) => {}, encode_terms::Sexp::List(xs) => { list = true; for j in 0..xs.len() invariant 0 <= j && j <= xs.len(), { if j > 0 { terms.push(encode_terms::print(&xs[j], 100000)); } } }, } },
+        }
+        if !list {
+            return None;
+        }
+        let mut pos: usize = 0;
+        let mut out: Vec<encode_terms::Val> = Vec::new();
+        for j in 0..tys.len()
+            invariant 0 <= j && j <= tys.len(),
+        {
+            out.push(encode_terms::build(&tys[j], tb, terms.as_slice(), &mut pos, 100000));
+        }
+        Some(out)
+    }
+
+    #[summary("The rows of an executable definition d of unit whose body is encoded, for `bmb dump smt` (the exec part of stage0 verify::dump_smt): an exec row with the declarations, the obligations that hold by their own text, whether the end of the body is unreachable, the path condition there, the entry values, the texts known valid and the validity functions defined; then an obl row per obligation")]
+    #[effects(alloc)]
+    fn dump_body(out: &mut String, pg: &encode_spec::Prog, path: &str, d: &ast::FnDef, unit: &str) -> () {
+        let mut ex: Exec = new_exec(pg, path, unit);
+        ex.exec_body(d, pg);
+        encode_spec::push_row_head(out, "exec", path, &ex.enc);
+        out.push_str(",\"dead\":");
+        decls::push_bool(out, ex.dead);
+        out.push_str(",\"pc\":");
+        encode_decls::push_list(out, ex.enc.pc.as_slice());
+        out.push_str(",\"inputs\":[");
+        for i in 0..ex.inputs.len()
+            invariant 0 <= i && i <= ex.inputs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            encode_spec::push_shown(out, &ex.inputs[i]);
+        }
+        out.push_str("],\"texts\":[");
+        for i in 0..ex.texts.len()
+            invariant 0 <= i && i <= ex.texts.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            std::json::push_string(out, ex.texts[i].a.as_str());
+            out.push_str(",");
+            std::json::push_string(out, ex.texts[i].b.as_str());
+            out.push_str("]");
+        }
+        out.push_str("],\"valid\":[");
+        for i in 0..ex.valid_defs.len()
+            invariant 0 <= i && i <= ex.valid_defs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            encode_spec::push_part(out, &ex.valid_defs[i]);
+        }
+        out.push_str("]}\n");
+        encode_spec::push_obls(out, pg, path, ex.enc.obls.as_slice());
+    }
+
+    #[summary("Appends copies of xs to out")]
+    #[effects(alloc)]
+    fn extend(out: &mut Vec<String>, xs: &[String]) -> () {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+    }
+
+    #[summary("Whether a type as written is one whose length changes (stage0 growable): a Vec or a String, both an array and a length to the encoder")]
+    #[effects(pure)]
+    fn growable(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(grt_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => true,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(grt_array0, grt_array1) => false,
+            ast::TypeKind::ArrayN(grt_arrayn0, grt_arrayn1) => false,
+            ast::TypeKind::Slice(grt_slice0) => false,
+            ast::TypeKind::Ref(grt_ref0, grt_ref1) => false,
+            ast::TypeKind::Named(path, gr_args) => path.len() == 1 && (path[0] == "Vec" || path[0] == "String"),
+            ast::TypeKind::Vec(gr_e) => true,
+            ast::TypeKind::Box(grt_box0) => false,
+            ast::TypeKind::Param(grt_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("Whether place expression e starts from a variable (stage0 root_var(e).is_some())")]
+    #[effects(alloc)]
+    fn has_root(e: &ast::Expr) -> bool {
+        match root_var(e, 100000) {
+            None => false,
+            Some(r) => true,
+        }
+    }
+
+    #[summary("The predicate instance of the invariant of t (stage0 invariants::inv_target): its path, or the instance key of a generic type's (the predicate's parameters are the type's, in order: E0254)")]
+    #[effects(alloc)]
+    fn inv_target(t: &ast::TypeKind, tb: &lowered::Tables) -> Option<String> {
+        let vt: ast::TypeKind = lowered::value_ty(t);
+        match encode_decls::inv_of(&vt, tb) {
+            None => None,
+            Some(p) => { let args: Vec<ast::TypeKind> = types::named_args(&vt); if args.len() == 0 { Some(p) } else { Some(body::inst_key(p.as_str(), args.as_slice())) } },
+        }
+    }
+
+    #[summary("Whether e is a range")]
+    #[effects(pure)]
+    fn is_range(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(ire_int0, ire_int1) => false,
+            ast::ExprKind::Float(ire_float0) => false,
+            ast::ExprKind::ByteLit(ire_bytelit0) => false,
+            ast::ExprKind::ByteStr(ire_bytestr0) => false,
+            ast::ExprKind::StrLit(ire_strlit0) => false,
+            ast::ExprKind::CharLit(ire_charlit0) => false,
+            ast::ExprKind::Bool(ire_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(ire_var0) => false,
+            ast::ExprKind::Call(ire_call0) => false,
+            ast::ExprKind::Method(ire_method0) => false,
+            ast::ExprKind::Index(ire_index0, ire_index1) => false,
+            ast::ExprKind::Unary(ire_unary0, ire_unary1) => false,
+            ast::ExprKind::Binary(ire_binary0, ire_binary1, ire_binary2) => false,
+            ast::ExprKind::Ref(ire_ref0, ire_ref1) => false,
+            ast::ExprKind::If(ire_if0) => false,
+            ast::ExprKind::Block(ire_block0) => false,
+            ast::ExprKind::Array(ire_array0) => false,
+            ast::ExprKind::Repeat(ire_repeat0) => false,
+            ast::ExprKind::Old(ire_old0) => false,
+            ast::ExprKind::Quant(ire_quant0) => false,
+            ast::ExprKind::Trigger(ire_trigger0) => false,
+            ast::ExprKind::Closure(ire_closure0) => false,
+            ast::ExprKind::StructLit(ire_structlit0) => false,
+            ast::ExprKind::Path(ire_path0) => false,
+            ast::ExprKind::Deref(ire_deref0) => false,
+            ast::ExprKind::Field(ire_field0, ire_field1) => false,
+            ast::ExprKind::Match(ire_match0) => false,
+            ast::ExprKind::Return(ire_return0) => false,
+            ast::ExprKind::Try(ire_try0) => false,
+            ast::ExprKind::Loop(ire_loop0) => false,
+            ast::ExprKind::Break(ire_break0) => false,
+            ast::ExprKind::Continue(ire_continue0) => false,
+            ast::ExprKind::Range(rg) => true,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("Whether the checker's table says the value of e is text")]
+    #[effects(alloc)]
+    fn is_text(e: &ast::Expr, tb: &lowered::Tables) -> bool {
+        tb.text.has(body::span_key(e.span).as_str())
+    }
+
+    #[summary("The last name of a path. Empty text for an empty path")]
+    #[effects(alloc)]
+    fn last_name(path: &[ast::Ident]) -> String {
+        if path.len() > 0 {
+            path[path.len() - 1].name.clone()
+        } else {
+            String::new()
+        }
+    }
+
+    #[summary("The value of numeral v modulo 2^w as a number below it (stage0's rem_euclid for the bit-vector literal of an operand), w the width of an integer type: the low word of the magnitude, or of its two's complement for a negative value")]
+    #[effects(pure)]
+    fn low_bits(v: &encode_terms::Int, w: u32) -> u64 {
+        if w >= 64 {
+            if v.neg && v.mag.lo != 0 {
+                return 18446744073709551615 - v.mag.lo + 1;
+            }
+            return v.mag.lo;
+        }
+        let size: u64 = if w == 8 {
+            256
+        } else if w == 16 {
+            65536
+        } else {
+            4294967296
+        };
+        let m: u64 = v.mag.lo % size;
+        if v.neg && m != 0 {
+            size - m
+        } else {
+            m
+        }
+    }
+
+    #[summary("Whether t is a &mut reference")]
+    #[effects(pure)]
+    fn mut_ref(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(mrt_int0) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(mrt_array0, mrt_array1) => false,
+            ast::TypeKind::ArrayN(mrt_arrayn0, mrt_arrayn1) => false,
+            ast::TypeKind::Slice(mrt_slice0) => false,
+            ast::TypeKind::Ref(m, mr_inner) => *m,
+            ast::TypeKind::Named(mrt_named0, mrt_named1) => false,
+            ast::TypeKind::Vec(mrt_vec0) => false,
+            ast::TypeKind::Box(mrt_box0) => false,
+            ast::TypeKind::Param(mrt_param0) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("The state of executable definition path of unit before anything is encoded (stage0 Enc::new): no reach points are recorded and every fact is trusted, as in a pass without escapes")]
+    #[effects(alloc)]
+    fn new_exec(pg: &encode_spec::Prog, path: &str, unit: &str) -> Exec {
+        Exec { enc: encode_spec::new_enc(pg, path, unit), vars: table::new::<encode_terms::Val>(), var_rank: table::new::<usize>(), was: table::new::<encode_terms::Val>(), entry_measure: None, inputs: Vec::new(), dead: false, ghost: false, texts: Vec::new(), valid_decl: table::new::<bool>(), valid_depth: 0, valid_defs: Vec::new(), valid_memo: table::new::<bool>(), reaching: false, reach: Vec::new(), trust: None }
+    }
+
+    #[summary("The name of a type parameter, if t is one")]
+    #[effects(alloc)]
+    fn param_name(t: &ast::TypeKind) -> Option<String> {
+        match t {
+            ast::TypeKind::Int(pnt_int0) => None,
+            ast::TypeKind::F64 => None,
+            ast::TypeKind::Bool => None,
+            ast::TypeKind::Unit => None,
+            ast::TypeKind::Char => None,
+            ast::TypeKind::String => None,
+            ast::TypeKind::Str => None,
+            ast::TypeKind::Array(pnt_array0, pnt_array1) => None,
+            ast::TypeKind::ArrayN(pnt_arrayn0, pnt_arrayn1) => None,
+            ast::TypeKind::Slice(pnt_slice0) => None,
+            ast::TypeKind::Ref(pnt_ref0, pnt_ref1) => None,
+            ast::TypeKind::Named(pnt_named0, pnt_named1) => None,
+            ast::TypeKind::Vec(pnt_vec0) => None,
+            ast::TypeKind::Box(pnt_box0) => None,
+            ast::TypeKind::Param(n) => Some(n.clone()),
+            ast::TypeKind::Never => None,
+            ast::TypeKind::Error => None,
+        }
+    }
+
+    #[summary("The parameter types of function path in the encoder's tables. None for a path the tables lack")]
+    #[effects(alloc)]
+    fn params_of(pg: &encode_spec::Prog, path: &str) -> Vec<ast::TypeKind> {
+        match pg.pr.t.fns.find(path) {
+            None => Vec::new(),
+            Some(at) => pg.pr.t.fns.items[at].params.clone(),
+        }
+    }
+
+    #[summary("Whether every statement of block b is one this piece encodes (the plain closure of stage0 port_encodes): `let`, an assignment, an expression, `assume`, and `assert` without `by`")]
+    #[effects(pure)]
+    fn plain(b: &ast::Block) -> bool {
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            let ok: bool = match &b.stmts[i] {
+                ast::Stmt::Let(pb_l) => true,
+                ast::Stmt::Assign(pb_a) => true,
+                ast::Stmt::While(pbs_while0) => false,
+                ast::Stmt::For(pbs_for0) => false,
+                ast::Stmt::Assert(sx) => { match &sx.by { None => true, Some(prover) => false, } },
+                ast::Stmt::Assume(pb_u) => true,
+                ast::Stmt::Proof(pbs_proof0) => false,
+                ast::Stmt::LetFields(pbs_letfields0) => false,
+                ast::Stmt::Expr(pb_e) => true,
+            };
+            if !ok {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The frontier of this piece (stage0 verify::port_encodes): whether the body of executable function d is encoded yet. Not yet: a loop, `break` and `continue`, a `proof` block, `assert .. by`, the methods that change a Vec or a String (push, pop, truncate, copy_within, push_str), a comparison or a range slice of text, and String::from_utf8. Read from the syntax, specification parts included, and the checker's table of text, as stage0 reads it: a body outside it has no rows on either side of `bmb dump smt`. It shrinks to nothing as the next pieces arrive")]
+    #[effects(alloc)]
+    fn ported(d: &ast::FnDef, pg: &encode_spec::Prog) -> bool {
+        plain(&d.body) && ported_block(&d.body, &pg.pr.t, 100000)
+    }
+
+    #[summary("ported for the expressions of block b, whose statements are plain: the initializer of each `let`, both sides of an assignment, the condition of `assert` and `assume`, each expression statement, the tail")]
+    #[effects(alloc)]
+    fn ported_block(b: &ast::Block, tb: &lowered::Tables, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            let ok: bool = match &b.stmts[i] {
+                ast::Stmt::Let(sl) => ported_expr(&sl.init, tb, f - 1),
+                ast::Stmt::Assign(sa) => ported_expr(&sa.target, tb, f - 1) && ported_expr(&sa.value, tb, f - 1),
+                ast::Stmt::While(qbs_while0) => false,
+                ast::Stmt::For(qbs_for0) => false,
+                ast::Stmt::Assert(sx) => ported_expr(&sx.cond, tb, f - 1),
+                ast::Stmt::Assume(su) => ported_expr(&su.cond, tb, f - 1),
+                ast::Stmt::Proof(qbs_proof0) => false,
+                ast::Stmt::LetFields(qbs_letfields0) => false,
+                ast::Stmt::Expr(x) => ported_expr(x, tb, f - 1),
+            };
+            if !ok {
+                return false;
+            }
+        }
+        match &b.tail {
+            None => true,
+            Some(t) => ported_expr(&**t, tb, f - 1),
+        }
+    }
+
+    #[summary("ported for expression e and every expression inside it (the walk of stage0 each_expr with the test of port_encodes at each node): a closure is not entered")]
+    #[effects(alloc)]
+    fn ported_expr(e: &ast::Expr, tb: &lowered::Tables, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(pee_int0, pee_int1) => true,
+            ast::ExprKind::Float(pee_float0) => true,
+            ast::ExprKind::ByteLit(pee_bytelit0) => true,
+            ast::ExprKind::ByteStr(pee_bytestr0) => true,
+            ast::ExprKind::StrLit(pee_strlit0) => true,
+            ast::ExprKind::CharLit(pee_charlit0) => true,
+            ast::ExprKind::Bool(pee_bool0) => true,
+            ast::ExprKind::Unit => true,
+            ast::ExprKind::Var(pee_var0) => true,
+            ast::ExprKind::Call(c) => !(c.path.len() == 2 && c.path[0].name == "String" && c.path[1].name == "from_utf8") && ported_exprs(c.args.as_slice(), tb, f - 1),
+            ast::ExprKind::Method(mc) => !changes_length(mc.name.name.as_str()) && ported_expr(&*mc.recv, tb, f - 1) && ported_exprs(mc.args.as_slice(), tb, f - 1),
+            ast::ExprKind::Index(ib, ii) => !(is_range(&**ii) && is_text(&**ib, tb)) && ported_expr(&**ib, tb, f - 1) && ported_expr(&**ii, tb, f - 1),
+            ast::ExprKind::Unary(uop, ux) => ported_expr(&**ux, tb, f - 1),
+            ast::ExprKind::Binary(op, l, r) => !(body::is_cmp(*op) && (is_text(&**l, tb) || is_text(&**r, tb))) && ported_expr(&**l, tb, f - 1) && ported_expr(&**r, tb, f - 1),
+            ast::ExprKind::Ref(pe_m, rx) => ported_expr(&**rx, tb, f - 1),
+            ast::ExprKind::If(x) => plain(&x.then) && ported_expr(&*x.cond, tb, f - 1) && ported_block(&x.then, tb, f - 1) && ported_opt(&x.els, tb, f - 1),
+            ast::ExprKind::Block(b) => plain(b) && ported_block(b, tb, f - 1),
+            ast::ExprKind::Array(items) => ported_exprs(items.as_slice(), tb, f - 1),
+            ast::ExprKind::Repeat(rp) => ported_expr(&*rp.value, tb, f - 1),
+            ast::ExprKind::Old(ox) => ported_expr(&**ox, tb, f - 1),
+            ast::ExprKind::Quant(qu) => ported_expr(&*qu.body, tb, f - 1),
+            ast::ExprKind::Trigger(gx) => ported_expr(&**gx, tb, f - 1),
+            ast::ExprKind::Closure(pee_closure0) => true,
+            ast::ExprKind::StructLit(lit) => { for i in 0..lit.fields.len() invariant 0 <= i && i <= lit.fields.len(), { if !ported_expr(&lit.fields[i].value, tb, f - 1) { return false; } } ported_opt(&lit.rest, tb, f - 1) },
+            ast::ExprKind::Path(pee_path0) => true,
+            ast::ExprKind::Deref(dx) => ported_expr(&**dx, tb, f - 1),
+            ast::ExprKind::Field(fb, fname) => ported_expr(&**fb, tb, f - 1),
+            ast::ExprKind::Match(mx) => { if !ported_expr(&*mx.scrut, tb, f - 1) { return false; } for i in 0..mx.arms.len() invariant 0 <= i && i <= mx.arms.len(), { if !ported_expr(&mx.arms[i].body, tb, f - 1) { return false; } } true },
+            ast::ExprKind::Return(rv) => ported_opt(rv, tb, f - 1),
+            ast::ExprKind::Try(tx) => ported_expr(&**tx, tb, f - 1),
+            ast::ExprKind::Loop(pe_l) => false,
+            ast::ExprKind::Break(pe_b) => false,
+            ast::ExprKind::Continue(pe_c) => false,
+            ast::ExprKind::Range(rg) => ported_expr(&*rg.lo, tb, f - 1) && ported_expr(&*rg.hi, tb, f - 1),
+            ast::ExprKind::Error => true,
+        }
+    }
+
+    #[summary("ported for each of xs")]
+    #[effects(alloc)]
+    fn ported_exprs(xs: &[ast::Expr], tb: &lowered::Tables, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if !ported_expr(&xs[i], tb, f - 1) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("ported for an expression that may be absent")]
+    #[effects(alloc)]
+    fn ported_opt(o: &Option<Box<ast::Expr>>, tb: &lowered::Tables, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match o {
+            None => true,
+            Some(x) => ported_expr(&**x, tb, f - 1),
+        }
+    }
+
+    #[summary("A contract clause in a message (stage0 pred_name, ADR-0095 A2): the predicate's name, or the clause's own text when it is an expression. A function value's contract reads as it was written, f.requires(x) (ADR-0053)")]
+    #[effects(alloc)]
+    fn pred_name(e: &ast::Expr) -> String {
+        let path: Vec<ast::Ident> = match encode_decls::call_path(e) {
+            None => { return fmt::expr_text(e); },
+            Some(p) => p,
+        };
+        let n: usize = path.len();
+        if n >= 2 && moves::starts_with(path[n - 2].name.as_str(), "__fn$") && (path[n - 1].name == "pre" || path[n - 1].name == "post") {
+            match body::call_of(e) {
+                None => {},
+                Some(c) => { if c.args.len() > 0 { let recv: String = fmt::expr_text(&c.args[0]); let mut lead: usize = 0; for i in 0..recv.len() invariant 0 <= i && i <= recv.len(), { if lead == i && recv.as_bytes()[i] == 38 { lead = i + 1; } } let mut rest: Vec<String> = Vec::new(); for i in 0..c.args.len() invariant 0 <= i && i <= c.args.len(), { if i > 0 { rest.push(fmt::expr_text(&c.args[i])); } } let which: String = if path[n - 1].name == "pre" { String::from("requires") } else { String::from("ensures") }; return types::cat5(lexer::cut(recv.as_str(), lead, recv.len()).as_str(), ".", which.as_str(), "(", types::cat2(encode_terms::join(rest.as_slice(), ", ").as_str(), ")").as_str()); } },
+            }
+        }
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len(),
+        {
+            names.push(path[i].name.clone());
+        }
+        encode_terms::join(names.as_slice(), "::")
+    }
+
+    #[summary("Whether t is a datatype (an enum, or a struct that holds itself through structs) that holds itself (stage0 Prog::rec_valid): its validity is a function")]
+    #[effects(alloc)]
+    fn rec_valid(t: &ast::TypeKind, tb: &lowered::Tables) -> bool {
+        let vt: ast::TypeKind = lowered::value_ty(t);
+        let is_enum: bool = match lowered::enum_variants(&vt, tb) {
+            None => false,
+            Some(vs) => true,
+        };
+        if !encode_decls::dt_struct(&vt, tb) && !is_enum {
+            return false;
+        }
+        let me: String = types::text(&vt);
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut todo: Vec<ast::TypeKind> = encode_decls::holds(&vt, tb);
+        let mut fuel: usize = 1000000000;
+        while todo.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match todo.pop() {
+                None => {},
+                Some(u) => { if types::text(&lowered::value_ty(&u)) == me { return true; } let k: String = types::text(&u); if !seen.has(k.as_str()) { seen.insert(k.as_str(), true); let more: Vec<ast::TypeKind> = encode_decls::holds(&u, tb); body::push_all(&mut todo, more.as_slice()); } },
+            }
+        }
+        false
+    }
+
+    #[summary("The result type of function path in the encoder's tables. The error type for a path the tables lack")]
+    #[effects(alloc)]
+    fn ret_of(pg: &encode_spec::Prog, path: &str) -> ast::TypeKind {
+        match pg.pr.t.fns.find(path) {
+            None => ast::TypeKind::Error,
+            Some(at) => pg.pr.t.fns.items[at].ret.clone(),
+        }
+    }
+
+    #[summary("The locals of vars that base also has (stage0's retain at a join one side of which returned): the names that side bound end with it")]
+    #[effects(alloc)]
+    fn retain(vars: &table::Table<encode_terms::Val>, base: &table::Table<encode_terms::Val>) -> table::Table<encode_terms::Val> {
+        let mut out: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        for n in 0..vars.len()
+            invariant 0 <= n,
+        {
+            match vars.nth(n) {
+                None => {},
+                Some(at) => { let k: String = vars.key(n); if base.has(k.as_str()) { out.insert(k.as_str(), vars.items[at].clone()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("The variable a place expression starts from (stage0 root_var): through &, *, fields, elements and the as_slice and as_mut_slice of a Vec. None for another expression")]
+    #[effects(alloc)]
+    fn root_var(e: &ast::Expr, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(rve_int0, rve_int1) => None,
+            ast::ExprKind::Float(rve_float0) => None,
+            ast::ExprKind::ByteLit(rve_bytelit0) => None,
+            ast::ExprKind::ByteStr(rve_bytestr0) => None,
+            ast::ExprKind::StrLit(rve_strlit0) => None,
+            ast::ExprKind::CharLit(rve_charlit0) => None,
+            ast::ExprKind::Bool(rve_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => Some(id.name.clone()),
+            ast::ExprKind::Call(rve_call0) => None,
+            ast::ExprKind::Method(mc) => { if mc.name.name == "as_mut_slice" || mc.name.name == "as_slice" { root_var(&*mc.recv, f - 1) } else { None } },
+            ast::ExprKind::Index(ib, ii) => root_var(&**ib, f - 1),
+            ast::ExprKind::Unary(rve_unary0, rve_unary1) => None,
+            ast::ExprKind::Binary(rve_binary0, rve_binary1, rve_binary2) => None,
+            ast::ExprKind::Ref(rv_m, rx) => root_var(&**rx, f - 1),
+            ast::ExprKind::If(rve_if0) => None,
+            ast::ExprKind::Block(rve_block0) => None,
+            ast::ExprKind::Array(rve_array0) => None,
+            ast::ExprKind::Repeat(rve_repeat0) => None,
+            ast::ExprKind::Old(rve_old0) => None,
+            ast::ExprKind::Quant(rve_quant0) => None,
+            ast::ExprKind::Trigger(rve_trigger0) => None,
+            ast::ExprKind::Closure(rve_closure0) => None,
+            ast::ExprKind::StructLit(rve_structlit0) => None,
+            ast::ExprKind::Path(rve_path0) => None,
+            ast::ExprKind::Deref(dx) => root_var(&**dx, f - 1),
+            ast::ExprKind::Field(fb, fname) => root_var(&**fb, f - 1),
+            ast::ExprKind::Match(rve_match0) => None,
+            ast::ExprKind::Return(rve_return0) => None,
+            ast::ExprKind::Try(rve_try0) => None,
+            ast::ExprKind::Loop(rve_loop0) => None,
+            ast::ExprKind::Break(rve_break0) => None,
+            ast::ExprKind::Continue(rve_continue0) => None,
+            ast::ExprKind::Range(rve_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("Whether two values are the same, leaf by leaf (stage0's == on Val)")]
+    #[effects(pure)]
+    fn same_val(a: &encode_terms::Val, b: &encode_terms::Val, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match a {
+            encode_terms::Val::S(x) => match b { encode_terms::Val::S(y) => x.as_str() == y.as_str(), encode_terms::Val::A(sbv_a0, sbv_a1) => false, encode_terms::Val::Unit => false, encode_terms::Val::Struct(sbv_struct0) => false, encode_terms::Val::Arr(sbv_arr0, sbv_arr1) => false, },
+            encode_terms::Val::A(e1, l1) => match b { encode_terms::Val::S(scv_s0) => false, encode_terms::Val::A(e2, l2) => e1.as_str() == e2.as_str() && l1.as_str() == l2.as_str(), encode_terms::Val::Unit => false, encode_terms::Val::Struct(scv_struct0) => false, encode_terms::Val::Arr(scv_arr0, scv_arr1) => false, },
+            encode_terms::Val::Unit => match b { encode_terms::Val::S(sdv_s0) => false, encode_terms::Val::A(sdv_a0, sdv_a1) => false, encode_terms::Val::Unit => true, encode_terms::Val::Struct(sdv_struct0) => false, encode_terms::Val::Arr(sdv_arr0, sdv_arr1) => false, },
+            encode_terms::Val::Struct(xs) => match b { encode_terms::Val::S(sev_s0) => false, encode_terms::Val::A(sev_a0, sev_a1) => false, encode_terms::Val::Unit => false, encode_terms::Val::Struct(ys) => { if xs.len() != ys.len() { return false; } for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i < ys.len() && !same_val(&xs[i], &ys[i], f - 1) { return false; } } true }, encode_terms::Val::Arr(sev_arr0, sev_arr1) => false, },
+            encode_terms::Val::Arr(xe, xl) => match b { encode_terms::Val::S(sfv_s0) => false, encode_terms::Val::A(sfv_a0, sfv_a1) => false, encode_terms::Val::Unit => false, encode_terms::Val::Struct(sfv_struct0) => false, encode_terms::Val::Arr(ye, yl) => xl.as_str() == yl.as_str() && same_val(&**xe, &**ye, f - 1), },
+        }
+    }
+
+    #[summary("The size of a term in atoms (the size of stage0 Enc::merge): the runs of characters between parentheses and whitespace")]
+    #[effects(pure)]
+    fn size(term: &str) -> usize {
+        let mut n: usize = 0;
+        let mut inside: bool = false;
+        for i in 0..term.len()
+            invariant 0 <= i && i <= term.len(),
+        {
+            let c: u8 = term.as_bytes()[i];
+            let sep: bool = c == 40 || c == 41 || c == 32 || c >= 9 && c <= 13;
+            if !sep && !inside {
+                n = n.saturating_add(1);
+            }
+            inside = !sep;
+        }
+        n
+    }
+
+    #[summary("The elements of xs from position from on")]
+    #[effects(alloc)]
+    fn tail(xs: &[String], from: usize) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i >= from {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Whether parameter i of function path is text (stage0 Enc::text_at with Some(i))")]
+    #[effects(pure)]
+    fn text_at(pg: &encode_spec::Prog, path: &str, i: usize) -> bool {
+        match pg.pr.text_sigs.find(path) {
+            None => false,
+            Some(at) => { if i < pg.pr.text_sigs.items[at].params.len() { pg.pr.text_sigs.items[at].params[i] } else { false } },
+        }
+    }
+
+    #[summary("Whether the result of function path is text (stage0 Enc::text_at with None)")]
+    #[effects(pure)]
+    fn text_ret(pg: &encode_spec::Prog, path: &str) -> bool {
+        match pg.pr.text_sigs.find(path) {
+            None => false,
+            Some(at) => pg.pr.text_sigs.items[at].ret,
+        }
+    }
+
+    #[summary("The value of local k. The unit value for a name that is not bound, which the checker admits none of")]
+    #[effects(alloc)]
+    fn var_of(vars: &table::Table<encode_terms::Val>, k: &str) -> encode_terms::Val {
+        match vars.find(k) {
+            None => encode_terms::Val::Unit,
+            Some(at) => vars.items[at].clone(),
+        }
+    }
+}
