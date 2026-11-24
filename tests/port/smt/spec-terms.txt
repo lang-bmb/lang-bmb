@@ -1,0 +1,95 @@
+#[summary("Specification terms: literals of every kind, the unary and binary operations at each type (signed and unsigned division, bit operations with constant and variable amounts, the order of a type parameter, bool bits, f64), guards of && || ==>, if and blocks with let, struct literals, fields, arrays, repeats and indexing, the built-in methods (len, f64, bit, byte and arithmetic methods, checked ones as Option), MIN MAX and f64 constants, Box::new, u32::from, char::from_u32, f64::from, variants and match")]
+mod st {
+    struct Pt { x: i64, y: u8 }
+
+    struct Seg { a: Pt, b: Pt, tag: [u8; 2] }
+
+    enum Shape { Dot, Circle(u32), Rect(Pt, Pt), Poly(Vec<Pt>) }
+
+    spec fn lits(a: i64, b: u8, c: char, d: bool, e: f64) -> bool {
+        a == 0x7f && a != -5 && b == b'a' && c == 'z' && d == true && e == 1.5 && -e == -2.0 && !d == false && a == -0
+    }
+
+    spec fn arith(a: i64, b: i64, c: u32, d: u32) -> bool {
+        a + b - a * b == a / b + a % b && c / d == c % d && -a < b && a <= b && c > d && c >= d
+    }
+
+    spec fn bits(a: u32, b: u32, c: i16, n: u32) -> bool {
+        a & b == a | b && a ^ b == !a && c << 3 == c >> 2 && a << n == a >> n && !c == c & 7 && (a + b) >> 4 == 0 && (c + c) & c == 0
+    }
+
+    spec fn logic(p: bool, q: bool, r: bool) -> bool {
+        (p && q || r ==> p) && (p & q) == (p | r) && (p ^ q) != r
+    }
+
+    spec fn ordered<T: Ord + Copy>(a: T, b: T) -> bool { a < b || a >= b && a <= b && b > a }
+
+    spec fn floats(a: f64, b: f64, n: i32) -> bool {
+        a + b <= a * b && a - b < a / b && a.sqrt() >= b.abs() && a.min(b) == a.max(b) && !a.is_nan() && b.is_finite() && f64::from(n) == a && f64::from(a) != f64::NAN && a < f64::MAX && b > f64::INFINITY && -a == f64::NEG_INFINITY
+    }
+
+    spec fn branch(a: i64, b: i64) -> i64 {
+        if a < b { let d: i64 = b - a; d * 2 } else if a == b { 0 } else { let e: i64 = a - b; let g: i64 = e + 1; g }
+    }
+
+    spec fn pick(a: i64, b: u8) -> Pt { Pt { x: a, y: b } }
+
+    spec fn seg(p: Pt, q: Pt) -> Seg { Seg { a: Pt { x: p.x + 1, y: 0 }, b: q, tag: [p.y, q.y] } }
+
+    spec fn far(s: Seg) -> bool { s.a.x < s.b.x && s.tag[0] == s.a.y && s == seg(s.a, s.b) && s.a != s.b }
+
+    spec fn arrays(a: [u8; 3], b: &[i64], i: usize) -> bool {
+        a == [1, 2, 3] && a != [0; 3] && a[0] == a[2] && b.len() > i && b[i] == b[0] && [a, a][1][0] == 7
+    }
+
+    spec fn pts(ps: &[Pt], qs: [Pt; 2], i: usize) -> bool {
+        ps.len() == 2 && ps[i].x == qs[1].x && qs == [Pt { x: 1, y: 2 }, Pt { x: 3, y: 4 }] && qs[0] == ps[i]
+    }
+
+    spec fn long(a: [u64; 20], b: [u64; 20], v: &[u64], w: &[u64]) -> bool { a == b && v == w }
+
+    spec fn methods(a: u32, b: u32, c: i64, n: u32) -> bool {
+        a.wrapping_add(b) == a.saturating_sub(b) && c.wrapping_mul(c) == c.saturating_add(1) && a.count_ones() == b.leading_zeros() && a.rotate_left(3) == a.rotate_right(n) && a.swap_bytes() == b.reverse_bits() && a.is_power_of_two() && a.wrapping_shl(n) == b.wrapping_shr(2) && a.trailing_zeros() == 0
+    }
+
+    spec fn checked(a: u8, b: u8, c: i32, n: u32) -> bool {
+        a.checked_add(b) == Some(3) && a.checked_sub(b) == None && c.checked_mul(c) != None && c.checked_div(2) == Some(c) && c.checked_rem(c) == None && a.checked_shl(n) == Some(a) && a.checked_shr(1) == None
+    }
+
+    spec fn bytes(a: u32, b: i16, bs: [u8; 4]) -> bool {
+        a.to_be_bytes() == bs && a.to_le_bytes()[0] == 1 && u32::from_be_bytes(bs) == a && i16::from_le_bytes([1, 2]) == b
+    }
+
+    spec fn consts(a: i8, b: u64, c: usize) -> bool { a > i8::MIN && a < i8::MAX && b <= u64::MAX && c >= usize::MIN && b != 18446744073709551615 }
+
+    spec fn chars(c: char, n: u32) -> bool { u32::from(c) == n && char::from_u32(n) == Some(c) && c.len_utf8() == 2 && char::from_u32(n) != None }
+
+    spec fn boxed(b: &Box<i64>, v: i64) -> bool { **b == v && Box::new(v) == Box::new(3) }
+
+    spec fn area(s: &Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(r) => 3 * *r * *r,
+            Shape::Rect(p, q) => (q.x - p.x) * 2,
+            Shape::Poly(ps) => if ps.len() > 0 { ps[0].x } else { -1 },
+        }
+    }
+
+    spec fn opt(o: Option<u8>, r: Result<i64, bool>) -> i64 {
+        match o {
+            None => match r { Ok(v) => v, Err(e) => if e { 1 } else { 2 }, },
+            Some(x) => 0 + x,
+        }
+    }
+
+    spec fn made(n: u32, p: Pt) -> Shape { if n == 0 { Shape::Dot } else if n == 1 { Shape::Circle(n) } else { Shape::Rect(p, Pt { x: 0, y: 0 }) } }
+
+    spec fn same_shape(a: Shape, b: Shape, o: Option<Vec<u8>>, q: Option<Vec<u8>>) -> bool { a == b && o == q && a != made(0, Pt { x: 0, y: 0 }) }
+
+    #[effects(pure)]
+    fn main_use(a: i64, b: u8) -> (r: i64)
+        requires lits(a, b, 'z', true, 1.5) || ordered::<u8>(b, b),
+    {
+        a
+    }
+}

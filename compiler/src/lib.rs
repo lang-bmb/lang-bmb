@@ -959,6 +959,8 @@ pub fn format_parsed(files: &[(String, String)]) -> Result<BTreeMap<String, Stri
 /// - `lowered`: the tables the code generator reads (`dump_lowered`).
 /// - `layout`: how the code generator lays the types out
 ///   (`codegen::dump_layout`), when the program checks.
+/// - `smt-decls`, `smt`: what the proof encoder derives and builds, with no
+///   solver (`verify::dump_decls`, `verify::dump_smt`), when it checks.
 pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, String> {
     let q = diag::json_str;
     let mut sm = SourceMap::default();
@@ -1048,10 +1050,12 @@ pub fn dump_stage(stage: &str, files: &[(String, String)]) -> Result<String, Str
             let (_, t) = check::check_resolved(program, &mut diags);
             dump_lowered(&t, &|f| sm.name(f).to_string())
         }
-        "smt-decls" => {
+        "smt-decls" | "smt" => {
             let (r, t) = check::check_resolved(program, &mut diags);
             if diags.has_errors() {
                 String::new()
+            } else if stage == "smt" {
+                verify::dump_smt(&r, &t)
             } else {
                 verify::dump_decls(&r, &t)
             }

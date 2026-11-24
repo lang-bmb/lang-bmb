@@ -1,0 +1,113 @@
+#[summary("Recursive spec fns and their termination obligations (E0813): an integer measure under if, && || ==> and match guards, two calls in one body, mutual recursion, a recursive call under forall and under nested quantifiers (asked for every value of the bound variables), a quantifier with several #[trigger] terms and one whose trigger is a struct value, a structural measure over a recursive enum, over a Vec payload and over a recursive struct (struct facts of the selectors), a generic recursive spec fn and its instances, a call that leaves the component, a measure that does not decrease")]
+mod sr {
+    struct Node { v: u64, kids: Vec<Node> }
+
+    struct Pt { x: i64, y: i64 }
+
+    enum List<T> { Nil, Cons(T, Box<List<T>>) }
+
+    enum Tree { Leaf(u8), Many(Vec<Tree>), Two(Box<Tree>, Box<Tree>) }
+
+    spec fn fib(n: u64) -> u64
+        decreases n,
+    {
+        if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+    }
+
+    spec fn even(n: u64) -> bool
+        decreases n,
+    {
+        n == 0 || n > 0 && odd(n - 1)
+    }
+
+    spec fn odd(n: u64) -> bool
+        decreases n,
+    {
+        n != 0 ==> even(n - 1)
+    }
+
+    spec fn stuck(n: u64) -> u64
+        decreases n,
+    {
+        stuck(n) + stuck(n + 1) + fib(n)
+    }
+
+    spec fn below(n: usize) -> bool
+        decreases n,
+    {
+        n == 0 || (forall|k: usize| k < n ==> #[trigger] below(k))
+    }
+
+    spec fn grid(a: &[i64], n: usize) -> bool
+        decreases n,
+    {
+        if n == 0 {
+            true
+        } else {
+            forall|i: usize| i < n ==> #[trigger] a[i] > 0 && (exists|j: u8| #[trigger] a[j] == a[i] && grid(a, n - 1))
+        }
+    }
+
+    spec fn at(a: &[i64], i: usize) -> i64 { a[i] }
+
+    spec fn tri(i: i8, j: u16, k: isize) -> i64 { i + j + k }
+
+    spec fn pt_at(a: &[Pt], i: usize) -> Pt { a[i] }
+
+    spec fn sorted(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] at(a, i) <= #[trigger] at(a, j)
+    }
+
+    spec fn origin(a: &[Pt]) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] pt_at(a, i) == Pt { x: 0, y: 0 }
+    }
+
+    spec fn signed(a: &[i64]) -> bool {
+        exists|i: i8, j: u16, k: isize| #[trigger] tri(i, j, k) == at(a, 0)
+    }
+
+    spec fn length<T: Copy>(l: &List<T>) -> i64
+        decreases l,
+    {
+        match l {
+            List::Nil => 0,
+            List::Cons(x, rest) => 1 + length::<T>(&**rest),
+        }
+    }
+
+    spec fn short(l: &List<u8>, m: &List<Pt>) -> bool { length::<u8>(l) < 10 && length::<Pt>(m) < 10 }
+
+    spec fn leaves(t: &Tree) -> i64
+        decreases t,
+    {
+        match t {
+            Tree::Leaf(v) => 1,
+            Tree::Many(ks) => if ks.len() > 0 { leaves(&ks[0]) + leaves(&ks[ks.len() - 1]) } else { 0 },
+            Tree::Two(a, b) => leaves(&**a) + leaves(&**b) + leaves(t),
+        }
+    }
+
+    spec fn spine(n: &Node) -> u64
+        decreases n,
+    {
+        if n.kids.len() == 0 { n.v } else { n.v + spine(&n.kids[0]) }
+    }
+
+    spec fn wide(n: &Node) -> bool { n.kids.len() > 2 && n.kids[1].v == n.kids[0].kids.len() && spine(n) > 0 }
+
+    spec fn count(n: u64, acc: u64) -> u64
+        decreases n,
+    {
+        match n.checked_sub(1) {
+            None => acc,
+            Some(m) => count(m, acc + 1),
+        }
+    }
+
+    #[effects(pure)]
+    fn use_all(l: &List<u8>, m: &List<Pt>, n: &Node) -> (r: bool)
+        requires short(l, m) && wide(n),
+    {
+        true
+    }
+}

@@ -995,6 +995,55 @@
       }
     },
     {
+      "name": "smt",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/smt/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-together",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
       "name": "smt-terms",
       "component": "C6",
       "a": [

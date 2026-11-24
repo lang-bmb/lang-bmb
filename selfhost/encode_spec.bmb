@@ -1,0 +1,2191 @@
+#[summary("Proof encoding, third piece (port of the encoder's core of stage0 compiler/src/verify.rs and of verify/text.rs, semantics in ADR-0017): the program as the encoder holds it (Prog), the symbolic state of one definition (Enc), the terms of specification expressions (Enc::spec_expr, stage0 Enc::spec), the definitions of spec fns as the queries take them (axiom), the termination obligations of recursive spec fns, and `bmb dump smt`. The bodies of executable and proof functions are the next pieces, and Enc has only the fields this piece reads. A struct holds no reference, so Prog is passed to each method; stage0's closures over the encoder (in_unit, in_def) are a save and a restore around the call. The f of recursive functions is the remaining depth (ADR-0140)")]
+mod encode_spec {
+    #[summary("A spec fn's definition (the result of stage0 Prog::axiom): the text the queries take, and one part per SMT function for ground instances")]
+    struct Axiom { text: String, parts: Vec<AxiomParts> }
+
+    #[summary("The definition of one SMT function, kept apart for ground instantiation (stage0 AxiomParts): its symbol, the bound parameter symbols in application order, their binders `(p sort)`, the guard, the body, the sort of its value, whether it is recursive")]
+    struct AxiomParts { sym: String, params: Vec<String>, binders: Vec<String>, guard: String, body: String, sort: String, recursive: bool }
+
+    #[summary("A definition (stage0 Def): its unit, its syntax, the substitution of its type parameters for an instance of a generic spec fn (empty otherwise), and whether it is declared and revealed but not proved (an instance, a trait method declaration)")]
+    struct Def { unit: String, d: ast::FnDef, tsub: types::Subst, inst: bool }
+
+    #[summary("Symbolic state of one definition (stage0 Enc, the fields specification terms read). path and unit are the definition's, tsub the substitution of the type parameters of the text being translated, spec_mod the unit whose names it refers to. fr holds the declarations and the counters of fresh names, pc the path condition, obls the obligations, trivial those that hold by their own text. spec_pc are the conditions around the specification being translated, term_check the recursion check context, foralls and triggers the quantifiers around it, bound the number of bound names made")]
+    struct Enc { path: String, unit: String, tsub: types::Subst, spec_mod: String, fr: encode_terms::Fresh, pc: Vec<String>, obls: Vec<Obl>, trivial: Vec<Trivial>, spec_pc: Vec<String>, term_check: Option<TermCheck>, foralls: Vec<Forall>, triggers: Vec<Vec<Vec<String>>>, bound: u64 }
+
+    impl Enc {
+        #[summary("A bound name no other quantifier of the definition has: base!n with the next number (stage0 Enc::bound_name)")]
+        #[effects(alloc)]
+        fn bound_name(self: &mut Enc, base: &str) -> String {
+            let n: String = encode_decls::sym(types::cat3(base, "!", encode_terms::dec(self.bound).as_str()).as_str());
+            self.bound = self.bound.saturating_add(1);
+            n
+        }
+
+        #[summary("The substitution of the callee's type parameters by the type arguments of the generic call at span, in the query's types (stage0 Enc::call_subst). Empty for a call without type arguments")]
+        #[effects(alloc)]
+        fn call_subst(self: &Enc, target: &str, span: source::Span, pg: &Prog) -> types::Subst {
+            let mut args: Vec<ast::TypeKind> = Vec::new();
+            match pg.pr.t.targs.find(body::span_key(span).as_str()) {
+                None => { return types::Subst { names: Vec::new(), tys: Vec::new() }; },
+                Some(at) => { for i in 0..pg.pr.t.targs.items[at].len() invariant 0 <= i && i <= pg.pr.t.targs.items[at].len(), { args.push(types::subst(&pg.pr.t.targs.items[at][i], &self.tsub)); } },
+            }
+            match pg.pr.t.fns.find(target) {
+                None => types::Subst { names: Vec::new(), tys: Vec::new() },
+                Some(sig) => encode_decls::zip(pg.pr.t.fns.items[sig].generics.as_slice(), args.as_slice()),
+            }
+        }
+
+        #[summary("char::from_u32(x) (stage0 Enc::char_from_u32): Some(x) exactly for a scalar value")]
+        #[effects(alloc)]
+        fn char_from_u32(self: &Enc, e: &ast::Expr, x: &str, pg: &Prog) -> encode_terms::Val {
+            self.checked(e, encode_terms::scalar(x).as_str(), x, pg)
+        }
+
+        #[summary("When a recursive spec fn's termination is checked, a call into its component must decrease the measure (stage0 Enc::check_spec_recursion): the obligation E0813 that the callee's measure on args is below the caller's. Inside a quantifier it is asked for every value of the bound variables that reaches the call, as Dafny checks it")]
+        #[effects(alloc)]
+        fn check_spec_recursion(self: &mut Enc, target: &str, args: &[encode_terms::Val], span: source::Span, pg: &Prog, f: usize) -> ()
+            decreases f,
+        {
+            if f == 0 {
+                return;
+            }
+            let tc: TermCheck = match &self.term_check {
+                None => { return; },
+                Some(found) => found.clone(),
+            };
+            let in_comp: bool = match pg.pr.insts.find(target) {
+                None => same_comp(pg, target, tc.comp),
+                Some(i) => same_comp(pg, pg.pr.insts.items[i].base.as_str(), tc.comp),
+            };
+            if !in_comp {
+                return;
+            }
+            let at: usize = match pg.defs.find(target) {
+                None => { return; },
+                Some(found_def) => found_def,
+            };
+            let callee: Measure = match &pg.defs.items[at].d.measure {
+                None => { return; },
+                Some(dec) => { let env: table::Table<encode_terms::Val> = bind_params(&pg.defs.items[at].d, args); let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>(); let saved_sub: types::Subst = self.tsub.clone(); let saved_mod: String = self.spec_mod.clone(); self.term_check = None; self.tsub = pg.defs.items[at].tsub.clone(); self.spec_mod = pg.defs.items[at].unit.clone(); let m: Measure = self.measure(dec, &env, &none, pg, f - 1); self.spec_mod = saved_mod; self.tsub = saved_sub; self.term_check = Some(tc.clone()); m },
+            };
+            let goal: String = decrease_goal(pg, &Measure { term: tc.measure.clone(), data: tc.data }, &callee);
+            let msg: String = types::cat3("recursive call to `", target, "` may not decrease its `decreases` measure");
+            if self.foralls.len() == 0 {
+                let no_given: Option<String> = None;
+                self.oblige_given("E0813", span, msg.as_str(), &no_given, goal.as_str());
+                return;
+            }
+            let start: usize = self.foralls[0].start;
+            let mut decls: Vec<String> = Vec::new();
+            let mut inner: Vec<String> = Vec::new();
+            for i in 0..self.foralls.len()
+                invariant 0 <= i && i <= self.foralls.len(),
+            {
+                for j in 0..self.foralls[i].decls.len()
+                    invariant 0 <= j && j <= self.foralls[i].decls.len(),
+                {
+                    decls.push(self.foralls[i].decls[j].clone());
+                }
+            }
+            for i in 0..self.foralls.len()
+                invariant 0 <= i && i <= self.foralls.len(),
+            {
+                for j in 0..self.foralls[i].facts.len()
+                    invariant 0 <= j && j <= self.foralls[i].facts.len(),
+                {
+                    inner.push(self.foralls[i].facts[j].clone());
+                }
+            }
+            let mut assumptions: Vec<String> = self.pc.clone();
+            for i in 0..self.spec_pc.len()
+                invariant 0 <= i && i <= self.spec_pc.len(),
+            {
+                if i < start {
+                    assumptions.push(self.spec_pc[i].clone());
+                } else {
+                    inner.push(self.spec_pc[i].clone());
+                }
+            }
+            let mut g: String = types::cat5("(forall (", encode_terms::join(decls.as_slice(), " ").as_str(), ") (=> ", encode_terms::and(inner.as_slice()).as_str(), " ");
+            g.push_str(goal.as_str());
+            g.push_str("))");
+            self.obls.push(Obl { code: String::from("E0813"), span: span, msg: msg, assumptions: assumptions, goal: g });
+        }
+
+        #[summary("Some(v) when ok, else None, of e's Option type (stage0 Enc::checked)")]
+        #[effects(alloc)]
+        fn checked(self: &Enc, e: &ast::Expr, ok: &str, v: &str, pg: &Prog) -> encode_terms::Val {
+            let opt: ast::TypeKind = self.ty(e, pg);
+            let mut one: Vec<encode_terms::Val> = Vec::new();
+            one.push(encode_terms::Val::S(String::from(v)));
+            let no: Vec<encode_terms::Val> = Vec::new();
+            let some: String = encode_terms::scalar_of(&variant_value(&opt, "Some", one.as_slice()));
+            let none: String = encode_terms::scalar_of(&variant_value(&opt, "None", no.as_slice()));
+            encode_terms::Val::S(encode_terms::ite(ok, some.as_str(), none.as_str()))
+        }
+
+        #[summary("Rust `==` on values a, b of type t (stage0 Enc::ext_eq, ADR-0026 §2): SMT equality for scalars and enums without arrays; field by field for structs; equal lengths and elements below the length for arrays (element by element up to 16 of a fixed length, a quantifier otherwise); for an enum with an array in a payload, the same variant with equal payloads. Values of another shape than t, which the encoder passes none of, compare as nothing to compare")]
+        #[effects(alloc)]
+        fn ext_eq(self: &mut Enc, a: &encode_terms::Val, b: &encode_terms::Val, t: &ast::TypeKind, pg: &Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::from("true");
+            }
+            let arr: bool = encode_decls::is_array(t);
+            if !arr {
+                match body::ref_inner(t) {
+                    None => {},
+                    Some(inner) => { return self.ext_eq(a, b, &inner, pg, f - 1); },
+                }
+            }
+            match encode_decls::flat_fields(t, &pg.pr.t) {
+                None => {},
+                Some(fs) => { let xs: Vec<encode_terms::Val> = fields_of(a); let ys: Vec<encode_terms::Val> = fields_of(b); let mut parts: Vec<String> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < xs.len() && i < ys.len() { parts.push(self.ext_eq(&xs[i], &ys[i], &fs[i].ty, pg, f - 1)); } } return encode_terms::and(parts.as_slice()); },
+            }
+            if encode_decls::has_array(t, &pg.pr.t) {
+                match encode_decls::variants(t, &pg.pr.t) {
+                    None => {},
+                    Some(vs) => { return self.ext_eq_enum(a, b, t, vs.as_slice(), pg, f - 1); },
+                }
+            }
+            if arr {
+                return self.ext_eq_array(a, b, t, pg, f - 1);
+            }
+            if decls::is_unit(t) {
+                return String::from("true");
+            }
+            types::cat5("(= ", encode_terms::scalar_of(a).as_str(), " ", encode_terms::scalar_of(b).as_str(), ")")
+        }
+
+        #[summary("ext_eq of two arrays of type t: both lengths equal and the elements below the length. A fixed length up to 16 is compared element by element, without a quantifier (the solver decides it, and a counterexample shows it)")]
+        #[effects(alloc)]
+        fn ext_eq_array(self: &mut Enc, a: &encode_terms::Val, b: &encode_terms::Val, t: &ast::TypeKind, pg: &Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::from("true");
+            }
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            let fixed: Option<u64> = encode_decls::array_len(&lowered::value_ty(t));
+            match fixed {
+                None => {},
+                Some(n) => { if n <= 16 { let mut parts: Vec<String> = Vec::new(); for n2 in 0..n invariant 0 <= n2 && n2 <= n, { let at: String = encode_terms::dec(n2); let x: encode_terms::Val = elem_at(a, at.as_str()); let y: encode_terms::Val = elem_at(b, at.as_str()); parts.push(self.ext_eq(&x, &y, &e, pg, f - 1)); } return encode_terms::and(parts.as_slice()); } },
+            }
+            let k: String = self.bound_name("eq");
+            let x: encode_terms::Val = elem_at(a, k.as_str());
+            let y: encode_terms::Val = elem_at(b, k.as_str());
+            let body: String = self.ext_eq(&x, &y, &e, pg, f - 1);
+            let mut ts: Vec<String> = Vec::new();
+            let mut us: Vec<String> = Vec::new();
+            match a {
+                encode_terms::Val::S(xa_s0) => {},
+                encode_terms::Val::A(xa_e, xa_l) => ts.push(encode_terms::scalar_of(&x)),
+                encode_terms::Val::Unit => {},
+                encode_terms::Val::Struct(xa_struct0) => {},
+                encode_terms::Val::Arr(xa_t, xa_n) => encode_terms::flatten_elem(&x, &mut ts, 100000),
+            }
+            match b {
+                encode_terms::Val::S(xb_s0) => {},
+                encode_terms::Val::A(xb_e, xb_l) => us.push(encode_terms::scalar_of(&y)),
+                encode_terms::Val::Unit => {},
+                encode_terms::Val::Struct(xb_struct0) => {},
+                encode_terms::Val::Arr(xb_t, xb_n) => encode_terms::flatten_elem(&y, &mut us, 100000),
+            }
+            let pa: String = if ts.len() > 0 {
+                ts[0].clone()
+            } else {
+                String::new()
+            };
+            let pb: String = if us.len() > 0 {
+                us[0].clone()
+            } else {
+                String::new()
+            };
+            let la: String = len_of(a);
+            let lb: String = len_of(b);
+            let mut q: String = types::cat5("(and (= ", la.as_str(), " ", lb.as_str(), ") (forall ((");
+            q.push_str(types::cat5(k.as_str(), " Int)) (! (=> (and (<= 0 ", k.as_str(), ") (< ", k.as_str()).as_str());
+            q.push_str(types::cat5(" ", la.as_str(), ")) ", body.as_str(), ") :pattern (").as_str());
+            q.push_str(types::cat4(pa.as_str(), ") :pattern (", pb.as_str(), "))))").as_str());
+            q
+        }
+
+        #[summary("ext_eq of two values of enum t with variants vs, one of which holds an array: the same variant with equal payloads (the SMT equality of the datatype would compare the array elements past the length)")]
+        #[effects(alloc)]
+        fn ext_eq_enum(self: &mut Enc, a: &encode_terms::Val, b: &encode_terms::Val, t: &ast::TypeKind, vs: &[types::VariantSig], pg: &Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::from("true");
+            }
+            let sa: String = encode_terms::scalar_of(a);
+            let sb: String = encode_terms::scalar_of(b);
+            let mut alts: Vec<String> = Vec::new();
+            for i in 0..vs.len()
+                invariant 0 <= i && i <= vs.len(),
+            {
+                let c: String = encode_decls::ctor(t, vs[i].name.as_str());
+                let pa: Payload = payload(pg, t, vs[i].name.as_str(), sa.as_str());
+                let pb: Payload = payload(pg, t, vs[i].name.as_str(), sb.as_str());
+                let mut parts: Vec<String> = Vec::new();
+                parts.push(types::cat5("((_ is ", c.as_str(), ") ", sa.as_str(), ")"));
+                parts.push(types::cat5("((_ is ", c.as_str(), ") ", sb.as_str(), ")"));
+                for k in 0..vs[i].tys.len()
+                    invariant 0 <= k && k <= vs[i].tys.len(),
+                {
+                    if k < pa.vals.len() && k < pb.vals.len() {
+                        parts.push(self.ext_eq(&pa.vals[k], &pb.vals[k], &vs[i].tys[k], pg, f - 1));
+                    }
+                }
+                alts.push(encode_terms::and(parts.as_slice()));
+            }
+            types::cat3("(or ", encode_terms::join(alts.as_slice(), " ").as_str(), ")")
+        }
+
+        #[summary("A fresh array of elements of type e named after base (stage0 Enc::fresh_elems). Every element is within its type's range, also where only a specification reads it; i64 elements get the fact only when signed is set (ADR-0017 §4)")]
+        #[effects(alloc)]
+        fn fresh_elems(self: &mut Enc, base: &str, e: &ast::TypeKind, signed: bool) -> String {
+            let elems: String = encode_terms::fresh(&mut self.fr, base, types::cat3("(Array Int ", encode_decls::sort_of(e).as_str(), ")").as_str());
+            let wanted: bool = match body::int_of(e) {
+                None => false,
+                Some(i) => !body::signed(i) || signed,
+            };
+            if wanted {
+                match encode_terms::range(e, types::cat3("(select ", elems.as_str(), " k)").as_str()) {
+                    None => {},
+                    Some(r) => self.pc.push(types::cat5("(forall ((k Int)) (! ", r.as_str(), " :pattern ((select ", elems.as_str(), " k))))")),
+                }
+            }
+            elems
+        }
+
+        #[summary("Fresh element arrays of a slice of aggregates of type e, one per leaf (stage0 Enc::fresh_struct_elems). Every inner Vec's length is a length")]
+        #[effects(alloc)]
+        fn fresh_struct_elems(self: &mut Enc, base: &str, e: &ast::TypeKind, pg: &Prog) -> encode_terms::Val {
+            let mut ls: Vec<encode_decls::Fun> = Vec::new();
+            encode_decls::elem_leaves(e, &pg.pr.t, types::cat2(base, ".e").as_str(), &mut ls, 100000);
+            let mut terms: Vec<String> = Vec::new();
+            for i in 0..ls.len()
+                invariant 0 <= i && i <= ls.len(),
+            {
+                terms.push(encode_terms::fresh(&mut self.fr, ls[i].name.as_str(), types::cat3("(Array Int ", ls[i].sort.as_str(), ")").as_str()));
+            }
+            let mut pos: usize = 0;
+            let v: encode_terms::Val = encode_terms::elem_template(e, &pg.pr.t, terms.as_slice(), &mut pos, 100000);
+            let mut facts: Vec<String> = Vec::new();
+            encode_terms::inner_len_facts(&v, e, &pg.pr.t, &mut facts, 100000);
+            for i in 0..facts.len()
+                invariant 0 <= i && i <= facts.len(),
+            {
+                self.pc.push(facts[i].clone());
+            }
+            v
+        }
+
+        #[summary("A fresh value of type t named after base, with the facts every value of code meets on the path condition (stage0 Enc::fresh_val): the range of each integer, the bounds of each length, and for an enum the ranges of each variant's payload leaves when it is that variant")]
+        #[effects(alloc)]
+        fn fresh_val(self: &mut Enc, base: &str, t: &ast::TypeKind, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            match encode_decls::flat_fields(t, &pg.pr.t) {
+                None => {},
+                Some(fs) => { let mut out: Vec<encode_terms::Val> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { out.push(self.fresh_val(types::cat3(base, ".", fs[i].name.as_str()).as_str(), &fs[i].ty, pg, f - 1)); } return encode_terms::Val::Struct(out); },
+            }
+            let arr: bool = encode_decls::is_array(t);
+            if !arr {
+                match body::ref_inner(t) {
+                    None => {},
+                    Some(inner) => { return self.fresh_val(base, &inner, pg, f - 1); },
+                }
+            }
+            if arr {
+                let e: ast::TypeKind = encode_decls::elem_ty(t);
+                let agg: bool = encode_decls::agg_elem(&e, &pg.pr.t);
+                let elem: encode_terms::Val = if agg {
+                    self.fresh_struct_elems(base, &e, pg)
+                } else {
+                    encode_terms::Val::S(self.fresh_elems(base, &e, true))
+                };
+                let len: String = match encode_decls::array_len(t) {
+                    None => { let l: String = encode_terms::fresh(&mut self.fr, types::cat2(base, ".len").as_str(), "Int"); self.pc.push(types::cat7("(and (<= 0 ", l.as_str(), ") (<= ", l.as_str(), " ", encode_terms::len_max(&e).as_str(), "))")); l },
+                    Some(n) => encode_terms::dec(n),
+                };
+                if agg {
+                    return encode_terms::Val::Arr(Box::new(elem), len);
+                }
+                return encode_terms::Val::A(encode_terms::scalar_of(&elem), len);
+            }
+            if decls::is_unit(t) {
+                return encode_terms::Val::Unit;
+            }
+            let c: String = encode_terms::fresh(&mut self.fr, base, encode_decls::sort_of(t).as_str());
+            match encode_terms::range(t, c.as_str()) {
+                None => { match lowered::enum_variants(t, &pg.pr.t) { None => {}, Some(vs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if vs[i].tys.len() > 0 { let pl: Payload = payload(pg, t, vs[i].name.as_str(), c.as_str()); if pl.facts.len() > 0 { self.pc.push(types::cat7("(=> ((_ is ", encode_decls::ctor(t, vs[i].name.as_str()).as_str(), ") ", c.as_str(), ") ", encode_terms::and(pl.facts.as_slice()).as_str(), ")")); } } } }, } },
+                Some(r) => self.pc.push(r),
+            }
+            encode_terms::Val::S(c)
+        }
+
+        #[summary("Whether t, a type under this instance's substitution, is a type argument String in the encoder's view (stage0 Enc::is_lowered_text): text lowers to &[u8], and the only Ord type of that form is String, whose order is Rust's byte-lexicographic one")]
+        #[effects(alloc)]
+        fn is_lowered_text(self: &Enc, t: &ast::TypeKind) -> bool {
+            let bytes: bool = match body::ref_inner(t) {
+                None => false,
+                Some(inner) => { match body::slice_elem(&inner) { None => false, Some(el) => types::text(&el) == "u8", } },
+            };
+            if !bytes {
+                return false;
+            }
+            let want: String = types::text(t);
+            for i in 0..self.tsub.tys.len()
+                invariant 0 <= i && i <= self.tsub.tys.len(),
+            {
+                if types::text(&self.tsub.tys[i]) == want {
+                    return true;
+                }
+            }
+            false
+        }
+
+        #[summary("Whether e's value is text (stage0 Enc::is_text_expr): the checker says so, or its type is a text type argument of this instance")]
+        #[effects(alloc)]
+        fn is_text_expr(self: &Enc, e: &ast::Expr, pg: &Prog) -> bool {
+            if pg.pr.t.text.has(body::span_key(e.span).as_str()) {
+                return true;
+            }
+            self.tsub.names.len() > 0 && self.is_lowered_text(&self.ty(e, pg))
+        }
+
+        #[summary("Whether a call of path names a variant, not a function (stage0 Enc::is_variant): Some, Ok and Err unless the unit has a function of that name, and any path that resolves to no function")]
+        #[effects(alloc)]
+        fn is_variant(self: &Enc, path: &[ast::Ident], pg: &Prog) -> bool {
+            if path.len() == 1 {
+                let n: String = path[0].name.clone();
+                return (n == "Some" || n == "Ok" || n == "Err") && !pg.pr.t.fns.has(types::cat3(self.spec_mod.as_str(), "::", n.as_str()).as_str());
+            }
+            !pg.pr.t.fns.has(encode_decls::resolve_in(&pg.pr.t, path, self.spec_mod.as_str()).as_str())
+        }
+
+        #[summary("The type of local name of the definition, in the query's types (stage0 Enc::local_ty): from the checker's table of locals, under the generic definition's path for an instance; else a parameter's written type. stage0 then looks for a `let` of that name in the body, which only the encoding of code reaches (its locals after a callee's contract was translated): the error type here, left to that piece")]
+        #[effects(alloc)]
+        fn local_ty(self: &Enc, name: &str, pg: &Prog) -> ast::TypeKind {
+            let base: String = match pg.pr.insts.find(self.path.as_str()) {
+                None => self.path.clone(),
+                Some(i) => pg.pr.insts.items[i].base.clone(),
+            };
+            match pg.pr.t.locals.find(base.as_str()) {
+                None => {},
+                Some(at) => { match pg.pr.t.locals.items[at].find(name) { None => {}, Some(k) => { return types::subst(&pg.pr.t.locals.items[at].items[k], &self.tsub); }, } },
+            }
+            match pg.defs.find(self.path.as_str()) {
+                None => ast::TypeKind::Error,
+                Some(d) => { for i in 0..pg.defs.items[d].d.params.len() invariant 0 <= i && i <= pg.defs.items[d].d.params.len(), { if pg.defs.items[d].d.params[i].name.name.as_str() == name { return pg.defs.items[d].d.params[i].ty.kind.clone(); } } ast::TypeKind::Error },
+            }
+        }
+
+        #[summary("The decreases measure d of a function (stage0 Enc::measure): its term, and whether it is the value of a recursive datatype rather than an integer")]
+        #[effects(alloc)]
+        fn measure(self: &mut Enc, d: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> Measure
+            decreases f,
+        {
+            if f == 0 {
+                return Measure { term: String::new(), data: false };
+            }
+            let v: String = encode_terms::scalar_of(&self.spec_expr(d, env, was, pg, f - 1));
+            let t: ast::TypeKind = self.ty(d, pg);
+            let data: bool = match encode_decls::variants(&lowered::value_ty(&t), &pg.pr.t) {
+                None => false,
+                Some(vs) => true,
+            };
+            Measure { term: v, data: data }
+        }
+
+        #[summary("Facts about the product of a and b when neither is a constant (stage0 Enc::mul_facts): its zero and sign, and for each pair of upper bounds the path condition states for the operands, the bound of a nonnegative product. The encoding of code calls it")]
+        #[effects(alloc)]
+        fn mul_facts(self: &mut Enc, a: &str, b: &str) -> () {
+            if encode_terms::is_numeral(a) || encode_terms::is_numeral(b) {
+                return;
+            }
+            let p: String = types::cat5("(* ", a, " ", b, ")");
+            let lemmas: Vec<String> = encode_terms::mul_lemmas();
+            let mut facts: Vec<String> = Vec::new();
+            for i in 0..lemmas.len()
+                invariant 0 <= i && i <= lemmas.len(),
+            {
+                facts.push(encode_terms::instantiate_mul(lemmas[i].as_str(), a, b, p.as_str(), "", ""));
+            }
+            let xs: Vec<String> = encode_terms::upper_bounds(self.pc.as_slice(), a);
+            let ys: Vec<String> = if a == b {
+                xs.clone()
+            } else {
+                encode_terms::upper_bounds(self.pc.as_slice(), b)
+            };
+            let bound: String = encode_terms::mul_bound_lemma();
+            for i in 0..xs.len()
+                invariant 0 <= i && i <= xs.len(),
+            {
+                for j in 0..ys.len()
+                    invariant 0 <= j && j <= ys.len(),
+                {
+                    facts.push(encode_terms::instantiate_mul(bound.as_str(), a, b, p.as_str(), xs[i].as_str(), ys[j].as_str()));
+                }
+            }
+            for i in 0..facts.len()
+                invariant 0 <= i && i <= facts.len(),
+            {
+                self.pc.push(facts[i].clone());
+            }
+        }
+
+        #[summary("The obligation that goal holds here (stage0 Enc::oblige_given): under the path condition, the conditions around the specification being translated and given, a true fact this obligation alone assumes. A goal that is `true` asks nothing. Outside a recursion check the path after it holds the goal")]
+        #[effects(alloc)]
+        fn oblige_given(self: &mut Enc, code: &str, span: source::Span, msg: &str, given: &Option<String>, goal: &str) -> () {
+            if goal != "true" {
+                let mut assumptions: Vec<String> = self.pc.clone();
+                for i in 0..self.spec_pc.len()
+                    invariant 0 <= i && i <= self.spec_pc.len(),
+                {
+                    assumptions.push(self.spec_pc[i].clone());
+                }
+                match given {
+                    None => {},
+                    Some(g) => assumptions.push(g.clone()),
+                }
+                self.obls.push(Obl { code: String::from(code), span: span, msg: String::from(msg), assumptions: assumptions, goal: String::from(goal) });
+            } else {
+                self.trivial.push(Trivial { code: String::from(code), span: span });
+            }
+            let checking: bool = match &self.term_check {
+                None => false,
+                Some(tc) => true,
+            };
+            if !checking {
+                self.pc.push(String::from(goal));
+            }
+        }
+
+        #[summary("Parameter name of a proof fn on entry (stage0 Enc::proof_param): a fresh value with the facts every call proves of its argument (type_facts), and nothing more")]
+        #[effects(alloc)]
+        fn proof_param(self: &mut Enc, name: &str, pg: &Prog) -> () {
+            let ty: ast::TypeKind = self.local_ty(name, pg);
+            let n: usize = self.pc.len();
+            let v: encode_terms::Val = self.fresh_val(name, &ty, pg, 100000);
+            self.pc.truncate(n);
+            let facts: Vec<String> = type_facts(&v, &ty, pg, 100000);
+            for i in 0..facts.len()
+                invariant 0 <= i && i <= facts.len(),
+            {
+                self.pc.push(facts[i].clone());
+            }
+        }
+
+        #[summary("An array literal in a specification (the Array arm of stage0 Enc::spec): a constant array of the first element, or of some value of the element type for no element, with every element stored")]
+        #[effects(alloc)]
+        fn spec_array(self: &mut Enc, e: &ast::Expr, items: &[ast::Expr], env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let elem: ast::TypeKind = encode_decls::elem_ty(&self.ty(e, pg));
+            let mut vals: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..items.len()
+                invariant 0 <= i && i <= items.len(),
+            {
+                vals.push(self.spec_expr(&items[i], env, was, pg, f - 1));
+            }
+            let mut arr: encode_terms::Val = if vals.len() > 0 {
+                encode_terms::const_elems(&elem, &vals[0], &pg.pr.t, 100000)
+            } else {
+                encode_terms::const_elems(&elem, &encode_terms::default_val(&elem, &pg.pr.t, 100000), &pg.pr.t, 100000)
+            };
+            for k in 0..vals.len()
+                invariant 0 <= k && k <= vals.len(),
+            {
+                arr = encode_terms::store_val(&arr, encode_terms::dec(k as u64).as_str(), &vals[k], 100000);
+            }
+            whole_array(arr, encode_terms::dec(items.len() as u64))
+        }
+
+        #[summary("A binary operation in a specification (the Binary arms of stage0 Enc::spec). Text compares by bytes (ADR-0050 §2); `==` on a struct or on a value that holds an array is structural (ADR-0026 §2); the right side of `&&`, `==>` and `||` is translated under the left side or its negation; a bit operation is its term alone (the facts and the shift obligation belong to code); `/` and `%` truncate on signed operands")]
+        #[effects(alloc)]
+        fn spec_binary(self: &mut Enc, e: &ast::Expr, op: ast::BinOp, l: &ast::Expr, r: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let k: u8 = op_code(op);
+            let lty: ast::TypeKind = self.ty(l, pg);
+            if body::is_cmp(op) && (self.is_text_expr(l, pg) || self.is_text_expr(r, pg)) {
+                let ta: encode_terms::Val = self.spec_expr(l, env, was, pg, f - 1);
+                let tb: encode_terms::Val = self.spec_expr(r, env, was, pg, f - 1);
+                return encode_terms::Val::S(self.text_cmp_spec(k, &ta, &tb, pg, f - 1));
+            }
+            if (k == 5 || k == 6) && (is_flat(&lty, pg) || encode_decls::has_array(&lty, &pg.pr.t)) {
+                let sa: encode_terms::Val = self.spec_expr(l, env, was, pg, f - 1);
+                let sb: encode_terms::Val = self.spec_expr(r, env, was, pg, f - 1);
+                let q: String = self.ext_eq(&sa, &sb, &lty, pg, f - 1);
+                if k == 5 {
+                    return encode_terms::Val::S(q);
+                }
+                return encode_terms::Val::S(types::cat3("(not ", q.as_str(), ")"));
+            }
+            let lt: String = encode_terms::scalar_of(&self.spec_expr(l, env, was, pg, f - 1));
+            let guarded: bool = k == 11 || k == 12 || k == 13;
+            if k == 11 || k == 13 {
+                self.spec_pc.push(lt.clone());
+            } else if k == 12 {
+                self.spec_pc.push(types::cat3("(not ", lt.as_str(), ")"));
+            }
+            let rt: String = encode_terms::scalar_of(&self.spec_expr(r, env, was, pg, f - 1));
+            if guarded {
+                self.spec_pc.pop();
+            }
+            if body::is_f64(&lty) {
+                match encode_terms::f64_binary(op, lt.as_str(), rt.as_str()) {
+                    None => {},
+                    Some(ft) => { return encode_terms::Val::S(ft); },
+                }
+            }
+            if k == 14 {
+                return match body::int_of(&self.ty(e, pg)) { None => encode_terms::Val::S(encode_terms::bool_bit(op, lt.as_str(), rt.as_str())), Some(i) => { if codegen::is_shr(op) && is_num(rt.as_str()) { encode_terms::Val::S(encode_terms::bit_op(op, i, image(i, l, lt.as_str()).as_str(), rt.as_str()).t.clone()) } else { encode_terms::Val::S(encode_terms::bit_op(op, i, lt.as_str(), rt.as_str()).t.clone()) } }, };
+            }
+            let signed: bool = codegen::is_signed(&lty);
+            if k >= 7 && k <= 10 {
+                return encode_terms::Val::S(encode_terms::ord_term(op, &lty, lt.as_str(), rt.as_str()));
+            }
+            if k == 6 {
+                return encode_terms::Val::S(types::cat5("(not (= ", lt.as_str(), " ", rt.as_str(), "))"));
+            }
+            let head: String = if k == 0 {
+                String::from("(+ ")
+            } else if k == 1 {
+                String::from("(- ")
+            } else if k == 2 {
+                String::from("(* ")
+            } else if k == 3 {
+                if signed {
+                    String::from("(bmb_tdiv ")
+                } else {
+                    String::from("(div ")
+                }
+            } else if k == 4 {
+                if signed {
+                    String::from("(bmb_trem ")
+                } else {
+                    String::from("(mod ")
+                }
+            } else if k == 5 {
+                String::from("(= ")
+            } else if k == 11 {
+                String::from("(and ")
+            } else if k == 12 {
+                String::from("(or ")
+            } else {
+                String::from("(=> ")
+            };
+            encode_terms::Val::S(types::cat5(head.as_str(), lt.as_str(), " ", rt.as_str(), ")"))
+        }
+
+        #[summary("The value of a block in a specification (stage0 Enc::spec_block): each `let` binds its name for what follows, the tail is the value; the unit value without a tail")]
+        #[effects(alloc)]
+        fn spec_block(self: &mut Enc, b: &ast::Block, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let mut env2: table::Table<encode_terms::Val> = env.clone();
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                match &b.stmts[i] {
+                    ast::Stmt::Let(sl) => { let v: encode_terms::Val = self.spec_expr(&sl.init, &env2, was, pg, f - 1); env2.insert(sl.name.name.as_str(), v); },
+                    ast::Stmt::Assign(sb_assign0) => {},
+                    ast::Stmt::While(sb_while0) => {},
+                    ast::Stmt::For(sb_for0) => {},
+                    ast::Stmt::Assert(sb_assert0) => {},
+                    ast::Stmt::Assume(sb_assume0) => {},
+                    ast::Stmt::Proof(sb_proof0) => {},
+                    ast::Stmt::LetFields(sb_letfields0) => {},
+                    ast::Stmt::Expr(sb_expr0) => {},
+                }
+            }
+            match &b.tail {
+                None => encode_terms::Val::Unit,
+                Some(t) => self.spec_expr(&**t, &env2, was, pg, f - 1),
+            }
+        }
+
+        #[summary("A call in a specification (the Call arms of stage0 Enc::spec): Box::new(v) is v, u32::from(c) a character's scalar value, char::from_u32, an integer from its bytes, f64::from, a variant with its payload; otherwise the application of the spec fn the call names, an instance for a generic one, to the leaves of the arguments (one application per leaf of a struct result), after the recursion check")]
+        #[effects(alloc)]
+        fn spec_call(self: &mut Enc, e: &ast::Expr, c: &ast::Call, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let two: bool = c.path.len() == 2;
+            let one_arg: bool = c.args.len() > 0;
+            if body::is_box_new(c.path.as_slice()) || two && c.path[0].name == "u32" && c.path[1].name == "from" {
+                if one_arg {
+                    return self.spec_expr(&c.args[0], env, was, pg, f - 1);
+                }
+                return encode_terms::Val::Unit;
+            }
+            if two && c.path[0].name == "char" && c.path[1].name == "from_u32" {
+                if one_arg {
+                    let x: String = encode_terms::scalar_of(&self.spec_expr(&c.args[0], env, was, pg, f - 1));
+                    return self.char_from_u32(e, x.as_str(), pg);
+                }
+                return encode_terms::Val::Unit;
+            }
+            match body::from_bytes_int(c.path.as_slice()) {
+                None => {},
+                Some(it) => { if one_arg && two { let bv: encode_terms::Val = self.spec_expr(&c.args[0], env, was, pg, f - 1); return encode_terms::from_bytes_val(it, c.path[1].name == "from_le_bytes", &bv); } return encode_terms::Val::Unit; },
+            }
+            if body::is_f64_from(c.path.as_slice()) {
+                if one_arg {
+                    let fv: String = encode_terms::scalar_of(&self.spec_expr(&c.args[0], env, was, pg, f - 1));
+                    if body::is_f64(&self.ty(&c.args[0], pg)) {
+                        return encode_terms::Val::S(fv);
+                    }
+                    return encode_terms::Val::S(types::cat3("(f64.from ", fv.as_str(), ")"));
+                }
+                return encode_terms::Val::Unit;
+            }
+            let mut argv: Vec<encode_terms::Val> = Vec::new();
+            if self.is_variant(c.path.as_slice(), pg) {
+                for i in 0..c.args.len()
+                    invariant 0 <= i && i <= c.args.len(),
+                {
+                    argv.push(self.spec_expr(&c.args[i], env, was, pg, f - 1));
+                }
+                let last: String = if c.path.len() > 0 {
+                    c.path[c.path.len() - 1].name.clone()
+                } else {
+                    String::new()
+                };
+                return variant_value(&self.ty(e, pg), last.as_str(), argv.as_slice());
+            }
+            let named: String = encode_decls::resolve_in(&pg.pr.t, c.path.as_slice(), self.spec_mod.as_str());
+            let target: String = self.spec_target(named.as_str(), e.span, pg);
+            let mut flat: Vec<String> = Vec::new();
+            for i in 0..c.args.len()
+                invariant 0 <= i && i <= c.args.len(),
+            {
+                let av: encode_terms::Val = self.spec_expr(&c.args[i], env, was, pg, f - 1);
+                encode_terms::flatten(&av, &mut flat, 100000);
+                argv.push(av);
+            }
+            self.check_spec_recursion(target.as_str(), argv.as_slice(), e.span, pg, f - 1);
+            let funs: Vec<encode_decls::Fun> = encode_decls::spec_funs(target.as_str(), &pg.pr.t);
+            let args: String = encode_terms::join(flat.as_slice(), " ");
+            let mut apps: Vec<String> = Vec::new();
+            for i in 0..funs.len()
+                invariant 0 <= i && i <= funs.len(),
+            {
+                if flat.len() == 0 {
+                    apps.push(funs[i].name.clone());
+                } else {
+                    apps.push(types::cat5("(", funs[i].name.as_str(), " ", args.as_str(), ")"));
+                }
+            }
+            match pg.pr.t.fns.find(target.as_str()) {
+                None => encode_terms::Val::Unit,
+                Some(sig) => { let mut pos: usize = 0; encode_terms::build(&pg.pr.t.fns.items[sig].ret, &pg.pr.t, apps.as_slice(), &mut pos, 100000) },
+            }
+        }
+
+        #[summary("The value of specification expression e as SMT terms (stage0 Enc::spec), the names of env bound, old(x) read from old. A specification has no obligations of its own; a call into the component of a recursive spec fn being checked has one (check_spec_recursion). The unit value for an expression the checker rejects in a specification")]
+        #[effects(alloc)]
+        fn spec_expr(self: &mut Enc, e: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            match &e.kind {
+                ast::ExprKind::Int(v, sp_r) => encode_terms::Val::S(encode_terms::num(&encode_terms::Int { neg: false, mag: *v })),
+                ast::ExprKind::Float(bits) => encode_terms::Val::S(encode_terms::f64_lit(*bits)),
+                ast::ExprKind::ByteLit(bl) => encode_terms::Val::S(encode_terms::dec(*bl as u64)),
+                ast::ExprKind::ByteStr(bs) => encode_terms::Val::A(encode_terms::byte_array(bs.as_slice()), encode_terms::dec(bs.len() as u64)),
+                ast::ExprKind::StrLit(sl) => encode_terms::Val::A(encode_terms::byte_array(sl.as_bytes()), encode_terms::dec(sl.len() as u64)),
+                ast::ExprKind::CharLit(ch) => encode_terms::Val::S(encode_terms::dec(*ch as u64)),
+                ast::ExprKind::Bool(on) => { if *on { encode_terms::Val::S(String::from("true")) } else { encode_terms::Val::S(String::from("false")) } },
+                ast::ExprKind::Unit => encode_terms::Val::Unit,
+                ast::ExprKind::Var(id) => { if id.name == "None" && !env.has("None") { let no: Vec<encode_terms::Val> = Vec::new(); variant_value(&self.ty(e, pg), "None", no.as_slice()) } else { match env.find(id.name.as_str()) { None => encode_terms::Val::Unit, Some(at) => env.items[at].clone(), } } },
+                ast::ExprKind::Call(c) => self.spec_call(e, c, env, was, pg, f - 1),
+                ast::ExprKind::Method(mc) => self.spec_method(e, mc, env, was, pg, f - 1),
+                ast::ExprKind::Index(ib, ii) => self.spec_index(&**ib, &**ii, env, was, pg, f - 1),
+                ast::ExprKind::Unary(uop, ux) => self.spec_unary(*uop, &**ux, env, was, pg, f - 1),
+                ast::ExprKind::Binary(bop, lhs, rhs) => self.spec_binary(e, *bop, &**lhs, &**rhs, env, was, pg, f - 1),
+                ast::ExprKind::Ref(sp_m, rx) => self.spec_expr(&**rx, env, was, pg, f - 1),
+                ast::ExprKind::If(ifx) => self.spec_if(ifx, env, was, pg, f - 1),
+                ast::ExprKind::Block(b) => self.spec_block(b, env, was, pg, f - 1),
+                ast::ExprKind::Array(items) => self.spec_array(e, items.as_slice(), env, was, pg, f - 1),
+                ast::ExprKind::Repeat(rp) => self.spec_repeat(e, rp, env, was, pg, f - 1),
+                ast::ExprKind::Old(ox) => { match ast::var_name(&**ox) { None => encode_terms::Val::Unit, Some(oname) => { match was.find(oname.as_str()) { None => encode_terms::Val::Unit, Some(at) => was.items[at].clone(), } }, } },
+                ast::ExprKind::Quant(qu) => self.spec_quant(qu, env, was, pg, f - 1),
+                ast::ExprKind::Trigger(tx) => { let tv: encode_terms::Val = self.spec_expr(&**tx, env, was, pg, f - 1); let tn: usize = self.triggers.len(); if tn > 0 { let mut leaves: Vec<String> = Vec::new(); encode_terms::flatten(&tv, &mut leaves, 100000); self.triggers[tn - 1].push(leaves); } tv },
+                ast::ExprKind::Closure(sp_closure0) => encode_terms::Val::Unit,
+                ast::ExprKind::StructLit(lit) => self.spec_struct_lit(e, lit, env, was, pg, f - 1),
+                ast::ExprKind::Path(segs) => self.spec_path(e, segs.as_slice(), pg),
+                ast::ExprKind::Deref(dx) => self.spec_expr(&**dx, env, was, pg, f - 1),
+                ast::ExprKind::Field(fb, fname) => self.spec_field(&**fb, fname.name.as_str(), env, was, pg, f - 1),
+                ast::ExprKind::Match(mx) => self.spec_match(mx, env, was, pg, f - 1),
+                ast::ExprKind::Return(sp_return0) => encode_terms::Val::Unit,
+                ast::ExprKind::Try(sp_try0) => encode_terms::Val::Unit,
+                ast::ExprKind::Loop(sp_loop0) => encode_terms::Val::Unit,
+                ast::ExprKind::Break(sp_break0) => encode_terms::Val::Unit,
+                ast::ExprKind::Continue(sp_continue0) => encode_terms::Val::Unit,
+                ast::ExprKind::Range(sp_range0) => encode_terms::Val::Unit,
+                ast::ExprKind::Error => encode_terms::Val::Unit,
+            }
+        }
+
+        #[summary("A field read in a specification (the Field arm of stage0 Enc::spec): the field's value of a struct held as leaves, the selector's of a recursive struct")]
+        #[effects(alloc)]
+        fn spec_field(self: &mut Enc, base: &ast::Expr, name: &str, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let bt: ast::TypeKind = self.ty(base, pg);
+            let k: usize = encode_decls::field_index(&bt, &pg.pr.t, name);
+            let bv: encode_terms::Val = self.spec_expr(base, env, was, pg, f - 1);
+            match &bv {
+                encode_terms::Val::S(x) => { if encode_decls::dt_struct(&bt, &pg.pr.t) { let dfs: Vec<encode_terms::Val> = encode_terms::dt_fields(&lowered::value_ty(&bt), x.as_str(), &pg.pr.t); if k < dfs.len() { dfs[k].clone() } else { encode_terms::Val::Unit } } else { encode_terms::Val::Unit } },
+                encode_terms::Val::A(sf_a0, sf_a1) => encode_terms::Val::Unit,
+                encode_terms::Val::Unit => encode_terms::Val::Unit,
+                encode_terms::Val::Struct(fs) => { if k < fs.len() { fs[k].clone() } else { encode_terms::Val::Unit } },
+                encode_terms::Val::Arr(sf_arr0, sf_arr1) => encode_terms::Val::Unit,
+            }
+        }
+
+        #[summary("An `if` in a specification (the If arm of stage0 Enc::spec): each side translated under the condition or its negation, joined leaf by leaf")]
+        #[effects(alloc)]
+        fn spec_if(self: &mut Enc, x: &ast::If, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let c: String = encode_terms::scalar_of(&self.spec_expr(&*x.cond, env, was, pg, f - 1));
+            self.spec_pc.push(c.clone());
+            let a: encode_terms::Val = self.spec_block(&x.then, env, was, pg, f - 1);
+            self.spec_pc.pop();
+            self.spec_pc.push(types::cat3("(not ", c.as_str(), ")"));
+            let b: encode_terms::Val = match &x.els {
+                None => encode_terms::Val::Unit,
+                Some(el) => self.spec_expr(&**el, env, was, pg, f - 1),
+            };
+            self.spec_pc.pop();
+            encode_terms::ite_val(c.as_str(), &a, &b, 100000)
+        }
+
+        #[summary("An index in a specification (the Index arms of stage0 Enc::spec): `&s[a..b]` is the bytes between (ADR-0050 §2), `a[i]` the element")]
+        #[effects(alloc)]
+        fn spec_index(self: &mut Enc, base: &ast::Expr, index: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let bv: encode_terms::Val = self.spec_expr(base, env, was, pg, f - 1);
+            match codegen::range_of(index) {
+                None => {},
+                Some(rg) => { let lo: String = encode_terms::scalar_of(&self.spec_expr(&*rg.lo, env, was, pg, f - 1)); let hi: String = encode_terms::scalar_of(&self.spec_expr(&*rg.hi, env, was, pg, f - 1)); return sub_text(&bv, lo.as_str(), hi.as_str()); },
+            }
+            let i: String = encode_terms::scalar_of(&self.spec_expr(index, env, was, pg, f - 1));
+            elem_at(&bv, i.as_str())
+        }
+
+        #[summary("A `match` in a specification (stage0 Enc::spec_match): an ite over the testers, each arm translated under its tester with its bindings read from the selectors")]
+        #[effects(alloc)]
+        fn spec_match(self: &mut Enc, x: &ast::Match, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let sv: String = encode_terms::scalar_of(&self.spec_expr(&*x.scrut, env, was, pg, f - 1));
+            let st: ast::TypeKind = self.ty(&*x.scrut, pg);
+            let mut conds: Vec<String> = Vec::new();
+            let mut vals: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..x.arms.len()
+                invariant 0 <= i && i <= x.arms.len(),
+            {
+                let v: String = if x.arms[i].pat.path.len() > 0 {
+                    x.arms[i].pat.path[x.arms[i].pat.path.len() - 1].name.clone()
+                } else {
+                    String::new()
+                };
+                let c: String = types::cat5("((_ is ", encode_decls::ctor(&st, v.as_str()).as_str(), ") ", sv.as_str(), ")");
+                let pl: Payload = payload(pg, &st, v.as_str(), sv.as_str());
+                let mut env2: table::Table<encode_terms::Val> = env.clone();
+                for k in 0..x.arms[i].pat.binds.len()
+                    invariant 0 <= k && k <= x.arms[i].pat.binds.len(),
+                {
+                    if k < pl.vals.len() {
+                        match &x.arms[i].pat.binds[k] {
+                            None => {},
+                            Some(id) => env2.insert(id.name.as_str(), pl.vals[k].clone()),
+                        }
+                    }
+                }
+                self.spec_pc.push(c.clone());
+                let av: encode_terms::Val = self.spec_expr(&x.arms[i].body, &env2, was, pg, f - 1);
+                self.spec_pc.pop();
+                conds.push(c);
+                vals.push(av);
+            }
+            let mut n: usize = vals.len();
+            if n == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let mut out: encode_terms::Val = vals[n - 1].clone();
+            n = n - 1;
+            while n > 0
+                invariant n <= vals.len(),
+                decreases n,
+            {
+                n = n - 1;
+                if n < conds.len() {
+                    out = encode_terms::ite_val(conds[n].as_str(), &vals[n], &out, 100000);
+                }
+            }
+            out
+        }
+
+        #[summary("A built-in method in a specification (the Method arm of stage0 Enc::spec): len, the views of a Vec and of text, is_char_boundary, len_utf8, the methods of f64, the bit methods (a linear form reads the receiver's image, ADR-0090), the bytes of an integer, the arithmetic methods (a checked one is an Option). The unit value for a receiver of another shape, which the checker admits none of")]
+        #[effects(alloc)]
+        fn spec_method(self: &mut Enc, e: &ast::Expr, x: &ast::Method, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let rv: encode_terms::Val = self.spec_expr(&*x.recv, env, was, pg, f - 1);
+            let m: String = x.name.name.clone();
+            if m == "len" {
+                return match &rv { encode_terms::Val::S(ml_s0) => encode_terms::Val::Unit, encode_terms::Val::A(ml_e, al) => encode_terms::Val::S(al.clone()), encode_terms::Val::Unit => encode_terms::Val::Unit, encode_terms::Val::Struct(ml_struct0) => encode_terms::Val::Unit, encode_terms::Val::Arr(ml_t, tl) => encode_terms::Val::S(tl.clone()), };
+            }
+            if m == "as_slice" || m == "as_mut_slice" || m == "as_str" || m == "as_bytes" {
+                return rv;
+            }
+            let first: Option<String> = if x.args.len() > 0 {
+                Some(encode_terms::scalar_of(&self.spec_expr(&x.args[0], env, was, pg, f - 1)))
+            } else {
+                None
+            };
+            let arg: String = match &first {
+                None => String::new(),
+                Some(a0) => a0.clone(),
+            };
+            if m == "is_char_boundary" {
+                return match encode_terms::parts(&rv) { None => encode_terms::Val::Unit, Some(p) => encode_terms::Val::S(encode_terms::boundary(p.a.as_str(), p.b.as_str(), arg.as_str())), };
+            }
+            let r: String = encode_terms::scalar_of(&rv);
+            if m == "len_utf8" {
+                return encode_terms::Val::S(encode_terms::utf8_len(r.as_str()));
+            }
+            let rt: ast::TypeKind = self.ty(&*x.recv, pg);
+            if body::is_f64(&lowered::value_ty(&rt)) {
+                return encode_terms::Val::S(encode_terms::f64_method(m.as_str(), r.as_str(), &first));
+            }
+            let i: ast::IntTy = match body::int_of(&rt) {
+                None => { return encode_terms::Val::Unit; },
+                Some(found) => found,
+            };
+            let constant: bool = match &first {
+                None => false,
+                Some(a1) => is_num(a1.as_str()),
+            };
+            if m == "checked_shl" || m == "checked_shr" {
+                let a: String = if constant {
+                    image(i, &*x.recv, r.as_str())
+                } else {
+                    r.clone()
+                };
+                let w: String = if m == "checked_shl" {
+                    String::from("wrapping_shl")
+                } else {
+                    String::from("wrapping_shr")
+                };
+                let v: String = encode_terms::bit_method(w.as_str(), i, a.as_str(), &first).t.clone();
+                return self.checked(e, types::cat5("(< ", arg.as_str(), " ", encode_terms::dec(body::bits(i) as u64).as_str(), ")").as_str(), v.as_str(), pg);
+            }
+            if m == "to_be_bytes" || m == "to_le_bytes" {
+                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str());
+            }
+            if m == "is_power_of_two" {
+                let no_amount: Option<String> = None;
+                let ones: String = encode_terms::bit_method("count_ones", i, r.as_str(), &no_amount).t.clone();
+                return encode_terms::Val::S(types::cat3("(= ", ones.as_str(), " 1)"));
+            }
+            if body::bit_method(m.as_str()) != 0 {
+                let ba: String = if constant || m == "swap_bytes" {
+                    image(i, &*x.recv, r.as_str())
+                } else {
+                    r.clone()
+                };
+                return encode_terms::Val::S(encode_terms::bit_method(m.as_str(), i, ba.as_str(), &first).t.clone());
+            }
+            let im: encode_terms::IntMethod = encode_terms::int_method(m.as_str(), i, r.as_str(), arg.as_str());
+            if im.checked {
+                return self.checked(e, im.ok.as_str(), im.v.as_str(), pg);
+            }
+            encode_terms::Val::S(im.v)
+        }
+
+        #[summary("A path in a specification (the Path arms of stage0 Enc::spec): T::MIN and T::MAX, a constant of f64, otherwise a variant without payload")]
+        #[effects(alloc)]
+        fn spec_path(self: &Enc, e: &ast::Expr, segs: &[ast::Ident], pg: &Prog) -> encode_terms::Val {
+            if segs.len() == 2 {
+                match ast::int_of(segs[0].name.as_str()) {
+                    None => {},
+                    Some(i) => { if segs[1].name == "MIN" { return encode_terms::Val::S(encode_terms::num(&encode_terms::from_num(consts::min_of(i)))); } if segs[1].name == "MAX" { return encode_terms::Val::S(encode_terms::num(&encode_terms::from_num(consts::max_of(i)))); } },
+                }
+                if segs[0].name == "f64" {
+                    let bits: u64 = codegen::f64_named(segs[1].name.as_str());
+                    if bits != 0 {
+                        return encode_terms::Val::S(encode_terms::f64_lit(bits));
+                    }
+                }
+            }
+            let last: String = if segs.len() > 0 {
+                segs[segs.len() - 1].name.clone()
+            } else {
+                String::new()
+            };
+            let no: Vec<encode_terms::Val> = Vec::new();
+            variant_value(&self.ty(e, pg), last.as_str(), no.as_slice())
+        }
+
+        #[summary("A quantifier in a specification (the Quant arm of stage0 Enc::spec, ADR-0079): each binder is a bound name of its own with its range fact, guarding the body of a forall and joined to that of an exists; one multi-pattern per choice of an alternative from each #[trigger] term (a struct trigger offers each of its leaves), 16 at most. A recursive call under it is checked for every value of the bound variables")]
+        #[effects(alloc)]
+        fn spec_quant(self: &mut Enc, x: &ast::Quant, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let mut env2: table::Table<encode_terms::Val> = env.clone();
+            let mut decl: Vec<String> = Vec::new();
+            let mut facts: Vec<String> = Vec::new();
+            for i in 0..x.binders.len()
+                invariant 0 <= i && i <= x.binders.len(),
+            {
+                let s: String = self.bound_name(x.binders[i].name.name.as_str());
+                let bt: ast::TypeKind = self.local_ty(x.binders[i].name.name.as_str(), pg);
+                let sort: String = if encode_decls::shape(&bt) == 8 {
+                    encode_decls::sort_of(&bt)
+                } else {
+                    String::from("Int")
+                };
+                decl.push(types::cat5("(", s.as_str(), " ", sort.as_str(), ")"));
+                match encode_terms::range(&x.binders[i].ty.kind, s.as_str()) {
+                    None => {},
+                    Some(r) => facts.push(r),
+                }
+                env2.insert(x.binders[i].name.name.as_str(), encode_terms::Val::S(s));
+            }
+            self.foralls.push(Forall { decls: decl.clone(), facts: facts.clone(), start: self.spec_pc.len() });
+            self.triggers.push(Vec::new());
+            let bt2: String = encode_terms::scalar_of(&self.spec_expr(&*x.body, &env2, was, pg, f - 1));
+            let pats: Vec<Vec<String>> = match self.triggers.pop() {
+                None => Vec::new(),
+                Some(top) => top,
+            };
+            self.foralls.pop();
+            let is_all: bool = body::quant_kw(&x.q) == "forall";
+            let inner: String = if facts.len() == 0 {
+                bt2
+            } else if is_all {
+                types::cat5("(=> ", encode_terms::and(facts.as_slice()).as_str(), " ", bt2.as_str(), ")")
+            } else {
+                types::cat5("(and ", encode_terms::and(facts.as_slice()).as_str(), " ", bt2.as_str(), ")")
+            };
+            let mut combos: Vec<Vec<String>> = Vec::new();
+            combos.push(Vec::new());
+            for i in 0..pats.len()
+                invariant 0 <= i && i <= pats.len(),
+            {
+                let mut next: Vec<Vec<String>> = Vec::new();
+                for c in 0..combos.len()
+                    invariant 0 <= c && c <= combos.len(),
+                {
+                    for a in 0..pats[i].len()
+                        invariant 0 <= a && a <= pats[i].len(),
+                    {
+                        if next.len() < 16 {
+                            let mut one: Vec<String> = combos[c].clone();
+                            one.push(pats[i][a].clone());
+                            next.push(one);
+                        }
+                    }
+                }
+                combos = next;
+            }
+            let mut patterns: Vec<String> = Vec::new();
+            for c in 0..combos.len()
+                invariant 0 <= c && c <= combos.len(),
+            {
+                patterns.push(types::cat3(":pattern (", encode_terms::join(combos[c].as_slice(), " ").as_str(), ")"));
+            }
+            let mut q: String = types::cat5("(", body::quant_kw(&x.q).as_str(), " (", encode_terms::join(decl.as_slice(), " ").as_str(), ") (! ");
+            q.push_str(types::cat4(inner.as_str(), " ", encode_terms::join(patterns.as_slice(), " ").as_str(), "))").as_str());
+            encode_terms::Val::S(q)
+        }
+
+        #[summary("An array repetition in a specification (the Repeat arm of stage0 Enc::spec): a constant array per leaf")]
+        #[effects(alloc)]
+        fn spec_repeat(self: &mut Enc, e: &ast::Expr, x: &ast::Repeat, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let elem: ast::TypeKind = encode_decls::elem_ty(&self.ty(e, pg));
+            let v: encode_terms::Val = self.spec_expr(&*x.value, env, was, pg, f - 1);
+            whole_array(encode_terms::const_elems(&elem, &v, &pg.pr.t, 100000), encode_terms::num(&encode_terms::Int { neg: false, mag: x.count }))
+        }
+
+        #[summary("A struct literal in a specification (the StructLit arm of stage0 Enc::spec): the field values, translated as written, in declaration order. The checker rejects a recursive struct built here (E0432)")]
+        #[effects(alloc)]
+        fn spec_struct_lit(self: &mut Enc, e: &ast::Expr, x: &ast::StructLit, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let t: ast::TypeKind = self.ty(e, pg);
+            let mut at: Vec<usize> = Vec::new();
+            let mut vals: Vec<encode_terms::Val> = Vec::new();
+            for i in 0..x.fields.len()
+                invariant 0 <= i && i <= x.fields.len(),
+            {
+                let k: usize = encode_decls::field_index(&t, &pg.pr.t, x.fields[i].name.name.as_str());
+                at.push(k);
+                vals.push(self.spec_expr(&x.fields[i].value, env, was, pg, f - 1));
+            }
+            let count: usize = match lowered::struct_fields(&t, &pg.pr.t) {
+                None => 0,
+                Some(fs) => fs.len(),
+            };
+            let mut out: Vec<encode_terms::Val> = Vec::new();
+            for k2 in 0..count
+                invariant 0 <= k2 && k2 <= count,
+            {
+                for i in 0..at.len()
+                    invariant 0 <= i && i <= at.len(),
+                {
+                    if at[i] == k2 && i < vals.len() {
+                        out.push(vals[i].clone());
+                    }
+                }
+            }
+            for i in 0..at.len()
+                invariant 0 <= i && i <= at.len(),
+            {
+                if at[i] >= count && i < vals.len() {
+                    out.push(vals[i].clone());
+                }
+            }
+            encode_terms::Val::Struct(out)
+        }
+
+        #[summary("The spec fn a call of target at span names (stage0 Enc::spec_target): an instance for a generic one, and for a trait's spec method with a known Self its impl's")]
+        #[effects(alloc)]
+        fn spec_target(self: &Enc, target: &str, span: source::Span, pg: &Prog) -> String {
+            let sub: types::Subst = self.call_subst(target, span, pg);
+            if sub.names.len() == 0 {
+                return String::from(target);
+            }
+            let mut args: Vec<ast::TypeKind> = Vec::new();
+            match pg.pr.t.fns.find(target) {
+                None => {},
+                Some(at) => { for i in 0..pg.pr.t.fns.items[at].generics.len() invariant 0 <= i && i <= pg.pr.t.fns.items[at].generics.len(), { match types::sub_get(&sub, pg.pr.t.fns.items[at].generics[i].name.as_str()) { None => args.push(ast::TypeKind::Error), Some(a) => args.push(a), } } },
+            }
+            let d: body::Dispatched = encode_decls::dispatched(&pg.pr.t, target, args.as_slice());
+            body::inst_key(d.path.as_str(), d.args.as_slice())
+        }
+
+        #[summary("A unary operation in a specification (the Unary arms of stage0 Enc::spec): the negation of a literal is its numeral, of an f64 its own term; `!` flips every bit of an integer's image and negates a bool")]
+        #[effects(alloc)]
+        fn spec_unary(self: &mut Enc, op: ast::UnOp, x: &ast::Expr, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &Prog, f: usize) -> encode_terms::Val
+            decreases f,
+        {
+            if f == 0 {
+                return encode_terms::Val::Unit;
+            }
+            let xt: ast::TypeKind = self.ty(x, pg);
+            if body::is_neg(op) {
+                if !body::is_f64(&xt) {
+                    match int_lit(x) {
+                        None => {},
+                        Some(mag) => { return encode_terms::Val::S(encode_terms::num(&encode_terms::Int { neg: mag.hi != 0 || mag.lo != 0, mag: mag })); },
+                    }
+                }
+                let nv: String = encode_terms::scalar_of(&self.spec_expr(x, env, was, pg, f - 1));
+                if body::is_f64(&xt) {
+                    return encode_terms::Val::S(f64_neg(x, nv.as_str()));
+                }
+                return encode_terms::Val::S(types::cat3("(- ", nv.as_str(), ")"));
+            }
+            let v: String = encode_terms::scalar_of(&self.spec_expr(x, env, was, pg, f - 1));
+            match body::int_of(&xt) {
+                None => encode_terms::Val::S(types::cat3("(not ", v.as_str(), ")")),
+                Some(i) => encode_terms::Val::S(encode_terms::not_term(i, image(i, x, v.as_str()).as_str())),
+            }
+        }
+
+        #[summary("The termination obligations of recursive spec fn d of component comp with measure dec (stage0 Enc::termination): on fresh values of its parameters, every call of its body into the component decreases the measure")]
+        #[effects(alloc)]
+        fn termination(self: &mut Enc, d: &ast::FnDef, comp: usize, dec: &ast::Expr, pg: &Prog) -> () {
+            let mut env: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            for i in 0..d.params.len()
+                invariant 0 <= i && i <= d.params.len(),
+            {
+                let ty: ast::TypeKind = self.local_ty(d.params[i].name.name.as_str(), pg);
+                let v: encode_terms::Val = self.fresh_val(d.params[i].name.name.as_str(), &ty, pg, 100000);
+                env.insert(d.params[i].name.name.as_str(), v);
+            }
+            let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+            let m: Measure = self.measure(dec, &env, &none, pg, 100000);
+            self.term_check = Some(TermCheck { comp: comp, measure: m.term, data: m.data });
+            self.spec_block(&d.body, &env, &none, pg, 100000);
+            self.term_check = None;
+        }
+
+        #[summary("l op r on text in a specification (stage0 Enc::text_cmp_spec): `==` is the slice equality of the bytes, the orders Rust's byte-lexicographic one as a quantified formula on the common prefix. k is the code of op (op_code), a comparison")]
+        #[effects(alloc)]
+        fn text_cmp_spec(self: &mut Enc, k: u8, l: &encode_terms::Val, r: &encode_terms::Val, pg: &Prog, f: usize) -> String
+            decreases f,
+        {
+            if f == 0 {
+                return String::from("true");
+            }
+            if k == 5 || k == 6 {
+                let none: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+                let bytes: ast::TypeKind = ast::TypeKind::Ref(false, Box::new(ast::Type { kind: ast::TypeKind::Slice(Box::new(ast::Type { kind: ast::TypeKind::Int(ast::IntTy::U8), span: none })), span: none }));
+                let q: String = self.ext_eq(l, r, &bytes, pg, f - 1);
+                if k == 5 {
+                    return q;
+                }
+                return types::cat3("(not ", q.as_str(), ")");
+            }
+            if k == 7 {
+                return self.text_lt(l, r);
+            }
+            if k == 9 {
+                return self.text_lt(r, l);
+            }
+            if k == 8 {
+                return types::cat3("(not ", self.text_lt(r, l).as_str(), ")");
+            }
+            types::cat3("(not ", self.text_lt(l, r).as_str(), ")")
+        }
+
+        #[summary("x < y on text in a specification (the lt closure of stage0 Enc::text_cmp_spec): some common prefix p of both, and x ends there with y longer, or the byte of x at p is the smaller. Empty text for a value that is no text, which the checker admits none of")]
+        #[effects(alloc)]
+        fn text_lt(self: &mut Enc, x: &encode_terms::Val, y: &encode_terms::Val) -> String {
+            let px: encode_terms::Pair = match encode_terms::parts(x) {
+                None => { return String::new(); },
+                Some(fx) => fx,
+            };
+            let py: encode_terms::Pair = match encode_terms::parts(y) {
+                None => { return String::new(); },
+                Some(fy) => fy,
+            };
+            let p: String = self.bound_name("lcp");
+            let j: String = self.bound_name("lcp");
+            let a: String = px.a.clone();
+            let la: String = px.b.clone();
+            let b: String = py.a.clone();
+            let lb: String = py.b.clone();
+            let mut s: String = types::cat5("(exists ((", p.as_str(), " Int)) (and (<= 0 ", p.as_str(), ") (<= ");
+            s.push_str(types::cat5(p.as_str(), " ", la.as_str(), ") (<= ", p.as_str()).as_str());
+            s.push_str(types::cat5(" ", lb.as_str(), ") (forall ((", j.as_str(), " Int)) (=> (and (<= 0 ").as_str());
+            s.push_str(types::cat5(j.as_str(), ") (< ", j.as_str(), " ", p.as_str()).as_str());
+            s.push_str(types::cat5(")) (= (select ", a.as_str(), " ", j.as_str(), ") (select ").as_str());
+            s.push_str(types::cat5(b.as_str(), " ", j.as_str(), ")))) (or (and (= ", p.as_str()).as_str());
+            s.push_str(types::cat5(" ", la.as_str(), ") (< ", la.as_str(), " ").as_str());
+            s.push_str(types::cat5(lb.as_str(), ")) (and (< ", p.as_str(), " ", la.as_str()).as_str());
+            s.push_str(types::cat5(") (< ", p.as_str(), " ", lb.as_str(), ") (< (select ").as_str());
+            s.push_str(types::cat5(a.as_str(), " ", p.as_str(), ") (select ", b.as_str()).as_str());
+            s.push_str(types::cat3(" ", p.as_str(), "))))))").as_str());
+            s
+        }
+
+        #[summary("Type of expression e in the query's types (stage0 Enc::ty): the checker's, under the substitution of the text being translated. The error type for an expression the table lacks")]
+        #[effects(alloc)]
+        fn ty(self: &Enc, e: &ast::Expr, pg: &Prog) -> ast::TypeKind {
+            match pg.pr.t.types.find(body::span_key(e.span).as_str()) {
+                None => ast::TypeKind::Error,
+                Some(at) => types::subst(&pg.pr.t.types.items[at], &self.tsub),
+            }
+        }
+    }
+
+    #[summary("A quantifier around the specification being translated: its bound declarations, their range facts, and the length of spec_pc on entry")]
+    struct Forall { decls: Vec<String>, facts: Vec<String>, start: usize }
+
+    #[summary("A decreases measure: its term, and whether it is the value of a recursive datatype (structural, ADR-0047 §3) rather than an integer")]
+    struct Measure { term: String, data: bool }
+
+    #[summary("A proof obligation (stage0 Obl without the sub-proof and the shown value, which code makes): its diagnostic code, position and message, what is assumed, and the goal")]
+    struct Obl { code: String, span: source::Span, msg: String, assumptions: Vec<String>, goal: String }
+
+    #[summary("The payload of a datatype value read as one variant: one value per position, and the range facts of its leaves")]
+    struct Payload { vals: Vec<encode_terms::Val>, facts: Vec<String> }
+
+    #[summary("The program as the encoder holds it (stage0 Prog): the definitions and instances by path, the encoder's tables, the recursion component of each recursive definition, the constructor of every datatype selector, the constructors of recursive structs, the leaf of every recursive struct selector, and each spec fn's path with what marks it in a query text (stage0 computes the marks where it reads them)")]
+    struct Prog { defs: table::Table<Def>, pr: encode_decls::Prepared, recursive: table::Table<usize>, selectors: table::Table<String>, struct_ctors: table::Table<bool>, struct_sels: table::Table<encode_decls::Leaf>, keys: Vec<encode_terms::Pair> }
+
+    #[summary("The declaration of a spec fn (a row of stage0 Prog::spec_decls): path, what marks it in a query text, the declarations of its SMT functions")]
+    struct SpecDecl { path: String, key: String, decl: String }
+
+    #[summary("The recursion check of a spec fn's body: its component, its measure on entry, whether the measure is structural")]
+    struct TermCheck { comp: usize, measure: String, data: bool }
+
+    #[summary("An obligation that holds by its own text: nothing is asked")]
+    struct Trivial { code: String, span: source::Span }
+
+    #[summary("The definition of revealed spec fn path (stage0 Prog::axiom, ADR-0017 §4). A recursive one is a quantified axiom with its application as the pattern. One that is not recursive also has a macro form, (define-fun f (..) (ite guard body (f!ext ..))): the macro form, a marker, the quantified form; the marker says where the queries may take the macro (a leaf that binds an array everywhere, a leaf over scalars in an obligation's probe, a definition that names other spec fns in the probe of a satisfiability check: ADR-0064, ADR-0067, ADR-0072). One definition per SMT function: a struct result has one per leaf")]
+    #[effects(alloc)]
+    fn axiom(pg: &Prog, path: &str) -> Axiom {
+        let at: usize = match pg.defs.find(path) {
+            None => { return Axiom { text: String::new(), parts: Vec::new() }; },
+            Some(found) => found,
+        };
+        let sig: usize = match pg.pr.t.fns.find(path) {
+            None => { return Axiom { text: String::new(), parts: Vec::new() }; },
+            Some(found_sig) => found_sig,
+        };
+        let mut enc: Enc = new_enc(pg, path, pg.defs.items[at].unit.as_str());
+        let mut binders: Vec<String> = Vec::new();
+        let mut facts: Vec<String> = Vec::new();
+        let mut env: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        let mut app_args: Vec<String> = Vec::new();
+        for i in 0..pg.defs.items[at].d.params.len()
+            invariant 0 <= i && i <= pg.defs.items[at].d.params.len(),
+        {
+            if i < pg.pr.t.fns.items[sig].params.len() {
+                let pname: String = pg.defs.items[at].d.params[i].name.name.clone();
+                let mut ls: Vec<encode_decls::NamedLeaf> = Vec::new();
+                encode_decls::leaves(&pg.pr.t.fns.items[sig].params[i], &pg.pr.t, types::cat2(pname.as_str(), "!p").as_str(), &mut ls, 100000);
+                let mut names: Vec<String> = Vec::new();
+                for j in 0..ls.len()
+                    invariant 0 <= j && j <= ls.len(),
+                {
+                    let s: String = encode_decls::sym(ls[j].name.as_str());
+                    binders.push(types::cat5("(", s.as_str(), " ", encode_decls::leaf_sort(&ls[j].leaf).as_str(), ")"));
+                    match encode_terms::leaf_fact(&ls[j].leaf, s.as_str()) {
+                        None => {},
+                        Some(fact) => facts.push(fact),
+                    }
+                    app_args.push(s.clone());
+                    names.push(s);
+                }
+                let mut pos: usize = 0;
+                env.insert(pname.as_str(), encode_terms::build(&pg.pr.t.fns.items[sig].params[i], &pg.pr.t, names.as_slice(), &mut pos, 100000));
+            }
+        }
+        let none: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        let value: encode_terms::Val = enc.spec_block(&pg.defs.items[at].d.body, &env, &none, pg, 100000);
+        let mut bodies: Vec<String> = Vec::new();
+        encode_terms::flatten(&value, &mut bodies, 100000);
+        let guard: String = encode_terms::and(facts.as_slice());
+        let recursive: bool = match pg.pr.insts.find(path) {
+            None => pg.recursive.has(path),
+            Some(inst) => pg.recursive.has(pg.pr.insts.items[inst].base.as_str()),
+        };
+        let leaf: bool = !names_other(pg, path, bodies.as_slice());
+        let funs: Vec<encode_decls::Fun> = encode_decls::spec_funs(path, &pg.pr.t);
+        let args: String = encode_terms::join(app_args.as_slice(), " ");
+        let bound: String = encode_terms::join(binders.as_slice(), " ");
+        let mut quant: Vec<String> = Vec::new();
+        let mut mac: Vec<String> = Vec::new();
+        let mut parts: Vec<AxiomParts> = Vec::new();
+        for k in 0..funs.len()
+            invariant 0 <= k && k <= funs.len(),
+        {
+            if k < bodies.len() {
+                let fname: String = funs[k].name.clone();
+                let app: String = if app_args.len() == 0 {
+                    fname.clone()
+                } else {
+                    types::cat5("(", fname.as_str(), " ", args.as_str(), ")")
+                };
+                if binders.len() == 0 {
+                    quant.push(types::cat5("(assert (= ", app.as_str(), " ", bodies[k].as_str(), "))"));
+                } else {
+                    let mut q: String = types::cat5("(assert (forall (", bound.as_str(), ") (! (=> ", guard.as_str(), " (= ");
+                    q.push_str(types::cat5(app.as_str(), " ", bodies[k].as_str(), ")) :pattern (", app.as_str()).as_str());
+                    q.push_str("))))");
+                    quant.push(q);
+                    let val: String = if guard.as_str() == "true" {
+                        bodies[k].clone()
+                    } else {
+                        let ext: String = macro_ext(fname.as_str());
+                        let mut sorts: Vec<String> = Vec::new();
+                        for b in 0..binders.len()
+                            invariant 0 <= b && b <= binders.len(),
+                        {
+                            sorts.push(binder_sort(binders[b].as_str()));
+                        }
+                        mac.push(types::cat7("(declare-fun ", ext.as_str(), " (", encode_terms::join(sorts.as_slice(), " ").as_str(), ") ", funs[k].sort.as_str(), ")"));
+                        let mut v: String = types::cat5("(ite ", guard.as_str(), " ", bodies[k].as_str(), " (");
+                        v.push_str(types::cat4(ext.as_str(), " ", args.as_str(), "))").as_str());
+                        v
+                    };
+                    let mut m: String = types::cat5("(define-fun ", fname.as_str(), " (", bound.as_str(), ") ");
+                    m.push_str(types::cat4(funs[k].sort.as_str(), " ", val.as_str(), ")").as_str());
+                    mac.push(m);
+                }
+                parts.push(AxiomParts { sym: fname, params: app_args.clone(), binders: binders.clone(), guard: guard.clone(), body: bodies[k].clone(), sort: funs[k].sort.clone(), recursive: recursive });
+            }
+        }
+        let mut binds_array: bool = false;
+        for b in 0..binders.len()
+            invariant 0 <= b && b <= binders.len(),
+        {
+            if encode_decls::has_text(binders[b].as_str(), "(Array ") {
+                binds_array = true;
+            }
+        }
+        let quantified: String = encode_terms::join(quant.as_slice(), "\n");
+        let text: String = if !recursive && mac.len() > 0 {
+            let marker: String = if !leaf {
+                String::from("\n; quantified form outside the satisfiability probe\n")
+            } else if binds_array {
+                String::from("\n; quantified form\n")
+            } else {
+                String::from("\n; quantified form outside the probe\n")
+            };
+            types::cat3(encode_terms::join(mac.as_slice(), "\n").as_str(), marker.as_str(), quantified.as_str())
+        } else {
+            quantified
+        };
+        Axiom { text: text, parts: parts }
+    }
+
+    #[summary("The values of the parameters of d by name, position by position (stage0 bind_params)")]
+    #[effects(alloc)]
+    fn bind_params(d: &ast::FnDef, args: &[encode_terms::Val]) -> table::Table<encode_terms::Val> {
+        let mut env: table::Table<encode_terms::Val> = table::new::<encode_terms::Val>();
+        for i in 0..d.params.len()
+            invariant 0 <= i && i <= d.params.len(),
+        {
+            if i < args.len() {
+                env.insert(d.params[i].name.name.as_str(), args[i].clone());
+            }
+        }
+        env
+    }
+
+    #[summary("The sort of a binder `(p sort)`: what follows its first space, without the closing parenthesis. Empty text for a binder without a space")]
+    #[effects(alloc)]
+    fn binder_sort(b: &str) -> String {
+        if b.len() < 2 {
+            return String::new();
+        }
+        match decls::first_of(b, " ", 1) {
+            None => String::new(),
+            Some(i) => lexer::cut(b, i.saturating_add(1), b.len() - 1),
+        }
+    }
+
+    #[summary("The goal that measure m1 of a call is below the caller's m0 (stage0 Enc::decrease_goal). An integer measure is non-negative and smaller. A structural one is a part of the caller's value: a chain of selectors from m0, each applied to a value of its constructor, an element of a Vec payload at an index below that Vec's length; any other term fails")]
+    #[effects(alloc)]
+    fn decrease_goal(pg: &Prog, m0: &Measure, m1: &Measure) -> String {
+        if !m0.data && !m1.data {
+            let mut g: String = types::cat5("(and (<= 0 ", m0.term.as_str(), ") (< ", m1.term.as_str(), " ");
+            g.push_str(m0.term.as_str());
+            g.push_str("))");
+            return g;
+        }
+        if !m0.data || !m1.data {
+            return String::from("false");
+        }
+        let mut testers: Vec<String> = Vec::new();
+        let mut cur: String = m1.term.clone();
+        let mut fuel: usize = 100000;
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut step: Option<encode_terms::Pair> = None;
+            match encode_terms::select_app(cur.as_str()) {
+                None => {},
+                Some(sa) => { match encode_terms::sel_app(sa.a.as_str()) { None => {}, Some(se) => { if encode_decls::ends_with(se.a.as_str(), ".e|") { let len: String = types::cat2(lexer::cut(se.a.as_str(), 0, se.a.len().saturating_sub(3)).as_str(), ".len|"); if pg.selectors.has(len.as_str()) { let mut t: String = types::cat5("(and (<= 0 ", sa.b.as_str(), ") (< ", sa.b.as_str(), " ("); t.push_str(types::cat4(len.as_str(), " ", se.b.as_str(), ")))").as_str()); testers.push(t); step = Some(encode_terms::Pair { a: se.a.clone(), b: se.b.clone() }); } } }, } },
+            }
+            let p: encode_terms::Pair = match step {
+                None => { match encode_terms::sel_app(cur.as_str()) { None => { return String::from("false"); }, Some(plain) => plain, } },
+                Some(found) => found,
+            };
+            let c: String = match pg.selectors.find(p.a.as_str()) {
+                None => { return String::from("false"); },
+                Some(at) => pg.selectors.items[at].clone(),
+            };
+            if !pg.struct_ctors.has(c.as_str()) {
+                testers.push(types::cat5("((_ is ", c.as_str(), ") ", p.b.as_str(), ")"));
+            }
+            cur = p.b.clone();
+            if cur.as_str() == m0.term.as_str() {
+                return encode_terms::and(testers.as_slice());
+            }
+        }
+        String::from("false")
+    }
+
+    #[summary("`bmb dump smt` (stage0 verify::dump_smt): what the encoder builds of each definition, with no solver, as JSONL rows. The declaration of every spec fn; then per definition and instance a def row (kind, unit, substitution, #[uses], proof context, the spec fns of its contract, what it reveals, which parameters and result hold an array, the field positions of its struct parameters); for a spec fn that is not generic an axiom row; for a proof fn a proof_params row; for a recursive spec fn a termination row and an obl row per obligation. encoded is false for a definition whose body this dump does not encode (executable and proof functions). The spec fns of a contract are read once for all definitions, and only for a definition that has a body and a clause: stage0 finds none for the others")]
+    #[effects(alloc)]
+    fn dump(ck: &body::Checked) -> String {
+        let pg: Prog = prog_of(ck);
+        let mut out: String = String::new();
+        let sds: Vec<SpecDecl> = spec_decls(&pg);
+        for i in 0..sds.len()
+            invariant 0 <= i && i <= sds.len(),
+        {
+            out.push_str("{\"spec_decl\":");
+            std::json::push_string(&mut out, sds[i].path.as_str());
+            out.push_str(",\"key\":");
+            std::json::push_string(&mut out, sds[i].key.as_str());
+            out.push_str(",\"decl\":");
+            std::json::push_string(&mut out, sds[i].decl.as_str());
+            out.push_str("}\n");
+        }
+        let rows: Vec<encode_decls::Row> = encode_decls::defs(&ck.program, &pg.pr.t.fns);
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => dump_def(&mut out, &pg, rows.as_slice(), path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig]), } },
+            }
+        }
+        out
+    }
+
+    #[summary("The rows of one definition of `bmb dump smt`")]
+    #[effects(alloc)]
+    fn dump_def(out: &mut String, pg: &Prog, rows: &[encode_decls::Row], path: &str, def: &Def, sig: &types::FnSig) -> () {
+        let is_sp: bool = body::is_spec(def.d.kind);
+        let is_pf: bool = body::is_proof(def.d.kind);
+        out.push_str("{\"def\":");
+        std::json::push_string(out, path);
+        out.push_str(",\"kind\":");
+        if is_sp {
+            out.push_str("\"spec fn\"");
+        } else if is_pf {
+            out.push_str("\"proof fn\"");
+        } else {
+            out.push_str("\"fn\"");
+        }
+        out.push_str(",\"inst\":");
+        decls::push_bool(out, def.inst);
+        out.push_str(",\"unit\":");
+        std::json::push_string(out, def.unit.as_str());
+        out.push_str(",\"sub\":[");
+        for i in 0..def.tsub.names.len()
+            invariant 0 <= i && i <= def.tsub.names.len(),
+        {
+            if i < def.tsub.tys.len() {
+                if i > 0 {
+                    out.push_str(",");
+                }
+                out.push_str("[");
+                std::json::push_string(out, def.tsub.names[i].as_str());
+                out.push_str(",");
+                std::json::push_string(out, types::text(&def.tsub.tys[i]).as_str());
+                out.push_str("]");
+            }
+        }
+        out.push_str("],\"uses\":");
+        encode_decls::push_list(out, encode_decls::uses_of(&def.d, def.unit.as_str(), &pg.pr.t.fns).as_slice());
+        out.push_str(",\"context\":");
+        encode_decls::push_list(out, encode_decls::context_of(path, &def.d, def.unit.as_str(), &pg.pr).as_slice());
+        out.push_str(",\"contract\":");
+        let contract: Vec<String> = if def.inst || def.d.pre.len() == 0 && def.d.post.len() == 0 {
+            Vec::new()
+        } else {
+            encode_decls::contract_specs_in(rows, &pg.pr.t, path)
+        };
+        encode_decls::push_list(out, contract.as_slice());
+        out.push_str(",\"revealed\":");
+        encode_decls::push_list(out, revealed(pg, path, &def.d, def.unit.as_str()).as_slice());
+        out.push_str(",\"arrays\":[");
+        for i in 0..sig.params.len()
+            invariant 0 <= i && i <= sig.params.len(),
+        {
+            decls::push_bool(out, encode_decls::has_array(&sig.params[i], &pg.pr.t));
+            out.push_str(",");
+        }
+        decls::push_bool(out, encode_decls::has_array(&sig.ret, &pg.pr.t));
+        out.push_str("],\"fields\":[");
+        for i in 0..sig.params.len()
+            invariant 0 <= i && i <= sig.params.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            match lowered::struct_fields(&sig.params[i], &pg.pr.t) {
+                None => {},
+                Some(fs) => { for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if k > 0 { out.push_str(","); } std::num::push_u64(out, encode_decls::field_index(&sig.params[i], &pg.pr.t, fs[k].name.as_str()) as u64); } },
+            }
+            out.push_str("]");
+        }
+        out.push_str("],\"encoded\":");
+        decls::push_bool(out, is_sp);
+        out.push_str("}\n");
+        if is_sp && sig.generics.len() == 0 {
+            let ax: Axiom = axiom(pg, path);
+            out.push_str("{\"axiom\":");
+            std::json::push_string(out, path);
+            out.push_str(",\"text\":");
+            std::json::push_string(out, ax.text.as_str());
+            out.push_str(",\"facts\":");
+            std::json::push_string(out, struct_facts(pg, ax.text.as_str()).as_str());
+            out.push_str(",\"parts\":[");
+            for i in 0..ax.parts.len()
+                invariant 0 <= i && i <= ax.parts.len(),
+            {
+                if i > 0 {
+                    out.push_str(",");
+                }
+                out.push_str("{\"sym\":");
+                std::json::push_string(out, ax.parts[i].sym.as_str());
+                out.push_str(",\"params\":");
+                encode_decls::push_list(out, ax.parts[i].params.as_slice());
+                out.push_str(",\"binders\":");
+                encode_decls::push_list(out, ax.parts[i].binders.as_slice());
+                out.push_str(",\"guard\":");
+                std::json::push_string(out, ax.parts[i].guard.as_str());
+                out.push_str(",\"body\":");
+                std::json::push_string(out, ax.parts[i].body.as_str());
+                out.push_str(",\"sort\":");
+                std::json::push_string(out, ax.parts[i].sort.as_str());
+                out.push_str(",\"recursive\":");
+                decls::push_bool(out, ax.parts[i].recursive);
+                out.push_str("}");
+            }
+            out.push_str("]}\n");
+        }
+        let mut enc: Enc = new_enc(pg, path, def.unit.as_str());
+        if is_pf {
+            for i in 0..def.d.params.len()
+                invariant 0 <= i && i <= def.d.params.len(),
+            {
+                enc.proof_param(def.d.params[i].name.name.as_str(), pg);
+            }
+            out.push_str("{\"proof_params\":");
+            std::json::push_string(out, path);
+            out.push_str(",\"decls\":");
+            encode_decls::push_list(out, enc.fr.decls.as_slice());
+            out.push_str(",\"facts\":");
+            encode_decls::push_list(out, enc.pc.as_slice());
+            out.push_str("}\n");
+        }
+        if !is_sp || def.inst {
+            return;
+        }
+        let comp: usize = match pg.recursive.find(path) {
+            None => { return; },
+            Some(c) => pg.recursive.items[c],
+        };
+        match &def.d.measure {
+            None => {},
+            Some(dec) => { enc.termination(&def.d, comp, dec, pg); dump_termination(out, pg, path, &enc); },
+        }
+    }
+
+    #[summary("The termination row and the obl rows of a recursive spec fn. The struct facts of an obligation are those of its query text: the assumptions asserted, then the goal negated")]
+    #[effects(alloc)]
+    fn dump_termination(out: &mut String, pg: &Prog, path: &str, enc: &Enc) -> () {
+        out.push_str("{\"termination\":");
+        std::json::push_string(out, path);
+        out.push_str(",\"decls\":");
+        encode_decls::push_list(out, enc.fr.decls.as_slice());
+        out.push_str(",\"trivial\":[");
+        for i in 0..enc.trivial.len()
+            invariant 0 <= i && i <= enc.trivial.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("[");
+            std::json::push_string(out, enc.trivial[i].code.as_str());
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.file as u64);
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.lo as u64);
+            out.push_str(",");
+            std::num::push_u64(out, enc.trivial[i].span.hi as u64);
+            out.push_str("]");
+        }
+        out.push_str("]}\n");
+        for i in 0..enc.obls.len()
+            invariant 0 <= i && i <= enc.obls.len(),
+        {
+            out.push_str("{\"obl\":");
+            std::json::push_string(out, path);
+            out.push_str(",\"code\":");
+            std::json::push_string(out, enc.obls[i].code.as_str());
+            out.push_str(",\"file\":");
+            std::num::push_u64(out, enc.obls[i].span.file as u64);
+            out.push_str(",\"lo\":");
+            std::num::push_u64(out, enc.obls[i].span.lo as u64);
+            out.push_str(",\"hi\":");
+            std::num::push_u64(out, enc.obls[i].span.hi as u64);
+            out.push_str(",\"msg\":");
+            std::json::push_string(out, enc.obls[i].msg.as_str());
+            out.push_str(",\"assumptions\":");
+            encode_decls::push_list(out, enc.obls[i].assumptions.as_slice());
+            out.push_str(",\"goal\":");
+            std::json::push_string(out, enc.obls[i].goal.as_str());
+            let mut text: String = String::new();
+            for a in 0..enc.obls[i].assumptions.len()
+                invariant 0 <= a && a <= enc.obls[i].assumptions.len(),
+            {
+                if a > 0 {
+                    text.push_str("\n");
+                }
+                text.push_str(types::cat3("(assert ", enc.obls[i].assumptions[a].as_str(), ")").as_str());
+            }
+            text.push_str(types::cat3("\n(assert (not ", enc.obls[i].goal.as_str(), "))").as_str());
+            out.push_str(",\"facts\":");
+            std::json::push_string(out, struct_facts(pg, text.as_str()).as_str());
+            out.push_str("}\n");
+        }
+    }
+
+    #[summary("Element i of array value v: a select of its elements, or of each leaf array of an array of aggregates. The unit value for a value that is no array, which the encoder passes none of")]
+    #[effects(alloc)]
+    fn elem_at(v: &encode_terms::Val, i: &str) -> encode_terms::Val {
+        match v {
+            encode_terms::Val::S(ea_s0) => encode_terms::Val::Unit,
+            encode_terms::Val::A(elems, ea_l) => encode_terms::Val::S(types::cat5("(select ", elems.as_str(), " ", i, ")")),
+            encode_terms::Val::Unit => encode_terms::Val::Unit,
+            encode_terms::Val::Struct(ea_struct0) => encode_terms::Val::Unit,
+            encode_terms::Val::Arr(elem, ea_n) => encode_terms::select_val(&**elem, i, 100000),
+        }
+    }
+
+    #[summary("`-x` on f64 (stage0 f64_neg): a literal's negation is the literal of the negated value (`-0.0` is negative zero, as in Rust)")]
+    #[effects(alloc)]
+    fn f64_neg(x: &ast::Expr, v: &str) -> String {
+        match codegen::float_lit(x) {
+            None => types::cat3("(f64.neg ", v, ")"),
+            Some(bits) => encode_terms::f64_lit(bits ^ 9223372036854775808),
+        }
+    }
+
+    #[summary("The facts of the recursive struct selector applications of e outside a quantifier (the walk of stage0 Prog::struct_facts)")]
+    #[effects(alloc)]
+    fn facts_walk(e: &encode_terms::Sexp, sels: &table::Table<encode_decls::Leaf>, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            encode_terms::Sexp::Atom(fw_a) => {},
+            encode_terms::Sexp::List(xs) => { let mut quant: bool = false; if xs.len() > 0 { match &xs[0] { encode_terms::Sexp::Atom(h) => { quant = h.as_str() == "forall" || h.as_str() == "exists"; if xs.len() == 2 { match sels.find(h.as_str()) { None => {}, Some(at) => { match encode_terms::leaf_fact(&sels.items[at], encode_terms::print(e, 100000).as_str()) { None => {}, Some(fact) => out.push(fact), } }, } } }, encode_terms::Sexp::List(fw_l) => {}, } } if !quant { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { facts_walk(&xs[i], sels, out, f - 1); } } },
+        }
+    }
+
+    #[summary("The field values of a struct value held as leaves. No field for another value")]
+    #[effects(alloc)]
+    fn fields_of(v: &encode_terms::Val) -> Vec<encode_terms::Val> {
+        match v {
+            encode_terms::Val::S(fo_s0) => Vec::new(),
+            encode_terms::Val::A(fo_a0, fo_a1) => Vec::new(),
+            encode_terms::Val::Unit => Vec::new(),
+            encode_terms::Val::Struct(fs) => fs.clone(),
+            encode_terms::Val::Arr(fo_arr0, fo_arr1) => Vec::new(),
+        }
+    }
+
+    #[summary("The operand a (the term of e) of a bit operation on i as the operation reads it (stage0 image, ADR-0090): a value outside i, which specification arithmetic may produce, stands for its two's complement image at the width of i. Terms of values of i stay as they are")]
+    #[effects(alloc)]
+    fn image(i: ast::IntTy, e: &ast::Expr, a: &str) -> String {
+        if in_type(e, 100000) {
+            String::from(a)
+        } else {
+            encode_terms::wrap_int(i, a)
+        }
+    }
+
+    #[summary("Whether the specification value of e is a value of its type syntactically (stage0 in_type): a literal, a variable, a place, a method result, or a bit operation. Arithmetic, calls and branches may leave the type (ADR-0022)")]
+    #[effects(pure)]
+    fn in_type(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(it_v, it_r) => true,
+            ast::ExprKind::Float(it_float0) => false,
+            ast::ExprKind::ByteLit(it_bytelit0) => false,
+            ast::ExprKind::ByteStr(it_bytestr0) => false,
+            ast::ExprKind::StrLit(it_strlit0) => false,
+            ast::ExprKind::CharLit(it_charlit0) => false,
+            ast::ExprKind::Bool(it_bool0) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(it_id) => true,
+            ast::ExprKind::Call(it_call0) => false,
+            ast::ExprKind::Method(it_me) => true,
+            ast::ExprKind::Index(it_ib, it_ii) => true,
+            ast::ExprKind::Unary(uop, ux) => !body::is_neg(*uop) && in_type(&**ux, f - 1),
+            ast::ExprKind::Binary(bop, it_bl, it_br) => body::is_bit(*bop) || body::is_shift(*bop),
+            ast::ExprKind::Ref(it_ref0, it_ref1) => false,
+            ast::ExprKind::If(it_if0) => false,
+            ast::ExprKind::Block(it_block0) => false,
+            ast::ExprKind::Array(it_array0) => false,
+            ast::ExprKind::Repeat(it_repeat0) => false,
+            ast::ExprKind::Old(ox) => in_type(&**ox, f - 1),
+            ast::ExprKind::Quant(it_quant0) => false,
+            ast::ExprKind::Trigger(it_trigger0) => false,
+            ast::ExprKind::Closure(it_closure0) => false,
+            ast::ExprKind::StructLit(it_structlit0) => false,
+            ast::ExprKind::Path(it_segs) => true,
+            ast::ExprKind::Deref(it_dx) => true,
+            ast::ExprKind::Field(it_fb, it_fn) => true,
+            ast::ExprKind::Match(it_match0) => false,
+            ast::ExprKind::Return(it_return0) => false,
+            ast::ExprKind::Try(it_try0) => false,
+            ast::ExprKind::Loop(it_loop0) => false,
+            ast::ExprKind::Break(it_break0) => false,
+            ast::ExprKind::Continue(it_continue0) => false,
+            ast::ExprKind::Range(it_range0) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("If e is an integer literal, its value")]
+    #[effects(pure)]
+    fn int_lit(e: &ast::Expr) -> Option<wide::U128> {
+        match &e.kind {
+            ast::ExprKind::Int(v, il_r) => Some(*v),
+            ast::ExprKind::Float(il_float0) => None,
+            ast::ExprKind::ByteLit(il_bytelit0) => None,
+            ast::ExprKind::ByteStr(il_bytestr0) => None,
+            ast::ExprKind::StrLit(il_strlit0) => None,
+            ast::ExprKind::CharLit(il_charlit0) => None,
+            ast::ExprKind::Bool(il_bool0) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(il_var0) => None,
+            ast::ExprKind::Call(il_call0) => None,
+            ast::ExprKind::Method(il_method0) => None,
+            ast::ExprKind::Index(il_index0, il_index1) => None,
+            ast::ExprKind::Unary(il_unary0, il_unary1) => None,
+            ast::ExprKind::Binary(il_binary0, il_binary1, il_binary2) => None,
+            ast::ExprKind::Ref(il_ref0, il_ref1) => None,
+            ast::ExprKind::If(il_if0) => None,
+            ast::ExprKind::Block(il_block0) => None,
+            ast::ExprKind::Array(il_array0) => None,
+            ast::ExprKind::Repeat(il_repeat0) => None,
+            ast::ExprKind::Old(il_old0) => None,
+            ast::ExprKind::Quant(il_quant0) => None,
+            ast::ExprKind::Trigger(il_trigger0) => None,
+            ast::ExprKind::Closure(il_closure0) => None,
+            ast::ExprKind::StructLit(il_structlit0) => None,
+            ast::ExprKind::Path(il_path0) => None,
+            ast::ExprKind::Deref(il_deref0) => None,
+            ast::ExprKind::Field(il_field0, il_field1) => None,
+            ast::ExprKind::Match(il_match0) => None,
+            ast::ExprKind::Return(il_return0) => None,
+            ast::ExprKind::Try(il_try0) => None,
+            ast::ExprKind::Loop(il_loop0) => None,
+            ast::ExprKind::Break(il_break0) => None,
+            ast::ExprKind::Continue(il_continue0) => None,
+            ast::ExprKind::Range(il_range0) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("Whether the encoder holds a value of t as a tuple of leaves (flat_fields has fields)")]
+    #[effects(alloc)]
+    fn is_flat(t: &ast::TypeKind, pg: &Prog) -> bool {
+        match encode_decls::flat_fields(t, &pg.pr.t) {
+            None => false,
+            Some(fs) => true,
+        }
+    }
+
+    #[summary("Whether t is a numeral term with a value (stage0 numeral(t).is_some())")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn is_num(t: &str) -> bool {
+        match encode_terms::numeral(t) {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    #[summary("The length term of an array value. Empty text for a value that is no array")]
+    #[effects(alloc)]
+    fn len_of(v: &encode_terms::Val) -> String {
+        match v {
+            encode_terms::Val::S(lo_s0) => String::new(),
+            encode_terms::Val::A(lo_e, al) => al.clone(),
+            encode_terms::Val::Unit => String::new(),
+            encode_terms::Val::Struct(lo_struct0) => String::new(),
+            encode_terms::Val::Arr(lo_t, tl) => tl.clone(),
+        }
+    }
+
+    #[summary("The uninterpreted part of spec fn symbol f's macro: its value outside the parameters' types (stage0 macro_ext: |m::f| is |m::f!ext|)")]
+    #[effects(alloc)]
+    fn macro_ext(f: &str) -> String {
+        if encode_decls::ends_with(f, "|") && f.len() > 0 {
+            types::cat2(lexer::cut(f, 0, f.len() - 1).as_str(), "!ext|")
+        } else {
+            types::cat2(f, "!ext")
+        }
+    }
+
+    #[summary("Whether one of the bodies names a spec fn other than path: its mark occurs in the text (the leaf test of stage0 Prog::axiom)")]
+    #[effects(pure)]
+    fn names_other(pg: &Prog, path: &str, bodies: &[String]) -> bool {
+        for i in 0..bodies.len()
+            invariant 0 <= i && i <= bodies.len(),
+        {
+            for k in 0..pg.keys.len()
+                invariant 0 <= k && k <= pg.keys.len(),
+            {
+                if pg.keys[k].a.as_str() != path && encode_decls::has_text(bodies[i].as_str(), pg.keys[k].b.as_str()) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[summary("The state of definition path of unit mod_path before anything is encoded (stage0 Enc::new): an instance translates its text under its substitution")]
+    #[effects(alloc)]
+    fn new_enc(pg: &Prog, path: &str, mod_path: &str) -> Enc {
+        let tsub: types::Subst = match pg.defs.find(path) {
+            None => types::Subst { names: Vec::new(), tys: Vec::new() },
+            Some(at) => pg.defs.items[at].tsub.clone(),
+        };
+        Enc { path: String::from(path), unit: String::from(mod_path), tsub: tsub, spec_mod: String::from(mod_path), fr: encode_terms::Fresh { counters: table::new::<u64>(), decls: Vec::new() }, pc: Vec::new(), obls: Vec::new(), trivial: Vec::new(), spec_pc: Vec::new(), term_check: None, foralls: Vec::new(), triggers: Vec::new(), bound: 0 }
+    }
+
+    #[summary("Code of a binary operation: 0 Add, 1 Sub, 2 Mul, 3 Div, 4 Rem, 5 Eq, 6 Ne, 7 Lt, 8 Le, 9 Gt, 10 Ge, 11 And, 12 Or, 13 Implies, 14 a bit operation or a shift")]
+    #[effects(pure)]
+    fn op_code(op: ast::BinOp) -> u8 {
+        match op {
+            ast::BinOp::Add => 0,
+            ast::BinOp::Sub => 1,
+            ast::BinOp::Mul => 2,
+            ast::BinOp::Div => 3,
+            ast::BinOp::Rem => 4,
+            ast::BinOp::Eq => 5,
+            ast::BinOp::Ne => 6,
+            ast::BinOp::Lt => 7,
+            ast::BinOp::Le => 8,
+            ast::BinOp::Gt => 9,
+            ast::BinOp::Ge => 10,
+            ast::BinOp::And => 11,
+            ast::BinOp::Or => 12,
+            ast::BinOp::Implies => 13,
+            ast::BinOp::BitAnd => 14,
+            ast::BinOp::BitOr => 14,
+            ast::BinOp::BitXor => 14,
+            ast::BinOp::Shl => 14,
+            ast::BinOp::Shr => 14,
+        }
+    }
+
+    #[summary("The payload of sv read as variant v of datatype t (stage0 Enc::payload): one value per position from its selectors, and the range facts of its leaves, true when sv is a v (ADR-0027 §5). Nothing for a variant t lacks, which the checker admits none of")]
+    #[effects(alloc)]
+    fn payload(pg: &Prog, t: &ast::TypeKind, v: &str, sv: &str) -> Payload {
+        let mut vals: Vec<encode_terms::Val> = Vec::new();
+        let mut facts: Vec<String> = Vec::new();
+        match encode_decls::variants(t, &pg.pr.t) {
+            None => {},
+            Some(vs) => { let n: usize = codegen::variant_at(vs.as_slice(), v); if n < vs.len() { for k in 0..vs[n].tys.len() invariant 0 <= k && k <= vs[n].tys.len(), { let ls: Vec<encode_decls::NamedLeaf> = encode_decls::payload_leaves(t, v, k, &vs[n].tys[k], &pg.pr.t); let mut terms: Vec<String> = Vec::new(); for j in 0..ls.len() invariant 0 <= j && j <= ls.len(), { terms.push(types::cat5("(", encode_decls::sym(ls[j].name.as_str()).as_str(), " ", sv, ")")); } for j in 0..ls.len() invariant 0 <= j && j <= ls.len(), { if j < terms.len() { match encode_terms::leaf_fact(&ls[j].leaf, terms[j].as_str()) { None => {}, Some(fact) => facts.push(fact), } } } let mut pos: usize = 0; vals.push(encode_terms::build(&vs[n].tys[k], &pg.pr.t, terms.as_slice(), &mut pos, 100000)); } } },
+        }
+        Payload { vals: vals, facts: facts }
+    }
+
+    #[summary("The program as the encoder holds it (stage0 prog_of over prepare): the definitions with a body, the trait method declarations, an instance of a generic spec fn for each key of the prepared tables, and what the datatypes give (the constructor of each selector, the constructors and selector leaves of recursive structs)")]
+    #[effects(alloc)]
+    fn prog_of(ck: &body::Checked) -> Prog {
+        let pr: encode_decls::Prepared = encode_decls::prepared(ck);
+        let rows: Vec<body::DefRow> = body::defs_of(&ck.program, &pr.t.fns);
+        let mut with_body: table::Table<bool> = table::new::<bool>();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            with_body.insert(rows[i].path.as_str(), true);
+        }
+        let found: table::Table<encode_decls::Def> = encode_decls::collect(&ck.program, &pr.t);
+        let mut defs: table::Table<Def> = table::new::<Def>();
+        for n in 0..found.len()
+            invariant 0 <= n,
+        {
+            match found.nth(n) {
+                None => {},
+                Some(at) => { let k: String = found.key(n); defs.insert(k.as_str(), Def { unit: found.items[at].unit.clone(), d: found.items[at].d.clone(), tsub: types::Subst { names: Vec::new(), tys: Vec::new() }, inst: !with_body.has(k.as_str()) }); },
+            }
+        }
+        for n in 0..pr.insts.len()
+            invariant 0 <= n,
+        {
+            match pr.insts.nth(n) {
+                None => {},
+                Some(at) => { match found.find(pr.insts.items[at].base.as_str()) { None => {}, Some(b) => { defs.insert(pr.insts.key(n).as_str(), Def { unit: found.items[b].unit.clone(), d: found.items[b].d.clone(), tsub: pr.insts.items[at].sub.clone(), inst: true }); }, } },
+            }
+        }
+        let dts: encode_decls::Dts = encode_decls::enum_dts(&pr.t, pr.inst_types.as_slice());
+        let mut selectors: table::Table<String> = table::new::<String>();
+        let mut struct_ctors: table::Table<bool> = table::new::<bool>();
+        let mut struct_sels: table::Table<encode_decls::Leaf> = table::new::<encode_decls::Leaf>();
+        for n in 0..dts.dts.len()
+            invariant 0 <= n,
+        {
+            match dts.dts.nth(n) {
+                None => {},
+                Some(at) => { let d: encode_decls::Dt = dts.dts.items[at].clone(); for c in 0..d.ctors.len() invariant 0 <= c && c <= d.ctors.len(), { for s in 0..d.ctors[c].fields.len() invariant 0 <= s && s <= d.ctors[c].fields.len(), { selectors.insert(d.ctors[c].fields[s].name.as_str(), d.ctors[c].name.clone()); } } if encode_decls::has_arb(&d) && d.ctors.len() > 0 { struct_ctors.insert(d.ctors[0].name.as_str(), true); } for l in 0..d.leaves.len() invariant 0 <= l && l <= d.leaves.len(), { struct_sels.insert(d.leaves[l].name.as_str(), d.leaves[l].leaf.clone()); } },
+            }
+        }
+        let mut keys: Vec<encode_terms::Pair> = Vec::new();
+        for n in 0..pr.t.fns.len()
+            invariant 0 <= n,
+        {
+            match pr.t.fns.nth(n) {
+                None => {},
+                Some(at) => { if body::is_spec(pr.t.fns.items[at].kind) { let q: String = pr.t.fns.key(n); keys.push(encode_terms::Pair { a: q.clone(), b: encode_decls::spec_key(q.as_str(), &pr.t) }); } },
+            }
+        }
+        Prog { defs: defs, pr: pr, recursive: ck.b.recursive.clone(), selectors: selectors, struct_ctors: struct_ctors, struct_sels: struct_sels, keys: keys }
+    }
+
+    #[summary("The definitions of a trait's spec method u that a context reveals (the trait arm of stage0 Prog::revealed): every impl's definition of it goes to named; the default body goes to out for each instance whose Self has an impl that leaves it out (never a bare type parameter: no impl is known for it)")]
+    #[effects(alloc)]
+    fn reveal_trait(pg: &Prog, u: &str, tr: &str, sig: &types::FnSig, named: &mut Vec<String>, out: &mut Vec<String>) -> () {
+        let m: String = match encode_decls::last_of(u, "::") {
+            None => String::from(u),
+            Some(i) => lexer::cut(u, i.saturating_add(2), u.len()),
+        };
+        for i in 0..pg.pr.t.trait_impls.len()
+            invariant 0 <= i && i <= pg.pr.t.trait_impls.len(),
+        {
+            if pg.pr.t.trait_impls[i].trait_path.as_str() == tr {
+                let mut p: String = types::cat5("<", types::text(&pg.pr.t.trait_impls[i].head).as_str(), " as ", pg.pr.t.trait_impls[i].trait_path.as_str(), ">::");
+                p.push_str(m.as_str());
+                if pg.pr.t.fns.has(p.as_str()) {
+                    named.push(p.clone());
+                }
+            }
+        }
+        for n in 0..pg.pr.insts.len()
+            invariant 0 <= n,
+        {
+            match pg.pr.insts.nth(n) {
+                None => {},
+                Some(at) => { if pg.pr.insts.items[at].base.as_str() == u { let mut args: Vec<ast::TypeKind> = Vec::new(); for g in 0..sig.generics.len() invariant 0 <= g && g <= sig.generics.len(), { match types::sub_get(&pg.pr.insts.items[at].sub, sig.generics[g].name.as_str()) { None => args.push(ast::TypeKind::Error), Some(a) => args.push(a), } } match body::dispatch(&pg.pr.t.fns, pg.pr.t.trait_impls.as_slice(), u, args.as_slice()) { None => {}, Some(d) => { if d.path.as_str() == u { out.push(pg.pr.insts.key(n)); } }, } } },
+            }
+        }
+    }
+
+    #[summary("The spec fns the context of definition path reveals (stage0 Prog::revealed): a generic one by each of its instances, a trait's spec method by every impl's definition and by its default body where an impl leaves it out. Once each, in the order found: an impl's spec method named both by its own path and through its trait's is one definition")]
+    #[effects(alloc)]
+    fn revealed(pg: &Prog, path: &str, d: &ast::FnDef, mod_path: &str) -> Vec<String> {
+        let ctx: Vec<String> = encode_decls::context_of(path, d, mod_path, &pg.pr);
+        let mut out: Vec<String> = Vec::new();
+        let mut named: Vec<String> = Vec::new();
+        for i in 0..ctx.len()
+            invariant 0 <= i && i <= ctx.len(),
+        {
+            match pg.pr.t.fns.find(ctx[i].as_str()) {
+                None => {},
+                Some(at) => { match &pg.pr.t.fns.items[at].trait_of { None => named.push(ctx[i].clone()), Some(tr) => reveal_trait(pg, ctx[i].as_str(), tr.as_str(), &pg.pr.t.fns.items[at], &mut named, &mut out), } },
+            }
+        }
+        for i in 0..named.len()
+            invariant 0 <= i && i <= named.len(),
+        {
+            match pg.pr.t.fns.find(named[i].as_str()) {
+                None => {},
+                Some(at) => { if pg.pr.t.fns.items[at].generics.len() == 0 { out.push(named[i].clone()); } else { for n in 0..pg.pr.insts.len() invariant 0 <= n, { match pg.pr.insts.nth(n) { None => {}, Some(k) => { if pg.pr.insts.items[k].base.as_str() == named[i].as_str() { out.push(pg.pr.insts.key(n)); } }, } } } },
+            }
+        }
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut once: Vec<String> = Vec::new();
+        for i in 0..out.len()
+            invariant 0 <= i && i <= out.len(),
+        {
+            if !seen.has(out[i].as_str()) {
+                seen.insert(out[i].as_str(), true);
+                once.push(out[i].clone());
+            }
+        }
+        once
+    }
+
+    #[summary("Whether path is a recursive definition of component comp")]
+    #[effects(pure)]
+    fn same_comp(pg: &Prog, path: &str, comp: usize) -> bool {
+        match pg.recursive.find(path) {
+            None => false,
+            Some(at) => pg.recursive.items[at] == comp,
+        }
+    }
+
+    #[summary("Declarations of every spec fn that is not generic, in path order (stage0 Prog::spec_decls): one SMT function, or one per leaf of a struct result, over the sorts of the parameters' leaves")]
+    #[effects(alloc)]
+    fn spec_decls(pg: &Prog) -> Vec<SpecDecl> {
+        let mut out: Vec<SpecDecl> = Vec::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => { if body::is_spec(pg.defs.items[at].d.kind) && pg.pr.t.fns.items[sig].generics.len() == 0 { let params: String = encode_terms::join(encode_decls::param_sorts(pg.pr.t.fns.items[sig].params.as_slice(), &pg.pr.t).as_slice(), " "); let funs: Vec<encode_decls::Fun> = encode_decls::spec_funs(path.as_str(), &pg.pr.t); let mut ds: Vec<String> = Vec::new(); for i in 0..funs.len() invariant 0 <= i && i <= funs.len(), { ds.push(types::cat7("(declare-fun ", funs[i].name.as_str(), " (", params.as_str(), ") ", funs[i].sort.as_str(), ")")); } out.push(SpecDecl { path: path.clone(), key: encode_decls::spec_key(path.as_str(), &pg.pr.t), decl: encode_terms::join(ds.as_slice(), "\n") }); } }, } },
+            }
+        }
+        out
+    }
+
+    #[summary("The top-level commands of SMT-LIB text (stage0 smt::split_commands): each from its opening parenthesis to the one that closes it, |..| and strings respected. What stands outside a command is skipped, an unclosed command at the end is dropped")]
+    #[effects(alloc)]
+    fn split_commands(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut depth: u64 = 0;
+        let mut in_bar: bool = false;
+        let mut in_str: bool = false;
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len(),
+        {
+            let c: u8 = text.as_bytes()[i];
+            if depth > 0 || c == 40 || in_bar || in_str {
+                if c == 124 && !in_str {
+                    in_bar = !in_bar;
+                } else if c == 34 && !in_bar {
+                    in_str = !in_str;
+                } else if c == 40 && !in_bar && !in_str {
+                    if depth == 0 {
+                        start = i;
+                    }
+                    depth = depth.saturating_add(1);
+                } else if c == 41 && !in_bar && !in_str && depth > 0 {
+                    depth = depth - 1;
+                    if depth == 0 {
+                        out.push(lexer::cut(text, start, i + 1));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("The facts of the recursive struct fields text reads outside a quantifier (stage0 Prog::struct_facts): each selector application's range or length bounds, which every program value meets, once each in the order of their text, as assertions. Ground, so the queries stay free of quantifiers")]
+    #[effects(alloc)]
+    fn struct_facts(pg: &Prog, text: &str) -> String {
+        if pg.struct_sels.len() == 0 {
+            return String::new();
+        }
+        let mut facts: Vec<String> = Vec::new();
+        let cmds: Vec<String> = split_commands(text);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            match encode_terms::parse(cmds[i].as_str()) {
+                None => {},
+                Some(e) => facts_walk(&e, &pg.struct_sels, &mut facts, 100000),
+            }
+        }
+        let set: Vec<String> = body::sorted_set(facts.as_slice());
+        let mut out: String = String::new();
+        for i in 0..set.len()
+            invariant 0 <= i && i <= set.len(),
+        {
+            out.push_str(types::cat3("(assert ", set[i].as_str(), ")\n").as_str());
+        }
+        out
+    }
+
+    #[summary("The bytes of text value v from lo to hi, `&s[lo..hi]` (stage0 Enc::sub_text): the shifted array and the difference. The unit value for a value that is no text, which the checker admits none of")]
+    #[effects(alloc)]
+    fn sub_text(v: &encode_terms::Val, lo: &str, hi: &str) -> encode_terms::Val {
+        match encode_terms::parts(v) {
+            None => encode_terms::Val::Unit,
+            Some(p) => encode_terms::Val::A(types::cat5("(bmb_shift ", p.a.as_str(), " ", lo, ")"), types::cat5("(- ", hi, " ", lo, ")")),
+        }
+    }
+
+    #[summary("What a proof fn assumes of a parameter value v of type t, and what a call proves of the argument (stage0 Enc::type_facts, E0819, ADR-0062 §2): the facts fresh_val states of a fresh value (the range of every integer leaf, the length bounds, every element's range in an integer array) except an enum value's payload ranges, which are one level deep")]
+    #[effects(alloc)]
+    fn type_facts(v: &encode_terms::Val, t: &ast::TypeKind, pg: &Prog, f: usize) -> Vec<String>
+        decreases f,
+    {
+        let mut out: Vec<String> = Vec::new();
+        if f == 0 {
+            return out;
+        }
+        match encode_decls::flat_fields(t, &pg.pr.t) {
+            None => {},
+            Some(fs) => { match v { encode_terms::Val::S(tf_s0) => {}, encode_terms::Val::A(tf_a0, tf_a1) => {}, encode_terms::Val::Unit => {}, encode_terms::Val::Struct(vs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < vs.len() { let inner: Vec<String> = type_facts(&vs[i], &fs[i].ty, pg, f - 1); for j in 0..inner.len() invariant 0 <= j && j <= inner.len(), { out.push(inner[j].clone()); } } } return out; }, encode_terms::Val::Arr(tf_arr0, tf_arr1) => {}, } },
+        }
+        let arr: bool = encode_decls::is_array(t);
+        if !arr {
+            match body::ref_inner(t) {
+                None => {},
+                Some(pointee) => { return type_facts(v, &pointee, pg, f - 1); },
+            }
+        }
+        let e: ast::TypeKind = encode_decls::elem_ty(t);
+        match v {
+            encode_terms::Val::S(c) => { match encode_terms::range(t, c.as_str()) { None => {}, Some(sr) => out.push(sr), } },
+            encode_terms::Val::A(elems, al) => { if arr { match encode_terms::range(&e, types::cat3("(select ", elems.as_str(), " k)").as_str()) { None => {}, Some(r) => out.push(types::cat5("(forall ((k Int)) (! ", r.as_str(), " :pattern ((select ", elems.as_str(), " k))))")), } if !encode_terms::fixed_len(al.as_str()) { out.push(types::cat7("(and (<= 0 ", al.as_str(), ") (<= ", al.as_str(), " ", encode_terms::len_max(&e).as_str(), "))")); } } },
+            encode_terms::Val::Unit => {},
+            encode_terms::Val::Struct(tv_struct0) => {},
+            encode_terms::Val::Arr(elem, tl) => { if arr { encode_terms::inner_len_facts(&**elem, &e, &pg.pr.t, &mut out, 100000); if !encode_terms::fixed_len(tl.as_str()) { out.push(types::cat7("(and (<= 0 ", tl.as_str(), ") (<= ", tl.as_str(), " ", encode_terms::len_max(&e).as_str(), "))")); } } },
+        }
+        out
+    }
+
+    #[summary("Variant v of enum t holding payload (stage0 Enc::variant_value): its constructor, applied to the payload's leaves if it has any")]
+    #[effects(alloc)]
+    fn variant_value(t: &ast::TypeKind, v: &str, payload: &[encode_terms::Val]) -> encode_terms::Val {
+        let mut leaves: Vec<String> = Vec::new();
+        for i in 0..payload.len()
+            invariant 0 <= i && i <= payload.len(),
+        {
+            encode_terms::flatten(&payload[i], &mut leaves, 100000);
+        }
+        let c: String = encode_decls::ctor(t, v);
+        if leaves.len() == 0 {
+            encode_terms::Val::S(c)
+        } else {
+            encode_terms::Val::S(types::cat5("(", c.as_str(), " ", encode_terms::join(leaves.as_slice(), " ").as_str(), ")"))
+        }
+    }
+
+    #[summary("The array value of element arrays arr with length len: one array of scalars, or one array per leaf of an aggregate element")]
+    #[effects(alloc)]
+    fn whole_array(arr: encode_terms::Val, len: String) -> encode_terms::Val {
+        match &arr {
+            encode_terms::Val::S(elems) => encode_terms::Val::A(elems.clone(), len),
+            encode_terms::Val::A(wa_a0, wa_a1) => encode_terms::Val::Arr(Box::new(arr.clone()), len),
+            encode_terms::Val::Unit => encode_terms::Val::Arr(Box::new(arr.clone()), len),
+            encode_terms::Val::Struct(wa_struct0) => encode_terms::Val::Arr(Box::new(arr.clone()), len),
+            encode_terms::Val::Arr(wa_arr0, wa_arr1) => encode_terms::Val::Arr(Box::new(arr.clone()), len),
+        }
+    }
+}

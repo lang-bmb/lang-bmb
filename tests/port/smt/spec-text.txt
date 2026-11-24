@@ -1,0 +1,33 @@
+#[summary("Text in specifications: the six comparisons of two texts and of a text with a literal (== as the slice equality of the bytes, the orders as a formula on the common prefix), `&s[a..b]` and its length, is_char_boundary, as_bytes and indexing, len_utf8, a literal's bytes, byte strings, the order of a type parameter that an instance gives String, text inside a struct and an Option, text and bytes passed to another spec fn")]
+mod tx {
+    struct Named { name: String, id: u32 }
+
+    spec fn same(t: &str, u: &str) -> bool { t == u && !(t != u) }
+
+    spec fn orders(t: &str, u: &str) -> bool { t < u || t <= u || t > u || t >= u }
+
+    spec fn lit(t: &str) -> bool { t == "héllo\n" && t < "z" && "a" <= t && t.len() == 7 }
+
+    spec fn cut(t: &str, a: usize, b: usize) -> bool {
+        a <= b && b <= t.len() && t.is_char_boundary(a) && t.is_char_boundary(b) && &t[a..b] == "mid" && long(&t[a..b], b - a) && &t[0..a] < &t[b..t.len()]
+    }
+
+    spec fn long(t: &str, n: usize) -> bool { t.len() == n }
+
+    spec fn eq(v: &[u8], w: &[u8]) -> bool { v == w && v.len() > 0 && w[0] == 120 }
+
+    spec fn bytes(t: &str, v: &[u8]) -> bool { t.as_bytes()[0] == b'x' && eq(t.as_bytes(), v) && eq(v, b"x\x00y") && eq(b"", v) }
+
+    spec fn width(c: char) -> usize { c.len_utf8() }
+
+    spec fn less<T: Ord>(a: &T, b: &T) -> bool { *a < *b && *a <= *b && *a == *b }
+
+    spec fn named(n: &Named, t: &str, o: Option<String>) -> bool { n.name.as_str() == t && n.id == 1 && n.name.len() > 0 && o == None }
+
+    #[effects(pure)]
+    fn use_all(s: &String, t: &String, k: &u8) -> (r: bool)
+        requires less::<String>(s, t) && less::<u8>(k, k),
+    {
+        true
+    }
+}

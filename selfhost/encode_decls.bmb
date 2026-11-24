@@ -258,6 +258,12 @@ mod encode_decls {
     #[effects(alloc)]
     fn contract_specs(p: &ast::Program, tb: &lowered::Tables, path: &str) -> Vec<String> {
         let rows: Vec<Row> = defs(p, &tb.fns);
+        contract_specs_in(rows.as_slice(), tb, path)
+    }
+
+    #[summary("contract_specs over the definitions rows of a program (defs), read once for several paths")]
+    #[effects(alloc)]
+    fn contract_specs_in(rows: &[Row], tb: &lowered::Tables, path: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         for i in 0..rows.len()
             invariant 0 <= i && i <= rows.len(),

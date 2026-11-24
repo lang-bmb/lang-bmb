@@ -1,4 +1,4 @@
-#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, check")]
+#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, check")]
 mod lib {
     #[summary("Result of emit-llvm: JSONL of diagnostics, text of the module, reasons for syntax not yet ported")]
     struct Emitted { ok: bool, diags: String, ir: String, todo: Vec<String> }
@@ -81,6 +81,11 @@ mod lib {
             let sk: body::Checked = body::check_resolved(program.clone(), &mut diags);
             if !diags.has_errors() {
                 body.push_str(encode_decls::dump(&sk).as_str());
+            }
+        } else if stage == "smt" {
+            let ek: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            if !diags.has_errors() {
+                body.push_str(encode_spec::dump(&ek).as_str());
             }
         } else if stage == "moves" {
             let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);

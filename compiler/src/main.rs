@@ -201,6 +201,11 @@ const USAGE: &str = "usage:
                             program checks, with no solver: the spec fn instances, each
                             function's sorts and SMT functions, the datatype declarations,
                             which values are text, and each definition's default context
+  bmb dump smt <file.bmb>...
+                            what the proof encoder builds of each definition, when the
+                            program checks, with no solver: the declarations of spec fns,
+                            each definition's proof context and what it reveals, a spec fn's
+                            definition as the queries take it and its termination obligations
   bmb dump runtime          the code generator's constant IR texts by name, as JSONL
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
@@ -1061,6 +1066,7 @@ fn run() -> ExitCode {
                         | "texts"
                         | "lowered"
                         | "smt-decls"
+                        | "smt"
                         | "layout"
                 ) =>
         {

@@ -1,0 +1,81 @@
+#[summary("What a definition reveals and what a proof fn assumes: #[uses] naming a spec fn, a generic one (every instance), a trait's spec method (every impl's definition, and the default body for each Self whose impl leaves it out), an impl's spec method by its path, the same definition named twice; the spec fns of a contract; type invariants on a struct, an enum and a generic type (the instances of the predicate); proof fn parameters of every shape (integers, f64, bool, a struct with an array, slices of scalars and of structs, a slice of Vec, a struct holding Vec<String> and Vec of Vec, an enum, a recursive enum and a recursive struct, a reference, a type parameter)")]
+mod rv {
+    trait Sized2 {
+        spec fn size(self: &Self) -> i64;
+
+        spec fn double(self: &Self) -> i64 { self.size() + self.size() }
+    }
+
+    #[invariant(ordered)]
+    struct Span { lo: i64, hi: i64 }
+
+    #[invariant(positive)]
+    enum Amount { Zero, Paid(i64), Range(Span) }
+
+    #[invariant(bounded)]
+    struct Buf<T: Copy> { items: [T; 4], len: usize }
+
+    struct Row { cells: [u8; 3], tag: bool, w: f64 }
+
+    struct Node { v: u64, kids: Vec<Node> }
+
+    struct Bag { keys: Vec<String>, grid: Vec<Vec<i32>>, spans: Vec<Span> }
+
+    enum List { Nil, Cons(i64, Box<List>) }
+
+    impl Sized2 for Span {
+        spec fn size(self: &Span) -> i64 { self.hi - self.lo }
+    }
+
+    impl Sized2 for Row {
+        spec fn size(self: &Row) -> i64 { 3 }
+
+        spec fn double(self: &Row) -> i64 { 6 }
+    }
+
+    impl<T: Copy> Sized2 for Buf<T> {
+        spec fn size(self: &Buf<T>) -> i64 { 4 }
+    }
+
+    spec fn ordered(s: &Span) -> bool { s.lo <= s.hi }
+
+    spec fn positive(a: &Amount) -> bool {
+        match a {
+            Amount::Zero => true,
+            Amount::Paid(n) => 0 < *n,
+            Amount::Range(s) => s.lo < s.hi,
+        }
+    }
+
+    spec fn bounded<T: Copy>(b: &Buf<T>) -> bool { b.len <= 4 }
+
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+
+    spec fn wide(s: &Span) -> bool { s.size() > 10 && s.double() > 20 }
+
+    spec fn full(b: &Buf<u8>, c: &Buf<Span>) -> bool { b.double() == 8 && c.size() == 4 && same::<usize>(b.len, c.len) }
+
+    #[effects(pure)]
+    #[uses(same, wide, Sized2::size, Sized2::double)]
+    fn reveal_all(s: &Span, b: &Buf<u8>, c: &Buf<Span>) -> (r: bool)
+        requires wide(s) && full(b, c),
+        ensures same::<bool>(r, true),
+    {
+        true
+    }
+
+    #[effects(pure)]
+    #[uses(ordered, bounded)]
+    fn reveal_some(a: Amount, r: &Row) -> (n: i64)
+        requires positive(&a) && r.size() == 3,
+    {
+        0
+    }
+
+    #[uses(positive, same)]
+    proof fn shapes<T: Copy>(a: i8, b: u64, f: f64, ok: bool, r: Row, xs: &[u16], rows: &[Row], vv: &[Vec<i32>], bag: &Bag, am: &Amount, l: &List, n: &Node, t: T, buf: &Buf<T>, o: Option<Span>, c: char)
+        requires same::<T>(t, t) && positive(am),
+        ensures same::<i8>(a, a),
+    {
+    }
+}

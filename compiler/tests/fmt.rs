@@ -507,6 +507,69 @@ mod d {
     assert!(!ok && out.ends_with("---\n"), "{out}");
 }
 
+/// `bmb dump smt`: what the proof encoder builds of each definition, with
+/// no solver: the declarations of spec fns (one SMT function per leaf of a
+/// struct result), a row per definition and instance with its proof context
+/// and what it reveals, a spec fn's definition as the queries take it (a
+/// macro form before the marker for one that is not recursive), the entry
+/// facts of a proof fn's parameters, and the termination obligations of a
+/// recursive spec fn (under `forall` for every value of the bound variable;
+/// with the struct facts of a recursive struct's selectors).
+#[test]
+fn smt_dump_shows_spec_definitions_and_termination() {
+    const SRC: &str = r#"#[summary("d")]
+mod d {
+    struct Node { v: u64, kids: Vec<Node> }
+    struct P { x: i64, on: bool }
+    spec fn same<T: Copy>(a: T, b: T) -> bool { a == b }
+    spec fn mid(p: P) -> P { P { x: p.x + 1, on: !p.on } }
+    spec fn below(n: usize) -> bool
+        decreases n,
+    {
+        n == 0 || (forall|k: usize| k < n ==> #[trigger] below(k))
+    }
+    spec fn spine(n: &Node) -> u64
+        decreases n,
+    {
+        if n.kids.len() == 0 { n.v } else { spine(&n.kids[0]) }
+    }
+    #[uses(below)]
+    proof fn grows(a: &[u64], p: P)
+        ensures same::<bool>(p.on, p.on),
+    {
+    }
+    #[effects(pure)]
+    #[uses(mid)]
+    fn f(p: P, n: &Node) -> (r: u8)
+        requires same::<i64>(p.x, 0),
+    {
+        3
+    }
+}
+"#;
+    let dump = |text: &str| bmb(&["dump", "smt"], &one("x.bmb", text));
+    let (ok, out) = dump(SRC);
+    assert!(ok && out.starts_with("---\n"), "{out}");
+    assert_eq!(dump(SRC).1, out);
+    for row in [
+        r#"{"spec_decl":"d::mid","key":"|d::mid.","decl":"(declare-fun |d::mid.x| (Int Bool) Int)\n(declare-fun |d::mid.on| (Int Bool) Bool)"}"#,
+        r#"{"def":"d::f","kind":"fn","inst":false,"unit":"d","sub":[],"uses":["d::mid"],"context":["d::mid","d::same"],"contract":["d::same"],"revealed":["d::mid","d::same<bool>","d::same<i64>"],"arrays":[false,true,false],"fields":[[0,1],[0,1]],"encoded":false}"#,
+        // A generic spec fn has no definition of its own; its instance has.
+        r#"{"def":"d::same","kind":"spec fn","inst":false,"unit":"d","sub":[],"uses":[],"context":[],"contract":[],"revealed":[],"arrays":[false,false,false],"fields":[[],[]],"encoded":true}"#,
+        r#"{"axiom":"d::same<bool>","text":"(define-fun |d::same<bool>| ((|a!p| Bool) (|b!p| Bool)) Bool (= |a!p| |b!p|))\n; quantified form outside the probe\n(assert (forall ((|a!p| Bool) (|b!p| Bool)) (! (=> true (= (|d::same<bool>| |a!p| |b!p|) (= |a!p| |b!p|))) :pattern ((|d::same<bool>| |a!p| |b!p|)))))","facts":"","parts":[{"sym":"|d::same<bool>|","params":["|a!p|","|b!p|"],"binders":["(|a!p| Bool)","(|b!p| Bool)"],"guard":"true","body":"(= |a!p| |b!p|)","sort":"Bool","recursive":false}]}"#,
+        r#"(define-fun |d::mid.on| ((|p!p.x| Int) (|p!p.on| Bool)) Bool (ite (and (<= (- 9223372036854775808) |p!p.x|) (<= |p!p.x| 9223372036854775807)) (not |p!p.on|) (|d::mid.on!ext| |p!p.x| |p!p.on|)))"#,
+        r#"{"proof_params":"d::grows","decls":["(declare-const |a@0| (Array Int Int))","(declare-const |a.len@0| Int)","(declare-const |p.x@0| Int)","(declare-const |p.on@0| Bool)"],"facts":["(forall ((k Int)) (! (and (<= 0 (select |a@0| k)) (<= (select |a@0| k) 18446744073709551615)) :pattern ((select |a@0| k))))","(and (<= 0 |a.len@0|) (<= |a.len@0| 1152921504606846975))","(and (<= (- 9223372036854775808) |p.x@0|) (<= |p.x@0| 9223372036854775807))"]}"#,
+        r#"{"termination":"d::below","decls":["(declare-const |n@0| Int)"],"trivial":[]}"#,
+        r#""msg":"recursive call to `d::below` may not decrease its `decreases` measure","assumptions":["(and (<= 0 |n@0|) (<= |n@0| 18446744073709551615))","(not (= |n@0| 0))"],"goal":"(forall ((|k!0| Int)) (=> (and (and (<= 0 |k!0|) (<= |k!0| 18446744073709551615)) (< |k!0| |n@0|)) (and (<= 0 |n@0|) (< |k!0| |n@0|))))","facts":""}"#,
+        r#""assumptions":["(not (= (|d::Node::Node.1.len| |n@0|) 0))"],"goal":"(and (<= 0 0) (< 0 (|d::Node::Node.1.len| |n@0|)))","facts":"(assert (and (<= 0 (|d::Node::Node.1.len| |n@0|)) (<= (|d::Node::Node.1.len| |n@0|) 9223372036854775807)))\n"}"#,
+    ] {
+        assert!(out.contains(row), "{row}\n{out}");
+    }
+    // A program that does not check has diagnostics and no rows.
+    let (ok, out) = dump(&SRC.replace("{ a == b }", "{ a }"));
+    assert!(!ok && out.ends_with("---\n"), "{out}");
+}
+
 #[path = "../../tests/port/smt_terms_ref.rs"]
 mod smt_terms_ref;
 

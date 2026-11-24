@@ -737,6 +737,106 @@ pub fn dump_decls(p: &Program, t: &Tables) -> String {
     out
 }
 
+/// `bmb dump smt`: what the encoder builds of each definition, with no
+/// solver and nothing canonicalised, as JSONL rows. The declaration of every
+/// spec fn (`Prog::spec_decls`); then per definition and instance a `def`
+/// row (its kind, unit and substitution, its `#[uses]`, proof context,
+/// the spec fns of its contract and the definitions it reveals, which
+/// parameters and result hold an array, the field positions of its struct
+/// parameters). A spec fn that is not generic has an `axiom` row (its
+/// definition as the queries take it, its parts for ground instances, the
+/// struct facts of its text); a recursive one a `termination` row and an
+/// `obl` row per obligation. A proof fn has a `proof_params` row (the
+/// declarations and facts of its parameters on entry). `encoded` is false
+/// for a definition whose body this dump does not encode (executable and
+/// proof functions).
+pub fn dump_smt(p: &Program, t: &Tables) -> String {
+    let q = crate::diag::json_str;
+    let raw = |xs: Vec<String>| format!("[{}]", xs.join(","));
+    let list = |xs: &[String]| raw(xs.iter().map(|x| q(x)).collect());
+    let view = prepare(p, t);
+    let t = &view;
+    let prog = prog_of(p, t);
+    let mut out = String::new();
+    for (path, key, decl) in prog.spec_decls() {
+        let (a, b, c) = (q(&path), q(&key), q(&decl));
+        out += &format!("{{\"spec_decl\":{a},\"key\":{b},\"decl\":{c}}}\n");
+    }
+    for (path, d) in &prog.defs {
+        let Some(sig) = t.fns.get(path) else { continue };
+        let (name, unit, inst, spec) = (q(path), q(&d.mod_path), d.inst, d.f.kind == FnKind::Spec);
+        let kind = match d.f.kind {
+            FnKind::Spec => "spec fn",
+            FnKind::Proof => "proof fn",
+            FnKind::Exec => "fn",
+        };
+        let sub = d.tsub.iter();
+        let sub = sub.map(|(n, x)| format!("[{},{}]", q(n), q(&crate::check::ty_str(x))));
+        let sub = raw(sub.collect());
+        let arrays = sig.params.iter().chain([&sig.ret]);
+        let arrays = raw(arrays.map(|x| has_array(x, t).to_string()).collect());
+        let fields = sig.params.iter().map(|x| {
+            let fs = struct_fields(x, t).unwrap_or_default();
+            let at = fs.iter().map(|(n, _)| field_index(x, t, n).to_string());
+            raw(at.collect())
+        });
+        let fields = raw(fields.collect());
+        let uses = list(&uses_of(d.f, &d.mod_path, &t.fns));
+        let ctx = list(&context_of(path, d.f, &d.mod_path, t));
+        let specs = list(&Vec::from_iter(contract_specs(p, t, path)));
+        let shown = list(&prog.revealed(path, d.f, &d.mod_path));
+        out += &format!(
+            "{{\"def\":{name},\"kind\":\"{kind}\",\"inst\":{inst},\"unit\":{unit},\"sub\":{sub},\"uses\":{uses},\"context\":{ctx},\"contract\":{specs},\"revealed\":{shown},\"arrays\":{arrays},\"fields\":{fields},\"encoded\":{spec}}}\n"
+        );
+        if spec && sig.generics.is_empty() {
+            let (text, parts) = prog.axiom(path);
+            let parts = parts.iter().map(|a| {
+                let (sym, guard, body, sort, rec) = (q(&a.sym), q(&a.guard), q(&a.body), q(&a.sort), a.recursive);
+                let (params, binders) = (list(&a.params), list(&a.binders));
+                format!("{{\"sym\":{sym},\"params\":{params},\"binders\":{binders},\"guard\":{guard},\"body\":{body},\"sort\":{sort},\"recursive\":{rec}}}")
+            });
+            let (parts, facts, text) =
+                (raw(parts.collect()), q(&prog.struct_facts(&text)), q(&text));
+            out += &format!(
+                "{{\"axiom\":{name},\"text\":{text},\"facts\":{facts},\"parts\":{parts}}}\n"
+            );
+        }
+        let mut enc = Enc::new(&prog, path, &d.mod_path);
+        if d.f.kind == FnKind::Proof {
+            for prm in &d.f.params {
+                enc.proof_param(&prm.name.name);
+            }
+            let (decls, facts) = (list(&enc.decls), list(&enc.pc));
+            out += &format!("{{\"proof_params\":{name},\"decls\":{decls},\"facts\":{facts}}}\n");
+        }
+        let (Some(comp), Some(dec)) = (t.recursive.get(path), &d.f.decreases) else {
+            continue;
+        };
+        if !spec || d.inst {
+            continue;
+        }
+        enc.termination(d.f, *comp, dec);
+        let at = |s: Span| format!("{},{},{}", s.file, s.lo, s.hi);
+        let trivial = enc
+            .trivial
+            .iter()
+            .map(|(c, s)| format!("[{},{}]", q(c), at(*s)));
+        let (decls, trivial) = (list(&enc.decls), raw(trivial.collect()));
+        out += &format!("{{\"termination\":{name},\"decls\":{decls},\"trivial\":{trivial}}}\n");
+        for o in &enc.obls {
+            let asserts = o.assumptions.iter().map(|a| format!("(assert {a})\n"));
+            let text = format!("{}(assert (not {}))", asserts.collect::<String>(), o.goal);
+            let (code, s, msg, goal) = (o.code, o.span, q(&o.msg), q(&o.goal));
+            let (given, facts) = (list(&o.assumptions), q(&prog.struct_facts(&text)));
+            out += &format!(
+                "{{\"obl\":{name},\"code\":\"{code}\",\"file\":{},\"lo\":{},\"hi\":{},\"msg\":{msg},\"assumptions\":{given},\"goal\":{goal},\"facts\":{facts}}}\n",
+                s.file, s.lo, s.hi
+            );
+        }
+    }
+    out
+}
+
 /// The definitions of `p` and the spec fn instances of `t` (`prepare`).
 pub fn prog_of<'p>(p: &'p Program, t: &'p Tables) -> Prog<'p> {
     let mut defs = collect(p, t);
@@ -4249,6 +4349,34 @@ impl<'p, 'q> Enc<'p, 'q> {
             return;
         }
         self.oblige("E0813", span, msg, goal);
+    }
+
+    /// Parameter `name` of a `proof fn` on entry: a fresh value with the
+    /// facts every call proves of its argument (`type_facts`).
+    fn proof_param(&mut self, name: &str) -> (Val, TypeKind) {
+        let ty = self.local_ty(name);
+        let n = self.pc.len();
+        let v = self.fresh_val(name, &ty);
+        self.pc.truncate(n);
+        let facts = self.type_facts(&v, &ty);
+        self.pc.extend(facts);
+        (v, ty)
+    }
+
+    /// The termination obligations of recursive spec fn `f` of component
+    /// `comp` with measure `dec`: on fresh values of its parameters, every
+    /// call of its body into the component decreases the measure.
+    fn termination(&mut self, f: &FnDef, comp: usize, dec: &Expr) {
+        let mut env = BTreeMap::new();
+        for prm in &f.params {
+            let ty = self.local_ty(&prm.name.name);
+            let v = self.fresh_val(&prm.name.name, &ty);
+            env.insert(prm.name.name.clone(), v);
+        }
+        let (m, data) = self.measure(dec, &env, &BTreeMap::new());
+        self.term_check = Some((comp, m, data));
+        self.spec_block(&f.body, &env, &BTreeMap::new());
+        self.term_check = None;
     }
 
     // ---------- executable code ----------
@@ -8518,16 +8646,7 @@ fn verify_pass(
                     continue;
                 };
                 let Some(dec) = &d.f.decreases else { continue };
-                let mut env = BTreeMap::new();
-                for prm in &d.f.params {
-                    let ty = enc.local_ty(&prm.name.name);
-                    let v = enc.fresh_val(&prm.name.name, &ty);
-                    env.insert(prm.name.name.clone(), v);
-                }
-                let (m, data) = enc.measure(dec, &env, &BTreeMap::new());
-                enc.term_check = Some((comp, m, data));
-                enc.spec_block(&d.f.body, &env, &BTreeMap::new());
-                enc.term_check = None;
+                enc.termination(d.f, comp, dec);
             }
             // A lemma (ADR-0062 §2): its body is ghost code, proved like an
             // executable function's against its contract.
@@ -8540,12 +8659,7 @@ fn verify_pass(
                 // Each parameter satisfies what every call proves of its
                 // argument (`type_facts`), and nothing more.
                 for prm in &d.f.params {
-                    let ty = enc.local_ty(&prm.name.name);
-                    let n = enc.pc.len();
-                    let v = enc.fresh_val(&prm.name.name, &ty);
-                    enc.pc.truncate(n);
-                    let facts = enc.type_facts(&v, &ty);
-                    enc.pc.extend(facts);
+                    let (v, ty) = enc.proof_param(&prm.name.name);
                     enc.inputs.push((prm.name.name.clone(), v.clone(), ty));
                     enc.bind_var(prm.name.name.clone(), v);
                 }
