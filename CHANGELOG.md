@@ -24,3 +24,4 @@ The language surface carries its own version, apart from the compiler crate's.
 ### Repository
 
 - The working records of the project (task lists, reports, measurement logs) moved out; this repository holds the product and its documents. Decision records are in `docs/adr/`.
+- The benchmarks (harnesses, task sets, results, reports) moved to [`bmb-bench`](https://github.com/lang-bmb/bmb-bench). The programs the compiler's tests read stay as `tests/corpus/`; the gate no longer runs the harness self-checks, which are that repository's own check.
