@@ -25,3 +25,35 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Gate
         run: ./scripts/check.sh
+
+  # The benchmark harnesses live in lang-bmb/bmb-bench and run this
+  # compiler: their check (the reference and weak solutions of every task
+  # set, with no model) must still pass against this commit. A change here
+  # that the harnesses must follow lands together with its bmb-bench side.
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lang-bmb
+          # The harnesses' import proof and their port-twin tasks read
+          # fixed commits of this history.
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: lang-bmb/bmb-bench
+          path: bmb-bench
+      - name: Rust toolchain (pinned by rust-toolchain.toml)
+        working-directory: lang-bmb
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Pinned tools (z3, LLVM)
+        run: sudo ./lang-bmb/scripts/setup.sh
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            lang-bmb/target
+          key: bench-${{ runner.os }}-${{ hashFiles('lang-bmb/Cargo.lock') }}
+      - name: Harness check
+        run: ./bmb-bench/scripts/check.sh "$PWD/lang-bmb"
