@@ -519,3 +519,78 @@ fn an_early_retry_prints_the_same_script_from_the_proof_cache() {
     assert_eq!(cold, warm);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `bmb dump smt-queries` writes, with no solver, what `bmb verify
+/// --emit-smt` writes of each definition before the solver's first answer:
+/// over the passing proof corpus, the script and the legend of every
+/// definition are the same bytes when no retry ran (the ground-instance
+/// retries follow an answer, and their queries come after), and the script
+/// with the retries' queries left out otherwise. A program with escapes is
+/// left out: its trusted pass follows the answers of the first.
+#[test]
+fn the_query_dump_is_what_emit_smt_writes_before_the_first_answer() {
+    let bmb = env!("CARGO_BIN_EXE_bmb");
+    let dir = std::env::temp_dir().join(format!("bmb-cli-queries-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/verify/pass");
+    let mut files: Vec<_> = std::fs::read_dir(corpus)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "bmb"))
+        .collect();
+    files.sort();
+    // The queries of a script that are sent before any answer.
+    let first = |script: &str| -> String {
+        let mut out = String::new();
+        let mut keep = true;
+        for line in script.split_inclusive('\n') {
+            if line.starts_with("; ") && script.contains(&format!("{line}(reset)\n")) {
+                keep = !line.starts_with("; retry of obligation ");
+            }
+            if keep {
+                out.push_str(line);
+            }
+        }
+        out
+    };
+    let (mut same, mut retried) = (0, 0);
+    for file in &files {
+        let out = Command::new(bmb)
+            .args(["verify", "--emit-smt"])
+            .arg(&dir)
+            .arg(file)
+            .output()
+            .unwrap();
+        let rows = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(out.status.success(), "{file:?}: {rows}");
+        if rows.contains("\"trust\":") {
+            continue;
+        }
+        let dump = Command::new(bmb)
+            .args(["dump", "smt-queries"])
+            .arg(file)
+            .output()
+            .unwrap();
+        assert!(dump.status.success(), "{file:?}");
+        let dump = String::from_utf8_lossy(&dump.stdout).into_owned();
+        for row in dump.lines().filter(|l| l.starts_with("{\"queries\":")) {
+            let row = bmb::json::parse(row).unwrap();
+            let field = |k: &str| row.get(k).and_then(|v| v.as_str()).unwrap().to_string();
+            let def = field("queries");
+            let path = dir.join(format!("{}.smt2", def.replace("::", ".")));
+            let script = std::fs::read_to_string(&path).unwrap();
+            let legend = std::fs::read_to_string(path.with_extension("smt2.legend")).unwrap();
+            if script.contains("; retry of obligation ") {
+                assert_eq!(field("script"), first(&script), "{def} of {file:?}");
+                retried += 1;
+            } else {
+                assert_eq!(field("script"), script, "{def} of {file:?}");
+                assert_eq!(field("legend"), legend, "{def} of {file:?}");
+                same += 1;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    // Both kinds are there: the comparison is not empty.
+    assert!(same >= 300 && retried >= 1, "{same} {retried}");
+}

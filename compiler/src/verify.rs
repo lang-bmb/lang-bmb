@@ -928,6 +928,44 @@ pub fn dump_smt(p: &Program, t: &Tables) -> String {
     out
 }
 
+/// `bmb dump smt-queries`: per definition, what `bmb verify --emit-smt`
+/// writes of it before the solver's first answer, with no solver: a
+/// `queries` row with its script (per obligation the abstracted query, the
+/// probe and the full query, or the sub-proof's query; the retries that
+/// follow an answer are not there) and its legend, as `smt::canonical_script`
+/// gives them. Then, per definition, a `reach` row: every form each of its
+/// reach points may be asked in (`vacuous_ends`). The pass is the first of
+/// the proof gate (ADR-0029 §2): in a program with escapes, the one without
+/// trusted facts. Nothing is shared between the rows: queries repeat their
+/// bases, and the dump of a large program is large (2.5 GB for this
+/// compiler's own port in BMB).
+pub fn dump_queries(p: &Program, t: &Tables) -> String {
+    let q = crate::diag::json_str;
+    let mut out = String::new();
+    for reach in [false, true] {
+        let pass = (!t.may_untrusted.is_empty()).then(|| TrustPass {
+            trusted: false,
+            untrusted: close(&t.external),
+        });
+        TRUST.with(|x| *x.borrow_mut() = pass);
+        let prev = (FIRST.replace(true), REACH.replace(reach));
+        let o = verify_pass(p, t, &mut Diags::default(), 0, None, None, false, None);
+        FIRST.set(prev.0);
+        REACH.set(prev.1);
+        TRUST.with(|x| *x.borrow_mut() = None);
+        let row = if reach { "reach" } else { "queries" };
+        for (def, script) in o.scripts {
+            let (text, legend) = smt::canonical_script(&script);
+            let (text, legend) = (q(&text), q(&legend));
+            out += &format!(
+                "{{\"{row}\":{},\"script\":{text},\"legend\":{legend}}}\n",
+                q(&def)
+            );
+        }
+    }
+    out
+}
+
 /// Each of `facts` asserted, one per line.
 fn assertions(facts: &BTreeSet<String>) -> String {
     facts.iter().map(|f| format!("(assert {f})\n")).collect()
@@ -1200,6 +1238,9 @@ thread_local! {
     /// The trust of the pass being run (ADR-0029 §2), set by
     /// `verify_trusting`; `None` (a program without escapes) trusts all.
     static TRUST: RefCell<Option<TrustPass>> = const { RefCell::new(None) };
+    /// Set by `dump_queries`: no solver is started, so a definition's script
+    /// is what is written before the first answer.
+    static FIRST: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The trust level of a definition's proof (ADR-0029 §2).
@@ -8498,6 +8539,19 @@ fn split_pass(
 /// function has no obligations. Code generation (§4) keeps every check of
 /// the definitions that are not `proved` and of every definition they
 /// reach: `proven` holds only the obligations of the others.
+fn close(set: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut out = set.clone();
+    for p in set {
+        if let Some(rest) = p.strip_prefix('<')
+            && let Some((head, m)) = rest.rsplit_once(">::")
+            && let Some((_, tr)) = head.rsplit_once(" as ")
+        {
+            out.insert(format!("{tr}::{m}"));
+        }
+    }
+    out
+}
+
 #[allow(clippy::too_many_arguments)]
 fn verify_trusting(
     p: &Program,
@@ -8513,18 +8567,6 @@ fn verify_trusting(
         .into_iter()
         .map(|(path, _, f)| (path, f.span))
         .collect();
-    let close = |set: &BTreeSet<String>| -> BTreeSet<String> {
-        let mut out = set.clone();
-        for p in set {
-            if let Some(rest) = p.strip_prefix('<')
-                && let Some((head, m)) = rest.rsplit_once(">::")
-                && let Some((_, tr)) = head.rsplit_once(" as ")
-            {
-                out.insert(format!("{tr}::{m}"));
-            }
-        }
-        out
-    };
     let pass =
         |trusted: bool, untrusted: &BTreeSet<String>, run: &mut dyn FnMut() -> (Outcome, Diags)| {
             TRUST.with(|x| {
@@ -8708,7 +8750,8 @@ fn verify_pass(
         .map(|d| d.f.name.span)
         .unwrap_or_default();
 
-    if let Err(e) = crate::toolchain::check_z3() {
+    let first = FIRST.with(|f| f.get());
+    if !first && let Err(e) = crate::toolchain::check_z3() {
         diags.push(Diag::new(
             "E0812",
             first_span,
@@ -8838,6 +8881,7 @@ fn verify_pass(
             prefix.push('\n');
             prefix.push_str(&sort_decls(&t.fns[path]));
             let decls = enc.decls.join("\n");
+            let mut reached = String::new();
             for (k, (span, what, pc)) in enc.reach.iter().enumerate() {
                 // A small budget (`REACH_LIMIT`); undecided is not reported.
                 let q = pc
@@ -8864,6 +8908,31 @@ fn verify_pass(
                     &decls,
                     Forms::SatProbe,
                 );
+                if first {
+                    // Every form the point may be asked in; which of them
+                    // are sent after the first depends on the answers.
+                    let limit = probe_limit();
+                    let bv = bv_reach(&decls, &q).map(|b| {
+                        let exact = if b.exact { "exact " } else { "" };
+                        let text = format!("{}\n{}\n{limit}", header.join("\n"), b.script);
+                        (format!("{exact}bit-vector form"), text)
+                    });
+                    let rb = rec_base(&axiom_parts, &q, &spec_decls, &dts, &prefix, &decls);
+                    let with = |b: String| format!("{b}\n{limit}\n{q}");
+                    let forms = [
+                        probe.map(|b| ("probe".to_string(), with(b))),
+                        bv,
+                        rb.map(|b| ("recursive form".to_string(), with(b))),
+                        Some(("full query".into(), format!("{base}\n{REACH_LIMIT}\n{q}"))),
+                    ];
+                    for (form, text) in forms.into_iter().flatten() {
+                        reached += &format!(
+                            "; {form} of reach point {k}: {what} {} {}\n(reset)\n{text}\n(check-sat)\n",
+                            span.lo, span.hi
+                        );
+                    }
+                    continue;
+                }
                 if solver.as_ref().is_some_and(|s| !s.reusable()) {
                     solver = None;
                 }
@@ -8955,6 +9024,9 @@ fn verify_pass(
                     }
                 }
             }
+            if first {
+                scripts.insert(path.clone(), reached);
+            }
             continue;
         }
 
@@ -8971,7 +9043,7 @@ fn verify_pass(
         if solver.as_ref().is_some_and(|s| !s.reusable()) {
             solver = None;
         }
-        let mut solver_down = false;
+        let mut solver_down = first;
         let mut def_proved: Vec<ObKey> = Vec::new();
         for (code, span) in &enc.trivial {
             let key = (*code, span.file, span.lo, span.hi);
@@ -10675,11 +10747,14 @@ fn shown_inputs(inputs: &[(String, Val, TypeKind)], o: &Obl) -> Vec<(String, Val
 /// their types (`x = 4294967295, b = -1`).
 fn sub_counterexample(sol: &mut Solver, q: &crate::subproof::Query) -> String {
     let terms: Vec<String> = q.vars.iter().map(|(s, _)| s.clone()).collect();
-    let Ok(vals) = sol.get_values(&terms) else {
-        return String::new();
-    };
-    q.vars
-        .iter()
+    sol.get_values(&terms)
+        .map_or(String::new(), |vals| sub_values(&q.vars, vals))
+}
+
+/// The text of `sub_counterexample`: `vars` with the values `vals` a model
+/// gives them, an integer as a value of its type.
+pub fn sub_values(vars: &[(String, crate::subproof::Sort)], vals: Vec<String>) -> String {
+    vars.iter()
         .zip(vals)
         .map(|((s, sort), v)| {
             let name = s.trim_matches('|');

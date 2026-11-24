@@ -115,6 +115,26 @@ const TERM_HELPER_TEXTS: &str = "\n(bmb_ctpop8 x)\n(bmb_rotr64 a b) (bmb_brev16 
 /// text has an exponent, fields of the wrong width or digits).
 const TERM_VALUES: &str = "5\n(- 3)\ntrue\n|'T!val!1|\n|'T!val!|\n|'|\n|'T|\n|'a b!val!12|\nx\n(- (- 3))\n(- 3 4)\n(a b (c))\n()\n(-)\n(fp #b0 #b01111111111 #x0000000000000)\n(fp #b1 #b10000000000 #x921fb54442d18)\n(fp #b0 #b11111111111 #x0000000000000)\n(fp #b1 #b11111111111 #x0000000000000)\n(fp #b0 #b11111111111 #x8000000000000)\n(fp #b1 #b11111111111 #x0000000000001)\n(fp #b0 #b00000000000 #x0000000000001)\n(fp #b0 #b00000000000 #x0000000000000)\n(fp #b1 #b00000000000 #x0000000000000)\n(_ +zero 11 53)\n(_ -zero 11 53)\n(_ +oo 11 53)\n(_ -oo 11 53)\n(_ NaN 11 53)\n(_ NaN 8 24)\n(_ foo 11 53)\n(_ NaN 11)\n(fp #b0 #b0111111111 #x0000000000000)\n(fp #x0 #b01111111111 #x0000000000000)\n(fp #b0 #x3ff #x0000000000000)\n(fp #b0 #b01111111111 #b0000000000000000000000000000000000000000000000000001)\n(fp a b c)\n(fp #b2 #b01111111111 #x0000000000000)\n(fp #b0 #b01111111111 #x000000000000g)\n(fp #b0 #b01111111111 #x+00000000000A)\n(fp #b0 #b01111111111 #x0000000000000 x)\n(fp #b0 (b) #x0000000000000)\n(fp #b0 #b10000000000 #x0000000000000)\n(fp #b0 #b01111111011 #x999999999999a)\n(fp #b0 #b10001000100 #xb1ae4d6e2ef50)\n(fp #b0 #b01111100111 #xad7f29abcaf48)\n(fp #b0 #b11111111110 #xfffffffffffff)\n((x 5) (y (- 3)) (b true) (v |'T!val!1|) (f (fp #b0 #b01111111111 #x8000000000000)))";
 
+/// The scripts `smt::canonical_script` is shown at, separated by `^`: a
+/// query with symbols used twice, comment lines and a comment after a
+/// command, a string literal, a `(reset)` among white space (of Unicode
+/// too) and one with text after it, a symbol and a string left open at the
+/// end of a line, text before the first `(reset)`, a last line without a
+/// line feed, and the empty script.
+const TERM_SCRIPTS: &str = "(reset)\n(declare-const |a| Int)\n(assert (> |a| |b c|))\n(assert (> |b c| |a|))\n(check-sat)\n^; comment |x| stays\n(reset)\n(echo \"|s|\") |x| ; tail |y|\n|y|\n  (reset)  \n|y| |x|\n^(reset)\n|unclosed\n|next|\n^no reset |a|\n   ; indented comment |a|\n\t(reset)\t\n|a|^(reset)\n\"open string |a|\n|a|\n(reset) x\n|b|\n(reset\n|c|\n^^|a|\n^\u{a0}(reset)\u{2003}\n|a| |\u{e9}|\n\u{b}(reset)\u{c}\n|\u{e9}|\n^(reset)\n(reset)\n|a|\n(reset)\n";
+
+/// The text whose symbols `Canon::back` names answers after: datatype
+/// symbols, a sort, a name with a space, one that starts with a digit, one
+/// with a dot, the empty name, and a symbol left open.
+const TERM_CANON: &str = "(declare-datatypes ((|Option<i64>| 0)) (((|Option<i64>::None|) (|Option<i64>::Some| (|v| Int)))))\n(declare-sort |T| 0) |x y| |9lives| |a.b| || |open";
+
+/// The solver's answers `Canon::back` is shown at, one per line: bare and
+/// quoted canonical symbols, values of an uninterpreted sort, symbols that
+/// need quoting again, numbers past the symbols and past a machine word, a
+/// `$` after a symbol character and after one outside ASCII, tokens that
+/// are no canonical symbol, a bar left open, and text without a `$`.
+const TERM_ANSWERS: &str = "(($2 7))\n((x $1))\n$4!val!0\n|$4|\n$x $99 a$1 |$q|\n$\n$5\n|$5|\n$6 $7 $8\n|$9|\n$9\n$10\n|$3| |$3\n\u{e9}$1 $1\u{e9}\n$18446744073709551616\n$00001\n(_ $2 $0)\n\"$1\"\n$3$4\n|$4!val!1| |$5!x|\n$4|$3|\n(no symbols)\n|\n$1|";
+
 /// The model values `model_int` is shown at, at every integer type: the
 /// three forms of a bit-vector literal, values on both sides of each
 /// type's sign bit and of `i128`'s, and text that is no literal.
@@ -820,8 +840,31 @@ fn sub_rows(o: &mut String) {
         for i in IntTy::ALL {
             let x = subproof::model_int(v, i).map(|x| x.to_string());
             term_row(o, "model_int", &format!("{v};{}", i.name()), &term_opt(x));
+            // A counterexample of a sub-proof: bars at both ends of a
+            // name go, and a variable without a value is left out.
+            let vars = ["|x@0|", "||b||", "f", "|z|"].map(String::from);
+            let sorts = [Sort::Int(i), Sort::Bool, Sort::F64, Sort::Int(i)];
+            let vars: Vec<(String, Sort)> = vars.into_iter().zip(sorts).collect();
+            let vals = vec![v.to_string(), "true".to_string(), v.to_string()];
+            let shown = bmb::verify::sub_values(&vars, vals);
+            term_row(o, "sub_values", &format!("{v};{}", i.name()), &q(&shown));
         }
     }
+    for t in TERM_SCRIPTS.split('^') {
+        let (text, legend) = smt::canonical_script(t);
+        let v = format!("{{\"text\":{},\"legend\":{}}}", q(&text), q(&legend));
+        term_row(o, "canonical_script", t, &v);
+    }
+    for t in TERM_SCRIPTS.split('^') {
+        term_row(o, "canonical", t, &q(&smt::canonical(t)));
+    }
+    let mut canon = smt::Canon::default();
+    canon.forward(TERM_CANON);
+    for t in TERM_ANSWERS.split('\n') {
+        term_row(o, "canon_back", t, &q(&canon.back(t)));
+    }
+    let none = smt::Canon::default();
+    term_row(o, "canon_back", "none: $0 |$0|", &q(&none.back("$0 |$0|")));
 }
 
 /// The checked program of `TERMS_SOURCE` and its tables.

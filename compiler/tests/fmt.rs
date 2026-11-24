@@ -697,7 +697,10 @@ mod smt_terms_ref;
 /// of structs, a default value read from the tables, an assignment into
 /// a recursive struct (a new constant with the facts of its fields), the
 /// definition of a bit helper, a model value as a counterexample shows it,
-/// and the bit-vector query of a term that converts an integer to `f64`.
+/// the counterexample of a sub-proof, a script in canonical symbols with
+/// its legend, an answer named back in the program's symbols, the
+/// canonical text of a query, and the bit-vector query of a term that converts an integer
+/// to `f64`.
 #[test]
 fn smt_terms_reference_shows_the_term_builders() {
     let out = smt_terms_ref::rows();
@@ -724,6 +727,11 @@ fn smt_terms_reference_shows_the_term_builders() {
         r#"{"fn":"set_at","args":"11 DtField(0,&g::R)","out":{"val":{"s":"|R!new@0|"},"decls":["(declare-const |R!new@0| |g::R|)","(assert (= (|g::R::R.0| |R!new@0|) new))","(assert (= (|g::R::R.1.e| |R!new@0|) (|g::R::R.1.e| r)))","(assert (= (|g::R::R.1.len| |R!new@0|) (|g::R::R.1.len| r)))"]}}"#,
         r#"{"fn":"helper_def","args":"bmb_rotl8","out":["(define-fun bmb_rotl8 ((x (_ BitVec 8)) (s (_ BitVec 8))) (_ BitVec 8) (bvor (bvshl x (bvand s (_ bv7 8))) (bvlshr x (bvsub (_ bv8 8) (bvand s (_ bv7 8))))))",8]}"#,
         r#"{"fn":"render_value","args":"(- 3)","out":"-3"}"#,
+        r##"{"fn":"sub_values","args":"#xff;i8","out":"x@0 = -1, b = true, f = #xff"}"##,
+        r#"{"fn":"canon_back","args":"$4!val!0","out":"T!val!0"}"#,
+        r#"{"fn":"canon_back","args":"|$5|","out":"|x y|"}"#,
+        r#"{"fn":"canonical","args":"no reset |a|\n   ; indented comment |a|\n\t(reset)\t\n|a|","out":"(reset)"}"#,
+        r#"{"fn":"canonical_script","args":"(reset)\n(declare-const |a| Int)\n(assert (> |a| |b c|))\n(assert (> |b c| |a|))\n(check-sat)\n","out":{"text":"(reset)\n(declare-const |$0| Int)\n(assert (> |$0| |$1|))\n(assert (> |$1| |$0|))\n(check-sat)\n","legend":"; query 1\n|$0| |a|\n|$1| |b c|\n"}}"#,
         r#"{"fn":"bit_vector","args":"d:i64 s:u64 o:bool x:f64 y:f64;(f64.lt (f64.from d) (fp #b0 #b01111111111 #x0000000000000))","out":{"logic":"QF_FPBV","decls":["(define-fun f64.lt ((a Float64) (b Float64)) Bool (fp.lt a b))","(declare-const d (_ BitVec 64))","(declare-const s (_ BitVec 64))","(declare-const o Bool)","(declare-const x Float64)","(declare-const y Float64)"],"hyps":[],"goal":"(f64.lt ((_ to_fp 11 53) RNE d) (fp #b0 #b01111111111 #x0000000000000))","guards":[]}}"#,
     ] {
         assert!(out.contains(&format!("{row}\n")), "{row}");
@@ -734,8 +742,8 @@ fn smt_terms_reference_shows_the_term_builders() {
         .filter_map(|l| l.strip_prefix("{\"fn\":\""))
         .filter_map(|l| l.split('"').next())
         .collect();
-    assert_eq!(builders.len(), 80, "{builders:?}");
-    assert_eq!(out.lines().count(), 6168);
+    assert_eq!(builders.len(), 84, "{builders:?}");
+    assert_eq!(out.lines().count(), 6591);
 }
 
 /// `bmb dump runtime`: the code generator's constant IR

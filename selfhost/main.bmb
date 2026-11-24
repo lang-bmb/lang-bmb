@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -29,9 +29,9 @@ mod main {
             }
             return;
         }
-        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts" || args[2] == "lowered" || args[2] == "layout" || args[2] == "smt-decls" || args[2] == "smt") {
+        if args.len() > 3 && args[1] == "dump" && (args[2] == "std" || args[2] == "lower" || args[2] == "decls" || args[2] == "types" || args[2] == "moves" || args[2] == "texts" || args[2] == "lowered" || args[2] == "layout" || args[2] == "smt-decls" || args[2] == "smt" || args[2] == "smt-queries") {
             let inputs: Vec<lib::Input> = read_files(args.as_slice(), 3);
-            let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice());
+            let sr: lib::Outcome = lib::dump_stage(args[2].as_str(), inputs.as_slice(), rlimit());
             print_str(sr.text.as_str());
             if !sr.ok {
                 std::process::exit(1);
@@ -117,7 +117,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
         std::process::exit(2);
     }
 
@@ -136,5 +136,16 @@ mod main {
             i = i + 1;
         }
         files
+    }
+
+    #[summary("The resource limit of a query (stage0 smt::rlimit): the pinned Z3_RLIMIT of scripts/toolchain.env, or the value of BMB_Z3_RLIMIT when that is a smaller number (Rust's parse of a u64: digits after an optional `+`). The pinned number is written here; every query of `dump smt-queries` carries it, so the comparison with stage0 shows a difference")]
+    #[effects(alloc, io, nondet)]
+    #[uses(wide::small, wide::stepped)]
+    fn rlimit() -> u64 {
+        let pinned: u64 = 5000000;
+        match std::env::var("BMB_Z3_RLIMIT") {
+            None => pinned,
+            Some(v) => match encode_sub::parse_u128(v.as_str()) { None => pinned, Some(x) => { if x.hi == 0 && x.lo < pinned { x.lo } else { pinned } }, },
+        }
     }
 }

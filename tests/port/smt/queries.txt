@@ -1,0 +1,175 @@
+#[summary("Query assembly: a query's declarations in order of first use (spec fns, a spec fn with a struct result by the prefix of its leaf symbols, datatypes with the ones their constructors name), the forms of revealed definitions (a leaf over scalars a macro in the probe alone, a leaf that binds an array a macro everywhere, a definition that names another a macro in the probe of a satisfiability check, a spec fn named in a pattern kept quantified and the macro that names it with it, a recursive one quantified and a recursive function at a reach point), bit operations abstracted with the congruences between code and specification (over ground instances of the revealed definitions), ground instances under a quantifier, the instances of a recursive type's validity function, the bit helpers, f64 and text declarations, a sub-proof's query, a type parameter's sort with its order, and the first pass of a program with escapes (no assume, no ensures of an external body)")]
+mod qa {
+    struct Pair { a: u32, b: u32 }
+
+    enum Shape { Dot, Line(Pair), Group(Kind, u8) }
+
+    enum Kind { Open, Closed(bool) }
+
+    #[invariant(counted)]
+    struct Tree { kids: Vec<Tree>, n: u32 }
+
+    spec fn counted(t: &Tree) -> bool { t.n <= 1000 }
+
+    spec fn mix(x: u32, k: u32) -> u32 { x ^ k }
+
+    spec fn twice(x: u32, k: u32) -> u32 { mix(mix(x, k), k) }
+
+    spec fn small(x: u32) -> bool { x < 100 }
+
+    spec fn all_small(v: &[u32], n: usize) -> bool {
+        forall|i: usize| i < n && i < v.len() ==> #[trigger] small(v[i])
+    }
+
+    spec fn tidy(v: &[u32]) -> bool { all_small(v, v.len()) }
+
+    spec fn first(v: &[u32]) -> u32 { if v.len() > 0 { v[0] } else { 0 } }
+
+    spec fn mk(x: u32) -> Pair { Pair { a: x, b: x } }
+
+    spec fn sum_to(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { n % 2 + sum_to(n - 1) }
+    }
+
+    spec fn weight(s: &Shape) -> u32 {
+        match s {
+            Shape::Dot => 0,
+            Shape::Line(p) => p.a,
+            Shape::Group(k, n) => 1,
+        }
+    }
+
+    spec fn at_most<T: Ord>(a: T, b: T) -> bool { a <= b }
+
+    #[effects(pure)]
+    #[uses(mix)]
+    fn xor_twice(x: u32, k: u32) -> (r: u32)
+        ensures r == mix(mix(x, k), k),
+    {
+        (x ^ k) ^ k
+    }
+
+    #[effects(pure)]
+    #[uses(mix, twice)]
+    fn xor_named(x: u32, k: u32) -> (r: u32)
+        ensures r == twice(x, k),
+    {
+        let y: u32 = x ^ k;
+        y ^ k
+    }
+
+    #[effects(pure)]
+    #[uses(small, all_small, tidy, first)]
+    fn head_small(v: &[u32]) -> (r: bool)
+        requires tidy(v),
+        ensures r ==> small(first(v)),
+    {
+        v.len() > 0 && v[0] < 100
+    }
+
+    #[effects(pure)]
+    #[uses(mk)]
+    fn pair_of(x: u32) -> (r: Pair)
+        ensures r.a == mk(x).a && r.b == mk(x).b,
+    {
+        Pair { a: x, b: x }
+    }
+
+    #[effects(pure)]
+    #[uses(sum_to)]
+    fn parity_sum(n: u64) -> (r: u64)
+        requires n <= 2,
+        ensures r == sum_to(n),
+    {
+        let mut i: u64 = 0;
+        let mut s: u64 = 0;
+        while i < n
+            invariant i <= n && s == sum_to(i),
+            decreases n - i,
+        {
+            i = i + 1;
+            s = s + i % 2;
+        }
+        s
+    }
+
+    #[effects(pure)]
+    #[uses(weight)]
+    fn heavier(s: &Shape, t: &Shape) -> (r: bool)
+        ensures r == (weight(s) > weight(t)),
+    {
+        let a: u32 = match s {
+            Shape::Dot => 0,
+            Shape::Line(p) => p.a,
+            Shape::Group(k, n) => 1,
+        };
+        let b: u32 = match t {
+            Shape::Dot => 0,
+            Shape::Line(q) => q.a,
+            Shape::Group(k2, n2) => 1,
+        };
+        a > b
+    }
+
+    #[effects(pure)]
+    fn grown(t: &Tree) -> (r: u32)
+        requires t.kids.len() > 0,
+    {
+        t.kids[0].n / 2 + t.n / 2
+    }
+
+    #[effects(pure)]
+    fn bits(x: u16, y: f64, s: &str) -> (r: u16)
+        requires s.len() >= 2 && s.is_char_boundary(1),
+    {
+        let z: f64 = y + 1.0;
+        if z < y || tail_len(&s[1..s.len()]) > 3 {
+            x.rotate_left(3).swap_bytes()
+        } else {
+            x.reverse_bits() & 255
+        }
+    }
+
+    #[effects(pure)]
+    fn tail_len(s: &str) -> usize {
+        s.len()
+    }
+
+    #[effects(pure)]
+    fn masked(x: u8) -> (r: u8)
+        ensures r <= 15,
+    {
+        assert(x & 15 <= 15) by (bit_vector);
+        x & 15
+    }
+
+    #[effects(pure)]
+    #[uses(at_most)]
+    fn least<T: Copy + Ord>(a: T, b: T) -> (r: T)
+        ensures at_most::<T>(r, a) && at_most::<T>(r, b),
+    {
+        if a <= b { a } else { b }
+    }
+
+    #[rationale(kind = boundary, hash = "0000000000000000", "the outside world")]
+    #[external_body]
+    #[effects(panic)]
+    fn outside(seed: u32) -> (r: u32)
+        ensures small(r),
+    {
+        7
+    }
+
+    #[effects(panic)]
+    #[uses(small)]
+    fn trusting(n: u32) -> (r: u32)
+        ensures r < 200,
+    {
+        let a: u32 = outside(n);
+        #[rationale(kind = boundary, hash = "0000000000000000", "measured")]
+        assume(small(n));
+        a + n
+    }
+}

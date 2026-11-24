@@ -413,7 +413,7 @@ mod app {
         }
     }
 
-    #[summary("The rows of the sub-proof translations (sub_rows of smt_terms_ref.rs): bit_vector, bit_vector_int and bit_vector_sat over grid_sub, the bit helpers' definitions, and the readers of model values (model_int at every integer type, render_value). No spec fn unfolds here, as in the reference; the encoder state the translation is handed is unused")]
+    #[summary("The rows of the sub-proof translations (sub_rows of smt_terms_ref.rs): bit_vector, bit_vector_int and bit_vector_sat over grid_sub, the bit helpers' definitions, and the readers of model values (model_int at every integer type, render_value), the text of a sub-proof's counterexample, canonical scripts with their legends, the canonical text of a query and the solver's answers named back. No spec fn unfolds here, as in the reference; the encoder state the translation is handed is unused")]
     #[effects(alloc)]
     fn dump_sub(out: &mut String, ck: &body::Checked) -> () {
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
@@ -496,8 +496,45 @@ mod app {
                     Some(x) => Some(if x.neg { types::cat2("-", encode_sub::unsigned_text(x.mag).as_str()) } else { encode_sub::unsigned_text(x.mag) }),
                 };
                 row(out, "model_int", types::cat3(models[i].as_str(), ";", body::int_text(tys[k]).as_str()).as_str(), opt_text(&mv).as_str());
+                let mut vars: Vec<encode_sub::Var> = Vec::new();
+                vars.push(encode_sub::Var { sym: String::from("|x@0|"), sort: encode_sub::Sort::Int(tys[k]) });
+                vars.push(encode_sub::Var { sym: String::from("||b||"), sort: encode_sub::Sort::Bool });
+                vars.push(encode_sub::Var { sym: String::from("f"), sort: encode_sub::Sort::F64 });
+                vars.push(encode_sub::Var { sym: String::from("|z|"), sort: encode_sub::Sort::Int(tys[k]) });
+                let mut vals: Vec<String> = Vec::new();
+                vals.push(models[i].clone());
+                vals.push(String::from("true"));
+                vals.push(models[i].clone());
+                row(out, "sub_values", types::cat3(models[i].as_str(), ";", body::int_text(tys[k]).as_str()).as_str(), quoted(encode_query::sub_values(vars.as_slice(), vals.as_slice()).as_str()).as_str());
             }
         }
+        let scripts: Vec<String> = encode_terms::split(grid_scripts().as_str(), b'^');
+        for i in 0..scripts.len()
+            invariant 0 <= i && i <= scripts.len(),
+        {
+            let cs: encode_query::Script = encode_query::canonical_script(scripts[i].as_str());
+            let mut v: String = String::from("{\"text\":");
+            v.push_str(quoted(cs.text.as_str()).as_str());
+            v.push_str(",\"legend\":");
+            v.push_str(quoted(cs.legend.as_str()).as_str());
+            v.push_str("}");
+            row(out, "canonical_script", scripts[i].as_str(), v.as_str());
+        }
+        for i in 0..scripts.len()
+            invariant 0 <= i && i <= scripts.len(),
+        {
+            row(out, "canonical", scripts[i].as_str(), quoted(encode_query::canonical(scripts[i].as_str()).as_str()).as_str());
+        }
+        let mut canon: encode_query::Canon = encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() };
+        encode_query::forward(&mut canon, grid_canon().as_str());
+        let answers: Vec<String> = encode_terms::split(grid_answers().as_str(), b'\n');
+        for i in 0..answers.len()
+            invariant 0 <= i && i <= answers.len(),
+        {
+            row(out, "canon_back", answers[i].as_str(), quoted(encode_query::back(&canon, answers[i].as_str()).as_str()).as_str());
+        }
+        let unnamed: encode_query::Canon = encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() };
+        row(out, "canon_back", "none: $0 |$0|", quoted(encode_query::back(&unnamed, "$0 |$0|").as_str()).as_str());
     }
 
     #[summary("The rows of the builders that read the tables, at type t")]
@@ -617,6 +654,18 @@ mod app {
         String::from("n\n0\n1\n3\n7\n8\n9\n16\n31\n32\n33\n63\n64\n67\n(- 1)\n(- 3)\n(- 64)\n18446744073709551616\n(+ n 1)")
     }
 
+    #[summary("The solver's answers back is shown at (TERM_ANSWERS of smt_terms_ref.rs), one per line: bare and quoted canonical symbols, values of an uninterpreted sort, symbols that need quoting again, numbers past the symbols and past a machine word, a `$` after a symbol character, tokens that are no canonical symbol, a bar left open, and text without a `$`")]
+    #[effects(alloc)]
+    fn grid_answers() -> String {
+        String::from("(($2 7))\n((x $1))\n$4!val!0\n|$4|\n$x $99 a$1 |$q|\n$\n$5\n|$5|\n$6 $7 $8\n|$9|\n$9\n$10\n|$3| |$3\né$1 $1é\n$18446744073709551616\n$00001\n(_ $2 $0)\n\"$1\"\n$3$4\n|$4!val!1| |$5!x|\n$4|$3|\n(no symbols)\n|\n$1|")
+    }
+
+    #[summary("The text whose symbols back names answers after (TERM_CANON of smt_terms_ref.rs)")]
+    #[effects(alloc)]
+    fn grid_canon() -> String {
+        String::from("(declare-datatypes ((|Option<i64>| 0)) (((|Option<i64>::None|) (|Option<i64>::Some| (|v| Int)))))\n(declare-sort |T| 0) |x y| |9lives| |a.b| || |open")
+    }
+
     #[summary("The f64 bit patterns f64_lit is shown at: both zeros, one and minus one, the infinities, quiet, signalling and negative NaNs, the smallest and largest subnormals, the smallest normal and the largest finite value, and a value with every field mixed")]
     #[effects(alloc)]
     fn grid_f64() -> Vec<u64> {
@@ -666,6 +715,12 @@ mod app {
     #[effects(alloc)]
     fn grid_pairs() -> String {
         String::from("a;b\na;0\na;1\na;3\na;7\na;8\na;15\na;16\na;31\na;32\na;63\na;64\na;100\na;127\na;128\na;255\na;32767\na;65535\na;2147483647\na;4294967295\na;9223372036854775807\na;18446744073709551615\na;18446744073709551616\na;(- 1)\na;(- 8)\n255;b\n0;b\n6;b\n(+ a 1);(- b)\n(- 0);b\na;(- 0)")
+    }
+
+    #[summary("The scripts canonical_script is shown at (TERM_SCRIPTS of smt_terms_ref.rs), separated by `^`: symbols used twice, comment lines and a comment after a command, a string literal, a `(reset)` among white space and one with text after it, a symbol and a string left open at the end of a line, text before the first `(reset)`, a last line without a line feed, and the empty script")]
+    #[effects(alloc)]
+    fn grid_scripts() -> String {
+        String::from("(reset)\n(declare-const |a| Int)\n(assert (> |a| |b c|))\n(assert (> |b c| |a|))\n(check-sat)\n^; comment |x| stays\n(reset)\n(echo \"|s|\") |x| ; tail |y|\n|y|\n  (reset)  \n|y| |x|\n^(reset)\n|unclosed\n|next|\n^no reset |a|\n   ; indented comment |a|\n\t(reset)\t\n|a|^(reset)\n\"open string |a|\n|a|\n(reset) x\n|b|\n(reset\n|c|\n^^|a|\n^ (reset) \n|a| |é|\n\u{b}(reset)\u{c}\n|é|\n^(reset)\n(reset)\n|a|\n(reset)\n")
     }
 
     #[summary("The sub-proof translations, `variables;term` one per line (TERM_SUB of smt_terms_ref.rs). A variable is `name:sort`, the sort an integer type, bool, f64 or bvN (a bit-vector constant of a satisfiability query). The terms reach every operator class at every sort and the terms each refuses")]

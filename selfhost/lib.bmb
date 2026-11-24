@@ -1,4 +1,4 @@
-#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, check")]
+#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check")]
 mod lib {
     #[summary("Result of emit-llvm: JSONL of diagnostics, text of the module, reasons for syntax not yet ported")]
     struct Emitted { ok: bool, diags: String, ir: String, todo: Vec<String> }
@@ -24,7 +24,7 @@ mod lib {
     #[summary("The stage between the parser and the checker's body check, as text (stage0 lib::dump_stage): on a syntax error, diagnostics only, like dump parse. Otherwise the diagnostics so far, a --- line, the text of that stage. For now std (the normal form of the program with the library units it names added)")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
-    fn dump_stage(stage: &str, files: &[Input]) -> Outcome {
+    fn dump_stage(stage: &str, files: &[Input], rlimit: u64) -> Outcome {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let mut mods: Vec<ast::Mod> = Vec::new();
@@ -86,6 +86,11 @@ mod lib {
             let ek: body::Checked = body::check_resolved(program.clone(), &mut diags);
             if !diags.has_errors() {
                 body.push_str(encode_spec::dump(&ek).as_str());
+            }
+        } else if stage == "smt-queries" {
+            let qk: body::Checked = body::check_resolved(program.clone(), &mut diags);
+            if !diags.has_errors() {
+                body.push_str(encode_query::dump(&qk, rlimit).as_str());
             }
         } else if stage == "moves" {
             let mk: body::Checked = body::check_resolved(program.clone(), &mut diags);

@@ -206,6 +206,10 @@ const USAGE: &str = "usage:
                             program checks, with no solver: the declarations of spec fns,
                             each definition's proof context and what it reveals, a spec fn's
                             definition as the queries take it and its termination obligations
+  bmb dump smt-queries <file.bmb>...
+                            what `verify --emit-smt` writes of each definition before the
+                            solver's first answer, with no solver: its script and legend,
+                            then every form its reach points may be asked in
   bmb dump runtime          the code generator's constant IR texts by name, as JSONL
   bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)
 
@@ -1067,6 +1071,7 @@ fn run() -> ExitCode {
                         | "lowered"
                         | "smt-decls"
                         | "smt"
+                        | "smt-queries"
                         | "layout"
                 ) =>
         {

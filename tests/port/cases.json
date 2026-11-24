@@ -1066,6 +1066,62 @@
       }
     },
     {
+      "name": "smt-queries",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/smt/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "smt-queries-together",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/big.bmb",
+          "selfhost/diag.bmb",
+          "selfhost/float.bmb",
+          "selfhost/source.bmb",
+          "selfhost/table.bmb",
+          "selfhost/unicode.bmb",
+          "selfhost/wide.bmb",
+          "lib/std/json.bmb",
+          "lib/std/slice.bmb",
+          "lib/std/str.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
       "name": "smt-terms",
       "component": "C6",
       "a": [

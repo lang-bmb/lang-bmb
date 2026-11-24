@@ -1,0 +1,1812 @@
+#[summary("Query assembly of the proof side (port of the text parts of stage0 compiler/src/verify.rs between an obligation and the solver, and of the canonical symbols of compiler/src/smt.rs): what is written of each obligation before the solver's first answer. The header (options), the declarations a query needs, the definitions of revealed spec fns in the forms of each query, the probe, bit operations abstracted with their congruences, ground instances, the query of a sub-proof, the forms a reach point may be asked in, canonical symbols and their legend, the names of the solver's answers back in the program's symbols, and `bmb dump smt-queries`. No solver is started here")]
+mod encode_query {
+    #[summary("A script with bit operations abstracted: the base it is asked over and the abstracted query")]
+    struct Abstracted { head: String, query: String }
+
+    #[summary("An application of definition ax (index in the definitions given) found in a query: its arguments and the variables bound where it stands")]
+    struct App { ax: usize, args: Vec<encode_terms::Sexp>, bound: Vec<String> }
+
+    #[summary("Canonical symbols of a query (stage0 smt::Canon, ADR-0063): every quoted symbol `|..|` is `|$k|`, numbered in order of first occurrence; names holds the program's symbol of each number")]
+    struct Canon { fwd: table::Table<String>, names: Vec<String> }
+
+    #[summary("The reading of bit-vector terms behind bit_congruences (stage0 Congr): the width and the stated value of each operand constant")]
+    struct Congr { width: table::Table<u64>, value: table::Table<encode_terms::Sexp> }
+
+    #[summary("What a definition is asked over: the options and the declarations of its type parameters (prefix), the options alone (header), its local declarations, the definitions it reveals by what marks them (axioms) and in parts, the validity functions it defines, and the program's spec fn and datatype declarations")]
+    struct Ctx { header: String, prefix: String, decls: String, limit: String, axioms: Vec<encode_terms::Pair>, parts: Vec<encode_spec::AxiomParts>, valid: Vec<encode_spec::AxiomParts>, sds: Vec<encode_spec::SpecDecl>, dts: Vec<encode_decls::Decl> }
+
+    #[summary("Which query the definitions are written for (stage0 Forms): the full query, where only leaves that bind an array are macros (ADR-0064); an obligation's probe, where every leaf is a macro (ADR-0067); the probe of a satisfiability check, where every definition outside recursion is a macro (ADR-0072)")]
+    enum Forms { Full, Probe, SatProbe }
+
+    #[summary("A match of a search: where it starts, and which of the searched items it is")]
+    struct Found { at: usize, k: usize }
+
+    #[summary("Where the pieces between bars of a text first start, for the searches of needed_decls: toks holds, for every bar, the text from it to the next bar (to the end after the last) with the first position of that text, list the same in order of position, defs the positions that follow each `(define-fun `")]
+    struct Index { toks: table::Table<usize>, list: Vec<Tok>, defs: Vec<usize> }
+
+    #[summary("An instance of a definition: its assertion, and its body for the next level")]
+    struct Inst { text: String, body: encode_terms::Sexp }
+
+    #[summary("The instances ground_instances made, and whether every application got its own")]
+    struct Instances { text: String, complete: bool }
+
+    #[summary("A bit-vector leaf (stage0 BvLeaf with its width and value): kind 0 is a code operand constant name, signed when its stated value is the two's complement form (v is then the value under it); 1 is a conversion `((_ int2bv w) v)`; 2 is a numeral `(_ bvN w)`")]
+    struct Leaf { kind: u8, name: String, signed: bool, w: u64, v: encode_terms::Sexp }
+
+    #[summary("The range an assertion states of a constant: `(and (<= lo x) (<= x hi))` with numerals lo and hi, as the numerals' text")]
+    struct Range { name: String, lo: String, hi: String }
+
+    #[summary("The ground-instance retry of a query: its base and the instances")]
+    struct Retry { head: String, inst: String }
+
+    #[summary("A script as the solver receives it and the legend of its symbols (stage0 smt::canonical_script)")]
+    struct Script { text: String, legend: String }
+
+    #[summary("A piece of a text that starts at a bar, and where")]
+    struct Tok { text: String, at: usize }
+
+    #[summary("A name with a width")]
+    struct Width { a: String, w: u64 }
+
+    #[summary("Query q (assertions) with each ground bit operation term `(bv2nat ..)` replaced by an integer constant `|bv#n|`, declared first (stage0 abstract_bits, ADR-0048 §4); None when q has none or does not parse. The congruences of the terms (bit_congruences over head) go through the same abstraction")]
+    #[effects(alloc)]
+    fn abstract_bits(head: &str, q: &str) -> Option<String> {
+        if !has(q, "(bv2nat ") {
+            return None;
+        }
+        let mut names: Vec<String> = Vec::new();
+        let mut at: table::Table<usize> = table::new::<usize>();
+        let mut out: String = String::new();
+        let mut cmds: Vec<encode_terms::Sexp> = Vec::new();
+        let texts: Vec<String> = encode_spec::split_commands(q);
+        for i in 0..texts.len()
+            invariant 0 <= i && i <= texts.len(),
+        {
+            let e: encode_terms::Sexp = encode_terms::parse(texts[i].as_str())?;
+            let mut bound: Vec<String> = Vec::new();
+            out.push_str(encode_terms::print(&abstract_walk(&e, &mut bound, &mut names, &mut at, 100000), 100000).as_str());
+            out.push_str("\n");
+            cmds.push(e);
+        }
+        if names.len() == 0 {
+            return None;
+        }
+        let terms: Vec<String> = names.clone();
+        let facts: Vec<String> = bit_congruences(head, cmds.as_slice(), terms.as_slice());
+        for i in 0..facts.len()
+            invariant 0 <= i && i <= facts.len(),
+        {
+            let fe: encode_terms::Sexp = encode_terms::parse(facts[i].as_str())?;
+            let mut fbound: Vec<String> = Vec::new();
+            out.push_str(encode_terms::print(&abstract_walk(&fe, &mut fbound, &mut names, &mut at, 100000), 100000).as_str());
+            out.push_str("\n");
+        }
+        let mut all: String = String::new();
+        for k in 0..names.len()
+            invariant 0 <= k && k <= names.len(),
+        {
+            all.push_str(types::cat3("(declare-const |bv#", encode_terms::dec(k as u64).as_str(), "| Int)\n").as_str());
+        }
+        all.push_str(out.as_str());
+        Some(all)
+    }
+
+    #[summary("The list xs, which is e, with its ground `(bv2nat ..)` terms replaced by their constants (the list part of abstract_walk)")]
+    #[effects(alloc)]
+    fn abstract_list(e: &encode_terms::Sexp, xs: &[encode_terms::Sexp], bound: &mut Vec<String>, names: &mut Vec<String>, at: &mut table::Table<usize>, f: usize) -> encode_terms::Sexp
+        decreases f,
+    {
+        if f == 0 {
+            return e.clone();
+        }
+        let h: String = head_of(xs);
+        if h.as_str() == "bv2nat" && !mentions_any(e, bound.as_slice(), 100000) {
+            let text: String = encode_terms::print(e, 100000);
+            let k: usize = match at.find(text.as_str()) {
+                None => { let n: usize = names.len(); at.insert(text.as_str(), n); names.push(text.clone()); n },
+                Some(slot) => at.items[slot],
+            };
+            return encode_terms::Sexp::Atom(types::cat3("|bv#", encode_terms::dec(k as u64).as_str(), "|"));
+        }
+        if (h.as_str() == "forall" || h.as_str() == "exists" || h.as_str() == "let") && xs.len() == 3 {
+            match &xs[1] {
+                encode_terms::Sexp::Atom(ba) => { return e.clone(); },
+                encode_terms::Sexp::List(bs) => { let mut vars: Vec<String> = Vec::new(); let mut binders: Vec<encode_terms::Sexp> = Vec::new(); for i in 0..bs.len() invariant 0 <= i && i <= bs.len(), { match &bs[i] { encode_terms::Sexp::Atom(pa) => binders.push(bs[i].clone()), encode_terms::Sexp::List(p) => { if p.len() > 0 { match &p[0] { encode_terms::Sexp::Atom(v) => vars.push(v.clone()), encode_terms::Sexp::List(pl) => {}, } } if p.len() == 2 && h.as_str() == "let" { let mut pair: Vec<encode_terms::Sexp> = Vec::new(); pair.push(p[0].clone()); pair.push(abstract_walk(&p[1], bound, names, at, f - 1)); binders.push(encode_terms::Sexp::List(pair)); } else { binders.push(bs[i].clone()); } }, } } let n0: usize = bound.len(); for i in 0..vars.len() invariant 0 <= i && i <= vars.len(), { bound.push(vars[i].clone()); } let inner: encode_terms::Sexp = abstract_walk(&xs[2], bound, names, at, f - 1); bound.truncate(n0); let mut out3: Vec<encode_terms::Sexp> = Vec::new(); out3.push(xs[0].clone()); if h.as_str() == "let" { out3.push(encode_terms::Sexp::List(binders)); } else { out3.push(xs[1].clone()); } out3.push(inner); return encode_terms::Sexp::List(out3); },
+            }
+        }
+        let mut out: Vec<encode_terms::Sexp> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(abstract_walk(&xs[i], bound, names, at, f - 1));
+        }
+        encode_terms::Sexp::List(out)
+    }
+
+    #[summary("e with its ground `(bv2nat ..)` terms replaced by their constants (the walk of stage0 abstract_bits): names holds the terms in order of first occurrence, at the number of each. A term that mentions a variable bound around it is kept and walked; a `let` binds over its body only")]
+    #[effects(alloc)]
+    fn abstract_walk(e: &encode_terms::Sexp, bound: &mut Vec<String>, names: &mut Vec<String>, at: &mut table::Table<usize>, f: usize) -> encode_terms::Sexp
+        decreases f,
+    {
+        if f == 0 {
+            return e.clone();
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => e.clone(),
+            encode_terms::Sexp::List(l) => abstract_list(e, l.as_slice(), bound, names, at, f - 1),
+        }
+    }
+
+    #[summary("Query q over base with its bit operations abstracted (the abstracted value of stage0 verify_pass): over the ground-instance retry's base with its instances when the definition reveals definitions and they have instances, over base otherwise. None when nothing is abstracted")]
+    #[effects(alloc)]
+    fn abstracted_of(cx: &Ctx, pg: &encode_spec::Prog, base: &str, q: &str) -> Option<Abstracted> {
+        let retried: Option<Retry> = if cx.parts.len() == 0 {
+            None
+        } else {
+            retry_script(cx, pg, q)
+        };
+        match retried {
+            None => Some(Abstracted { head: String::from(base), query: abstract_bits(base, q)? }),
+            Some(r) => Some(Abstracted { head: r.head.clone(), query: abstract_bits(r.head.as_str(), types::cat2(r.inst.as_str(), q).as_str())? }),
+        }
+    }
+
+    #[summary("Whether e is the atom s")]
+    #[effects(pure)]
+    fn atom_is(e: &encode_terms::Sexp, s: &str) -> bool {
+        match e {
+            encode_terms::Sexp::Atom(a) => a.as_str() == s,
+            encode_terms::Sexp::List(l) => false,
+        }
+    }
+
+    #[summary("The definitions of axioms (what marks each in a text, and its text from encode_spec::axiom) that text reaches, closed over their own bodies, in the forms of query forms (stage0 axioms_in_forms). In order of first use: first those the text names, by where it first names them, then those their bodies name, and so on (ADR-0063 §2). A spec fn named in a pattern stays quantified (ADR-0064), a macro that names a quantified definition is quantified too (ADR-0072), a macro comes before every definition that names it, and macros that wait for each other go in their quantified form")]
+    #[effects(alloc)]
+    fn axioms_in_forms(axioms: &[encode_terms::Pair], text: &str, forms: Forms) -> String {
+        let n: usize = axioms.len();
+        let mut chosen: Vec<bool> = Vec::new();
+        let mut done: Vec<bool> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            chosen.push(false);
+            done.push(false);
+        }
+        let mut order: Vec<usize> = Vec::new();
+        let mut haystack: String = String::from(text);
+        let mut fuel: usize = n;
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut found: Vec<Found> = Vec::new();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                if k < chosen.len() && !chosen[k] {
+                    match find(haystack.as_str(), axioms[k].a.as_str(), 0) {
+                        None => {},
+                        Some(p) => found.push(Found { at: p, k: k }),
+                    }
+                }
+            }
+            if found.len() == 0 {
+                fuel = 0;
+            }
+            let sorted: Vec<Found> = by_position(found.as_slice());
+            for i in 0..sorted.len()
+                invariant 0 <= i && i <= sorted.len(),
+            {
+                let k: usize = sorted[i].k;
+                if k < chosen.len() && k < n {
+                    chosen[k] = true;
+                    order.push(k);
+                    haystack.push_str(axioms[k].b.as_str());
+                }
+            }
+        }
+        let mut seen: String = String::from(text);
+        let mut quants: Vec<String> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            let quant: String = quantified(axioms[k].b.as_str());
+            if k < chosen.len() && chosen[k] {
+                match macro_form(axioms[k].b.as_str(), forms) {
+                    None => seen.push_str(quant.as_str()),
+                    Some(m) => seen.push_str(m.a.as_str()),
+                }
+            }
+            quants.push(quant);
+        }
+        let patterns: Vec<String> = pattern_terms(seen.as_str());
+        let mut texts: Vec<String> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            match macro_form(axioms[k].b.as_str(), forms) {
+                None => texts.push(quantified(axioms[k].b.as_str())),
+                Some(m) => { let mut named: bool = false; for i in 0..patterns.len() invariant 0 <= i && i <= patterns.len(), { if has(patterns[i].as_str(), axioms[k].a.as_str()) { named = true; } } if named { texts.push(m.b.clone()); } else { texts.push(m.a.clone()); } },
+            }
+        }
+        let mut settle: usize = n;
+        while settle > 0
+            decreases settle,
+        {
+            settle = settle - 1;
+            let mut now: Vec<usize> = Vec::new();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                if k < chosen.len() && k < texts.len() && k < quants.len() && chosen[k] && texts[k] == quants[k] {
+                    now.push(k);
+                }
+            }
+            let mut changed: bool = false;
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                if k < chosen.len() && k < texts.len() && k < quants.len() && chosen[k] && texts[k] != quants[k] {
+                    let mut names_one: bool = false;
+                    for i in 0..now.len()
+                        invariant 0 <= i && i <= now.len(),
+                    {
+                        let j: usize = now[i];
+                        if j < n && axioms[j].a != axioms[k].a && has(texts[k].as_str(), axioms[j].a.as_str()) {
+                            names_one = true;
+                        }
+                    }
+                    if names_one {
+                        texts[k] = quants[k].clone();
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                settle = 0;
+            }
+        }
+        let mut is_macro: Vec<bool> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            is_macro.push(k < texts.len() && has(texts[k].as_str(), types::cat2("(define-fun ", axioms[k].a.as_str()).as_str()));
+        }
+        let mut out: String = String::new();
+        let mut rounds: usize = n;
+        while rounds > 0
+            decreases rounds,
+        {
+            rounds = rounds - 1;
+            let mut progressed: bool = false;
+            for i in 0..order.len()
+                invariant 0 <= i && i <= order.len(),
+            {
+                let k: usize = order[i];
+                if k < n && k < done.len() && k < texts.len() && !done[k] {
+                    let mut waits: bool = false;
+                    for j in 0..n
+                        invariant 0 <= j && j <= n,
+                    {
+                        if j != k && j < chosen.len() && j < done.len() && j < is_macro.len() && chosen[j] && !done[j] && is_macro[j] && has(texts[k].as_str(), axioms[j].a.as_str()) {
+                            waits = true;
+                        }
+                    }
+                    if !waits {
+                        done[k] = true;
+                        out.push_str(texts[k].as_str());
+                        out.push_str("\n");
+                        progressed = true;
+                    }
+                }
+            }
+            if !progressed {
+                rounds = 0;
+            }
+        }
+        for i in 0..order.len()
+            invariant 0 <= i && i <= order.len(),
+        {
+            let k: usize = order[i];
+            if k < done.len() && k < quants.len() && !done[k] {
+                out.push_str(quants[k].as_str());
+                out.push_str("\n");
+            }
+        }
+        out
+    }
+
+    #[summary("text from the solver with canonical symbols named as in the program, written as the solver writes them (stage0 Canon::back): the solver prints `|$2|` as `$2` and the values of an uninterpreted sort `|$0|` as `$0!val!0`, so a token, quoted or not, that starts with `$k` gets the program's name in place of `$k`, quoted only when it is not a simple symbol. A `$` after a symbol character starts no token")]
+    #[effects(alloc)]
+    #[uses(wide::small, wide::stepped)]
+    fn back(c: &Canon, text: &str) -> String {
+        if c.names.len() == 0 || !has(text, "$") {
+            return String::from(text);
+        }
+        let mut out: String = String::new();
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        let mut fuel: usize = text.len();
+        while fuel > 0 && i < text.len()
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let ch: u8 = text.as_bytes()[i];
+            if ch == 124 {
+                out.push_str(lexer::cut(text, a, i).as_str());
+                let j: usize = match find_byte(text, 124, i + 1) {
+                    None => text.len(),
+                    Some(bar) => bar,
+                };
+                let inner: String = lexer::cut(text, i + 1, j);
+                match rename(c, inner.as_str()) {
+                    None => { out.push_str("|"); out.push_str(inner.as_str()); if j < text.len() { out.push_str("|"); } },
+                    Some(name) => out.push_str(quote(name.as_str()).as_str()),
+                }
+                i = if j < text.len() {
+                    j + 1
+                } else {
+                    text.len()
+                };
+                a = i;
+            } else if ch == 36 && (i == 0 || !symbol_char(text.as_bytes()[i - 1])) {
+                out.push_str(lexer::cut(text, a, i).as_str());
+                let mut j2: usize = i;
+                for k in i..text.len()
+                    invariant i <= k && j2 <= k,
+                {
+                    if j2 == k && symbol_char(text.as_bytes()[k]) {
+                        j2 = k + 1;
+                    }
+                }
+                let tok: String = lexer::cut(text, i, j2);
+                match rename(c, tok.as_str()) {
+                    None => out.push_str(tok.as_str()),
+                    Some(name2) => out.push_str(quote(name2.as_str()).as_str()),
+                }
+                i = if j2 > i {
+                    j2
+                } else {
+                    i + 1
+                };
+                a = i;
+            } else {
+                i = i + 1;
+            }
+        }
+        out.push_str(lexer::cut(text, a, text.len()).as_str());
+        out
+    }
+
+    #[summary("Congruence facts (assertions) between the abstracted ground terms terms (each a `(bv2nat ..)`) of the query cmds that apply the same operations to the same values written differently (stage0 bit_congruences, ADR-0048 §4). head declares the operand constants (their widths); the query states the value of each. The terms and those nested in them, inner ones first: the first of each reading is the one the others are equated with, and the firsts of different readings of one shape are related pairwise under the equality of the leaves that differ, up to 64 of a shape")]
+    #[effects(alloc)]
+    fn bit_congruences(head: &str, cmds: &[encode_terms::Sexp], terms: &[String]) -> Vec<String> {
+        let mut width: table::Table<u64> = table::new::<u64>();
+        let hs: Vec<String> = encode_spec::split_commands(head);
+        for i in 0..hs.len()
+            invariant 0 <= i && i <= hs.len(),
+        {
+            match encode_terms::parse(hs[i].as_str()) {
+                None => {},
+                Some(he) => { match const_width(&he) { None => {}, Some(cw) => width.insert(cw.a.as_str(), cw.w), } },
+            }
+        }
+        let mut value: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            stated(&cmds[i], &mut value, 100000);
+        }
+        let cx: Congr = Congr { width: width, value: value };
+        let mut all: Vec<encode_terms::Sexp> = Vec::new();
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        for i in 0..terms.len()
+            invariant 0 <= i && i <= terms.len(),
+        {
+            match encode_terms::parse(terms[i].as_str()) {
+                None => {},
+                Some(te) => nested(&te, &mut seen, &mut all, 100000),
+            }
+        }
+        let mut first: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+        let mut shapes: table::Table<Vec<encode_terms::Sexp>> = table::new::<Vec<encode_terms::Sexp>>();
+        let mut facts: Vec<String> = Vec::new();
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            let operand: bool = match &all[i] {
+                encode_terms::Sexp::Atom(a) => true,
+                encode_terms::Sexp::List(xs) => xs.len() < 2 || !is_none_leaf(&leaf(&cx, &xs[1])),
+            };
+            if !operand {
+                match read(&cx, &all[i], true, 100000) {
+                    None => {},
+                    Some(key) => { match first.find(key.as_str()) { None => { match read(&cx, &all[i], false, 100000) { None => {}, Some(shape) => { let reps: Vec<encode_terms::Sexp> = match shapes.find(shape.as_str()) { None => Vec::new(), Some(sl) => shapes.items[sl].clone(), }; if reps.len() < 64 { let mut more: Vec<encode_terms::Sexp> = Vec::new(); for r in 0..reps.len() invariant 0 <= r && r <= reps.len(), { push_fact(&cx, &reps[r], &all[i], &mut facts); more.push(reps[r].clone()); } more.push(all[i].clone()); shapes.insert(shape.as_str(), more); } }, } first.insert(key.as_str(), all[i].clone()); }, Some(slot) => push_fact(&cx, &first.items[slot], &all[i], &mut facts), } },
+                }
+            }
+        }
+        facts
+    }
+
+    #[summary("The reach-point query q (assertions) over the encoder's declarations decls as an exact bit-vector query (stage0 bv_reach over subproof::bit_vector_sat), when every integer constant it uses is asserted in an integer type's range and it names nothing else than constants. The range of a constant is its last assertion of the form `(and (<= lo x) (<= x hi))`")]
+    #[effects(alloc)]
+    fn bv_reach(decls: &str, q: &str, enc: &mut encode_spec::Enc, pg: &encode_spec::Prog) -> Option<encode_sub::SatQuery> {
+        let forms: Vec<encode_terms::Sexp> = match encode_terms::parse(types::cat3("(", q, ")").as_str())? {
+            encode_terms::Sexp::Atom(a) => { return None; },
+            encode_terms::Sexp::List(l) => l,
+        };
+        let mut asserts: Vec<encode_terms::Sexp> = Vec::new();
+        for i in 0..forms.len()
+            invariant 0 <= i && i <= forms.len(),
+        {
+            match &forms[i] {
+                encode_terms::Sexp::Atom(fa) => { return None; },
+                encode_terms::Sexp::List(xs) => { if xs.len() == 2 && atom_is(&xs[0], "assert") { asserts.push(xs[1].clone()); } else { return None; } },
+            }
+        }
+        let mut lo: table::Table<String> = table::new::<String>();
+        let mut hi: table::Table<String> = table::new::<String>();
+        for i in 0..asserts.len()
+            invariant 0 <= i && i <= asserts.len(),
+        {
+            match range_of(&asserts[i]) {
+                None => {},
+                Some(r) => { lo.insert(r.name.as_str(), r.lo.clone()); hi.insert(r.name.as_str(), r.hi.clone()); },
+            }
+        }
+        let mut consts: Vec<encode_sub::Named> = Vec::new();
+        let ds: Vec<String> = encode_sub::lines(decls);
+        for i in 0..ds.len()
+            invariant 0 <= i && i <= ds.len(),
+        {
+            match encode_terms::parse(ds[i].as_str()) {
+                None => {},
+                Some(de) => { match declared_const(&de, &lo, &hi) { None => {}, Some(nc) => consts.push(nc), } },
+            }
+        }
+        match encode_sub::bit_vector_sat(asserts.as_slice(), consts.as_slice(), enc, pg) {
+            Ok(sq) => Some(sq),
+            Err(why) => None,
+        }
+    }
+
+    #[summary("xs in order of position; items at one position keep their order (stage0 sorts pairs of position and number, pushed in order of number)")]
+    #[effects(alloc)]
+    fn by_position(xs: &[Found]) -> Vec<Found> {
+        let mut out: Vec<Found> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut at: usize = out.len();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len() && at <= out.len(),
+            {
+                if at == out.len() && xs[i].at < out[j].at {
+                    at = j;
+                }
+            }
+            let mut next: Vec<Found> = Vec::new();
+            for j in 0..out.len()
+                invariant 0 <= j && j <= out.len(),
+            {
+                if j == at {
+                    next.push(Found { at: xs[i].at, k: xs[i].k });
+                }
+                next.push(Found { at: out[j].at, k: out[j].k });
+            }
+            if at == out.len() {
+                next.push(Found { at: xs[i].at, k: xs[i].k });
+            }
+            out = next;
+        }
+        out
+    }
+
+    #[summary("text (one query) as the solver receives it (stage0 smt::canonical, ADR-0063): its commands only, one per line, with canonical symbols. The input of the proof cache's key")]
+    #[effects(alloc)]
+    fn canonical(text: &str) -> String {
+        let mut canon: Canon = Canon { fwd: table::new::<String>(), names: Vec::new() };
+        let cmds: Vec<String> = encode_spec::split_commands(text);
+        let mut parts: Vec<String> = Vec::new();
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            parts.push(forward(&mut canon, cmds[i].as_str()));
+        }
+        encode_terms::join(parts.as_slice(), "\n")
+    }
+
+    #[summary("A script of queries that each start with `(reset)`, each query with its own canonical symbols, and the legend of every query in order: `; query K`, then one `|$k| NAME` line per symbol (stage0 smt::canonical_script). A comment line is kept as it is")]
+    #[effects(alloc)]
+    fn canonical_script(script: &str) -> Script {
+        let mut out: String = String::new();
+        let mut legend: String = String::new();
+        let mut canon: Canon = Canon { fwd: table::new::<String>(), names: Vec::new() };
+        let mut query: u64 = 0;
+        let mut a: usize = 0;
+        let mut fuel: usize = script.len();
+        while fuel > 0 && a < script.len()
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let b: usize = match find_byte(script, 10, a) {
+                None => script.len(),
+                Some(nl) => nl + 1,
+            };
+            let line: String = lexer::cut(script, a, b);
+            let p: usize = skip_space(line.as_str(), 0);
+            if encode_terms::starts_at(line.as_str(), p, "(reset)") && skip_space(line.as_str(), p.saturating_add(7)) >= line.len() {
+                if canon.names.len() > 0 {
+                    legend_of(&mut legend, query, &canon);
+                }
+                canon = Canon { fwd: table::new::<String>(), names: Vec::new() };
+                query = query.saturating_add(1);
+            }
+            if p < line.len() && line.as_bytes()[p] == 59 {
+                out.push_str(line.as_str());
+            } else {
+                out.push_str(forward(&mut canon, line.as_str()).as_str());
+            }
+            a = b;
+        }
+        if canon.names.len() > 0 {
+            legend_of(&mut legend, query, &canon);
+        }
+        Script { text: out, legend: legend }
+    }
+
+    #[summary("The applications of the definitions axioms in e, each with its arguments and the variables bound where it occurs (stage0 collect_apps): by forall, exists or let, inside bound. A definition without parameters appears as a bare symbol; a `let` binds over its body only, not its own terms")]
+    #[effects(alloc)]
+    fn collect_apps(e: &encode_terms::Sexp, axioms: &[encode_spec::AxiomParts], bound: &[String], out: &mut Vec<App>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => { for i in 0..axioms.len() invariant 0 <= i && i <= axioms.len(), { if axioms[i].params.len() == 0 && axioms[i].sym.as_str() == a.as_str() { out.push(App { ax: i, args: Vec::new(), bound: to_vec(bound) }); return; } } },
+            encode_terms::Sexp::List(l) => collect_list(l.as_slice(), axioms, bound, out, f - 1),
+        }
+    }
+
+    #[summary("The applications in the list xs (the list part of collect_apps)")]
+    #[effects(alloc)]
+    fn collect_list(xs: &[encode_terms::Sexp], axioms: &[encode_spec::AxiomParts], bound: &[String], out: &mut Vec<App>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let h: String = head_of(xs);
+        if xs.len() == 3 && (h.as_str() == "forall" || h.as_str() == "exists" || h.as_str() == "let") {
+            match &xs[1] {
+                encode_terms::Sexp::Atom(ba) => {},
+                encode_terms::Sexp::List(bs) => { let mut inner: Vec<String> = to_vec(bound); for i in 0..bs.len() invariant 0 <= i && i <= bs.len(), { match &bs[i] { encode_terms::Sexp::Atom(pa) => {}, encode_terms::Sexp::List(p) => { if p.len() > 0 { match &p[0] { encode_terms::Sexp::Atom(v) => { inner.push(v.clone()); if h.as_str() == "let" { for t in 1..p.len() invariant 1 <= t && t <= p.len(), { collect_apps(&p[t], axioms, bound, out, f - 1); } } }, encode_terms::Sexp::List(pl) => {}, } } }, } } collect_apps(&xs[2], axioms, inner.as_slice(), out, f - 1); return; },
+            }
+        }
+        if xs.len() > 0 && atom_is(&xs[0], h.as_str()) {
+            let mut hit: bool = false;
+            for i in 0..axioms.len()
+                invariant 0 <= i && i <= axioms.len(),
+            {
+                if !hit && axioms[i].sym.as_str() == h.as_str() && axioms[i].params.len() > 0 && axioms[i].params.len() == xs.len() - 1 {
+                    hit = true;
+                    let mut args: Vec<encode_terms::Sexp> = Vec::new();
+                    for t in 1..xs.len()
+                        invariant 1 <= t && t <= xs.len(),
+                    {
+                        args.push(xs[t].clone());
+                    }
+                    out.push(App { ax: i, args: args, bound: to_vec(bound) });
+                }
+            }
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            collect_apps(&xs[i], axioms, bound, out, f - 1);
+        }
+    }
+
+    #[summary("The name and width of the operand constant a command declares: `(declare-const |'bv@..| (_ BitVec w))`")]
+    #[effects(alloc)]
+    fn const_width(e: &encode_terms::Sexp) -> Option<Width> {
+        let xs: Vec<encode_terms::Sexp> = items(e)?;
+        if xs.len() != 3 || !atom_is(&xs[0], "declare-const") {
+            return None;
+        }
+        let name: String = encode_sub::atom(&xs[1])?;
+        if !encode_terms::starts_at(name.as_str(), 0, "|'bv@") {
+            return None;
+        }
+        let sort: Vec<encode_terms::Sexp> = items(&xs[2])?;
+        if sort.len() != 3 || !atom_is(&sort[0], "_") || !atom_is(&sort[1], "BitVec") {
+            return None;
+        }
+        let w: u64 = encode_sub::parse_u32(encode_sub::atom(&sort[2])?.as_str())?;
+        Some(Width { a: name, w: w })
+    }
+
+    #[summary("The constant command e declares, as bv_reach reads it: a Bool, a bit-vector, or an Int with a range (lo and hi by name) that is an integer type's")]
+    #[effects(alloc)]
+    fn declared_const(e: &encode_terms::Sexp, lo: &table::Table<String>, hi: &table::Table<String>) -> Option<encode_sub::Named> {
+        let xs: Vec<encode_terms::Sexp> = items(e)?;
+        if xs.len() != 3 || !atom_is(&xs[0], "declare-const") {
+            return None;
+        }
+        let name: String = encode_sub::atom(&xs[1])?;
+        let sort: String = encode_terms::print(&xs[2], 100000);
+        if sort.as_str() == "Int" {
+            let l: usize = lo.find(name.as_str())?;
+            let h: usize = hi.find(name.as_str())?;
+            let it: ast::IntTy = int_of_range(lo.items[l].as_str(), hi.items[h].as_str())?;
+            return Some(encode_sub::Named { sym: name, c: encode_sub::Const::Int(it) });
+        }
+        if sort.as_str() == "Bool" {
+            return Some(encode_sub::Named { sym: name, c: encode_sub::Const::Bool });
+        }
+        if encode_terms::starts_at(sort.as_str(), 0, "(_ BitVec ") && encode_decls::ends_with(sort.as_str(), ")") && sort.len() >= 11 {
+            let bw: u64 = encode_sub::parse_u32(lexer::cut(sort.as_str(), 10, sort.len() - 1).as_str())?;
+            return Some(encode_sub::Named { sym: name, c: encode_sub::Const::Bv(bw) });
+        }
+        None
+    }
+
+    #[summary("Whether text has a `(define-fun ` followed by key")]
+    #[effects(pure)]
+    fn defined(ix: &Index, text: &str, key: &str) -> bool {
+        for i in 0..ix.defs.len()
+            invariant 0 <= i && i <= ix.defs.len(),
+        {
+            if encode_terms::starts_at(text, ix.defs[i], key) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("`bmb dump smt-queries` (stage0 verify::dump_queries): per definition, what `bmb verify --emit-smt` writes of it before the solver's first answer, with no solver. A queries row holds its script (per obligation the abstracted query, the probe and the full query, or the sub-proof's query; the retries that follow an answer are not there) and its legend, as canonical_script gives them. Then, per definition, a reach row: every form each of its reach points may be asked in. The pass is the first of the proof gate (ADR-0029 §2): in a program with escapes, the one without trusted facts. rlimit is the resource limit of a query")]
+    #[effects(alloc)]
+    fn dump(ck: &body::Checked, rlimit: u64) -> String {
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(&pg);
+        let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
+        let trust: Option<encode_exec::Trust> = if ck.untrusted.len() == 0 {
+            None
+        } else {
+            Some(encode_exec::Trust { trusted: false, untrusted: trust_closed(ck.b.external.as_slice()) })
+        };
+        let mut out: String = String::new();
+        for pass in 0..2
+            invariant 0 <= pass && pass <= 2,
+        {
+            for n in 0..pg.defs.len()
+                invariant 0 <= n,
+            {
+                match pg.defs.nth(n) {
+                    None => {},
+                    Some(at) => { let path: String = pg.defs.key(n); if !pg.defs.items[at].inst && !types::has(ck.b.external.as_slice(), path.as_str()) { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => { match script_of(&pg, path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds.as_slice(), dts.as_slice(), &trust, rlimit, pass == 1) { None => {}, Some(script) => { let cs: Script = canonical_script(script.as_str()); if pass == 1 { out.push_str("{\"reach\":"); } else { out.push_str("{\"queries\":"); } std::json::push_string(&mut out, path.as_str()); out.push_str(",\"script\":"); std::json::push_string(&mut out, cs.text.as_str()); out.push_str(",\"legend\":"); std::json::push_string(&mut out, cs.legend.as_str()); out.push_str("}\n"); }, } }, } } },
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("First position from from in s where pat starts (Rust's find)")]
+    #[effects(pure)]
+    fn find(s: &str, pat: &str, from: usize) -> Option<usize> {
+        if pat.len() > s.len() {
+            return None;
+        }
+        let room: usize = s.len() - pat.len();
+        for i in from..s.len()
+            invariant from <= i,
+        {
+            if i > room {
+                return None;
+            }
+            if encode_terms::starts_at(s, i, pat) {
+                return Some(i);
+            }
+        }
+        if from <= room && room == s.len() {
+            return Some(room);
+        }
+        None
+    }
+
+    #[summary("First position from from in s of byte b")]
+    #[effects(pure)]
+    fn find_byte(s: &str, b: u8, from: usize) -> (r: Option<usize>)
+        ensures match r { None => true, Some(k) => from <= k && k < s.len(), },
+    {
+        for i in from..s.len()
+            invariant from <= i,
+        {
+            if s.as_bytes()[i] == b {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[summary("First position in text where key starts, as Rust's find gives it, through the index of text. A key that is one bar and text without a bar starts where a piece of the index starts with it; one that also ends in its only other bar is a whole piece; any other key is searched in text")]
+    #[effects(pure)]
+    fn first_at(ix: &Index, text: &str, key: &str) -> Option<usize> {
+        if key.len() >= 1 && key.as_bytes()[0] == 124 {
+            match find_byte(key, 124, 1) {
+                None => { for i in 0..ix.list.len() invariant 0 <= i && i <= ix.list.len(), { if encode_terms::starts_at(ix.list[i].text.as_str(), 0, key) { return Some(ix.list[i].at); } } return None; },
+                Some(end) => { if end + 1 == key.len() { return match ix.toks.find(key) { None => None, Some(slot) => Some(ix.toks.items[slot]), }; } },
+            }
+        }
+        find(text, key, 0)
+    }
+
+    #[summary("text with its quoted symbols in canonical form, numbering new ones (stage0 Canon::forward). A string literal and a comment to the end of its line are kept as they are")]
+    #[effects(alloc)]
+    fn forward(c: &mut Canon, text: &str) -> String {
+        let mut out: String = String::new();
+        let mut a: usize = 0;
+        let mut i: usize = 0;
+        let mut fuel: usize = text.len();
+        while fuel > 0 && i < text.len()
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let ch: u8 = text.as_bytes()[i];
+            if ch == 124 {
+                out.push_str(lexer::cut(text, a, i).as_str());
+                let j: usize = match find_byte(text, 124, i + 1) {
+                    None => text.len(),
+                    Some(bar) => bar + 1,
+                };
+                let sym: String = lexer::cut(text, i, j);
+                match c.fwd.find(sym.as_str()) {
+                    None => { let name: String = types::cat3("|$", encode_terms::dec(c.names.len() as u64).as_str(), "|"); out.push_str(name.as_str()); c.fwd.insert(sym.as_str(), name); c.names.push(sym.clone()); },
+                    Some(slot) => out.push_str(c.fwd.items[slot].as_str()),
+                }
+                a = j;
+                i = j;
+            } else if ch == 34 {
+                i = match find_byte(text, 34, i + 1) {
+                    None => text.len(),
+                    Some(quote) => quote + 1,
+                };
+            } else if ch == 59 {
+                i = match find_byte(text, 10, i + 1) {
+                    None => text.len(),
+                    Some(nl) => nl + 1,
+                };
+            } else {
+                i = i + 1;
+            }
+        }
+        out.push_str(lexer::cut(text, a, text.len()).as_str());
+        out
+    }
+
+    #[summary("Instances of the definitions axioms for the applications occurring in text, to depth levels of nesting (stage0 ground_instances, ADR-0023). An application outside quantifiers gets the ground instance of its definition; one under a quantifier whose arguments mention the variables bound there gets, for a definition that is not recursive, the definition specialized to the arguments that do not (ADR-0075). complete is true when every application got its instance and none was cut at depth")]
+    #[effects(alloc)]
+    fn ground_instances(axioms: &[encode_spec::AxiomParts], text: &str, depth: usize) -> Instances {
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut out: String = String::new();
+        let mut frontier: Vec<encode_terms::Sexp> = Vec::new();
+        let cmds: Vec<String> = encode_spec::split_commands(text);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            match encode_terms::parse(cmds[i].as_str()) {
+                None => {},
+                Some(e) => frontier.push(e),
+            }
+        }
+        let mut complete: bool = true;
+        let mut level: usize = 0;
+        let mut fuel: usize = depth.saturating_add(1);
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut next: Vec<encode_terms::Sexp> = Vec::new();
+            let mut apps: Vec<App> = Vec::new();
+            let none: Vec<String> = Vec::new();
+            for i in 0..frontier.len()
+                invariant 0 <= i && i <= frontier.len(),
+            {
+                collect_apps(&frontier[i], axioms, none.as_slice(), &mut apps, 100000);
+            }
+            let mut cut: bool = false;
+            for i in 0..apps.len()
+                invariant 0 <= i && i <= apps.len(),
+            {
+                if !cut && apps[i].ax < axioms.len() {
+                    match instance(&axioms[apps[i].ax], apps[i].args.as_slice(), apps[i].bound.as_slice()) {
+                        None => { complete = false; },
+                        Some(inst) => { if !seen.has(inst.text.as_str()) { seen.insert(inst.text.as_str(), true); if level == depth { complete = false; cut = true; } else { out.push_str(inst.text.as_str()); out.push_str("\n"); next.push(inst.body.clone()); } } },
+                    }
+                }
+            }
+            if next.len() == 0 {
+                fuel = 0;
+            }
+            frontier = next;
+            level = level.saturating_add(1);
+        }
+        Instances { text: out, complete: complete }
+    }
+
+    #[summary("Whether pat occurs in s")]
+    #[effects(pure)]
+    fn has(s: &str, pat: &str) -> bool {
+        match find(s, pat, 0) {
+            None => false,
+            Some(i) => true,
+        }
+    }
+
+    #[summary("The text of the first element of xs when it is an atom, empty text otherwise")]
+    #[effects(alloc)]
+    fn head_of(xs: &[encode_terms::Sexp]) -> String {
+        if xs.len() == 0 {
+            return String::new();
+        }
+        match &xs[0] {
+            encode_terms::Sexp::Atom(a) => a.clone(),
+            encode_terms::Sexp::List(l) => String::new(),
+        }
+    }
+
+    #[summary("What every query starts with (stage0 header at seed 0): the options, with the resource limit rlimit of a query")]
+    #[effects(alloc)]
+    fn header(rlimit: u64) -> String {
+        types::cat3("(set-option :produce-models true)\n(set-option :smt.random_seed 0)\n(set-option :sat.random_seed 0)\n(set-option :rlimit ", encode_terms::dec(rlimit).as_str(), ")")
+    }
+
+    #[summary("The index of text: for every bar, the piece from it to the next bar, the last one to the end")]
+    #[effects(alloc)]
+    fn index(text: &str) -> Index {
+        let mut toks: table::Table<usize> = table::new::<usize>();
+        let mut list: Vec<Tok> = Vec::new();
+        let mut defs: Vec<usize> = Vec::new();
+        let mut bars: Vec<usize> = Vec::new();
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len(),
+        {
+            let c: u8 = text.as_bytes()[i];
+            if c == 124 {
+                bars.push(i);
+            } else if c == 40 && encode_terms::starts_at(text, i, "(define-fun ") {
+                defs.push(i.saturating_add(12));
+            }
+        }
+        for n in 0..bars.len()
+            invariant 0 <= n && n <= bars.len(),
+        {
+            let q: usize = if n + 1 < bars.len() {
+                bars[n + 1].saturating_add(1)
+            } else {
+                text.len()
+            };
+            let t: String = lexer::cut(text, bars[n], q);
+            if !toks.has(t.as_str()) {
+                toks.insert(t.as_str(), bars[n]);
+                list.push(Tok { text: t.clone(), at: bars[n] });
+            }
+        }
+        Index { toks: toks, list: list, defs: defs }
+    }
+
+    #[summary("The instance of ax for an application with args under the variables bound, and its body (under the quantifier the instance keeps) for the next level (stage0 instance). None when there is none: a recursive definition applied to bound variables, or a definition whose text does not parse")]
+    #[effects(alloc)]
+    fn instance(ax: &encode_spec::AxiomParts, args: &[encode_terms::Sexp], bound: &[String]) -> Option<Inst> {
+        let mut sub: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+        let mut rest: Vec<String> = Vec::new();
+        for i in 0..ax.params.len()
+            invariant 0 <= i && i <= ax.params.len(),
+        {
+            if i < ax.binders.len() && i < args.len() {
+                if bound.len() == 0 || !mentions_any(&args[i], bound, 100000) {
+                    sub.insert(ax.params[i].as_str(), args[i].clone());
+                } else {
+                    rest.push(ax.binders[i].clone());
+                }
+            }
+        }
+        if rest.len() > 0 && ax.recursive {
+            return None;
+        }
+        let guard: String = encode_terms::print(&encode_terms::subst_atoms(&encode_terms::parse(ax.guard.as_str())?, &sub, 100000), 100000);
+        let body: encode_terms::Sexp = encode_terms::subst_atoms(&encode_terms::parse(ax.body.as_str())?, &sub, 100000);
+        let app: String = if ax.params.len() == 0 {
+            ax.sym.clone()
+        } else {
+            let mut shown: Vec<String> = Vec::new();
+            for i in 0..ax.params.len()
+                invariant 0 <= i && i <= ax.params.len(),
+            {
+                match sub.find(ax.params[i].as_str()) {
+                    None => shown.push(ax.params[i].clone()),
+                    Some(slot) => shown.push(encode_terms::print(&sub.items[slot], 100000)),
+                }
+            }
+            types::cat5("(", ax.sym.as_str(), " ", encode_terms::join(shown.as_slice(), " ").as_str(), ")")
+        };
+        let body_text: String = encode_terms::print(&body, 100000);
+        let eq: String = types::cat7("(=> ", guard.as_str(), " (= ", app.as_str(), " ", body_text.as_str(), "))");
+        if rest.len() == 0 {
+            return Some(Inst { text: types::cat3("(assert ", eq.as_str(), ")"), body: body });
+        }
+        let bs: String = encode_terms::join(rest.as_slice(), " ");
+        let text: String = types::cat7("(assert (forall (", bs.as_str(), ") (! ", eq.as_str(), " :pattern (", app.as_str(), "))))");
+        let under: encode_terms::Sexp = encode_terms::parse(types::cat5("(forall (", bs.as_str(), ") ", body_text.as_str(), ")").as_str())?;
+        Some(Inst { text: text, body: under })
+    }
+
+    #[summary("The integer type whose least and greatest values are the numerals lo and hi, the first in the order of stage0 IntTy::ALL")]
+    #[effects(alloc)]
+    fn int_of_range(lo: &str, hi: &str) -> Option<ast::IntTy> {
+        let l: String = encode_terms::num(&encode_terms::numeral(lo)?);
+        let h: String = encode_terms::num(&encode_terms::numeral(hi)?);
+        let all: Vec<ast::IntTy> = int_types();
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            if encode_terms::num(&encode_terms::from_num(consts::min_of(all[i]))) == l && encode_terms::num(&encode_terms::from_num(consts::max_of(all[i]))) == h {
+                return Some(all[i]);
+            }
+        }
+        None
+    }
+
+    #[summary("v in decimal, with a minus sign when negative (Rust's to_string of an i128)")]
+    #[effects(alloc)]
+    #[uses(wide::divisor)]
+    fn int_text(v: &encode_terms::Int) -> String {
+        let mut s: String = String::new();
+        if v.neg {
+            s.push_str("-");
+        }
+        wide::push_radix(&mut s, v.mag, 10);
+        s
+    }
+
+    #[summary("The integer types in the order of stage0 IntTy::ALL")]
+    #[effects(alloc)]
+    fn int_types() -> Vec<ast::IntTy> {
+        let mut out: Vec<ast::IntTy> = Vec::new();
+        out.push(ast::IntTy::I8);
+        out.push(ast::IntTy::I16);
+        out.push(ast::IntTy::I32);
+        out.push(ast::IntTy::I64);
+        out.push(ast::IntTy::Isize);
+        out.push(ast::IntTy::U8);
+        out.push(ast::IntTy::U16);
+        out.push(ast::IntTy::U32);
+        out.push(ast::IntTy::U64);
+        out.push(ast::IntTy::Usize);
+        out
+    }
+
+    #[summary("Whether o is no leaf")]
+    #[effects(pure)]
+    fn is_none_leaf(o: &Option<Leaf>) -> bool {
+        match o {
+            None => true,
+            Some(l) => false,
+        }
+    }
+
+    #[summary("The elements of list e, None for an atom")]
+    #[effects(alloc)]
+    fn items(e: &encode_terms::Sexp) -> Option<Vec<encode_terms::Sexp>> {
+        match e {
+            encode_terms::Sexp::Atom(a) => None,
+            encode_terms::Sexp::List(l) => Some(l.clone()),
+        }
+    }
+
+    #[summary("e as a bit-vector leaf (stage0 Congr::leaf): an operand constant with its width and stated value, a conversion, a numeral")]
+    #[effects(alloc)]
+    fn leaf(cx: &Congr, e: &encode_terms::Sexp) -> Option<Leaf> {
+        match e {
+            encode_terms::Sexp::Atom(a) => { if !encode_terms::starts_at(a.as_str(), 0, "|'bv@") { return None; } let w: u64 = cx.width.items[cx.width.find(a.as_str())?]; let v: encode_terms::Sexp = cx.value.items[cx.value.find(a.as_str())?].clone(); match signed_value(&v, w) { None => Some(Leaf { kind: 0, name: a.clone(), signed: false, w: w, v: v.clone() }), Some(x) => Some(Leaf { kind: 0, name: a.clone(), signed: true, w: w, v: x }), } },
+            encode_terms::Sexp::List(xs) => { if xs.len() == 2 { match &xs[0] { encode_terms::Sexp::Atom(ha) => { return None; }, encode_terms::Sexp::List(fl) => { if fl.len() == 3 && atom_is(&fl[0], "_") && atom_is(&fl[1], "int2bv") { let cw: u64 = encode_sub::parse_u32(encode_sub::atom(&fl[2])?.as_str())?; return Some(Leaf { kind: 1, name: String::new(), signed: false, w: cw, v: xs[1].clone() }); } return None; }, } } if xs.len() == 3 && atom_is(&xs[0], "_") { let n: String = encode_sub::atom(&xs[1])?; let wt: String = encode_sub::atom(&xs[2])?; if !encode_terms::starts_at(n.as_str(), 0, "bv") { return None; } let val: encode_terms::Int = encode_sub::parse_i128(lexer::cut(n.as_str(), 2, n.len()).as_str())?; let nw: u64 = encode_sub::parse_u32(wt.as_str())?; return Some(Leaf { kind: 2, name: String::new(), signed: false, w: nw, v: encode_terms::Sexp::Atom(encode_terms::num(&val)) }); } None },
+        }
+    }
+
+    #[summary("The equalities of the leaves where two terms of the same reading differ; false when their shapes do not match (stage0 Congr::leaf_pairs)")]
+    #[effects(alloc)]
+    fn leaf_pairs(cx: &Congr, a: &encode_terms::Sexp, b: &encode_terms::Sexp, eqs: &mut Vec<String>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        if same(a, b, 100000) {
+            return true;
+        }
+        let la: Option<Leaf> = leaf(cx, a);
+        let lb: Option<Leaf> = leaf(cx, b);
+        match &la {
+            None => match &lb { None => pairs_of(cx, a, b, eqs, f - 1), Some(y0) => false, },
+            Some(x) => match &lb { None => false, Some(y) => { let sx: String = side(x, y); let sy: String = side(y, x); if sx != sy { eqs.push(types::cat5("(= ", sx.as_str(), " ", sy.as_str(), ")")); } true }, },
+        }
+    }
+
+    #[summary("The legend of one query appended to out: `; query K`, then one line per canonical symbol with the program's symbol")]
+    #[effects(alloc)]
+    fn legend_of(out: &mut String, query: u64, canon: &Canon) -> () {
+        out.push_str(types::cat3("; query ", encode_terms::dec(query).as_str(), "\n").as_str());
+        for k in 0..canon.names.len()
+            invariant 0 <= k && k <= canon.names.len(),
+        {
+            out.push_str(types::cat5("|$", encode_terms::dec(k as u64).as_str(), "| ", canon.names[k].as_str(), "\n").as_str());
+        }
+    }
+
+    #[summary("The macro and quantified forms of an axiom text that has both, when its macro serves query forms (stage0 macro_form): after the marker of a macro for every query; for a probe, after the marker of a macro for the probes; for the probe of a satisfiability check, after the marker of a macro for that probe alone")]
+    #[effects(alloc)]
+    fn macro_form(ax: &str, forms: Forms) -> Option<encode_terms::Pair> {
+        match split_once(ax, "\n; quantified form\n") {
+            None => {},
+            Some(p) => { return Some(p); },
+        }
+        let probe: bool = match forms {
+            Forms::Full => false,
+            Forms::Probe => true,
+            Forms::SatProbe => true,
+        };
+        let sat: bool = match forms {
+            Forms::Full => false,
+            Forms::Probe => false,
+            Forms::SatProbe => true,
+        };
+        match split_once(ax, "\n; quantified form outside the probe\n") {
+            None => {},
+            Some(p1) => { if probe { return Some(p1); } },
+        }
+        match split_once(ax, "\n; quantified form outside the satisfiability probe\n") {
+            None => {},
+            Some(p2) => { if sat { return Some(p2); } },
+        }
+        None
+    }
+
+    #[summary("Whether e mentions one of the symbols names (stage0 mentions_any)")]
+    #[effects(pure)]
+    fn mentions_any(e: &encode_terms::Sexp, names: &[String], f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => types::has(names, a.as_str()),
+            encode_terms::Sexp::List(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if mentions_any(&xs[i], names, f - 1) { return true; } } false },
+        }
+    }
+
+    #[summary("What a query declares before its definitions (stage0 needed_decls): the datatypes the text or the spec fn declarations name, with the ones their constructors name; the prelude; the bit-vector functions, the f64 operations and the text function the text applies; and the declarations of the spec fns whose mark occurs in text, in order of first use (ADR-0063 §2), one that the text defines as a macro left out")]
+    #[effects(alloc)]
+    fn needed_decls(sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], text: &str) -> String {
+        let ix: Index = index(text);
+        let mut found: Vec<Found> = Vec::new();
+        for k in 0..sds.len()
+            invariant 0 <= k && k <= sds.len(),
+        {
+            if !defined(&ix, text, sds[k].key.as_str()) {
+                match first_at(&ix, text, sds[k].key.as_str()) {
+                    None => {},
+                    Some(p) => found.push(Found { at: p, k: k }),
+                }
+            }
+        }
+        let used: Vec<Found> = by_position(found.as_slice());
+        let mut out: String = String::new();
+        for i in 0..used.len()
+            invariant 0 <= i && i <= used.len(),
+        {
+            if used[i].k < sds.len() {
+                out.push_str(sds[used[i].k].decl.as_str());
+                out.push_str("\n");
+            }
+        }
+        let mut wanted: Vec<bool> = Vec::new();
+        for i in 0..dts.len()
+            invariant 0 <= i && i <= dts.len(),
+        {
+            let named: bool = match first_at(&ix, text, dts[i].name.as_str()) {
+                None => match first_at(&ix, text, dts[i].key.as_str()) { None => has(out.as_str(), dts[i].name.as_str()), Some(p1) => true, },
+                Some(p0) => true,
+            };
+            wanted.push(named);
+        }
+        let mut i: usize = dts.len();
+        while i > 0
+            invariant i <= dts.len(),
+            decreases i,
+        {
+            i = i - 1;
+            if i < wanted.len() && wanted[i] {
+                for j in 0..i
+                    invariant 0 <= j && j <= i,
+                {
+                    if j < wanted.len() && has(dts[i].decl.as_str(), dts[j].name.as_str()) {
+                        wanted[j] = true;
+                    }
+                }
+            }
+        }
+        let mut all: String = String::new();
+        for k in 0..dts.len()
+            invariant 0 <= k && k <= dts.len(),
+        {
+            if k < wanted.len() && wanted[k] {
+                all.push_str(dts[k].decl.as_str());
+                all.push_str("\n");
+            }
+        }
+        all.push_str(encode_terms::prelude().as_str());
+        all.push_str("\n");
+        all.push_str(encode_sub::helper_defs(text).as_str());
+        all.push_str(encode_terms::f64_decls(text, false).as_str());
+        all.push_str(encode_terms::text_decls(text).as_str());
+        all.push_str(out.as_str());
+        all
+    }
+
+    #[summary("The `(bv2nat ..)` terms in e, inner ones first, once each (the nested walk of stage0 bit_congruences)")]
+    #[effects(alloc)]
+    fn nested(e: &encode_terms::Sexp, seen: &mut table::Table<bool>, out: &mut Vec<encode_terms::Sexp>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => {},
+            encode_terms::Sexp::List(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { nested(&xs[i], seen, out, f - 1); } if xs.len() > 0 && atom_is(&xs[0], "bv2nat") { let text: String = encode_terms::print(e, 100000); if !seen.has(text.as_str()) { seen.insert(text.as_str(), true); out.push(e.clone()); } } },
+        }
+    }
+
+    #[summary("The script of obligations obls (the script text of stage0 verify_pass up to the first answer). A sub-proof with a translation is its own query over the options; one without has no query. Any other obligation is its assumptions asserted and its goal negated, with the instances of the validity functions and the struct facts, over the base: prefix, needed declarations, the definitions it reaches, local declarations. Before it comes its probe, when the probe's base differs; and when the query has bit operations, before both the query with them abstracted (over the ground instances of the revealed definitions when there are any)")]
+    #[effects(alloc)]
+    fn obligations(cx: &Ctx, pg: &encode_spec::Prog, obls: &[encode_spec::Obl]) -> String {
+        let mut script: String = String::new();
+        for k in 0..obls.len()
+            invariant 0 <= k && k <= obls.len(),
+        {
+            let num: String = encode_terms::dec(k as u64);
+            let title: String = types::cat5(num.as_str(), ": ", obls[k].code.as_str(), " ", obls[k].msg.as_str());
+            match &obls[k].sub {
+                None => { let mut asserted: Vec<String> = Vec::new(); for i in 0..obls[k].assumptions.len() invariant 0 <= i && i <= obls[k].assumptions.len(), { asserted.push(types::cat3("(assert ", obls[k].assumptions[i].as_str(), ")")); } let q0: String = types::cat4(encode_terms::join(asserted.as_slice(), "\n").as_str(), "\n(assert (not ", obls[k].goal.as_str(), "))"); let q1: String = valid_instances(cx.valid.as_slice(), q0); let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str()); let relevant: String = relevant_axioms(cx.axioms.as_slice(), q.as_str()); let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(relevant.as_str(), cx.decls.as_str(), "\n", q.as_str()).as_str()); let base: String = types::cat4(cx.prefix.as_str(), used.as_str(), relevant.as_str(), cx.decls.as_str()); let probe: Option<String> = probe_base(cx, q.as_str(), relevant.as_str(), Forms::Probe); let abstracted: Option<Abstracted> = if has(q.as_str(), "(bv2nat ") { abstracted_of(cx, pg, base.as_str(), q.as_str()) } else { None }; let probe_script: String = match &probe { None => String::new(), Some(pb) => { let mut ps: String = types::cat3("; probe of obligation ", title.as_str(), "\n(reset)\n"); ps.push_str(types::cat5(pb.as_str(), "\n", cx.limit.as_str(), "\n", q.as_str()).as_str()); ps.push_str("\n(check-sat)\n"); ps }, }; match &abstracted { None => { script.push_str(probe_script.as_str()); script.push_str(types::cat3("; obligation ", title.as_str(), "\n(reset)\n").as_str()); }, Some(ab) => { script.push_str(types::cat3("; obligation ", title.as_str(), " (bit operations abstracted)\n(reset)\n").as_str()); script.push_str(types::cat4(ab.head.as_str(), "\n", ab.query.as_str(), "\n(check-sat)\n").as_str()); script.push_str(probe_script.as_str()); script.push_str(types::cat3("; exact query of obligation ", num.as_str(), "\n(reset)\n").as_str()); }, } script.push_str(types::cat4(base.as_str(), "\n", q.as_str(), "\n(check-sat)\n").as_str()); },
+                Some(sq) => { match sq { Ok(sub) => { script.push_str(types::cat3("; obligation ", title.as_str(), " (sub-proof)\n(reset)\n").as_str()); script.push_str(types::cat5(cx.header.as_str(), "\n", sub_base(sub).as_str(), sub_goal(sub).as_str(), "\n(check-sat)\n").as_str()); }, Err(refused) => {}, } },
+            }
+        }
+        script
+    }
+
+    #[summary("leaf_pairs of two terms that are no leaves: lists of one length under one head, argument by argument up to the first that does not match")]
+    #[effects(alloc)]
+    fn pairs_of(cx: &Congr, a: &encode_terms::Sexp, b: &encode_terms::Sexp, eqs: &mut Vec<String>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match a {
+            encode_terms::Sexp::Atom(aa) => false,
+            encode_terms::Sexp::List(xs) => match b { encode_terms::Sexp::Atom(ba) => false, encode_terms::Sexp::List(ys) => { if xs.len() != ys.len() || xs.len() == 0 || !same(&xs[0], &ys[0], 100000) { return false; } for i in 1..xs.len() invariant 1 <= i && i <= xs.len(), { if i < ys.len() { if !leaf_pairs(cx, &xs[i], &ys[i], eqs, f - 1) { return false; } } } true }, },
+        }
+    }
+
+    #[summary("The terms of every `:pattern (..)` in text (stage0 pattern_terms): from the parenthesis to the one that closes it, bars and strings not read")]
+    #[effects(alloc)]
+    fn pattern_terms(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut from: usize = 0;
+        let mut fuel: usize = text.len();
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match find(text, ":pattern (", from) {
+                None => { fuel = 0; },
+                Some(i) => { let start: usize = i.saturating_add(9); let mut depth: u64 = 0; let mut end: usize = start; let mut closed: bool = false; for j in start..text.len() invariant start <= j, { if !closed { let c: u8 = text.as_bytes()[j]; if c == 40 { depth = depth.saturating_add(1); } else if c == 41 { depth = depth.saturating_sub(1); if depth == 0 { end = j + 1; closed = true; } } } } out.push(lexer::cut(text, start, end)); from = end; },
+            }
+        }
+        out
+    }
+
+    #[summary("The numeral 2^w for a width below 128, 0 above (stage0 shifts an i128, and no operand is that wide)")]
+    #[effects(alloc)]
+    fn pow2(w: u64) -> String {
+        if w < 128 {
+            encode_terms::pow2(w as u32)
+        } else {
+            String::from("0")
+        }
+    }
+
+    #[summary("The base of a query's probe (stage0 probe_base, ADR-0067): the prefix, the declarations the probe needs, the definitions q reaches in the probe's forms, and the local declarations. None when that is the full query's base (relevant is the full query's definitions), so there is no probe")]
+    #[effects(alloc)]
+    fn probe_base(cx: &Ctx, q: &str, relevant: &str, forms: Forms) -> Option<String> {
+        let defs: String = axioms_in_forms(cx.axioms.as_slice(), q, forms);
+        if defs.as_str() == relevant {
+            return None;
+        }
+        let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(defs.as_str(), cx.decls.as_str(), "\n", q).as_str());
+        Some(types::cat4(cx.prefix.as_str(), used.as_str(), defs.as_str(), cx.decls.as_str()))
+    }
+
+    #[summary("The congruence of terms a and b appended to facts, when their shapes match (the fact closure of stage0 bit_congruences): `(assert (=> eqs (= a b)))` over the equalities of the leaves that differ")]
+    #[effects(alloc)]
+    fn push_fact(cx: &Congr, a: &encode_terms::Sexp, b: &encode_terms::Sexp, facts: &mut Vec<String>) -> () {
+        let mut eqs: Vec<String> = Vec::new();
+        if !leaf_pairs(cx, a, b, &mut eqs, 100000) {
+            return;
+        }
+        let ante: String = if eqs.len() == 0 {
+            String::from("true")
+        } else if eqs.len() == 1 {
+            eqs[0].clone()
+        } else {
+            types::cat3("(and ", encode_terms::join(eqs.as_slice(), " ").as_str(), ")")
+        };
+        facts.push(types::cat7("(assert (=> ", ante.as_str(), " (= ", encode_terms::print(a, 100000).as_str(), " ", encode_terms::print(b, 100000).as_str(), ")))"));
+    }
+
+    #[summary("The quantified form of an axiom text (stage0 quantified): the part after a marker, or all of it")]
+    #[effects(alloc)]
+    fn quantified(ax: &str) -> String {
+        match split_once(ax, "\n; quantified form\n") {
+            None => {},
+            Some(p) => { return p.b; },
+        }
+        match split_once(ax, "\n; quantified form outside the probe\n") {
+            None => {},
+            Some(p1) => { return p1.b; },
+        }
+        match split_once(ax, "\n; quantified form outside the satisfiability probe\n") {
+            None => String::from(ax),
+            Some(p2) => p2.b,
+        }
+    }
+
+    #[summary("name as the solver prints a symbol (stage0 quote): bare when it is a simple symbol, between bars otherwise")]
+    #[effects(alloc)]
+    fn quote(name: &str) -> String {
+        let mut simple: bool = name.len() > 0 && !(name.as_bytes()[0] >= 48 && name.as_bytes()[0] <= 57);
+        for i in 0..name.len()
+            invariant 0 <= i && i <= name.len(),
+        {
+            if !symbol_char(name.as_bytes()[i]) {
+                simple = false;
+            }
+        }
+        if simple {
+            String::from(name)
+        } else {
+            types::cat3("|", name, "|")
+        }
+    }
+
+    #[summary("The range assertion a states, if it has that form (the range walk of stage0 bv_reach)")]
+    #[effects(alloc)]
+    fn range_of(a: &encode_terms::Sexp) -> Option<Range> {
+        let xs: Vec<encode_terms::Sexp> = items(a)?;
+        if xs.len() != 3 || !atom_is(&xs[0], "and") {
+            return None;
+        }
+        let l: Vec<encode_terms::Sexp> = items(&xs[1])?;
+        let h: Vec<encode_terms::Sexp> = items(&xs[2])?;
+        if l.len() != 3 || h.len() != 3 || !atom_is(&l[0], "<=") || !atom_is(&h[0], "<=") || !same(&l[2], &h[1], 100000) {
+            return None;
+        }
+        let lo: String = encode_terms::print(&l[1], 100000);
+        let hi: String = encode_terms::print(&h[2], 100000);
+        encode_terms::numeral(lo.as_str())?;
+        encode_terms::numeral(hi.as_str())?;
+        let name: String = encode_sub::atom(&l[2])?;
+        Some(Range { name: name, lo: lo, hi: hi })
+    }
+
+    #[summary("Every form each reach point may be asked in (the forms stage0 verify_pass asks under vacuous_ends, as dump_queries writes them): its path condition asserted with the instances of the validity functions and the struct facts, over the probe's base in the forms of a satisfiability check, as an exact bit-vector query, with the recursive definitions as recursive functions, and over the full base under the limit of a reach point. Which of them are sent after the first depends on the answers")]
+    #[effects(alloc)]
+    fn reach_points(cx: &Ctx, pg: &encode_spec::Prog, points: &[encode_exec::Reach], enc: &mut encode_spec::Enc) -> String {
+        let mut script: String = String::new();
+        for k in 0..points.len()
+            invariant 0 <= k && k <= points.len(),
+        {
+            let mut title: String = types::cat5(" of reach point ", encode_terms::dec(k as u64).as_str(), ": ", points[k].what.as_str(), " ");
+            title.push_str(types::cat4(encode_terms::dec(points[k].span.lo as u64).as_str(), " ", encode_terms::dec(points[k].span.hi as u64).as_str(), "\n(reset)\n").as_str());
+            let mut asserted: Vec<String> = Vec::new();
+            for i in 0..points[k].pc.len()
+                invariant 0 <= i && i <= points[k].pc.len(),
+            {
+                asserted.push(types::cat3("(assert ", points[k].pc[i].as_str(), ")"));
+            }
+            let q1: String = valid_instances(cx.valid.as_slice(), encode_terms::join(asserted.as_slice(), "\n"));
+            let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str());
+            let relevant: String = relevant_axioms(cx.axioms.as_slice(), q.as_str());
+            let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(relevant.as_str(), cx.decls.as_str(), "\n", q.as_str()).as_str());
+            let base: String = types::cat4(cx.prefix.as_str(), used.as_str(), relevant.as_str(), cx.decls.as_str());
+            let tail: String = types::cat5("\n", cx.limit.as_str(), "\n", q.as_str(), "\n(check-sat)\n");
+            match probe_base(cx, q.as_str(), relevant.as_str(), Forms::SatProbe) {
+                None => {},
+                Some(pb) => { script.push_str(types::cat4("; probe", title.as_str(), pb.as_str(), tail.as_str()).as_str()); },
+            }
+            match bv_reach(cx.decls.as_str(), q.as_str(), enc, pg) {
+                None => {},
+                Some(bq) => { if bq.exact { script.push_str("; exact bit-vector form"); } else { script.push_str("; bit-vector form"); } script.push_str(title.as_str()); script.push_str(types::cat5(cx.header.as_str(), "\n", bq.script.as_str(), "\n", cx.limit.as_str()).as_str()); script.push_str("\n(check-sat)\n"); },
+            }
+            match rec_base(cx, q.as_str()) {
+                None => {},
+                Some(rb) => { script.push_str(types::cat4("; recursive form", title.as_str(), rb.as_str(), tail.as_str()).as_str()); },
+            }
+            script.push_str(types::cat4("; full query", title.as_str(), base.as_str(), "\n(set-option :rlimit 1000000)\n").as_str());
+            script.push_str(types::cat2(q.as_str(), "\n(check-sat)\n").as_str());
+        }
+        script
+    }
+
+    #[summary("The reading of an integer term (stage0 Congr::read): each `(bv2nat t)` in it by the reading of t, everything else as it is. None for a bit-vector form this does not know")]
+    #[effects(alloc)]
+    fn read(cx: &Congr, e: &encode_terms::Sexp, values: bool, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => Some(a.clone()),
+            encode_terms::Sexp::List(xs) => { if xs.len() == 2 && atom_is(&xs[0], "bv2nat") { return Some(types::cat3("(bv2nat ", read_bv(cx, &xs[1], values, f - 1)?.as_str(), ")")); } let mut parts: Vec<String> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { parts.push(read(cx, &xs[i], values, f - 1)?); } Some(types::cat3("(", encode_terms::join(parts.as_slice(), " ").as_str(), ")")) },
+        }
+    }
+
+    #[summary("The reading of a bit-vector term (stage0 Congr::read_bv): a leaf as its width and read value (as its width alone without values: the term's shape), an operation or a bit method's named function as it is. None for a form this does not know")]
+    #[effects(alloc)]
+    fn read_bv(cx: &Congr, e: &encode_terms::Sexp, values: bool, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match leaf(cx, e) {
+            None => {},
+            Some(l) => { if !values { return Some(types::cat3("[", encode_terms::dec(l.w).as_str(), "]")); } return Some(types::cat5("[", encode_terms::dec(l.w).as_str(), " ", read(cx, &l.v, true, f - 1)?.as_str(), "]")); },
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => None,
+            encode_terms::Sexp::List(xs) => { if xs.len() == 0 { return None; } let op: String = encode_sub::atom(&xs[0])?; if !(encode_terms::starts_at(op.as_str(), 0, "bv") || encode_terms::starts_at(op.as_str(), 0, "bmb_")) || xs.len() < 2 { return None; } let mut args: Vec<String> = Vec::new(); for i in 1..xs.len() invariant 1 <= i && i <= xs.len(), { args.push(read_bv(cx, &xs[i], values, f - 1)?); } Some(types::cat5("(", op.as_str(), " ", encode_terms::join(args.as_slice(), " ").as_str(), ")")) },
+        }
+    }
+
+    #[summary("The base of a satisfiability check's query with the definitions q reaches written as recursive functions (stage0 rec_base): one define-funs-rec of them all, each its body inside its parameters' types and its uninterpreted `!ext` outside. None when q reaches no recursive definition")]
+    #[effects(alloc)]
+    fn rec_base(cx: &Ctx, q: &str) -> Option<String> {
+        let n: usize = cx.parts.len();
+        let mut chosen: Vec<bool> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            chosen.push(false);
+        }
+        let mut order: Vec<usize> = Vec::new();
+        let mut haystack: String = String::from(q);
+        let mut fuel: usize = n;
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut found: Vec<Found> = Vec::new();
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                if k < chosen.len() && k < cx.parts.len() && !chosen[k] {
+                    match find(haystack.as_str(), cx.parts[k].sym.as_str(), 0) {
+                        None => {},
+                        Some(p) => found.push(Found { at: p, k: k }),
+                    }
+                }
+            }
+            if found.len() == 0 {
+                fuel = 0;
+            }
+            let sorted: Vec<Found> = by_position(found.as_slice());
+            for i in 0..sorted.len()
+                invariant 0 <= i && i <= sorted.len(),
+            {
+                let k: usize = sorted[i].k;
+                if k < chosen.len() && k < cx.parts.len() {
+                    chosen[k] = true;
+                    order.push(k);
+                    haystack.push_str(cx.parts[k].body.as_str());
+                }
+            }
+        }
+        let mut recursive: bool = false;
+        let mut exts: String = String::new();
+        let mut sigs: Vec<String> = Vec::new();
+        let mut bodies: Vec<String> = Vec::new();
+        let mut heads: Vec<String> = Vec::new();
+        for i in 0..order.len()
+            invariant 0 <= i && i <= order.len(),
+        {
+            if order[i] < cx.parts.len() {
+                let a: encode_spec::AxiomParts = cx.parts[order[i]].clone();
+                if a.recursive {
+                    recursive = true;
+                }
+                heads.push(types::cat3("(declare-fun ", a.sym.as_str(), " "));
+                sigs.push(types::cat7("(", a.sym.as_str(), " (", encode_terms::join(a.binders.as_slice(), " ").as_str(), ") ", a.sort.as_str(), ")"));
+                if a.guard.as_str() == "true" || a.binders.len() == 0 {
+                    bodies.push(a.body.clone());
+                } else {
+                    let ext: String = encode_spec::macro_ext(a.sym.as_str());
+                    let mut sorts: Vec<String> = Vec::new();
+                    for b in 0..a.binders.len()
+                        invariant 0 <= b && b <= a.binders.len(),
+                    {
+                        sorts.push(encode_spec::binder_sort(a.binders[b].as_str()));
+                    }
+                    exts.push_str(types::cat7("(declare-fun ", ext.as_str(), " (", encode_terms::join(sorts.as_slice(), " ").as_str(), ") ", a.sort.as_str(), ")\n").as_str());
+                    let mut body: String = types::cat5("(ite ", a.guard.as_str(), " ", a.body.as_str(), " (");
+                    body.push_str(types::cat4(ext.as_str(), " ", encode_terms::join(a.params.as_slice(), " ").as_str(), "))").as_str());
+                    bodies.push(body);
+                }
+            }
+        }
+        if !recursive {
+            return None;
+        }
+        let defs: String = types::cat2(exts.as_str(), types::cat5("(define-funs-rec (", encode_terms::join(sigs.as_slice(), " ").as_str(), ") (", encode_terms::join(bodies.as_slice(), " ").as_str(), "))\n").as_str());
+        let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(defs.as_str(), cx.decls.as_str(), "\n", q).as_str());
+        let ls: Vec<String> = encode_sub::lines(used.as_str());
+        let mut kept: String = String::new();
+        for i in 0..ls.len()
+            invariant 0 <= i && i <= ls.len(),
+        {
+            let mut declared: bool = false;
+            for k in 0..heads.len()
+                invariant 0 <= k && k <= heads.len(),
+            {
+                if encode_terms::starts_at(ls[i].as_str(), 0, heads[k].as_str()) {
+                    declared = true;
+                }
+            }
+            if !declared {
+                kept.push_str(ls[i].as_str());
+                kept.push_str("\n");
+            }
+        }
+        Some(types::cat4(cx.prefix.as_str(), kept.as_str(), defs.as_str(), cx.decls.as_str()))
+    }
+
+    #[summary("The definitions of axioms that text reaches, in the full query's forms (stage0 relevant_axioms, ADR-0064)")]
+    #[effects(alloc)]
+    fn relevant_axioms(axioms: &[encode_terms::Pair], text: &str) -> String {
+        axioms_in_forms(axioms, text, Forms::Full)
+    }
+
+    #[summary("The unquoted name of token tok (`$k` then a suffix) in the program (stage0 Canon::rename): the name of symbol k without its bars, then the suffix. None for a token that is no `$k`, a number past the symbols, or a symbol that is not between bars")]
+    #[effects(alloc)]
+    #[uses(wide::small, wide::stepped)]
+    fn rename(c: &Canon, tok: &str) -> Option<String> {
+        if tok.len() == 0 || tok.as_bytes()[0] != 36 {
+            return None;
+        }
+        let mut d: usize = 1;
+        for k in 1..tok.len()
+            invariant 1 <= k && d <= k,
+        {
+            if d == k && tok.as_bytes()[k] >= 48 && tok.as_bytes()[k] <= 57 {
+                d = k + 1;
+            }
+        }
+        if d == 1 {
+            return None;
+        }
+        let n: wide::U128 = encode_sub::parse_u128(lexer::cut(tok, 1, d).as_str())?;
+        if n.hi != 0 || n.lo >= c.names.len() as u64 {
+            return None;
+        }
+        let at: usize = n.lo as usize;
+        if at >= c.names.len() {
+            return None;
+        }
+        let orig: String = c.names[at].clone();
+        if orig.len() < 2 || orig.as_bytes()[0] != 124 || orig.as_bytes()[orig.len() - 1] != 124 {
+            return None;
+        }
+        Some(types::cat2(lexer::cut(orig.as_str(), 1, orig.len() - 1).as_str(), lexer::cut(tok, d, tok.len()).as_str()))
+    }
+
+    #[summary("The ground-instance retry of query q (the retry_script closure of stage0 verify_pass): the instances of the definition's revealed definitions three levels deep with their struct facts, over the prefix, the declarations they need and the local declarations. None without instances")]
+    #[effects(alloc)]
+    fn retry_script(cx: &Ctx, pg: &encode_spec::Prog, q: &str) -> Option<Retry> {
+        let gi: Instances = ground_instances(cx.parts.as_slice(), q, 3);
+        let inst: String = types::cat2(gi.text.as_str(), encode_spec::struct_facts(pg, gi.text.as_str()).as_str());
+        if inst.len() == 0 {
+            return None;
+        }
+        let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(cx.decls.as_str(), "\n", inst.as_str(), q).as_str());
+        Some(Retry { head: types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()), inst: inst })
+    }
+
+    #[summary("Whether a and b are the same s-expression")]
+    #[effects(pure)]
+    fn same(a: &encode_terms::Sexp, b: &encode_terms::Sexp, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match a {
+            encode_terms::Sexp::Atom(x) => match b { encode_terms::Sexp::Atom(y) => x.as_str() == y.as_str(), encode_terms::Sexp::List(yl) => false, },
+            encode_terms::Sexp::List(xs) => match b { encode_terms::Sexp::Atom(y0) => false, encode_terms::Sexp::List(ys) => { if xs.len() != ys.len() { return false; } for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i < ys.len() { if !same(&xs[i], &ys[i], f - 1) { return false; } } } true }, },
+        }
+    }
+
+    #[summary("What is written of definition path before the solver's first answer (the text of stage0 verify_pass without a solver): the script of its obligations, or with reach the forms of its reach points. None for a definition that is not encoded: a spec fn that is not recursive or has no measure")]
+    #[effects(alloc)]
+    fn script_of(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, reach: bool) -> Option<String> {
+        let head: String = header(rlimit);
+        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(rlimit / 100).as_str(), ")");
+        if body::is_spec(def.d.kind) {
+            let comp: usize = pg.recursive.items[pg.recursive.find(path)?];
+            let mut enc: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
+            match &def.d.measure {
+                None => { return None; },
+                Some(dec) => enc.termination(&def.d, comp, dec, pg),
+            }
+            if reach {
+                return Some(String::new());
+            }
+            let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
+            return Some(obligations(&cx0, pg, enc.obls.as_slice()));
+        }
+        let mut axioms: Vec<encode_terms::Pair> = Vec::new();
+        let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
+        let shown: Vec<String> = encode_spec::revealed(pg, path, &def.d, def.unit.as_str());
+        for i in 0..shown.len()
+            invariant 0 <= i && i <= shown.len(),
+        {
+            let ax: encode_spec::Axiom = encode_spec::axiom(pg, shown[i].as_str());
+            axioms.push(encode_terms::Pair { a: encode_decls::spec_key(shown[i].as_str(), &pg.pr.t), b: ax.text.clone() });
+            for k in 0..ax.parts.len()
+                invariant 0 <= k && k <= ax.parts.len(),
+            {
+                parts.push(ax.parts[k].clone());
+            }
+        }
+        let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
+        ex.reaching = reach;
+        ex.trust = trust.clone();
+        if body::is_proof(def.d.kind) {
+            ex.proof_body(&def.d, pg);
+        } else {
+            ex.exec_body(&def.d, pg);
+        }
+        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: axioms, parts: parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        if reach {
+            let mut scratch: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
+            return Some(reach_points(&cx, pg, ex.reach.as_slice(), &mut scratch));
+        }
+        Some(obligations(&cx, pg, ex.enc.obls.as_slice()))
+    }
+
+    #[summary("The integer side of leaf mine against the leaf other it is paired with (stage0 Congr::side): a constant's `(bv2nat c)`; a value modulo 2^w against a constant whose stated value is the two's complement form; the value otherwise")]
+    #[effects(alloc)]
+    fn side(mine: &Leaf, other: &Leaf) -> String {
+        if mine.kind == 0 {
+            return types::cat3("(bv2nat ", mine.name.as_str(), ")");
+        }
+        if other.kind == 0 && other.signed {
+            return types::cat5("(mod ", encode_terms::print(&mine.v, 100000).as_str(), " ", pow2(mine.w).as_str(), ")");
+        }
+        encode_terms::print(&mine.v, 100000)
+    }
+
+    #[summary("The value under the two's complement form `(ite (< x 0) (+ x 2^w) x)` that v has, if it has that form (stage0 bv_value of a signed operand)")]
+    #[effects(alloc)]
+    fn signed_value(v: &encode_terms::Sexp, w: u64) -> Option<encode_terms::Sexp> {
+        let xs: Vec<encode_terms::Sexp> = items(v)?;
+        if xs.len() != 4 || !atom_is(&xs[0], "ite") {
+            return None;
+        }
+        let c: Vec<encode_terms::Sexp> = items(&xs[1])?;
+        let p: Vec<encode_terms::Sexp> = items(&xs[2])?;
+        if c.len() == 3 && atom_is(&c[0], "<") && same(&c[1], &xs[3], 100000) && atom_is(&c[2], "0") && p.len() == 3 && atom_is(&p[0], "+") && same(&p[1], &xs[3], 100000) && atom_is(&p[2], pow2(w).as_str()) {
+            return Some(xs[3].clone());
+        }
+        None
+    }
+
+    #[summary("First position from from in s that is not white space (the start of Rust's trim_start)")]
+    #[effects(pure)]
+    fn skip_space(s: &str, from: usize) -> usize {
+        let mut i: usize = from;
+        let mut fuel: usize = s.len();
+        while fuel > 0 && i < s.len()
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let c: u8 = s.as_bytes()[i];
+            let mut next: usize = i + 1;
+            let mut space: bool = c >= 9 && c <= 13 || c == 32;
+            if c >= 128 {
+                match std::str::decode_utf8(s, i) {
+                    None => {},
+                    Some(dc) => { if dc.next > i && dc.next <= s.len() { next = dc.next; } space = unicode::whitespace(u32::from(dc.ch)); },
+                }
+            }
+            if !space {
+                return i;
+            }
+            i = next;
+        }
+        i
+    }
+
+    #[summary("The parts of s before and after the first pat (Rust's split_once)")]
+    #[effects(alloc)]
+    fn split_once(s: &str, pat: &str) -> Option<encode_terms::Pair> {
+        let i: usize = find(s, pat, 0)?;
+        Some(encode_terms::Pair { a: lexer::cut(s, 0, i), b: lexer::cut(s, i.saturating_add(pat.len()), s.len()) })
+    }
+
+    #[summary("The stated value of each operand constant in e, the first one found (the defs walk of stage0 bit_congruences): `(= (bv2nat |'bv@k|) v)`")]
+    #[effects(alloc)]
+    fn stated(e: &encode_terms::Sexp, out: &mut table::Table<encode_terms::Sexp>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => {},
+            encode_terms::Sexp::List(xs) => { if xs.len() == 3 && atom_is(&xs[0], "=") { match &xs[1] { encode_terms::Sexp::Atom(la) => {}, encode_terms::Sexp::List(l) => { if l.len() == 2 && atom_is(&l[0], "bv2nat") { match &l[1] { encode_terms::Sexp::Atom(c) => { if encode_terms::starts_at(c.as_str(), 0, "|'bv@") && !out.has(c.as_str()) { out.insert(c.as_str(), xs[2].clone()); } }, encode_terms::Sexp::List(cl) => {}, } } }, } } for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { stated(&xs[i], out, f - 1); } },
+        }
+    }
+
+    #[summary("What a sub-proof's query starts with (stage0 subproof::Query::base): its logic, the declarations of its free variables and shared terms, its hypotheses asserted")]
+    #[effects(alloc)]
+    fn sub_base(q: &encode_sub::Query) -> String {
+        let mut out: String = types::cat3("(set-logic ", q.logic.as_str(), ")\n");
+        for i in 0..q.decls.len()
+            invariant 0 <= i && i <= q.decls.len(),
+        {
+            out.push_str(q.decls[i].as_str());
+            out.push_str("\n");
+        }
+        for i in 0..q.hyps.len()
+            invariant 0 <= i && i <= q.hyps.len(),
+        {
+            out.push_str(types::cat3("(assert ", q.hyps[i].as_str(), ")\n").as_str());
+        }
+        out
+    }
+
+    #[summary("The negated goal of a sub-proof's query (stage0 subproof::Query::negated_goal)")]
+    #[effects(alloc)]
+    fn sub_goal(q: &encode_sub::Query) -> String {
+        types::cat3("(assert (not ", q.goal.as_str(), "))")
+    }
+
+    #[summary("The free variables of a failed sub-proof with the values vals a model gives them, as a counterexample shows them (the text of stage0 sub_counterexample): `x = 4294967295, b = -1`, an integer as a value of its type, anything else as the model writes it")]
+    #[effects(alloc)]
+    fn sub_values(vars: &[encode_sub::Var], vals: &[String]) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for i in 0..vars.len()
+            invariant 0 <= i && i <= vars.len(),
+        {
+            if i < vals.len() {
+                let shown: String = match vars[i].sort {
+                    encode_sub::Sort::Int(it) => match encode_sub::model_int(vals[i].as_str(), it) { None => vals[i].clone(), Some(x) => int_text(&x), },
+                    encode_sub::Sort::Bool => vals[i].clone(),
+                    encode_sub::Sort::F64 => vals[i].clone(),
+                };
+                parts.push(types::cat3(unbarred(vars[i].sym.as_str()).as_str(), " = ", shown.as_str()));
+            }
+        }
+        encode_terms::join(parts.as_slice(), ", ")
+    }
+
+    #[summary("Whether b is a character of an SMT-LIB simple symbol (stage0 is_symbol_char): an ASCII letter or digit, or one of ~!@$%^&*_-+=<>.?/")]
+    #[effects(pure)]
+    fn symbol_char(b: u8) -> bool {
+        b >= 48 && b <= 57 || b >= 65 && b <= 90 || b >= 97 && b <= 122 || b == 126 || b == 33 || b == 64 || b == 36 || b == 37 || b == 94 || b == 38 || b == 42 || b == 95 || b == 45 || b == 43 || b == 61 || b == 60 || b == 62 || b == 46 || b == 63 || b == 47
+    }
+
+    #[summary("A copy of the spec fn declarations")]
+    #[effects(alloc)]
+    fn to_decls(xs: &[encode_spec::SpecDecl]) -> Vec<encode_spec::SpecDecl> {
+        let mut out: Vec<encode_spec::SpecDecl> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("A copy of the datatype declarations")]
+    #[effects(alloc)]
+    fn to_dts(xs: &[encode_decls::Decl]) -> Vec<encode_decls::Decl> {
+        let mut out: Vec<encode_decls::Decl> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("A copy of the names")]
+    #[effects(alloc)]
+    fn to_vec(xs: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("The callees that are not proved at the start of the proof gate (the close of stage0 verify_trusting over the external bodies): each `#[external_body]` definition, and for a trait impl function `<T as Tr>::m` also the trait's `Tr::m`. Sorted, once each")]
+    #[effects(alloc)]
+    fn trust_closed(external: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = to_vec(external);
+        for i in 0..external.len()
+            invariant 0 <= i && i <= external.len(),
+        {
+            let p: String = external[i].clone();
+            if p.len() > 0 && p.as_bytes()[0] == 60 {
+                match encode_decls::last_of(p.as_str(), ">::") {
+                    None => {},
+                    Some(at) => { let head: String = lexer::cut(p.as_str(), 1, at); let m: String = lexer::cut(p.as_str(), at.saturating_add(3), p.len()); match encode_decls::last_of(head.as_str(), " as ") { None => {}, Some(az) => out.push(types::cat3(lexer::cut(head.as_str(), az.saturating_add(4), head.len()).as_str(), "::", m.as_str())), } },
+                }
+            }
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("s without the bars at its two ends (Rust's trim_matches of a bar)")]
+    #[effects(alloc)]
+    fn unbarred(s: &str) -> String {
+        let mut a: usize = 0;
+        let mut b: usize = s.len();
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len() && a <= i,
+        {
+            if a == i && s.as_bytes()[i] == 124 {
+                a = i + 1;
+            }
+        }
+        let mut fuel: usize = s.len();
+        while fuel > 0 && b > a
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            if b >= 1 && b <= s.len() && s.as_bytes()[b - 1] == 124 {
+                b = b - 1;
+            } else {
+                fuel = 0;
+            }
+        }
+        lexer::cut(s, a, b)
+    }
+
+    #[summary("Query q with the ground instances of the validity functions of recursive types defs for the applications it holds, two levels deep (stage0 valid_instances, ADR-0060 §2); q itself when there are none")]
+    #[effects(alloc)]
+    fn valid_instances(defs: &[encode_spec::AxiomParts], q: String) -> String {
+        if defs.len() == 0 {
+            return q;
+        }
+        let gi: Instances = ground_instances(defs, q.as_str(), 2);
+        types::cat3(q.as_str(), "\n", gi.text.as_str())
+    }
+}

@@ -18,6 +18,7 @@ The language surface carries its own version, apart from the compiler crate's.
 - Diagnostic texts no longer carry internal task identifiers. Six retired diagnostics and two help texts changed wording; the codes are unchanged.
 - An integer literal of a specification above the largest `i128` keeps its value in a proof query. It was read as a negative number (`2^128 - 1` as `-1`), so a false assertion about it could be proved.
 - A sub-proof `assert(e) by (bit_vector)` that passes a plain variable to a spec fn parameter of a narrower type is proved; it ended in a solver error.
+- `bmb dump smt-queries` prints, without running the solver, the queries `bmb verify --emit-smt` writes of each definition before the first answer, with their legends.
 
 ### Standard library
 
