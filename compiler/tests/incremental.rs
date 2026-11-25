@@ -1298,3 +1298,33 @@ fn a_result_reused_by_key_stays_when_its_source_changes() {
     assert_eq!(stats.encoded, vec!["m0::f1".to_string()], "{stats:?}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// Two definitions with the same proof key, one calling by bare name inside
+/// its unit and one by path from another unit: the second reuses the first's
+/// entry, and its proved obligations land on its own nodes, so the IR keeps
+/// no check an uncached run drops (a path was one node per segment, and the
+/// proved `f - 1` of `far` landed two nodes early, on `i`).
+#[test]
+fn a_twin_with_paths_of_another_length_keeps_its_proofs() {
+    let dir = tmp("twin-paths");
+    let body = |name: &str, q: &str| {
+        format!(
+            "    #[effects(alloc)]\n    fn {name}(t: &{q}K, f: usize) -> bool\n        decreases f,\n    {{\n        if f == 0 {{\n            return false;\n        }}\n        match {q}inner(t) {{\n            None => {q}leaf(t),\n            Some(i) => {name}(&i, f - 1),\n        }}\n    }}\n"
+        )
+    };
+    let text = format!(
+        "#[summary(\"a\")]\nmod a {{\n    enum K {{ A, R(Box<K>) }}\n\n    #[effects(alloc)]\n    fn inner(t: &K) -> Option<K> {{\n        match t {{\n            K::A => None,\n            K::R(b) => Some(K::A),\n        }}\n    }}\n\n    #[effects(alloc)]\n    fn leaf(t: &K) -> bool {{\n        true\n    }}\n\n{}}}\n\n#[summary(\"b\")]\nmod b {{\n{}}}\n",
+        body("near", ""),
+        body("far", "a::")
+    );
+    let f = files(&text);
+    let expect = plain(&f);
+    assert!(failed_defs(&expect.0).is_empty(), "{}", expect.0);
+    assert_eq!(expect.2, 0, "{}", expect.0);
+    let (out, stats) = cached(&f, &dir);
+    assert_eq!(stats.reused, ["b::far"], "{stats:?}");
+    assert_eq!(out, expect);
+    let (out, _) = cached(&f, &dir);
+    assert_eq!(out, expect);
+    let _ = fs::remove_dir_all(&dir);
+}

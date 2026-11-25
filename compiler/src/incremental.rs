@@ -435,9 +435,16 @@ fn code_static(code: &str) -> Option<&'static str> {
 /// qualified normal form (which the proof key holds) list the same nodes,
 /// whatever their layout, comments or (with T1-ID-02b) names. Attributes are
 /// left out: their order in the source is not the normal form's, and no
-/// obligation lies on one.
+/// obligation lies on one. A path is one node whatever its length: `f(x)`
+/// inside unit `u` and `u::f(x)` elsewhere have the same qualified text, and
+/// a proof stored under one is found for the other.
 fn node_spans(f: &FnDef) -> Vec<Span> {
     use crate::ast::*;
+    fn path(p: &[Ident], out: &mut Vec<Span>) {
+        if let (Some(a), Some(b)) = (p.first(), p.last()) {
+            out.push(a.span.to(b.span));
+        }
+    }
     fn ty(t: &Type, out: &mut Vec<Span>) {
         out.push(t.span);
         match &t.kind {
@@ -523,13 +530,14 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 block(body, out);
             }
             Stmt::LetFields {
-                path,
+                path: p,
                 fields,
                 init,
                 span,
             } => {
                 out.push(*span);
-                out.extend(path.iter().chain(fields).map(|i| i.span));
+                path(p, out);
+                out.extend(fields.iter().map(|i| i.span));
                 expr(init, out);
             }
             Stmt::Expr(e) => expr(e, out),
@@ -540,9 +548,12 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
         match &e.kind {
             ExprKind::Closure(_) => {}
             ExprKind::Call {
-                path, targs, args, ..
+                path: p,
+                targs,
+                args,
+                ..
             } => {
-                out.extend(path.iter().map(|i| i.span));
+                path(p, out);
                 for t in targs {
                     out.push(t.span);
                     t.args.iter().for_each(|a| ty(a, out));
@@ -596,15 +607,19 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 }
                 expr(body, out);
             }
-            ExprKind::StructLit { path, fields, rest } => {
-                out.extend(path.iter().map(|i| i.span));
+            ExprKind::StructLit {
+                path: p,
+                fields,
+                rest,
+            } => {
+                path(p, out);
                 for (n, x) in fields {
                     out.push(n.span);
                     expr(x, out);
                 }
                 rest.iter().for_each(|r| expr(r, out));
             }
-            ExprKind::Path(path) => out.extend(path.iter().map(|i| i.span)),
+            ExprKind::Path(p) => path(p, out),
             ExprKind::Var(i) => out.push(i.span),
             ExprKind::Field { base, name } => {
                 expr(base, out);
@@ -615,7 +630,7 @@ fn node_spans(f: &FnDef) -> Vec<Span> {
                 for a in arms {
                     out.push(a.span);
                     out.push(a.pat.span);
-                    out.extend(a.pat.path.iter().map(|i| i.span));
+                    path(&a.pat.path, out);
                     out.extend(a.pat.binds.iter().flatten().map(|i| i.span));
                     expr(&a.body, out);
                 }
