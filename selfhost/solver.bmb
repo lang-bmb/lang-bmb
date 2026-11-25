@@ -46,7 +46,13 @@ mod solver {
         }
     }
 
-    #[summary("Sends one command of the current query, as the solver receives it, and reads its answer (stage0 Solver::ask). A `(reset)` starts a query: a process that answered a query alone answers no other and is closed, and when there is no process one is started, under the deciding limit when the query before ended at it and under the working limit otherwise. When the process ends at its memory limit, the query is undecided only if it was that process's first query and the limit was the deciding one. Otherwise what the process held from earlier queries, or its smaller limit, may have ended it: the query is asked again from its `(reset)`, alone in a new process under the deciding limit, whose first query it then is, and that answer stands (ADR-0129). Every process this lets go of is closed first")]
+    #[summary("The most lines one answer may take, and the most lines drain reads after `(exit)` (stage0 ANSWER_LINES, ADR-0151): far above the longest answer the proof driver gets (a model of 42 lines in the gate's corpus). An answer that has not ended here is undecided, and its process is retired")]
+    #[effects(pure)]
+    fn answer_lines() -> u64 {
+        1000000
+    }
+
+    #[summary("Sends one command of the current query, as the solver receives it, and reads its answer (stage0 Solver::ask). A `(reset)` starts a query: a process that answered a query alone answers no other and is closed, and when there is no process one is started, under the deciding limit when the query before ended at it and under the working limit otherwise. When the process ends at its memory limit, the query is undecided only if it was that process's first query and the limit was the deciding one. Otherwise what the process held from earlier queries, or its smaller limit, may have ended it: the query is asked again from its `(reset)`, alone in a new process under the deciding limit, whose first query it then is, and that answer stands (ADR-0129). A process whose answer reached answer_lines is retired, and what follows of the query gets the same error without being sent. Every process this lets go of is closed first")]
     #[effects(alloc, io, nondet)]
     #[uses(fits, kept, live, none, settled, started_with, working)]
     fn ask(s: &mut Solver, sent: &str) -> (r: Result<String, String>) {
@@ -81,6 +87,11 @@ mod solver {
             None => Err(String::new()),
             Some(p) => { if reset { p.queries = p.queries.saturating_add(1); } decided = p.queries == 1 && p.memory == limit; proc_ask(p, sent) },
         };
+        if failed_too_long(&first) {
+            retire(&mut s.proc);
+            s.down = too_long_text();
+            return first;
+        }
         if !failed_for_memory(&first) {
             return first;
         }
@@ -154,15 +165,21 @@ mod solver {
         }
     }
 
-    #[summary("Reads the process's output to its end and discards it. The wait for a process closes both of its pipes first, which stage0's does not: a solver that is still writing its answer to `(exit)` when its output closes is ended by the signal of a closed pipe, and its exit status is then 141 or 0 by the timing. Read to the end first, the process has written all it had to and ends as it does under stage0. A line that is not UTF-8 is discarded like any other; any other failure of a read ends the reading")]
+    #[summary("Reads the process's output to its end, or for answer_lines lines, and discards it (stage0 Proc::exit). The wait for a process closes both of its pipes, so a solver that is still writing its answer to `(exit)` when its output closes is ended by the signal of a closed pipe, and its exit status is then 141 or 0 by the timing. Read to the end first, the process has written all it had to and ends by itself; one that is still writing after answer_lines lines ends at the closed pipe. A line that is not UTF-8 is discarded like any other; any other failure of a read ends the reading")]
     #[effects(alloc, io, nondet)]
     fn drain(c: &mut std::process::Child) -> () {
-        loop {
+        let cap: u64 = answer_lines();
+        let mut lines: u64 = 0;
+        while lines < cap
+            invariant lines <= cap,
+            decreases cap - lines,
+        {
             let mut line: String = String::new();
             match c.read_line(&mut line) {
                 Ok(n) => { if n == 0 { break; } },
                 Err(e) => { if e.code != 0 { break; } },
             }
+            lines = lines + 1;
         }
     }
 
@@ -200,6 +217,15 @@ mod solver {
         match r {
             Ok(a) => false,
             Err(e) => out_of_memory(e.as_str()),
+        }
+    }
+
+    #[summary("Whether an answer is the error of an answer that reached answer_lines")]
+    #[effects(pure)]
+    fn failed_too_long(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(a) => false,
+            Err(e) => encode_terms::starts_at(e.as_str(), 0, "z3 answer too long"),
         }
     }
 
@@ -288,13 +314,15 @@ mod solver {
         p.alone == was.alone && p.memory == was.memory && p.queries == was.queries
     }
 
-    #[summary("The reason in an `undecided` diagnostic for a solver error that is a limit (stage0 limit_reason): the memory limit or the rlimit of the asker; None for any other error")]
+    #[summary("The reason in an `undecided` diagnostic for a solver error that is a limit (stage0 limit_reason): the memory limit or the rlimit of the asker, or the lines of an answer; None for any other error")]
     #[effects(alloc, io, nondet)]
     fn limit_reason(e: &str, who: Asker) -> Option<String> {
         if out_of_memory(e) {
             Some(types::cat3("memory limit reached, ", encode_terms::dec(query_memory_mb(who)).as_str(), " MB"))
         } else if encode_query::has(e, "canceled") {
             Some(types::cat2("resource limit reached, rlimit ", encode_terms::dec(query_rlimit(who)).as_str()))
+        } else if encode_terms::starts_at(e, 0, "z3 answer too long") {
+            Some(types::cat3("answer limit reached, ", encode_terms::dec(answer_lines()).as_str(), " lines"))
         } else {
             None
         }
@@ -421,7 +449,7 @@ mod solver {
         }
     }
 
-    #[summary("Reads one complete s-expression or atom from the solver (stage0 read_response): lines until the parentheses are balanced and no string literal or quoted symbol is open, white space trimmed from both ends. A parenthesis inside a string literal or a quoted symbol does not count (an error message may quote one). The end of the output is the error of a process that ended at its memory limit, or `z3 exited unexpectedly`. The loop runs until the solver answers or its output ends, so the definition is proved for partial correctness (ADR-0094)")]
+    #[summary("Reads one complete s-expression or atom from the solver (stage0 read_response): lines until the parentheses are balanced and no string literal or quoted symbol is open, white space trimmed from both ends. A parenthesis inside a string literal or a quoted symbol does not count (an error message may quote one). The end of the output is the error of a process that ended at its memory limit, or `z3 exited unexpectedly`. At most answer_lines lines are read: an answer that has not ended there is the error `z3 answer too long`, and the process is waited for (its pipes closed, so one still writing ends), as it answers nothing more (ADR-0151)")]
     #[effects(alloc, io, nondet)]
     #[uses(kept, live, settled)]
     fn read_response(p: &mut Proc) -> (r: Result<String, String>)
@@ -430,9 +458,17 @@ mod solver {
         let mut out: String = String::new();
         let mut depth: i64 = 0;
         let mut quoted: u8 = 0;
+        let cap: u64 = answer_lines();
+        let mut lines: u64 = 0;
         loop
-            invariant !live(old(p)) ==> !live(p), kept(p, old(p)),
+            invariant !live(old(p)) ==> !live(p), kept(p, old(p)), lines <= cap,
+            decreases cap - lines,
         {
+            if lines == cap {
+                let gone: Option<String> = ended(p);
+                return Err(too_long_text());
+            }
+            lines = lines + 1;
             let mut line: String = String::new();
             let read: Result<usize, String> = match &mut p.child {
                 None => Ok(0),
@@ -646,6 +682,12 @@ mod solver {
         let n: u64 = s.timeouts;
         s.timeouts = 0;
         n
+    }
+
+    #[summary("The error of an answer that reached answer_lines (stage0 TOO_LONG): it starts with `z3 answer too long`, which limit_reason reads")]
+    #[effects(alloc)]
+    fn too_long_text() -> String {
+        types::cat3("z3 answer too long: no complete answer in ", encode_terms::dec(answer_lines()).as_str(), " lines")
     }
 
     #[summary("s when it has at most n characters, else its first n characters and `..` (stage0 truncate)")]

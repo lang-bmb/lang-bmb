@@ -46,8 +46,9 @@ pub struct Solver {
 /// One Z3 process.
 struct Proc {
     child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    /// The pipes, until `shut` closes them.
+    stdin: Option<ChildStdin>,
+    stdout: Option<BufReader<ChildStdout>>,
     started: Instant,
     /// Time added to its age (`Solver::age`).
     aged: Duration,
@@ -457,6 +458,14 @@ fn out_of_memory(e: &str) -> bool {
 /// The error of a query that ended at the memory limit.
 const OUT_OF_MEMORY: &str = "z3: out of memory";
 
+/// The most lines one answer may take, and the most lines read after
+/// `(exit)` (ADR-0151). The longest answer of the gate's corpus is 42
+/// lines (a model); an answer that has not ended here is undecided.
+const ANSWER_LINES: usize = 1_000_000;
+
+/// The start of the error of an answer that reached `ANSWER_LINES`.
+const TOO_LONG: &str = "z3 answer too long";
+
 /// The reason in an "undecided" diagnostic for a solver error that is a
 /// limit (the `rlimit`, the memory limit); `None` for any other error.
 pub fn limit_reason(e: &str) -> Option<String> {
@@ -464,6 +473,8 @@ pub fn limit_reason(e: &str) -> Option<String> {
         Some(format!("memory limit reached, {} MB", query_memory_mb()))
     } else if e.contains("canceled") {
         Some(format!("resource limit reached, rlimit {}", query_rlimit()))
+    } else if e.starts_with(TOO_LONG) {
+        Some(format!("answer limit reached, {ANSWER_LINES} lines"))
     } else {
         None
     }
@@ -486,8 +497,8 @@ impl Proc {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("cannot start z3: {e}"))?;
-        let stdin = child.stdin.take().unwrap();
-        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let stdin = child.stdin.take();
+        let stdout = child.stdout.take().map(BufReader::new);
         let mut p = Proc {
             child,
             stdin,
@@ -507,11 +518,13 @@ impl Proc {
 
     /// Sends one command and reads its answer.
     fn ask(&mut self, text: &str) -> Result<String, String> {
-        let sent = self
-            .stdin
-            .write_all(text.as_bytes())
-            .and_then(|_| self.stdin.write_all(b"\n"))
-            .and_then(|_| self.stdin.flush());
+        let sent = match self.stdin.as_mut() {
+            Some(w) => w
+                .write_all(text.as_bytes())
+                .and_then(|_| w.write_all(b"\n"))
+                .and_then(|_| w.flush()),
+            None => Err(std::io::Error::from_raw_os_error(32)),
+        };
         if let Err(e) = sent {
             return Err(self
                 .ended()
@@ -539,12 +552,14 @@ impl Proc {
         let mut depth: i64 = 0;
         // The delimiter of the literal or quoted symbol being read.
         let mut quoted: Option<char> = None;
-        loop {
+        for _ in 0..ANSWER_LINES {
             let mut line = String::new();
-            let n = self
-                .stdout
-                .read_line(&mut line)
-                .map_err(|e| format!("z3 output error: {e}"))?;
+            let n = match self.stdout.as_mut() {
+                Some(r) => r
+                    .read_line(&mut line)
+                    .map_err(|e| format!("z3 output error: {e}"))?,
+                None => 0,
+            };
             if n == 0 {
                 return Err(self
                     .ended()
@@ -565,17 +580,39 @@ impl Proc {
                 return Ok(out.trim().to_string());
             }
         }
+        // Its output is in the middle of an answer: it answers no more.
+        self.shut();
+        Err(format!(
+            "{TOO_LONG}: no complete answer in {ANSWER_LINES} lines"
+        ))
+    }
+
+    /// Closes both pipes and waits: a process still writing ends at the
+    /// closed pipe.
+    fn shut(&mut self) -> Option<std::process::ExitStatus> {
+        self.stdin = None;
+        self.stdout = None;
+        self.child.wait().ok()
     }
 }
 
 impl Proc {
-    /// Asks the process to end and waits for it.
+    /// Asks the process to end, reads what it still writes (at most
+    /// `ANSWER_LINES` lines) and waits for it.
     fn exit(&mut self) -> Option<std::process::ExitStatus> {
-        let _ = self
-            .stdin
-            .write_all(b"(exit)\n")
-            .and_then(|_| self.stdin.flush());
-        self.child.wait().ok()
+        if let Some(w) = self.stdin.as_mut() {
+            let _ = w.write_all(b"(exit)\n").and_then(|_| w.flush());
+        }
+        if let Some(r) = self.stdout.as_mut() {
+            for _ in 0..ANSWER_LINES {
+                match r.read_line(&mut String::new()) {
+                    Ok(0) => break,
+                    Err(e) if e.kind() != std::io::ErrorKind::InvalidData => break,
+                    _ => {}
+                }
+            }
+        }
+        self.shut()
     }
 }
 
@@ -677,6 +714,14 @@ impl Solver {
             p.queries += 1;
         }
         let r = p.ask(sent);
+        if let Err(e) = &r
+            && e.starts_with(TOO_LONG)
+        {
+            // Retired: what follows of the query gets the same error.
+            self.down = e.clone();
+            self.proc = None;
+            return r;
+        }
         if !r.as_ref().is_err_and(|e| out_of_memory(e)) {
             return r;
         }
@@ -1135,6 +1180,59 @@ mod tests {
         assert!(e.contains("invalid pattern"), "{e}");
         s.run("(reset)\n(assert true)").unwrap();
         assert!(matches!(s.check_sat(), Ok(Answer::Sat)));
+    }
+
+    /// A process run by `sh -c script` in place of the solver.
+    fn stand_in(script: &str) -> Proc {
+        let mut child = Command::new("sh")
+            .args(["-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        Proc {
+            stdin: child.stdin.take(),
+            stdout: child.stdout.take().map(BufReader::new),
+            child,
+            started: Instant::now(),
+            aged: Duration::ZERO,
+            memory: 1,
+            queries: 0,
+            alone: false,
+        }
+    }
+
+    /// Output that never completes an answer (ADR-0151): the read stops
+    /// after `ANSWER_LINES` lines with an error that is a limit, and the
+    /// process, ended by its closed output, answers nothing more. Output
+    /// without end after `(exit)` is read as far and no further.
+    #[test]
+    fn an_answer_without_end_stops_at_the_line_limit() {
+        use std::os::unix::process::ExitStatusExt;
+        // 1,024 lines of `(` a write.
+        let flood = "l='('; for i in 0 1 2 3 4 5 6 7 8 9; do l=\"$l\n$l\"; done; \\
+            while :; do printf '%s\\n' \"$l\"; done";
+        let mut p = stand_in(&format!("read c; {flood}"));
+        let e = p.ask("(check-sat)").unwrap_err();
+        assert_eq!(
+            e,
+            format!("z3 answer too long: no complete answer in {ANSWER_LINES} lines")
+        );
+        assert_eq!(
+            limit_reason(&e),
+            Some(format!("answer limit reached, {ANSWER_LINES} lines"))
+        );
+        assert_eq!(p.child.wait().unwrap().signal(), Some(13));
+        assert_eq!(
+            p.ask("(check-sat)").unwrap_err(),
+            "z3 input closed: Broken pipe (os error 32)"
+        );
+        let mut q = stand_in(&format!("read c; echo success; read c; {flood}"));
+        assert_eq!(q.ask("(reset)").unwrap(), "success");
+        assert_eq!(q.exit().unwrap().signal(), Some(13));
+        let mut r = stand_in("read c; echo success; read c; echo success");
+        assert_eq!(r.ask("(reset)").unwrap(), "success");
+        assert_eq!(r.exit().unwrap().code(), Some(0));
     }
 
     #[test]

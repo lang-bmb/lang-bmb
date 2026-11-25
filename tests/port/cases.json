@@ -2059,6 +2059,39 @@
       }
     },
     {
+      "name": "verify-fake-flood",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "flood unsat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "flood unsat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/const_division.bmb",
+          "tests/verify/pass/owned_fields.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
       "name": "verify-fake-cache",
       "component": "C9",
       "a": [

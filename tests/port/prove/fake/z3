@@ -19,6 +19,8 @@
 #   error        an error in place of an answer
 #   oom          ends with status 101, as at the memory limit
 #   die          ends with status 3
+#   flood        lines of `(` without end in place of an answer, reading
+#                nothing more: it ends only at its closed output
 #
 # `(get-info :rlimit)` answers ten units per answer given so far, and
 # `(get-value ..)` a model of seven values under the first canonical symbols.
@@ -49,6 +51,11 @@ while IFS= read -r line; do
         error) echo '(error "line 1 column 1: not today")' ;;
         oom) exit 101 ;;
         die) exit 3 ;;
+        flood)
+          l='('
+          for i in 0 1 2 3 4 5 6 7 8 9; do l="$l
+$l"; done
+          while :; do printf '%s\n' "$l"; done ;;
       esac ;;
     "(set-option :smt.random_seed "*) seed=${line#*seed }; seed=${seed%)}; echo success ;;
     "(get-info :reason-unknown)") echo "(:reason-unknown \"$why\")" ;;

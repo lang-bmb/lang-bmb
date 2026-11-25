@@ -20,6 +20,12 @@
 #   (fake-exit-below M N)   the same when its `-memory` is below M; else `success`
 #   (fake-leave N)          closes its input, answers `success`, ends with N
 #   (fake-kill)             is killed by signal 9
+#   (fake-flood)            writes lines of `(` without end, so that no
+#                           answer ever completes, and reads nothing more:
+#                           it ends only at its closed output (status 141)
+#   (fake-flood-late)       answers `success`, reads the next line (the
+#                           `(exit)` of a close) and then does as
+#                           `(fake-flood)`
 #   (exit)                  ends with status 0
 #   anything else           `sat` for `(check-sat)`, else `success`
 #
@@ -62,6 +68,13 @@ if [ -n "$ends" ]; then
   IFS= read -r line && printf '%s\n' "$line" >> "$log"
   exit "$ends"
 fi
+# 1,024 lines a write, so that the reader's limit comes in a second.
+flood() {
+  l='('
+  for i in 0 1 2 3 4 5 6 7 8 9; do l="$l
+$l"; done
+  while :; do printf '%s\n' "$l"; done
+}
 first=1
 queue=
 while IFS= read -r line; do
@@ -92,6 +105,11 @@ while IFS= read -r line; do
     "(fake-exit "*) code=${line#"(fake-exit "}; exit "${code%)}" ;;
     "(fake-leave "*) code=${line#"(fake-leave "}; exec 0<&-; echo success; exit "${code%)}" ;;
     "(fake-kill)") kill -9 $$ ;;
+    "(fake-flood)") flood ;;
+    "(fake-flood-late)")
+      echo success
+      IFS= read -r line && printf '%s\n' "$line" >> "$log"
+      flood ;;
     "(exit)") exit 0 ;;
     *)
       if [ -n "$queue" ]; then
