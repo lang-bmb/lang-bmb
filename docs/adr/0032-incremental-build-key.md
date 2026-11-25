@@ -1,6 +1,6 @@
 # ADR-0032: The key of the contract firewall incremental build
 
-- Status: Accepted (autonomous). The "query header" row of the proof key and its limit are superseded by ADR-0033. The "contract hash" of callee executable functions is superseded by ADR-0043 (the caller hash without `#[uses]`). The name dependence of the key rows (callees and source text written by path, byte offset positions) is superseded by ADR-0059 §4
+- Status: Accepted (autonomous). The "query header" row of the proof key and its limit are superseded by ADR-0033. The "contract hash" of callee executable functions is superseded by ADR-0043 (the caller hash without `#[uses]`). The name dependence of the key rows (callees and source text written by path, byte offset positions) is superseded by ADR-0059 §4. The compiler identity inside the proof key and the IR key is superseded by ADR-0150 (it stays in the file header)
 - Date: 2026-10-24
 - Related: DESIGN.md §8.1, ADR-0017 §4, ADR-0019 §2, backlog 2D-01·2D-02·2D-10
 
