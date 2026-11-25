@@ -80,7 +80,7 @@
 (!ask (fake-say gone))
 (!close)
 (!ask (reset))
-(!ask (fake-part whole))
+(!ask (fake-part-late whole))
 (!ask (fake-say gone))
 (!ask (reset))
 (!ask (fake-leave 9))

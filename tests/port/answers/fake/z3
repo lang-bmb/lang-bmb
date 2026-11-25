@@ -9,7 +9,13 @@
 #   (fake-say TEXT)         answers TEXT (printf's escapes: \n, \042, \0377)
 #   (fake-then TEXT)        answers `success`; the next line that is no
 #                           `(fake-..)` is answered TEXT (they queue up)
-#   (fake-part TEXT)        writes TEXT without the end of the line and ends
+#   (fake-part TEXT)        closes its input, writes TEXT without the end of
+#                           the line and ends: the next line it is sent meets
+#                           a closed pipe
+#   (fake-part-late TEXT)   writes TEXT without the end of the line, closes
+#                           its output, reads the next line it is sent and
+#                           ends: that line is written and its answer meets
+#                           the end of the output
 #   (fake-exit N)           ends with status N, without an answer
 #   (fake-exit-below M N)   the same when its `-memory` is below M; else `success`
 #   (fake-leave N)          closes its input, answers `success`, ends with N
@@ -70,7 +76,15 @@ while IFS= read -r line; do
     "(fake-say "*) text=${line#"(fake-say "}; printf '%b\n' "${text%)}" ;;
     "(fake-then "*) text=${line#"(fake-then "}; queue="$queue${text%)}
 "; echo success ;;
-    "(fake-part "*) text=${line#"(fake-part "}; printf '%b' "${text%)}"; exit 0 ;;
+    # Each ends in an order the asker cannot overtake: the answer is read
+    # after the input is closed, or the next line is read before the end.
+    # Ending right after the answer made the next line meet a closed pipe or
+    # not by whether this process had let go of its input yet.
+    "(fake-part "*) text=${line#"(fake-part "}; exec 0<&-; printf '%b' "${text%)}"; exit 0 ;;
+    "(fake-part-late "*)
+      text=${line#"(fake-part-late "}; printf '%b' "${text%)}"; exec 1>&-
+      IFS= read -r line && printf '%s\n' "$line" >> "$log"
+      exit 0 ;;
     "(fake-exit-below "*)
       rest=${line#"(fake-exit-below "}; rest=${rest%)}
       if [ "$memory" -lt "${rest% *}" ]; then exit "${rest#* }"; fi
