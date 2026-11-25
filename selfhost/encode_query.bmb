@@ -42,8 +42,14 @@ mod encode_query {
     #[summary("The range an assertion states of a constant: `(and (<= lo x) (<= x hi))` with numerals lo and hi, as the numerals' text")]
     struct Range { name: String, lo: String, hi: String }
 
+    #[summary("A definition encoded for its reach points (stage0 verify_pass under vacuous_ends): what it is asked over, and each point with its path condition")]
+    struct Reaching { cx: Ctx, points: Vec<encode_exec::Reach> }
+
     #[summary("The ground-instance retry of a query: its base, the instances, and whether every application got its own (a model of the retry is then a model of the query)")]
     struct Retry { head: String, inst: String, complete: bool }
+
+    #[summary("The definitions a definition reveals (stage0's axioms and axiom_parts of a definition): what marks each in a text with its text, and their parts for ground instances")]
+    struct Revealed { axioms: Vec<encode_terms::Pair>, parts: Vec<encode_spec::AxiomParts> }
 
     #[summary("A script as the solver receives it and the legend of its symbols (stage0 smt::canonical_script)")]
     struct Script { text: String, legend: String }
@@ -698,10 +704,10 @@ mod encode_query {
         out
     }
 
-    #[summary("Definition path encoded for the proof gate (the encoding part of stage0 verify_pass): the termination obligations of a recursive spec fn with a measure, the body of a lemma or of an executable function against its contract, with the definitions it reveals. None for a definition that is not encoded: a spec fn that is not recursive or has no measure. trust is the pass of the gate (ADR-0029 §2), rlimit the resource limit of a query; with bounded the options say that undecided obligations are searched within small bounds (ADR-0108 §1), so that a run with the search and one without share no cached proof")]
+    #[summary("Definition path encoded for the proof gate (the encoding part of stage0 verify_pass): the termination obligations of a recursive spec fn with a measure, the body of a lemma or of an executable function against its contract, with the definitions it reveals. None for a definition that is not encoded: a spec fn that is not recursive or has no measure. trust is the pass of the gate (ADR-0029 §2), query the resource limit of a full query (the options) and rlimit the gate's, of which the probe's limit is a share; with bounded the options say that undecided obligations are searched within small bounds (ADR-0108 §1), so that a run with the search and one without share no cached proof")]
     #[effects(alloc)]
-    fn encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, bounded: bool) -> Option<Encoded> {
-        let mut head: String = header(rlimit);
+    fn encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, query: u64, rlimit: u64, bounded: bool) -> Option<Encoded> {
+        let mut head: String = header(query);
         if bounded {
             head.push_str("\n; bounded search |x| <= 8, lengths <= 4");
         }
@@ -722,20 +728,7 @@ mod encode_query {
             let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
             return Some(Encoded { cx: cx0, obls: enc.obls, inputs: Vec::new() });
         }
-        let mut axioms: Vec<encode_terms::Pair> = Vec::new();
-        let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
-        let shown: Vec<String> = encode_spec::revealed(pg, path, &def.d, def.unit.as_str());
-        for i in 0..shown.len()
-            invariant 0 <= i && i <= shown.len(),
-        {
-            let ax: encode_spec::Axiom = encode_spec::axiom(pg, shown[i].as_str());
-            axioms.push(encode_terms::Pair { a: encode_decls::spec_key(shown[i].as_str(), &pg.pr.t), b: ax.text.clone() });
-            for k in 0..ax.parts.len()
-                invariant 0 <= k && k <= ax.parts.len(),
-            {
-                parts.push(ax.parts[k].clone());
-            }
-        }
+        let rv: Revealed = revealed_axioms(pg, path, def);
         let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
         ex.trust = trust.clone();
         if body::is_proof(def.d.kind) {
@@ -743,7 +736,7 @@ mod encode_query {
         } else {
             ex.exec_body(&def.d, pg);
         }
-        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: axioms, parts: parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: rv.axioms, parts: rv.parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
         Some(Encoded { cx: cx, obls: ex.enc.obls, inputs: ex.inputs })
     }
 
@@ -1402,6 +1395,40 @@ mod encode_query {
         Some(Range { name: name, lo: lo, hi: hi })
     }
 
+    #[summary("Definition path encoded for its reach points (the encoding of stage0 verify_pass under vacuous_ends): an executable function or a lemma with its reach points recorded, with the definitions it reveals; a recursive spec fn with a measure, which has none. None for a definition that is not encoded. trust is the pass, query the resource limit of a full query and rlimit the gate's, of which the probe's limit is a share")]
+    #[effects(alloc)]
+    fn reach_encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, query: u64, rlimit: u64) -> Option<Reaching> {
+        let head: String = header(query);
+        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
+        let share: u64 = if rlimit / 100 >= 1 {
+            rlimit / 100
+        } else {
+            1
+        };
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
+        if body::is_spec(def.d.kind) {
+            let comp: usize = pg.recursive.items[pg.recursive.find(path)?];
+            let mut enc: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
+            match &def.d.measure {
+                None => { return None; },
+                Some(dec) => enc.termination(&def.d, comp, dec, pg),
+            }
+            let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
+            return Some(Reaching { cx: cx0, points: Vec::new() });
+        }
+        let rv: Revealed = revealed_axioms(pg, path, def);
+        let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
+        ex.reaching = true;
+        ex.trust = trust.clone();
+        if body::is_proof(def.d.kind) {
+            ex.proof_body(&def.d, pg);
+        } else {
+            ex.exec_body(&def.d, pg);
+        }
+        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: rv.axioms, parts: rv.parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        Some(Reaching { cx: cx, points: ex.reach })
+    }
+
     #[summary("Every form each reach point may be asked in (the forms stage0 verify_pass asks under vacuous_ends, as dump_queries writes them): its path condition asserted with the instances of the validity functions and the struct facts, over the probe's base in the forms of a satisfiability check, as an exact bit-vector query, with the recursive definitions as recursive functions, and over the full base under the limit of a reach point. Which of them are sent after the first depends on the answers")]
     #[effects(alloc)]
     fn reach_points(cx: &Ctx, pg: &encode_spec::Prog, points: &[encode_exec::Reach], enc: &mut encode_spec::Enc) -> String {
@@ -1625,6 +1652,26 @@ mod encode_query {
         Some(Retry { head: types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()), inst: inst, complete: gi.complete })
     }
 
+    #[summary("The definitions definition def at path reveals, each by what marks it in a text with its text from encode_spec::axiom, and their parts (the axioms of stage0 verify_pass and of the satisfiability checks)")]
+    #[effects(alloc)]
+    fn revealed_axioms(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def) -> Revealed {
+        let mut axioms: Vec<encode_terms::Pair> = Vec::new();
+        let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
+        let shown: Vec<String> = encode_spec::revealed(pg, path, &def.d, def.unit.as_str());
+        for i in 0..shown.len()
+            invariant 0 <= i && i <= shown.len(),
+        {
+            let ax: encode_spec::Axiom = encode_spec::axiom(pg, shown[i].as_str());
+            axioms.push(encode_terms::Pair { a: encode_decls::spec_key(shown[i].as_str(), &pg.pr.t), b: ax.text.clone() });
+            for k in 0..ax.parts.len()
+                invariant 0 <= k && k <= ax.parts.len(),
+            {
+                parts.push(ax.parts[k].clone());
+            }
+        }
+        Revealed { axioms: axioms, parts: parts }
+    }
+
     #[summary("Whether a and b are the same s-expression")]
     #[effects(pure)]
     fn same(a: &encode_terms::Sexp, b: &encode_terms::Sexp, f: usize) -> bool
@@ -1643,51 +1690,12 @@ mod encode_query {
     #[effects(alloc)]
     fn script_of(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, reach: bool) -> Option<String> {
         if !reach {
-            let e: Encoded = encoded(pg, path, def, sig, sds, dts, trust, rlimit, false)?;
+            let e: Encoded = encoded(pg, path, def, sig, sds, dts, trust, rlimit, rlimit, false)?;
             return Some(obligations(&e.cx, pg, e.obls.as_slice()));
         }
-        let head: String = header(rlimit);
-        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
-        let share: u64 = if rlimit / 100 >= 1 {
-            rlimit / 100
-        } else {
-            1
-        };
-        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
-        if body::is_spec(def.d.kind) {
-            let comp: usize = pg.recursive.items[pg.recursive.find(path)?];
-            let mut enc: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
-            match &def.d.measure {
-                None => { return None; },
-                Some(dec) => enc.termination(&def.d, comp, dec, pg),
-            }
-            return Some(String::new());
-        }
-        let mut axioms: Vec<encode_terms::Pair> = Vec::new();
-        let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
-        let shown: Vec<String> = encode_spec::revealed(pg, path, &def.d, def.unit.as_str());
-        for i in 0..shown.len()
-            invariant 0 <= i && i <= shown.len(),
-        {
-            let ax: encode_spec::Axiom = encode_spec::axiom(pg, shown[i].as_str());
-            axioms.push(encode_terms::Pair { a: encode_decls::spec_key(shown[i].as_str(), &pg.pr.t), b: ax.text.clone() });
-            for k in 0..ax.parts.len()
-                invariant 0 <= k && k <= ax.parts.len(),
-            {
-                parts.push(ax.parts[k].clone());
-            }
-        }
-        let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
-        ex.reaching = true;
-        ex.trust = trust.clone();
-        if body::is_proof(def.d.kind) {
-            ex.proof_body(&def.d, pg);
-        } else {
-            ex.exec_body(&def.d, pg);
-        }
-        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: axioms, parts: parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        let r: Reaching = reach_encoded(pg, path, def, sig, sds, dts, trust, rlimit, rlimit)?;
         let mut scratch: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
-        Some(reach_points(&cx, pg, ex.reach.as_slice(), &mut scratch))
+        Some(reach_points(&r.cx, pg, r.points.as_slice(), &mut scratch))
     }
 
     #[summary("The integer side of leaf mine against the leaf other it is paired with (stage0 Congr::side): a constant's `(bv2nat c)`; a value modulo 2^w against a constant whose stated value is the two's complement form; the value otherwise")]

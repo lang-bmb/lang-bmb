@@ -756,8 +756,9 @@ mod lib {
         {
             wanted.push(only[i].clone());
         }
-        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, rlimit: solver::rlimit() };
-        let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut diags);
+        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut diags);
         let mut hits: usize = 0;
         let mut misses: usize = 0;
         let mut cache_error: Option<String> = None;
