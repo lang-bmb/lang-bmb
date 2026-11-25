@@ -372,7 +372,8 @@
           "tests/port/gen/*.txt"
         ],
         "chunk": 1
-      }
+      },
+      "timeout": 3600
     },
     {
       "name": "lint-fail",
