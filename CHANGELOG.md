@@ -22,6 +22,7 @@ The language surface carries its own version, apart from the compiler crate's.
 - `BMB_Z3_RLIMIT`, `BMB_Z3_MEMORY_MB` and `BMB_Z3_BACKSTOP_MS` set to 0 give the smallest limit, 1. Z3 reads 0 as no limit, so a variable that may only lower a limit removed it: `bmb verify` under `BMB_Z3_RLIMIT=0` proved with no resource limit. The probe's share of a resource limit lowered below 100 is 1 for the same reason.
 - A query that is asked again alone after its process ended at the memory limit, and then ends its own process there at a later command, is undecided at once. It was asked a third time, in another process under the same limit.
 - The incremental cache (`--cache` without `--emit-smt`) places the proved obligations of a definition that reuses another definition's entry (the same proof key: a rename, or the same text calling by a bare name inside its unit and by a path from another) on that definition's own expressions. A path counted one position per segment, so the proofs landed on other expressions: the IR kept a check that an uncached run drops (`bmb build --cache` refused a fully proved program), and could drop one whose obligation was not proved there.
+- The keys of the incremental cache no longer hold the compiler's identity, which the file's header names: a cache file of another build is still not read at all, and the key `bmb reads` prints of a definition no longer changes with each build of the compiler.
 
 ### Standard library
 

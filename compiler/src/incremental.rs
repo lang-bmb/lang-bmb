@@ -53,7 +53,13 @@
 //!   `#[uses]` or in `D`'s recursive component through its whole text (body
 //!   hash), any other `spec fn` only through its declaration (above);
 //! - `D`'s recursive component (`decreases` obligations at calls inside it);
-//! - the compiler (a digest of its sources, `build.rs`) and the pinned Z3.
+//! - the pinned Z3.
+//!
+//! Not the compiler: the file's header names the build that wrote it
+//! (`compiler_id`), and a file of another build is not read at all, so an
+//! entry never meets another compiler. The entries themselves are then the
+//! same for two builds that compute the same keys, and two compilers can be
+//! compared on them.
 //!
 //! These include the edges of `query impact` (map.rs): `calls` (callee
 //! contract), `uses` (revealed body), `names` (spec signature, through the
@@ -71,7 +77,8 @@
 //!
 //! **IR key.** `D`'s source text and qualified text, the signature and
 //! contract of each executable callee (call types and return types), the
-//! usable proved obligations inside `D`, and the compiler identity.
+//! usable proved obligations inside `D` (the compiler as for the proof key:
+//! by the file's header).
 //! An instance of a generic definition is stored under its
 //! own key: the definition's IR key, the instance's text and the data types
 //! its type arguments name. A stored fragment carries the instances it calls
@@ -197,7 +204,7 @@ pub fn proof_reads(
     sm: &SourceMap,
 ) -> (BTreeMap<String, DefReads>, BTreeMap<String, String>) {
     let mut rows = BTreeMap::new();
-    Session::keys(&compiler_id(), p, t, sm, None, Some(&mut rows));
+    Session::keys(p, t, sm, None, Some(&mut rows));
     let types = t
         .adts
         .iter()
@@ -990,7 +997,7 @@ impl Session {
     /// stored entries and counters. A definition whose key is unchanged is
     /// then reused as in a new session over the same cache.
     pub fn rekey(&mut self, p: &Program, t: &Tables, sm: &SourceMap) {
-        let (proof_keys, ir_keys) = Session::keys(&self.id, p, t, sm, None, None);
+        let (proof_keys, ir_keys) = Session::keys(p, t, sm, None, None);
         self.proof_keys = proof_keys;
         self.ir_keys = ir_keys;
     }
@@ -1004,7 +1011,7 @@ impl Session {
         sm: &SourceMap,
         only: Option<&BTreeSet<String>>,
     ) -> Session {
-        let (proof_keys, ir_keys) = Session::keys(&id, p, t, sm, only, None);
+        let (proof_keys, ir_keys) = Session::keys(p, t, sm, only, None);
         let stats = Stats {
             damaged: store.damaged,
             ..Stats::default()
@@ -1032,7 +1039,6 @@ impl Session {
     /// the keys of a few definitions cost what those definitions reach.
     /// With `rows`, also each definition's proof key as rows (`proof_reads`).
     fn keys(
-        id: &str,
         p: &Program,
         t: &Tables,
         sm: &SourceMap,
@@ -1169,7 +1175,6 @@ impl Session {
             // and comments change no proof key (ADR-0059 §4). The IR key
             // keeps the source text, which places the run-time checks.
             let mut own = String::new();
-            section(&mut own, "id", id);
             section(&mut own, "path", path);
             section(&mut own, "unit", unit);
             section(&mut own, "qualified", &qual);
@@ -1177,7 +1182,6 @@ impl Session {
             // definition's nameless text and what its queries read of each
             // item it reaches, references numbered inside the key.
             let mut pk = String::from("proof\n");
-            section(&mut pk, "id", id);
             section(&mut pk, "z3", z3);
             // Not in the header's text: the limit a proof was found under.
             section(
@@ -1566,4 +1570,36 @@ fn adt_line(a: &crate::check::Adt) -> String {
         .as_ref()
         .map_or(String::new(), |p| format!("#[invariant({p})] "));
     format!("{inv}{} {{ {} }}", a.path, body.join(", "))
+}
+
+#[cfg(test)]
+mod tests {
+    /// The entries do not depend on the compiler identity: two builds that
+    /// compute the same keys write the same lines under their headers, and
+    /// neither reads the other's file.
+    #[test]
+    fn entries_do_not_depend_on_the_compiler_identity() {
+        let text = "#[summary(\"u\")]\nmod u {\n    #[effects(pure)]\n    fn f(x: i64) -> (r: i64)\n        requires x >= 0 && x < 100,\n        ensures r > x,\n    {\n        x + 1\n    }\n}\n";
+        let files = vec![("u.bmb".to_string(), text.to_string())];
+        let base = std::env::temp_dir().join(format!("bmb-incr-identity-{}", std::process::id()));
+        let (one, two) = (base.join("one"), base.join("two"));
+        let run = |id: &str, dir: &std::path::Path| {
+            super::with_compiler_id(id, || crate::verify_sources_opts(&files, Some(dir), true))
+        };
+        assert!(run("first", &one).ok);
+        assert!(run("second", &two).ok);
+        let read = |dir: &std::path::Path| std::fs::read_to_string(dir.join(super::FILE)).unwrap();
+        let (a, b) = (read(&one), read(&two));
+        let lines = |s: &str| s.lines().map(String::from).collect::<Vec<_>>();
+        let (a, b) = (lines(&a), lines(&b));
+        assert_eq!(a.len(), 3, "{a:?}");
+        assert_eq!((a[1].as_str(), b[1].as_str()), ("id first", "id second"));
+        assert_eq!((&a[0], &a[2..]), (&b[0], &b[2..]));
+        // The second build over the first one's file: nothing is reused.
+        std::fs::copy(one.join(super::FILE), two.join(super::FILE)).unwrap();
+        let again = run("second", &two);
+        assert_eq!(again.incr.encoded, ["u::f"]);
+        assert!(again.incr.reused.is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
