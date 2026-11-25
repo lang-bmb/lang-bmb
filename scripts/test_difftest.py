@@ -241,6 +241,132 @@ class Difftest(unittest.TestCase):
         self.assertEqual(difftest.load_costs(path), {"x": 0.5, "y": 2.5})
 
 
+BIG = """#!/bin/sh
+# 300,000 bytes of numbered lines on stdout, one file of as many, one small
+python3 -c "import sys; sys.stdout.write(''.join('%07d\\\\n' % i for i in range(37500)))"
+python3 -c "import sys; sys.stdout.write(''.join('%07d\\\\n' % i for i in range(37500)))" > big.txt
+echo small > small.txt
+"""
+
+
+class Digests(unittest.TestCase):
+    """The comparison of outputs too large to hold (`"digest": true`)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def pair(self, other_text, base_text=BIG):
+        base = script(self.d, "base", base_text)
+        other = script(self.d, "other", other_text)
+        a = difftest.observe([base], b"", 30, digest=True)
+        b = difftest.observe([other], b"", 30, digest=True, against=a)
+        return a, b
+
+    def test_a_program_is_the_same_as_itself(self):
+        a, b = self.pair(BIG)
+        self.assertIsNone(difftest.first_difference(a, b))
+        self.assertEqual(a["stdout"].size, 300000)
+        self.assertEqual(sorted(a["files"]), ["big.txt", "small.txt"])
+        # What is held is the digests and the first bytes, not the output.
+        self.assertEqual(len(a["stdout"].head), difftest.HEAD)
+        self.assertEqual(len(a["files"]["big.txt"].head), difftest.FILE_HEAD)
+        self.assertEqual(len(a["stdout"].blocks), -(-300000 // difftest.BLOCK))
+        self.assertIsNone(b["stdout"].excerpt)
+
+    def test_a_difference_is_located_to_its_block_and_line(self):
+        # line 20,001 (byte 160,000) of stdout, in the third block
+        a, b = self.pair(BIG.replace("range(37500)))\"\n", "range(37500)).replace('0020000', '002000x'))\"\n", 1))
+        diff = difftest.first_difference(a, b)
+        self.assertEqual(diff["what"], "stdout")
+        k = 160000 // difftest.BLOCK
+        self.assertEqual((diff["byte_from"], diff["byte_to"]), (k * difftest.BLOCK, (k + 1) * difftest.BLOCK))
+        self.assertEqual(diff["line_from"], k * difftest.BLOCK // 8 + 1)
+        self.assertNotEqual(*diff["sha256"])
+        at, data = b["stdout"].excerpt
+        self.assertEqual(at, k * difftest.BLOCK)
+        self.assertIn(b"002000x", data)
+        self.assertEqual(len(data), difftest.BLOCK)
+
+    def test_a_file_that_differs_or_is_missing_is_named(self):
+        a, b = self.pair(BIG.replace("> big.txt", "| head -c 299999 > big.txt"))
+        diff = difftest.first_difference(a, b)
+        self.assertEqual((diff["what"], diff["name"], diff["size"]), ("file", "big.txt", [300000, 299999]))
+        self.assertEqual(diff["byte_from"], 299999 // difftest.BLOCK * difftest.BLOCK)
+        a, b = self.pair(BIG.replace("echo small > small.txt", "echo small > small.txt; : > more.txt"))
+        self.assertEqual(difftest.first_difference(a, b), {"what": "file", "name": "more.txt", "only": "b"})
+        # a shorter stream that ends at a block's edge
+        cut = BIG.replace("range(37500)))\"\n", f"range(37500)))\" | head -c {2 * difftest.BLOCK}\n", 1)
+        a, b = self.pair(cut)
+        diff = difftest.first_difference(a, b)
+        self.assertEqual((diff["what"], diff["byte_from"]), ("stdout", 2 * difftest.BLOCK))
+        self.assertIsNone(b["stdout"].excerpt)
+
+    def test_excerpts_hold_the_bytes_around_a_difference_not_the_outputs(self):
+        a, b = self.pair(BIG.replace("range(37500)))\"\n", "range(37500)).replace('0020000', '002000x'))\"\n", 1))
+        diff = difftest.first_difference(a, b)
+        out = os.path.join(self.d, "excerpts")
+        difftest.write_excerpts(out, diff, a, b)
+        names = sorted(os.listdir(out))
+        at = diff["byte_from"]
+        self.assertEqual(names, ["a.head", "b.from-%d" % at, "b.head", "difference.json"])
+        with open(os.path.join(out, "difference.json")) as f:
+            self.assertEqual(json.load(f), json.loads(json.dumps(diff)))
+        # whole outputs: the window around the byte that differs
+        x = {"stdout": b"a" * 100000 + b"x", "stderr": b"", "exit": 0, "files": {}}
+        y = dict(x, stdout=b"a" * 100000 + b"y")
+        diff = difftest.first_difference(x, y)
+        out = os.path.join(self.d, "whole")
+        difftest.write_excerpts(out, diff, x, y)
+        at = 100000 - difftest.EXCERPT // 2
+        with open(os.path.join(out, f"b.from-{at}"), "rb") as f:
+            self.assertEqual(f.read()[-1:], b"y")
+
+    def test_both_sides_out_of_time_is_no_agreement(self):
+        slow = script(self.d, "slow", "#!/bin/sh\nsleep 5 &\nwait\n")
+        for digest in (False, True):
+            a = difftest.observe([slow], b"", 0.5, digest)
+            b = difftest.observe([slow], b"", 0.5, digest, a if digest else None)
+            self.assertEqual(a["exit"], "timeout")
+            self.assertLess(a["seconds"], 4)  # its child is ended with it
+            self.assertEqual(difftest.first_difference(a, b), {"what": "timeout"})
+
+    def test_a_run_reports_each_side_with_its_memory(self):
+        base = script(self.d, "base", BIG)
+        cases = {"cases": [{"name": "big", "a": [base], "b": [base], "inputs": {"none": True}, "digest": True,
+                            "timeout": 30}]}
+        path = os.path.join(self.d, "cases.json")
+        with open(path, "w") as f:
+            json.dump(cases, f)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "difftest.py"), "run", path], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        row = json.loads(r.stdout)
+        self.assertTrue(row["same"])
+        self.assertEqual(sorted(row["sides"]), ["a", "b"])
+        self.assertGreater(row["sides"]["a"]["rss_mb"], 1)  # python3 holds the text
+
+    def test_a_proved_build_is_a_cache_directory(self):
+        bmb = script(self.d, "bmb", '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$3/args"\n')
+        cache = os.path.join(self.d, "cache")
+        os.makedirs(cache)
+        with open(os.path.join(cache, "proofs"), "w") as f:
+            f.write("p\n")
+        out = os.path.join(self.d, "built", "c")
+        os.makedirs(os.path.dirname(out))
+        self.assertIsNone(difftest.build({"proved": ["scripts/difftest.py"]}, out, bmb, cache))
+        with open(os.path.join(out, "args")) as f:
+            self.assertEqual(f.read().split(), ["verify", "--cache", out, os.path.join(HERE, "difftest.py")])
+        with open(os.path.join(out, "proofs")) as f:
+            self.assertEqual(f.read(), "p\n")
+        failing = script(self.d, "failing", '#!/bin/sh\necho \'{"def":"x","status":"failed"}\'\nexit 1\n')
+        self.assertIn("failed", difftest.build({"proved": ["scripts/difftest.py"]}, out + "2", failing, cache))
+        built, errors = difftest.from_built(["c"], os.path.dirname(out))
+        self.assertEqual((built, errors), ({"c": out}, []))
+
+
 class GateParts(unittest.TestCase):
     """scripts/check.sh runs the port's cases as `port_shards` jobs, one per
     part: each case is in exactly one job."""

@@ -1,5 +1,5 @@
 {
-  "about": "Seconds of each case in one run of scripts/difftest.py with the debug compiler, written by `difftest.py costs`. Only how `--shard` balances its parts depends on them.",
+  "about": "Seconds of each case in one run of scripts/difftest.py (the gate's cases with the debug compiler, the nightly ones with the optimized one), written by `difftest.py costs`. Only how `--shard` balances its parts depends on them.",
   "seconds": {
     "sha256": 0.4,
     "json-lines": 0.0,

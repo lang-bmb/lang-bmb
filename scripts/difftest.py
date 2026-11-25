@@ -5,16 +5,27 @@ A case names two commands, the stage0 side `a` and the port side `b`, and
 an input set. Each run starts both in an empty directory of its own with
 the same environment and the same standard input, and compares standard
 output, standard error, the exit code and the files they leave, byte for
-byte. Nothing is normalised.
+byte. Nothing is normalised. A run that does not end within the case's
+`timeout` (600 seconds by default) is ended, with everything it started,
+and the case fails, whether one side or both ran out.
 
     difftest.py run CASES.json [--case NAME].. [--shard I/N] [--built DIR]
                                [--keep DIR] [--prebuilt NAME=PATH]..
-    difftest.py build CASES.json DIR [--jobs N]
+                               [--excerpts DIR]
+    difftest.py build CASES.json DIR [--jobs N] [--proof DIR]
     difftest.py shards CASES.json N
     difftest.py costs CASES.json RESULTS..
 
-`run` prints one JSON line per case (with the seconds it took) and exits 1
-when a case differs or cannot run. `--shard I/N` runs the I-th of N disjoint
+`run` prints one JSON line per case (with the seconds it took, and per side
+the seconds and the peak resident memory of its largest process) and exits
+1 when a case differs or cannot run. A case with `"digest": true` compares
+outputs too large to hold: each side's standard output and error are hashed
+as they arrive and its files as soon as it ends, in blocks of 64 KiB, and
+its directory is removed before the other side starts, so nothing is in
+memory whole or on disk twice; a difference is located to its block and
+line. `--excerpts DIR` leaves in `DIR/CASE` the difference and the bytes
+around it (with digests: the first bytes of each side and side b's first
+block that differs), not the outputs. `--shard I/N` runs the I-th of N disjoint
 parts of the cases, balanced by the seconds each case took when last
 measured (`costs.json` next to the cases file; a case it does not list counts
 as the mean): the cases in decreasing cost go one by one to the part with
@@ -24,7 +35,8 @@ parts and their expected seconds; `costs` rewrites `costs.json` from the
 lines of runs over every case.
 
 `build` makes every build into DIR once, `DIR/NAME`, as many at once as
-the machine has cores (`--jobs`); a build that fails leaves its error in
+the machine has cores (`--jobs`), each BMB build from a copy of the proof
+cache `--proof` (the gate's `target/port-proof` by default); a build that fails leaves its error in
 `DIR/NAME.error` and the exit code is 1. `run --built
 DIR` takes the programs from there instead of building: a build that failed
 or is missing fails the run that needs it, as a failed build does in `run`
@@ -33,13 +45,17 @@ failed build is reported by the jobs, with the cases that needed it).
 `--prebuilt NAME=PATH` uses the program at PATH as build NAME. The cases
 file:
 
-    {"builds": {NAME: {"bmb": FILE} | {"rustc": FILE} | {"example": NAME}},
+    {"builds": {NAME: {"bmb": FILE} | {"proved": FILE} | {"rustc": FILE}
+                      | {"example": NAME}},
      "cases": [{"name": .., "component": .., "a": [ARGV], "b": [ARGV],
-                "inputs": {..}}]}
+                "inputs": {..}, "digest": BOOL, "timeout": SECONDS}]}
 
 `builds` are made once: `{"bmb": FILE}` (or a list of globs, the files of one
 program; `"except": GLOB..` leaves files out) with `bmb build` (so the
-program is proved), `{"rustc": FILE}` with `rustc --edition 2021 -O`,
+program is proved), `{"proved": ..}` the same files as a proof cache
+directory (`bmb verify --cache` from a copy of the gate's port proof, when
+there is one; it fails unless every definition is proved),
+`{"rustc": FILE}` with `rustc --edition 2021 -O`,
 `{"example": NAME}` with `cargo build --example NAME` in `compiler/` (a
 reference that calls the compiler's own functions). In an argv,
 `{build:NAME}` is a built program, `{bmb}` the compiler under test and
@@ -62,12 +78,15 @@ import argparse
 import concurrent.futures
 import fnmatch
 import glob
+import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -145,64 +164,221 @@ def tree(d):
     return out
 
 
-def observe(argv, stdin, timeout):
-    """What one side did: stdout, stderr, exit code and the files it left."""
-    d = tempfile.mkdtemp(prefix="difftest-")
+BLOCK = 1 << 16  # the unit a digest locates a difference to
+HEAD = 1 << 16  # the bytes a digest of a stream keeps from its start
+FILE_HEAD = 1 << 13  # .. of a file (a side may leave thousands)
+
+
+class Digest:
+    """What a channel held, in constant memory however long it is: its
+    size, its SHA-256, the SHA-256 of each block of BLOCK bytes with the
+    count of line feeds before it, and its first bytes. Given the digest
+    of the other side's channel (`against`), it also keeps its own first
+    block that differs from that one, the only place the bytes of both
+    sides cannot be read from the digests."""
+
+    def __init__(self, against=None, head=HEAD):
+        self.size = 0
+        self.whole = hashlib.sha256()
+        self.blocks = []
+        self.lines = []
+        self.head = bytearray()
+        self.excerpt = None
+        self._against = against
+        self._head = head
+        self._buf = bytearray()
+        self._newlines = 0
+
+    def feed(self, data):
+        self.size += len(data)
+        self.whole.update(data)
+        if len(self.head) < self._head:
+            self.head += data[: self._head - len(self.head)]
+        self._buf += data
+        while len(self._buf) >= BLOCK:
+            self._block(bytes(self._buf[:BLOCK]))
+            del self._buf[:BLOCK]
+
+    def close(self):
+        if self._buf:
+            self._block(bytes(self._buf))
+            self._buf = bytearray()
+        self.sha256 = self.whole.hexdigest()
+        return self
+
+    def _block(self, data):
+        k = len(self.blocks)
+        h = hashlib.sha256(data).digest()
+        self.blocks.append(h)
+        self.lines.append(self._newlines)
+        self._newlines += data.count(b"\n")
+        other = self._against
+        if other is not None and self.excerpt is None and (k >= len(other.blocks) or other.blocks[k] != h):
+            self.excerpt = (k * BLOCK, data)
+
+    def __eq__(self, other):
+        return isinstance(other, Digest) and (self.size, self.sha256) == (other.size, other.sha256)
+
+
+def digest_file(path, against=None):
+    d = Digest(against, FILE_HEAD)
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            d.feed(chunk)
+    return d.close()
+
+
+def tree_digest(d, against):
+    """The files under `d`, each as its Digest (against the file of the same
+    name in `against`)."""
+    out = {}
+    for base, dirs, names in os.walk(d):
+        dirs.sort()
+        for n in sorted(names):
+            p = os.path.join(base, n)
+            rel = os.path.relpath(p, d)
+            out[rel] = digest_file(p, against.get(rel))
+    return out
+
+
+def spawn(argv, stdin, cwd, timeout, out, err):
+    """Runs `argv` in `cwd` with `stdin` and hands what it writes to `out`
+    and `err` (each called with bytes) as it comes. The exit code ("timeout"
+    when it was ended at `timeout` seconds, with everything it started) and
+    the peak resident memory, in MiB, of the largest process it ran (itself
+    or one it waited for)."""
     try:
+        p = subprocess.Popen(
+            argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=cwd, env=ENV, start_new_session=True,
+        )
+    except OSError as e:
+        return f"cannot run: {e.strerror}", 0
+
+    def pump(pipe, sink):
+        with pipe:
+            while chunk := pipe.read1(1 << 20):
+                sink(chunk)
+
+    def feed():
         try:
-            r = subprocess.run(
-                argv, input=stdin, cwd=d, env=ENV, capture_output=True, timeout=timeout
-            )
-            seen = {"stdout": r.stdout, "stderr": r.stderr, "exit": r.returncode}
-        except subprocess.TimeoutExpired:
-            seen = {"stdout": b"", "stderr": b"", "exit": "timeout"}
-        except OSError as e:
-            seen = {"stdout": b"", "stderr": b"", "exit": f"cannot run: {e.strerror}"}
-        seen["files"] = tree(d)
+            with p.stdin:
+                p.stdin.write(stdin)
+        except OSError:
+            pass  # it ended or closed its input before reading all of it
+
+    threads = [threading.Thread(target=pump, args=(p.stdout, out)),
+               threading.Thread(target=pump, args=(p.stderr, err)),
+               threading.Thread(target=feed)]
+    for t in threads:
+        t.start()
+    timer = threading.Timer(timeout, os.killpg, (p.pid, signal.SIGKILL))
+    timer.start()
+    _, status, usage = os.wait4(p.pid, 0)
+    timed_out = not timer.is_alive()
+    timer.cancel()
+    p.returncode = os.waitstatus_to_exitcode(status)
+    for t in threads:
+        t.join()
+    return ("timeout" if timed_out else p.returncode), round(usage.ru_maxrss / 1024)
+
+
+def observe(argv, stdin, timeout, digest=False, against=None):
+    """What one side did: stdout, stderr, exit code and the files it left,
+    with its seconds and peak memory (`rss_mb`). With `digest` every channel
+    is a Digest (against the channels of `against`, the other side's
+    observation), so that no output is held whole in memory and none
+    outlives the run's directory."""
+    d = tempfile.mkdtemp(prefix="difftest-")
+    start = time.monotonic()
+    try:
+        if digest:
+            other = against or {"stdout": None, "stderr": None, "files": {}}
+            seen = {"stdout": Digest(other["stdout"]), "stderr": Digest(other["stderr"])}
+            code, rss = spawn(argv, stdin, d, timeout, seen["stdout"].feed, seen["stderr"].feed)
+            seen["stdout"].close()
+            seen["stderr"].close()
+            seen["files"] = tree_digest(d, other["files"])
+        else:
+            out, err = bytearray(), bytearray()
+            code, rss = spawn(argv, stdin, d, timeout, out.extend, err.extend)
+            seen = {"stdout": bytes(out), "stderr": bytes(err), "files": tree(d)}
+        seen.update({"exit": code, "rss_mb": rss, "seconds": time.monotonic() - start})
         return seen
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def differ(x, y):
+    """Where two channels part (bytes or Digests); None when they do not."""
+    if x == y:
+        return None
+    if isinstance(x, Digest):
+        # The first block that differs, or where the shorter one ends.
+        k = next((i for i, (p, q) in enumerate(zip(x.blocks, y.blocks)) if p != q), min(len(x.blocks), len(y.blocks)))
+        lines = x.lines[k] if k < len(x.lines) else x._newlines
+        return {
+            "byte_from": k * BLOCK,
+            "byte_to": min((k + 1) * BLOCK, max(x.size, y.size)),
+            "line_from": lines + 1,
+            "size": [x.size, y.size],
+            "sha256": [x.sha256, y.sha256],
+        }
+    at = next((i for i in range(min(len(x), len(y))) if x[i] != y[i]), min(len(x), len(y)))
+    return {
+        "byte": at,
+        "line": x[:at].count(b"\n") + 1,
+        "a": x[max(0, at - 40) : at + 40].decode("utf-8", "replace"),
+        "b": y[max(0, at - 40) : at + 40].decode("utf-8", "replace"),
+    }
 
 
 def first_difference(a, b):
     """None when the two observations are the same, else where they part."""
     if a["exit"] != b["exit"]:
         return {"what": "exit", "a": a["exit"], "b": b["exit"]}
+    if a["exit"] == "timeout":
+        return {"what": "timeout"}
     for stream in ("stdout", "stderr"):
-        x, y = a[stream], b[stream]
-        if x != y:
-            at = next((i for i in range(min(len(x), len(y))) if x[i] != y[i]), min(len(x), len(y)))
-            line = x[:at].count(b"\n") + 1
-            return {
-                "what": stream,
-                "byte": at,
-                "line": line,
-                "a": x[max(0, at - 40) : at + 40].decode("utf-8", "replace"),
-                "b": y[max(0, at - 40) : at + 40].decode("utf-8", "replace"),
-            }
+        where = differ(a[stream], b[stream])
+        if where:
+            return {"what": stream, **where}
     if a["files"] != b["files"]:
         names = sorted(set(a["files"]) | set(b["files"]))
         name = next(n for n in names if a["files"].get(n) != b["files"].get(n))
-        return {"what": "file", "name": name}
+        x, y = a["files"].get(name), b["files"].get(name)
+        return {"what": "file", "name": name, **(differ(x, y) if x is not None and y is not None else {"only": "a" if y is None else "b"})}
     return None
 
 
 PORT_PROOF = os.path.join(ROOT, "target", "port-proof")
 
 
+def program_files(spec, key):
+    """The files of one program: a file or a list of globs (in path order),
+    without those `except` names."""
+    globs = spec[key] if isinstance(spec[key], list) else [spec[key]]
+    left = [os.path.join(ROOT, g) for g in spec.get("except", [])]
+    files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
+    return globs, [p for p in files if not any(fnmatch.fnmatch(p, g) for g in left)]
+
+
 def build(spec, out, bmb, cache=PORT_PROOF):
     """Builds one program; the error text when it cannot be built."""
-    if "bmb" in spec:
-        # One file, or globs of the files of one program (in path order).
-        globs = spec["bmb"] if isinstance(spec["bmb"], list) else [spec["bmb"]]
-        left = [os.path.join(ROOT, g) for g in spec.get("except", [])]
-        files = sorted(p for g in globs for p in glob.glob(os.path.join(ROOT, g)))
-        files = [p for p in files if not any(fnmatch.fnmatch(p, g) for g in left)]
+    if "bmb" in spec or "proved" in spec:
+        globs, files = program_files(spec, "bmb" if "bmb" in spec else "proved")
         if not files:
             return f"no file matches {globs}"
-        # The gate proves the port once (check.sh "port proof"): a
-        # build finds the proofs of the files it shares with it in this cache.
-        cmd = [bmb, "build", "--cache", cache, *files, "-o", out]
+        if "bmb" in spec:
+            # The gate proves the port once (check.sh "port proof"): a
+            # build finds the proofs of the files it shares with it in this cache.
+            cmd = [bmb, "build", "--cache", cache, *files, "-o", out]
+        else:
+            # A cache directory of the program proved: the given cache
+            # (the gate's port proof, when there is one) and what is left.
+            if os.path.isdir(cache):
+                shutil.copytree(cache, out)
+            cmd = [bmb, "verify", "--cache", out, *files]
     elif "rustc" in spec:
         cmd = ["rustc", "--edition", "2021", "-O", "--cap-lints", "allow"]
         cmd += [os.path.join(ROOT, spec["rustc"]), "-o", out]
@@ -230,23 +406,70 @@ def build(spec, out, bmb, cache=PORT_PROOF):
     return None
 
 
-def run_case(case, built, bmb, timeout=600):
+def run_case(case, built, bmb, timeout=600, excerpts=None):
     runs, size = runs_of(case["inputs"])
     result = {"case": case["name"], "component": case.get("component"), "inputs": size, "runs": len(runs)}
+    timeout = case.get("timeout", timeout)
+    digest = case.get("digest", False)
+    sides = {"a": {"seconds": 0.0, "rss_mb": 0}, "b": {"seconds": 0.0, "rss_mb": 0}}
     start = time.monotonic()
     for label, files, stdin in runs:
-        a = observe(argv_of(case["a"], files, built, bmb), stdin, timeout)
-        b = observe(argv_of(case["b"], files, built, bmb), stdin, timeout)
+        a = observe(argv_of(case["a"], files, built, bmb), stdin, timeout, digest)
+        b = observe(argv_of(case["b"], files, built, bmb), stdin, timeout, digest, a)
+        for name, seen in (("a", a), ("b", b)):
+            sides[name]["seconds"] += seen["seconds"]
+            sides[name]["rss_mb"] = max(sides[name]["rss_mb"], seen["rss_mb"])
         diff = first_difference(a, b)
         if diff:
             diff["run"] = label
             result["same"] = False
             result["difference"] = diff
+            if excerpts:
+                write_excerpts(os.path.join(excerpts, case["name"]), diff, a, b)
             break
     else:
         result["same"] = True
     result["seconds"] = round(time.monotonic() - start, 1)
+    for side in sides.values():
+        side["seconds"] = round(side["seconds"], 1)
+    result["sides"] = sides
     return result
+
+
+EXCERPT = 1 << 16  # the bytes of each side an excerpt keeps around a difference
+
+
+def write_excerpts(out, diff, a, b):
+    """Leaves in `out` what a reader needs of a difference without the
+    outputs themselves: `difference.json`, and of the channel that differs
+    the bytes of each side around the first difference (whole outputs) or
+    the first bytes of each side and side b's first block that differs
+    (digests)."""
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "difference.json"), "w", encoding="utf-8") as f:
+        json.dump(diff, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    what = diff["what"]
+    if what in ("stdout", "stderr"):
+        pair = (a[what], b[what])
+    elif what == "file":
+        pair = (a["files"].get(diff["name"]), b["files"].get(diff["name"]))
+    else:
+        return
+    for side, x in zip("ab", pair):
+        if x is None:
+            continue
+        if isinstance(x, Digest):
+            with open(os.path.join(out, f"{side}.head"), "wb") as f:
+                f.write(x.head)
+            if x.excerpt:
+                at, data = x.excerpt
+                with open(os.path.join(out, f"{side}.from-{at}"), "wb") as f:
+                    f.write(data)
+        else:
+            at = max(0, diff.get("byte", 0) - EXCERPT // 2)
+            with open(os.path.join(out, f"{side}.from-{at}"), "wb") as f:
+                f.write(x[at : at + EXCERPT])
 
 
 def costs_path(path):
@@ -306,7 +529,7 @@ def wanted_builds(cases):
     return {w[7:-1] for w in words if w.startswith("{build:")}
 
 
-def build_all(spec, names, out_dir, bmb, jobs=1):
+def build_all(spec, names, out_dir, bmb, jobs=1, proof=PORT_PROOF):
     """Builds `names` into `out_dir`; prints a line for each that fails and
     leaves its error in `NAME.error`. Whether all were built.
 
@@ -318,19 +541,21 @@ def build_all(spec, names, out_dir, bmb, jobs=1):
     def one(name):
         out = os.path.join(out_dir, name)
         for stale in (out, out + ".error"):
-            if os.path.exists(stale):
+            if os.path.isdir(stale):
+                shutil.rmtree(stale)
+            elif os.path.exists(stale):
                 os.remove(stale)
         b = spec["builds"][name]
-        cache = PORT_PROOF
-        if jobs > 1 and "bmb" in b:
+        cache = proof
+        if jobs > 1 and ("bmb" in b or "proved" in b):
             cache = os.path.join(out_dir, f".cache-{name}")
             shutil.rmtree(cache, ignore_errors=True)
-            if os.path.isdir(PORT_PROOF):
-                shutil.copytree(PORT_PROOF, cache)
+            if os.path.isdir(proof):
+                shutil.copytree(proof, cache)
         try:
             err = build(b, out, bmb, cache)
         finally:
-            if cache != PORT_PROOF:
+            if cache != proof:
                 shutil.rmtree(cache, ignore_errors=True)
         if err:
             with open(out + ".error", "w", encoding="utf-8") as f:
@@ -339,7 +564,7 @@ def build_all(spec, names, out_dir, bmb, jobs=1):
 
     # The programs of many files first: they take longest.
     def size(name):
-        b = spec["builds"][name].get("bmb", [])
+        b = spec["builds"][name].get("bmb", spec["builds"][name].get("proved", []))
         return -len(b) if isinstance(b, list) else 0
 
     order = sorted(names, key=lambda n: (size(n), n))
@@ -360,7 +585,7 @@ def from_built(names, built_dir):
         if os.path.exists(out + ".error"):
             with open(out + ".error", encoding="utf-8") as f:
                 errors.append({"build": name, "error": f.read()})
-        elif not os.path.isfile(out):
+        elif not os.path.exists(out):
             errors.append({"build": name, "error": f"not built in {built_dir}"})
         else:
             built[name] = out
@@ -379,7 +604,7 @@ def unknown_builds(spec, names):
     return missing
 
 
-def run(path, only, bmb, keep, prebuilt=None, shard=None, built_dir=None):
+def run(path, only, bmb, keep, prebuilt=None, shard=None, built_dir=None, excerpts=None):
     spec = load(path)
     cases, missing = selected(spec, path, only, shard)
     if missing:
@@ -409,7 +634,7 @@ def run(path, only, bmb, keep, prebuilt=None, shard=None, built_dir=None):
             built.update({n: os.path.join(os.path.abspath(out_dir), n) for n in rest})
         failed = False
         for case in cases:
-            result = run_case(case, built, bmb)
+            result = run_case(case, built, bmb, excerpts=excerpts)
             print(json.dumps(result, ensure_ascii=False), flush=True)
             failed = failed or not result["same"]
     finally:
@@ -418,13 +643,13 @@ def run(path, only, bmb, keep, prebuilt=None, shard=None, built_dir=None):
     return 1 if failed else 0
 
 
-def build_cmd(path, out_dir, bmb, jobs):
+def build_cmd(path, out_dir, bmb, jobs, proof=PORT_PROOF):
     spec = load(path)
     wanted = wanted_builds(spec["cases"])
     if unknown_builds(spec, wanted):
         return 2
     os.makedirs(out_dir, exist_ok=True)
-    return 0 if build_all(spec, wanted, out_dir, bmb, jobs) else 1
+    return 0 if build_all(spec, wanted, out_dir, bmb, jobs, os.path.abspath(proof)) else 1
 
 
 def shards_cmd(path, n):
@@ -451,8 +676,9 @@ def costs_cmd(path, results):
         print(f"difftest: no seconds for: {', '.join(missing)}", file=sys.stderr)
         return 1
     table = {
-        "about": "Seconds of each case in one run of scripts/difftest.py with the debug compiler, "
-        "written by `difftest.py costs`. Only how `--shard` balances its parts depends on them.",
+        "about": "Seconds of each case in one run of scripts/difftest.py (the gate's cases with the debug compiler, "
+        "the nightly ones with the optimized one), written by `difftest.py costs`. Only how `--shard` balances "
+        "its parts depends on them.",
         "seconds": {n: seconds[n] for n in names},
     }
     with open(costs_path(path), "w", encoding="utf-8") as f:
@@ -473,11 +699,13 @@ def main():
     r.add_argument("--keep", help="keep the built programs in DIR")
     r.add_argument("--built", metavar="DIR", help="take the programs from DIR (made by `build`)")
     r.add_argument("--prebuilt", action="append", default=[], metavar="NAME=PATH", help="use the program at PATH as build NAME")
+    r.add_argument("--excerpts", metavar="DIR", help="leave in DIR/CASE the bytes around each difference")
     b = sub.add_parser("build")
     b.add_argument("cases")
     b.add_argument("dir")
     b.add_argument("--bmb", default=default_bmb)
     b.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="builds at once (default: the cores)")
+    b.add_argument("--proof", default=PORT_PROOF, metavar="DIR", help="the proof cache builds start from (default: the gate's)")
     s = sub.add_parser("shards")
     s.add_argument("cases")
     s.add_argument("n", type=int)
@@ -486,7 +714,7 @@ def main():
     c.add_argument("results", nargs="+")
     args = ap.parse_args()
     if args.cmd == "build":
-        return build_cmd(args.cases, args.dir, os.path.abspath(args.bmb), args.jobs)
+        return build_cmd(args.cases, args.dir, os.path.abspath(args.bmb), args.jobs, args.proof)
     if args.cmd == "shards":
         return shards_cmd(args.cases, args.n)
     if args.cmd == "costs":
@@ -494,7 +722,8 @@ def main():
     if args.keep and args.built:
         ap.error("--keep and --built do not go together")
     prebuilt = dict(p.split("=", 1) for p in args.prebuilt)
-    return run(args.cases, args.case, os.path.abspath(args.bmb), args.keep, prebuilt, args.shard, args.built)
+    return run(args.cases, args.case, os.path.abspath(args.bmb), args.keep, prebuilt, args.shard, args.built,
+               args.excerpts)
 
 
 if __name__ == "__main__":
