@@ -3302,6 +3302,366 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "stability",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/verify/pass/vecs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-limits",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=2000",
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=2000",
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/invariants.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-limits-vecs",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=20000",
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=20000",
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/vecs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/stability/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/stability/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "stability-fake-seed",
+      "component": "C10",
+      "a": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unknown",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unknown",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-models",
+      "component": "C10",
+      "a": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat unsat unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat unsat unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-retry",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-limits",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-broken",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-memory",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-solver-old",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-solver-dead",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

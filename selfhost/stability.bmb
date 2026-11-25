@@ -1,0 +1,135 @@
+#[summary("Proof stability (port of stage0 lib::stability_sources): the program proved once per solver seed, and per definition whether its verdict depends on the seed, with the spread of the solver's resource units")]
+mod stability {
+    #[summary("The statuses of one proof of the program under one seed, in path order")]
+    struct Run { statuses: Vec<prove::Status> }
+
+    #[summary("hi / lo in hundredths, rounded half up (stage0 hundredths): (hi * 200 + lo) / (2 * lo) in 128 bits, where neither step can overflow")]
+    #[effects(pure)]
+    fn hundredths(hi: u64, lo: u64) -> wide::U128 {
+        let num: wide::U128 = match wide::add(wide::mul64(hi, 200), wide::U128 { hi: 0, lo: lo }) {
+            None => wide::zero(),
+            Some(n) => n,
+        };
+        wide::div_rem(num, wide::mul64(lo, 2)).q
+    }
+
+    #[summary("The value of `--seeds` as Rust reads a u64 (an optional `+`, then digits, at most the largest u64)")]
+    #[effects(pure)]
+    #[uses(wide::small, wide::stepped)]
+    fn parse_seeds(s: &str) -> Option<u64> {
+        let v: wide::U128 = encode_sub::parse_u128(s)?;
+        if v.hi == 0 {
+            Some(v.lo)
+        } else {
+            None
+        }
+    }
+
+    #[summary("bmb stability (stage0 lib::stability_sources): reads the files as one program, checks it and, when it checks, proves it under the solver seeds 0..seeds (at least one run), each run as `bmb verify` without a cache and with the seed in the options of every query. One JSONL row per definition (whether every seed gave the verdict of seed 0, the verdicts, the least and the most resource units over the seeds), then a summary row (the seeds, the definitions, how many are unstable, the largest ratio of most to least resource units in hundredths, rounded half up, over the definitions whose least is above 0). ok is false when a definition is unstable; when the program does not check, ok is false and text is its diagnostics. The diagnostics of the proofs are not shown")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], seeds: u64) -> lib::Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return lib::Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let count: u64 = if seeds > 1 {
+            seeds
+        } else {
+            1
+        };
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let mut runs: Vec<Run> = Vec::new();
+        let mut seed: u64 = 0;
+        while seed < count
+            decreases count - seed,
+        {
+            let mut store: Option<cache::ProofCache> = None;
+            let mut seen: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: seed, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+            let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut seen);
+            runs.push(Run { statuses: out.statuses });
+            seed = seed + 1;
+        }
+        let first: Vec<prove::Status> = if runs.len() > 0 {
+            runs[0].statuses.clone()
+        } else {
+            Vec::new()
+        };
+        let mut text: String = String::new();
+        let mut unstable: u64 = 0;
+        let mut spread_max: wide::U128 = wide::U128 { hi: 0, lo: 100 };
+        for i in 0..first.len()
+            invariant 0 <= i && i <= first.len(),
+        {
+            let proved: bool = first[i].failed == 0;
+            let mut stable: bool = true;
+            let mut verdicts: String = String::new();
+            let mut lo: u64 = 0;
+            let mut hi: u64 = 0;
+            for r in 0..runs.len()
+                invariant 0 <= r && r <= runs.len(),
+            {
+                if i < runs[r].statuses.len() {
+                    let s: prove::Status = runs[r].statuses[i].clone();
+                    if r > 0 {
+                        verdicts.push_str(",");
+                    }
+                    if s.failed == 0 {
+                        verdicts.push_str("\"verified\"");
+                    } else {
+                        verdicts.push_str("\"failed\"");
+                    }
+                    if (s.failed == 0) != proved {
+                        stable = false;
+                    }
+                    if r == 0 || s.total < lo {
+                        lo = s.total;
+                    }
+                    if r == 0 || s.total > hi {
+                        hi = s.total;
+                    }
+                }
+            }
+            if !stable {
+                unstable = unstable.saturating_add(1);
+            }
+            if lo > 0 {
+                let ratio: wide::U128 = hundredths(hi, lo);
+                if wide::less(spread_max, ratio) {
+                    spread_max = ratio;
+                }
+            }
+            text.push_str("{\"def\":");
+            std::json::push_string(&mut text, first[i].path.as_str());
+            if stable {
+                text.push_str(",\"stable\":true,\"verdicts\":[");
+            } else {
+                text.push_str(",\"stable\":false,\"verdicts\":[");
+            }
+            text.push_str(verdicts.as_str());
+            text.push_str("],\"rlimit_min\":");
+            std::num::push_u64(&mut text, lo);
+            text.push_str(",\"rlimit_max\":");
+            std::num::push_u64(&mut text, hi);
+            text.push_str("}\n");
+        }
+        text.push_str("{\"summary\":true,\"seeds\":");
+        std::num::push_u64(&mut text, runs.len() as u64);
+        text.push_str(",\"defs\":");
+        std::num::push_u64(&mut text, first.len() as u64);
+        text.push_str(",\"unstable\":");
+        std::num::push_u64(&mut text, unstable);
+        text.push_str(",\"rlimit_spread_max\":");
+        let parts: wide::QuoRem = wide::div_rem(spread_max, wide::U128 { hi: 0, lo: 100 });
+        wide::push_radix(&mut text, parts.q, 10);
+        text.push_str(".");
+        if parts.r.lo < 10 {
+            text.push_str("0");
+        }
+        std::num::push_u64(&mut text, parts.r.lo);
+        text.push_str("}\n");
+        lib::Outcome { ok: unstable == 0, text: text }
+    }
+}

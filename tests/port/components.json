@@ -411,14 +411,17 @@
         "ast_json.rs"
       ],
       "port": [
-        "selfhost/lint.bmb"
+        "selfhost/lint.bmb",
+        "selfhost/stability.bmb"
       ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
-        "friction": []
+        "friction": [
+          "`stability.bmb` with the `stability` command of the driver is stage0's `stability_sources` (lib.rs) and its command: the program checked once and proved under the solver seeds 0..N (`--seeds N`, read as Rust reads a u64; 5 by default, 0 runs once), each run as `verify` without a cache, the bounded search or `--def`, with one version check held for the whole run as stage0 keeps it for its process; the seed reaches the solver only in the options of every query (`encode_query::header`, `prove::Opts.seed`). The rows give per definition whether every seed gave seed 0's verdict, the verdicts and the least and most resource units; the summary the largest ratio of most to least in hundredths, rounded half up in 128 bits as stage0 does in `u128`. The diagnostics of the proofs are not shown, as in stage0; a program that does not check prints its diagnostics with exit code 1, an unstable definition gives exit code 1, a count that is no number exit code 2. Compared by the cases `stability*` (`tests/port/README.md`): the pinned Z3 at the full limit and at lowered limits where it proves a definition under some seeds and not others (`inv::keep` of `tests/verify/pass/invariants.bmb` at 2,000, `vp::first_squares` of `vecs.bmb` at 20,000), the argument ends, and the stand-in `prove/fake/z3`, which can answer by the seed of the query (`FAKE_BY_SEED`), with its record of every line sent: 12 cases, about 57 seconds with the debug build. By hand, all the same (447 runs, one file at a time): every file of `tests/verify/pass`, `tests/verify/fail`, `prove/` and `sat/` at the full limit with 5 seeds, `tests/verify/pass` at the limits 2,000, 5,000 and 20,000, and `tests/verify/pass` with three sequences of the stand-in answering by seed. Reached by no input (unreachable): the sum `hi * 200 + lo` that does not fit in 128 bits, a run with fewer definitions than seed 0's, a ratio above the largest u64. `stability::run` asks the solver through `prove::run`, so it is proved for partial correctness (`termination: unproved` in `bmb map`). Not ported: a directory among the files (stage0 reads it as a workspace; no command of the port does) and the usage text of `stability` without files"
+        ]
       }
     },
     {
