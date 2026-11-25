@@ -15,6 +15,9 @@ mod encode_query {
     #[summary("What a definition is asked over: the options and the declarations of its type parameters (prefix), the options alone (header), its local declarations, the definitions it reveals by what marks them (axioms) and in parts, the validity functions it defines, and the program's spec fn and datatype declarations")]
     struct Ctx { header: String, prefix: String, decls: String, limit: String, axioms: Vec<encode_terms::Pair>, parts: Vec<encode_spec::AxiomParts>, valid: Vec<encode_spec::AxiomParts>, sds: Vec<encode_spec::SpecDecl>, dts: Vec<encode_decls::Decl> }
 
+    #[summary("A definition encoded for the proof gate (encoded): what it is asked over, its obligations, and the inputs a counterexample shows")]
+    struct Encoded { cx: Ctx, obls: Vec<encode_spec::Obl>, inputs: Vec<encode_spec::Shown> }
+
     #[summary("Which query the definitions are written for (stage0 Forms): the full query, where only leaves that bind an array are macros (ADR-0064); an obligation's probe, where every leaf is a macro (ADR-0067); the probe of a satisfiability check, where every definition outside recursion is a macro (ADR-0072)")]
     enum Forms { Full, Probe, SatProbe }
 
@@ -33,11 +36,14 @@ mod encode_query {
     #[summary("A bit-vector leaf (stage0 BvLeaf with its width and value): kind 0 is a code operand constant name, signed when its stated value is the two's complement form (v is then the value under it); 1 is a conversion `((_ int2bv w) v)`; 2 is a numeral `(_ bvN w)`")]
     struct Leaf { kind: u8, name: String, signed: bool, w: u64, v: encode_terms::Sexp }
 
+    #[summary("An obligation as it is asked (plan): the query q, the definitions it reaches in the full query's forms, the full query's base, the probe's base when there is a probe, the abstracted query when it has bit operations, and the script written before the first answer")]
+    struct Plan { q: String, relevant: String, base: String, probe: Option<String>, abstracted: Option<Abstracted>, script: String }
+
     #[summary("The range an assertion states of a constant: `(and (<= lo x) (<= x hi))` with numerals lo and hi, as the numerals' text")]
     struct Range { name: String, lo: String, hi: String }
 
-    #[summary("The ground-instance retry of a query: its base and the instances")]
-    struct Retry { head: String, inst: String }
+    #[summary("The ground-instance retry of a query: its base, the instances, and whether every application got its own (a model of the retry is then a model of the query)")]
+    struct Retry { head: String, inst: String, complete: bool }
 
     #[summary("A script as the solver receives it and the legend of its symbols (stage0 smt::canonical_script)")]
     struct Script { text: String, legend: String }
@@ -692,6 +698,55 @@ mod encode_query {
         out
     }
 
+    #[summary("Definition path encoded for the proof gate (the encoding part of stage0 verify_pass): the termination obligations of a recursive spec fn with a measure, the body of a lemma or of an executable function against its contract, with the definitions it reveals. None for a definition that is not encoded: a spec fn that is not recursive or has no measure. trust is the pass of the gate (ADR-0029 §2), rlimit the resource limit of a query; with bounded the options say that undecided obligations are searched within small bounds (ADR-0108 §1), so that a run with the search and one without share no cached proof")]
+    #[effects(alloc)]
+    fn encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, bounded: bool) -> Option<Encoded> {
+        let mut head: String = header(rlimit);
+        if bounded {
+            head.push_str("\n; bounded search |x| <= 8, lengths <= 4");
+        }
+        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
+        let share: u64 = if rlimit / 100 >= 1 {
+            rlimit / 100
+        } else {
+            1
+        };
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
+        if body::is_spec(def.d.kind) {
+            let comp: usize = pg.recursive.items[pg.recursive.find(path)?];
+            let mut enc: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
+            match &def.d.measure {
+                None => { return None; },
+                Some(dec) => enc.termination(&def.d, comp, dec, pg),
+            }
+            let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
+            return Some(Encoded { cx: cx0, obls: enc.obls, inputs: Vec::new() });
+        }
+        let mut axioms: Vec<encode_terms::Pair> = Vec::new();
+        let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
+        let shown: Vec<String> = encode_spec::revealed(pg, path, &def.d, def.unit.as_str());
+        for i in 0..shown.len()
+            invariant 0 <= i && i <= shown.len(),
+        {
+            let ax: encode_spec::Axiom = encode_spec::axiom(pg, shown[i].as_str());
+            axioms.push(encode_terms::Pair { a: encode_decls::spec_key(shown[i].as_str(), &pg.pr.t), b: ax.text.clone() });
+            for k in 0..ax.parts.len()
+                invariant 0 <= k && k <= ax.parts.len(),
+            {
+                parts.push(ax.parts[k].clone());
+            }
+        }
+        let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
+        ex.trust = trust.clone();
+        if body::is_proof(def.d.kind) {
+            ex.proof_body(&def.d, pg);
+        } else {
+            ex.exec_body(&def.d, pg);
+        }
+        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: axioms, parts: parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        Some(Encoded { cx: cx, obls: ex.enc.obls, inputs: ex.inputs })
+    }
+
     #[summary("First position from from in s where pat starts (Rust's find)")]
     #[effects(pure)]
     fn find(s: &str, pat: &str, from: usize) -> Option<usize> {
@@ -1179,7 +1234,7 @@ mod encode_query {
             let num: String = encode_terms::dec(k as u64);
             let title: String = types::cat5(num.as_str(), ": ", obls[k].code.as_str(), " ", obls[k].msg.as_str());
             match &obls[k].sub {
-                None => { let mut asserted: Vec<String> = Vec::new(); for i in 0..obls[k].assumptions.len() invariant 0 <= i && i <= obls[k].assumptions.len(), { asserted.push(types::cat3("(assert ", obls[k].assumptions[i].as_str(), ")")); } let q0: String = types::cat4(encode_terms::join(asserted.as_slice(), "\n").as_str(), "\n(assert (not ", obls[k].goal.as_str(), "))"); let q1: String = valid_instances(cx.valid.as_slice(), q0); let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str()); let relevant: String = relevant_axioms(cx.axioms.as_slice(), q.as_str()); let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(relevant.as_str(), cx.decls.as_str(), "\n", q.as_str()).as_str()); let base: String = types::cat4(cx.prefix.as_str(), used.as_str(), relevant.as_str(), cx.decls.as_str()); let probe: Option<String> = probe_base(cx, q.as_str(), relevant.as_str(), Forms::Probe); let abstracted: Option<Abstracted> = if has(q.as_str(), "(bv2nat ") { abstracted_of(cx, pg, base.as_str(), q.as_str()) } else { None }; let probe_script: String = match &probe { None => String::new(), Some(pb) => { let mut ps: String = types::cat3("; probe of obligation ", title.as_str(), "\n(reset)\n"); ps.push_str(types::cat5(pb.as_str(), "\n", cx.limit.as_str(), "\n", q.as_str()).as_str()); ps.push_str("\n(check-sat)\n"); ps }, }; match &abstracted { None => { script.push_str(probe_script.as_str()); script.push_str(types::cat3("; obligation ", title.as_str(), "\n(reset)\n").as_str()); }, Some(ab) => { script.push_str(types::cat3("; obligation ", title.as_str(), " (bit operations abstracted)\n(reset)\n").as_str()); script.push_str(types::cat4(ab.head.as_str(), "\n", ab.query.as_str(), "\n(check-sat)\n").as_str()); script.push_str(probe_script.as_str()); script.push_str(types::cat3("; exact query of obligation ", num.as_str(), "\n(reset)\n").as_str()); }, } script.push_str(types::cat4(base.as_str(), "\n", q.as_str(), "\n(check-sat)\n").as_str()); },
+                None => script.push_str(plan(cx, pg, &obls[k], k).script.as_str()),
                 Some(sq) => { match sq { Ok(sub) => { script.push_str(types::cat3("; obligation ", title.as_str(), " (sub-proof)\n(reset)\n").as_str()); script.push_str(types::cat5(cx.header.as_str(), "\n", sub_base(sub).as_str(), sub_goal(sub).as_str(), "\n(check-sat)\n").as_str()); }, Err(refused) => {}, } },
             }
         }
@@ -1216,6 +1271,42 @@ mod encode_query {
             }
         }
         out
+    }
+
+    #[summary("Obligation o, number k of its definition, as it is asked (the text parts of stage0 verify_pass for an obligation that is no sub-proof): its assumptions asserted and its goal negated, with the instances of the validity functions and the struct facts, over the base: prefix, needed declarations, the definitions it reaches, local declarations. Its probe when the probe's base differs; and when the query has bit operations, the query with them abstracted (over the ground instances of the revealed definitions when there are any). script is what is written of it before the solver's first answer: the abstracted query, the probe, the full query")]
+    #[effects(alloc)]
+    fn plan(cx: &Ctx, pg: &encode_spec::Prog, o: &encode_spec::Obl, k: usize) -> Plan {
+        let num: String = encode_terms::dec(k as u64);
+        let title: String = types::cat5(num.as_str(), ": ", o.code.as_str(), " ", o.msg.as_str());
+        let mut asserted: Vec<String> = Vec::new();
+        for i in 0..o.assumptions.len()
+            invariant 0 <= i && i <= o.assumptions.len(),
+        {
+            asserted.push(types::cat3("(assert ", o.assumptions[i].as_str(), ")"));
+        }
+        let q0: String = types::cat4(encode_terms::join(asserted.as_slice(), "\n").as_str(), "\n(assert (not ", o.goal.as_str(), "))");
+        let q1: String = valid_instances(cx.valid.as_slice(), q0);
+        let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str());
+        let relevant: String = relevant_axioms(cx.axioms.as_slice(), q.as_str());
+        let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(relevant.as_str(), cx.decls.as_str(), "\n", q.as_str()).as_str());
+        let base: String = types::cat4(cx.prefix.as_str(), used.as_str(), relevant.as_str(), cx.decls.as_str());
+        let probe: Option<String> = probe_base(cx, q.as_str(), relevant.as_str(), Forms::Probe);
+        let abstracted: Option<Abstracted> = if has(q.as_str(), "(bv2nat ") {
+            abstracted_of(cx, pg, base.as_str(), q.as_str())
+        } else {
+            None
+        };
+        let probe_script: String = match &probe {
+            None => String::new(),
+            Some(pb) => { let mut ps: String = types::cat3("; probe of obligation ", title.as_str(), "\n(reset)\n"); ps.push_str(types::cat5(pb.as_str(), "\n", cx.limit.as_str(), "\n", q.as_str()).as_str()); ps.push_str("\n(check-sat)\n"); ps },
+        };
+        let mut script: String = String::new();
+        match &abstracted {
+            None => { script.push_str(probe_script.as_str()); script.push_str(types::cat3("; obligation ", title.as_str(), "\n(reset)\n").as_str()); },
+            Some(ab) => { script.push_str(types::cat3("; obligation ", title.as_str(), " (bit operations abstracted)\n(reset)\n").as_str()); script.push_str(types::cat4(ab.head.as_str(), "\n", ab.query.as_str(), "\n(check-sat)\n").as_str()); script.push_str(probe_script.as_str()); script.push_str(types::cat3("; exact query of obligation ", num.as_str(), "\n(reset)\n").as_str()); },
+        }
+        script.push_str(types::cat4(base.as_str(), "\n", q.as_str(), "\n(check-sat)\n").as_str());
+        Plan { q: q, relevant: relevant, base: base, probe: probe, abstracted: abstracted, script: script }
     }
 
     #[summary("The numeral 2^w for a width below 128, 0 above (stage0 shifts an i128, and no operand is that wide)")]
@@ -1531,7 +1622,7 @@ mod encode_query {
             return None;
         }
         let used: String = needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(cx.decls.as_str(), "\n", inst.as_str(), q).as_str());
-        Some(Retry { head: types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()), inst: inst })
+        Some(Retry { head: types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()), inst: inst, complete: gi.complete })
     }
 
     #[summary("Whether a and b are the same s-expression")]
@@ -1551,6 +1642,10 @@ mod encode_query {
     #[summary("What is written of definition path before the solver's first answer (the text of stage0 verify_pass without a solver): the script of its obligations, or with reach the forms of its reach points. None for a definition that is not encoded: a spec fn that is not recursive or has no measure")]
     #[effects(alloc)]
     fn script_of(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, reach: bool) -> Option<String> {
+        if !reach {
+            let e: Encoded = encoded(pg, path, def, sig, sds, dts, trust, rlimit, false)?;
+            return Some(obligations(&e.cx, pg, e.obls.as_slice()));
+        }
         let head: String = header(rlimit);
         let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
         let share: u64 = if rlimit / 100 >= 1 {
@@ -1566,11 +1661,7 @@ mod encode_query {
                 None => { return None; },
                 Some(dec) => enc.termination(&def.d, comp, dec, pg),
             }
-            if reach {
-                return Some(String::new());
-            }
-            let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
-            return Some(obligations(&cx0, pg, enc.obls.as_slice()));
+            return Some(String::new());
         }
         let mut axioms: Vec<encode_terms::Pair> = Vec::new();
         let mut parts: Vec<encode_spec::AxiomParts> = Vec::new();
@@ -1587,7 +1678,7 @@ mod encode_query {
             }
         }
         let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
-        ex.reaching = reach;
+        ex.reaching = true;
         ex.trust = trust.clone();
         if body::is_proof(def.d.kind) {
             ex.proof_body(&def.d, pg);
@@ -1595,11 +1686,8 @@ mod encode_query {
             ex.exec_body(&def.d, pg);
         }
         let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: axioms, parts: parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
-        if reach {
-            let mut scratch: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
-            return Some(reach_points(&cx, pg, ex.reach.as_slice(), &mut scratch));
-        }
-        Some(obligations(&cx, pg, ex.enc.obls.as_slice()))
+        let mut scratch: encode_spec::Enc = encode_spec::new_enc(pg, path, def.unit.as_str());
+        Some(reach_points(&cx, pg, ex.reach.as_slice(), &mut scratch))
     }
 
     #[summary("The integer side of leaf mine against the leaf other it is paired with (stage0 Congr::side): a constant's `(bv2nat c)`; a value modulo 2^w against a constant whose stated value is the two's complement form; the value otherwise")]

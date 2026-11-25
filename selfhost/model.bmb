@@ -1,0 +1,729 @@
+#[summary("Reading a model (port of the counterexample part of stage0 compiler/src/verify.rs): the inputs of a failed obligation with the values the solver's model gives them, in Rust notation, and the check that a model's `f64` values are the ones IEEE 754 arithmetic gives (ADR-0061 §5)")]
+mod model {
+    #[summary("A name with the value a counterexample shows of it")]
+    struct Named { name: String, shown: String }
+
+    #[summary("The applications of `f64` operations in e outside quantifiers appended to out, inner ones first, once each (the apps walk of stage0 f64_model_check). The error is why a model cannot be checked: an application under a quantifier is not a value")]
+    #[effects(alloc)]
+    fn apps(e: &encode_terms::Sexp, out: &mut Vec<encode_terms::Sexp>, f: usize) -> Result<(), String>
+        decreases f,
+    {
+        if f == 0 {
+            return Ok(());
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => Ok(()),
+            encode_terms::Sexp::List(xs) => { let h: String = encode_query::head_of(xs.as_slice()); if (h.as_str() == "forall" || h.as_str() == "exists") && mentions_f64(e, 100000) { return Err(String::from("an `f64` operation under a quantifier")); } let op: bool = encode_terms::starts_at(h.as_str(), 0, "f64."); let from: usize = if op && xs.len() > 0 { 1 } else { 0 }; for i in from..xs.len() invariant from <= i && i <= xs.len(), { apps(&xs[i], out, f - 1)?; } if op && !holds(out.as_slice(), e) { out.push(e.clone()); } Ok(()) },
+        }
+    }
+
+    #[summary("Whether the model value got is the boolean b; an error for a value that is no boolean")]
+    #[effects(alloc)]
+    fn bool_is(got: &encode_terms::Sexp, b: bool) -> Result<bool, String> {
+        if encode_query::atom_is(got, "true") {
+            return Ok(b);
+        }
+        if encode_query::atom_is(got, "false") {
+            return Ok(!b);
+        }
+        Err(String::from("a model value that is not a `bool`"))
+    }
+
+    #[summary("The terms of input_bounds, one per assertion (stage0 bound_terms): each integer input within 8 of zero, each length that is not a numeral at most 4, and the first 4 integer elements of an array below its length within 8 of zero")]
+    #[effects(alloc)]
+    fn bound_terms(inputs: &[encode_spec::Shown]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..inputs.len()
+            invariant 0 <= i && i <= inputs.len(),
+        {
+            match &inputs[i].v {
+                encode_terms::Val::S(x) => { if int_leaf(&inputs[i].ty, 100000) { out.push(types::cat5("(and (<= (- 8) ", x.as_str(), ") (<= ", x.as_str(), " 8))")); } },
+                encode_terms::Val::A(elems, len) => { if !digits(len.as_str()) { out.push(types::cat3("(<= ", len.as_str(), " 4)")); } if elem_int(&inputs[i].ty, 100000) { for k in 0..4 invariant 0 <= k && k <= 4, { let sel: String = types::cat5("(select ", elems.as_str(), " ", encode_terms::dec(k as u64).as_str(), ")"); let mut t: String = types::cat5("(=> (< ", encode_terms::dec(k as u64).as_str(), " ", len.as_str(), ") (and (<= (- 8) "); t.push_str(types::cat4(sel.as_str(), ") (<= ", sel.as_str(), " 8)))").as_str()); out.push(t); } } },
+                encode_terms::Val::Unit => {},
+                encode_terms::Val::Struct(fs) => {},
+                encode_terms::Val::Arr(elem, alen) => { if !digits(alen.as_str()) { out.push(types::cat3("(<= ", alen.as_str(), " 4)")); } },
+            }
+        }
+        out
+    }
+
+    #[summary("`x = 5, a = [1, 2] (len 2), p = Point { x: 1, y: 2 }` from the current model (stage0 counterexample); empty when the model cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn counterexample(sol: &mut solver::Solver, inputs: &[encode_spec::Shown], tb: &lowered::Tables, names: &table::Table<String>) -> String {
+        match model_values(sol, inputs, tb, names) {
+            None => String::new(),
+            Some(vals) => { let mut parts: Vec<String> = Vec::new(); for i in 0..vals.len() invariant 0 <= i && i <= vals.len(), { parts.push(types::cat3(vals[i].name.as_str(), " = ", vals[i].shown.as_str())); } encode_terms::join(parts.as_slice(), ", ") },
+        }
+    }
+
+    #[summary("Whether s is only ASCII digits (empty text is)")]
+    #[effects(pure)]
+    fn digits(s: &str) -> bool {
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len(),
+        {
+            if s.as_bytes()[i] < 48 || s.as_bytes()[i] > 57 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Whether the elements of t are integers, as bound_terms reads it: of an array or a slice, through references, and of a type named `Vec`")]
+    #[effects(alloc)]
+    fn elem_int(t: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match body::ref_inner(t) {
+            None => {},
+            Some(inner) => { return elem_int(&inner, f - 1); },
+        }
+        if body::is_slice(t) || encode_decls::shape(t) == 4 {
+            return match body::under(t) { None => false, Some(e) => int_leaf(&e, 100000), };
+        }
+        match types::named_path(t) {
+            None => false,
+            Some(p) => { let args: Vec<ast::TypeKind> = types::named_args(t); p.as_str() == "Vec" && args.len() > 0 && int_leaf(&args[0], 100000) },
+        }
+    }
+
+    #[summary("Whether got is the IEEE 754 value (rounding to nearest even) of the `f64` operation h on the model values ops (stage0 f64_agrees). The error is why the model cannot be checked")]
+    #[effects(alloc)]
+    fn f64_agrees(h: &str, ops: &[encode_terms::Sexp], got: &encode_terms::Sexp) -> Result<bool, String> {
+        if h == "f64.from" {
+            if ops.len() == 0 {
+                return Err(not_f64());
+            }
+            let n: encode_terms::Int = match encode_sub::parse_i128(encode_terms::render_value(&ops[0], 100000).as_str()) {
+                None => { return Err(String::from("an integer model value out of range")); },
+                Some(v) => v,
+            };
+            return value_is(got, f64_of_int(&n));
+        }
+        if h == "f64.add" || h == "f64.sub" || h == "f64.mul" || h == "f64.div" || h == "f64.lt" || h == "f64.le" || h == "f64.eq" || h == "f64.min" || h == "f64.max" {
+            let a: f64 = fp(ops, 0)?;
+            let b: f64 = fp(ops, 1)?;
+            if h == "f64.add" {
+                return value_is(got, a + b);
+            }
+            if h == "f64.sub" {
+                return value_is(got, a - b);
+            }
+            if h == "f64.mul" {
+                return value_is(got, a * b);
+            }
+            if h == "f64.div" {
+                return value_is(got, a / b);
+            }
+            if h == "f64.lt" {
+                return bool_is(got, a < b);
+            }
+            if h == "f64.le" {
+                return bool_is(got, a <= b);
+            }
+            if h == "f64.eq" {
+                return bool_is(got, a == b);
+            }
+            if a == 0.0 && b == 0.0 && 1.0 / a != 1.0 / b {
+                return Err(String::from("`min`/`max` of zeros of both signs"));
+            }
+            if h == "f64.min" {
+                return value_is(got, a.min(b));
+            }
+            return value_is(got, a.max(b));
+        }
+        if h == "f64.neg" || h == "f64.sqrt" || h == "f64.abs" || h == "f64.is_nan" || h == "f64.is_finite" {
+            let x: f64 = fp(ops, 0)?;
+            if h == "f64.neg" {
+                return value_is(got, -x);
+            }
+            if h == "f64.sqrt" {
+                return value_is(got, x.sqrt());
+            }
+            if h == "f64.abs" {
+                return value_is(got, x.abs());
+            }
+            if h == "f64.is_nan" {
+                return bool_is(got, x.is_nan());
+            }
+            return bool_is(got, x.is_finite());
+        }
+        Err(types::cat3("unknown `f64` operation `", h, "`"))
+    }
+
+    #[summary("script with each `f64` operation declared uninterpreted replaced by its IEEE 754 definition (stage0 f64_interpreted): a model of it is a model of the program's arithmetic")]
+    #[effects(alloc)]
+    fn f64_interpreted(script: &str) -> String {
+        let opaque: Vec<String> = encode_sub::lines(encode_terms::f64_decls(script, false).as_str());
+        let exact: Vec<String> = encode_sub::lines(encode_terms::f64_decls(script, true).as_str());
+        let mut s: String = String::from(script);
+        for i in 0..opaque.len()
+            invariant 0 <= i && i <= opaque.len(),
+        {
+            if i < exact.len() && opaque[i].len() > 0 {
+                s = encode_terms::replace(s.as_str(), opaque[i].as_str(), exact[i].as_str());
+            }
+        }
+        s
+    }
+
+    #[summary("Whether the current model gives every `f64` operation of the query (script: what was asserted) the value IEEE 754 gives its operands' values (stage0 f64_model_check, ADR-0061 §5). In an ordinary query the operations are uninterpreted, so a counterexample read from a model that disagrees would be false. Each application outside a quantifier is recomputed on the model's values of its operands and compared with the model's value of the application (NaN with NaN, anything else bit for bit). The error names why the model is not confirmed: a mismatch, an application under a quantifier or in a definition's body, `min`/`max` of zeros of both signs, or the solver's error")]
+    #[effects(alloc, io, nondet)]
+    fn f64_model_check(sol: &mut solver::Solver, script: &str) -> Result<(), String> {
+        if !encode_query::has(script, "(f64.") {
+            return Ok(());
+        }
+        let mut found: Vec<encode_terms::Sexp> = Vec::new();
+        let cmds: Vec<String> = encode_spec::split_commands(script);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            match encode_terms::parse(cmds[i].as_str()) {
+                None => {},
+                Some(c) => { match &c { encode_terms::Sexp::Atom(a) => {}, encode_terms::Sexp::List(xs) => { let h: String = encode_query::head_of(xs.as_slice()); if h.as_str() == "assert" && xs.len() > 1 { apps(&xs[1], &mut found, 100000)?; } if h.as_str() == "define-fun" && xs.len() > 4 { let named: bool = match &xs[1] { encode_terms::Sexp::Atom(n) => encode_terms::starts_at(n.as_str(), 0, "f64."), encode_terms::Sexp::List(nl) => false, }; if !named && mentions_f64(&xs[4], 100000) { return Err(String::from("an `f64` operation in a definition")); } } }, } },
+            }
+        }
+        if found.len() == 0 {
+            return Ok(());
+        }
+        let mut terms: Vec<String> = Vec::new();
+        for i in 0..found.len()
+            invariant 0 <= i && i <= found.len(),
+        {
+            terms.push(encode_terms::print(&found[i], 100000));
+            match &found[i] {
+                encode_terms::Sexp::Atom(fa) => {},
+                encode_terms::Sexp::List(fx) => { for k in 0..fx.len() invariant 0 <= k && k <= fx.len(), { if k > 0 { terms.push(encode_terms::print(&fx[k], 100000)); } } },
+            }
+        }
+        let vals: Vec<encode_terms::Sexp> = solver::get_value_terms(sol, terms.as_slice())?;
+        let mut at: usize = 0;
+        for i in 0..found.len()
+            invariant 0 <= i && i <= found.len(),
+        {
+            match &found[i] {
+                encode_terms::Sexp::Atom(ga) => {},
+                encode_terms::Sexp::List(gx) => { if at >= vals.len() { return Err(String::from("missing model value")); } let got: encode_terms::Sexp = vals[at].clone(); at = at + 1; let mut ops: Vec<encode_terms::Sexp> = Vec::new(); for k in 0..gx.len() invariant 0 <= k && k <= gx.len(), { if k > 0 && at < vals.len() { ops.push(vals[at].clone()); at = at + 1; } } let agrees: bool = f64_agrees(encode_query::head_of(gx.as_slice()).as_str(), ops.as_slice(), &got)?; if !agrees { return Err(types::cat3("the model gives `", encode_terms::print(&found[i], 100000).as_str(), "` a value IEEE 754 does not")); } },
+            }
+        }
+        Ok(())
+    }
+
+    #[summary("The f64 with the bits b: the value of its sign, exponent and mantissa fields, built by exact steps (a mantissa below 2^53 converts exactly, and every product by 2 or by a half on the way to the value is representable)")]
+    #[effects(pure)]
+    fn f64_of_bits(b: u64) -> f64 {
+        let neg: bool = b >= 9223372036854775808;
+        let e: u64 = b / 4503599627370496 % 2048;
+        let m: u64 = b % 4503599627370496;
+        if e == 2047 {
+            if m != 0 {
+                return f64::NAN;
+            }
+            if neg {
+                return f64::NEG_INFINITY;
+            }
+            return f64::INFINITY;
+        }
+        let mant: u64 = if e == 0 {
+            m
+        } else {
+            m + 4503599627370496
+        };
+        let down: u64 = if e == 0 {
+            1074
+        } else if e < 1075 {
+            1075 - e
+        } else {
+            0
+        };
+        let up: u64 = if e > 1075 {
+            e - 1075
+        } else {
+            0
+        };
+        let mut x: f64 = f64::from(mant as i64);
+        for i in 0..down
+            invariant 0 <= i && i <= down,
+        {
+            x = x * 0.5;
+        }
+        for j in 0..up
+            invariant 0 <= j && j <= up,
+        {
+            x = x * 2.0;
+        }
+        if neg {
+            -x
+        } else {
+            x
+        }
+    }
+
+    #[summary("The f64 nearest to the integer n, ties to even (Rust's `n as f64` of an i128): exact up to 53 bits; above, the top 53 bits rounded by the rest, times the power of two they were shifted by")]
+    #[effects(pure)]
+    fn f64_of_int(n: &encode_terms::Int) -> f64 {
+        let len: u64 = wide::bit_len(n.mag);
+        let mut top: u64 = n.mag.lo;
+        let mut shift: u64 = 0;
+        if len > 53 && len <= 128 {
+            shift = len - 53;
+            let parts: wide::QuoRem = wide::div_rem(n.mag, wide::pow2(shift));
+            let half: wide::U128 = wide::pow2(shift - 1);
+            top = parts.q.lo;
+            if wide::less(half, parts.r) || wide::equal(half, parts.r) && top % 2 == 1 {
+                top = top.saturating_add(1);
+            }
+        }
+        let mut x: f64 = if top <= 9007199254740992 {
+            f64::from(top as i64)
+        } else {
+            0.0
+        };
+        for i in 0..shift
+            invariant 0 <= i && i <= shift,
+        {
+            x = x * 2.0;
+        }
+        if n.neg {
+            -x
+        } else {
+            x
+        }
+    }
+
+    #[summary("The f64 of model value k of ops; an error for a value that is no f64, or is missing")]
+    #[effects(alloc)]
+    fn fp(ops: &[encode_terms::Sexp], k: usize) -> Result<f64, String> {
+        if k >= ops.len() {
+            return Err(not_f64());
+        }
+        match encode_terms::fp_value(&ops[k]) {
+            None => Err(not_f64()),
+            Some(bits) => Ok(f64_of_bits(bits)),
+        }
+    }
+
+    #[summary("Whether xs holds the s-expression e")]
+    #[effects(pure)]
+    fn holds(xs: &[encode_terms::Sexp], e: &encode_terms::Sexp) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if encode_query::same(&xs[i], e, 100000) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Assertions that keep inputs within the bounds of the search an undecided obligation gets (stage0 input_bounds, ADR-0108 §1). A model of the bounded query is a model of the query, so its sat is a counterexample")]
+    #[effects(alloc)]
+    fn input_bounds(inputs: &[encode_spec::Shown]) -> String {
+        let terms: Vec<String> = bound_terms(inputs);
+        let mut out: String = String::new();
+        for i in 0..terms.len()
+            invariant 0 <= i && i <= terms.len(),
+        {
+            out.push_str(types::cat3("(assert ", terms[i].as_str(), ")\n").as_str());
+        }
+        out
+    }
+
+    #[summary("Whether t is an integer type, through references")]
+    #[effects(alloc)]
+    fn int_leaf(t: &ast::TypeKind, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match body::ref_inner(t) {
+            None => types::is_int(t),
+            Some(inner) => int_leaf(&inner, f - 1),
+        }
+    }
+
+    #[summary("Whether t is bool")]
+    #[effects(alloc)]
+    fn is_bool(t: &ast::TypeKind) -> bool {
+        types::same(t, &ast::TypeKind::Bool)
+    }
+
+    #[summary("Whether an option holds a value")]
+    #[effects(pure)]
+    fn is_some(o: &Option<Vec<types::VariantSig>>) -> bool {
+        match o {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    #[summary("The last `::` segment of s (Rust's rsplit of `::`, first piece)")]
+    #[effects(alloc)]
+    fn last_part(s: &str) -> String {
+        match encode_decls::last_of(s, "::") {
+            None => String::from(s),
+            Some(at) => lexer::cut(s, at.saturating_add(2), s.len()),
+        }
+    }
+
+    #[summary("Whether e names an `f64` operation anywhere inside")]
+    #[effects(pure)]
+    fn mentions_f64(e: &encode_terms::Sexp, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => encode_terms::starts_at(a.as_str(), 0, "f64."),
+            encode_terms::Sexp::List(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if mentions_f64(&xs[i], f - 1) { return true; } } false },
+        }
+    }
+
+    #[summary("Element k of an array value as Z3 prints it in a model (stage0 model_select): a constant array, stores over one, or a lambda whose body is an ite chain on the index. None for any other form")]
+    #[effects(alloc)]
+    fn model_select(a: &encode_terms::Sexp, k: u64, f: usize) -> Option<encode_terms::Sexp>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match a {
+            encode_terms::Sexp::Atom(aa) => None,
+            encode_terms::Sexp::List(xs) => { if xs.len() == 2 { match &xs[0] { encode_terms::Sexp::Atom(ha) => {}, encode_terms::Sexp::List(h) => { if h.len() > 0 && encode_query::atom_is(&h[0], "as") { return Some(xs[1].clone()); } }, } } if xs.len() == 4 && encode_query::atom_is(&xs[0], "store") { let i: i64 = small_int(&xs[2])?; if i >= 0 && i as u64 == k { return Some(xs[3].clone()); } return model_select(&xs[1], k, f - 1); } if xs.len() == 3 && encode_query::atom_is(&xs[0], "lambda") { let var: String = match &xs[1] { encode_terms::Sexp::Atom(pa) => { return None; }, encode_terms::Sexp::List(params) => { if params.len() == 0 { return None; } match &params[0] { encode_terms::Sexp::Atom(p0) => { return None; }, encode_terms::Sexp::List(p) => { if p.len() == 0 { return None; } match &p[0] { encode_terms::Sexp::Atom(x) => x.clone(), encode_terms::Sexp::List(pl) => { return None; }, } }, } }, }; return select_ite(&xs[2], var.as_str(), k, f - 1); } None },
+        }
+    }
+
+    #[summary("The terms whose model values show v appended to terms, in the order show reads them (stage0 model_terms): a scalar's term; an array's length and its first 4 elements")]
+    #[effects(alloc)]
+    fn model_terms(v: &encode_terms::Val, terms: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            encode_terms::Val::S(t) => terms.push(t.clone()),
+            encode_terms::Val::A(elems, len) => { terms.push(len.clone()); for k in 0..4 invariant 0 <= k && k <= 4, { terms.push(types::cat5("(select ", elems.as_str(), " ", encode_terms::dec(k as u64).as_str(), ")")); } },
+            encode_terms::Val::Unit => {},
+            encode_terms::Val::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { model_terms(&fs[i], terms, f - 1); } },
+            encode_terms::Val::Arr(elem, alen) => { terms.push(alen.clone()); for j in 0..4 invariant 0 <= j && j <= 4, { let ev: encode_terms::Val = encode_terms::select_val(&**elem, encode_terms::dec(j as u64).as_str(), 100000); model_terms(&ev, terms, f - 1); } },
+        }
+    }
+
+    #[summary("Each of inputs by name with its value in the current model, as a counterexample shows it (stage0 model_values). A recursive struct is shown by its fields, one level deep; the `self` of a closure or function item is its captures, each by its own name, without the placeholder field `item` (names holds the made structs). None when the model cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn model_values(sol: &mut solver::Solver, inputs: &[encode_spec::Shown], tb: &lowered::Tables, names: &table::Table<String>) -> Option<Vec<Named>> {
+        let mut all: Vec<encode_spec::Shown> = Vec::new();
+        for i in 0..inputs.len()
+            invariant 0 <= i && i <= inputs.len(),
+        {
+            let v: encode_terms::Val = match &inputs[i].v {
+                encode_terms::Val::S(x) => { if encode_decls::dt_struct(&inputs[i].ty, tb) { encode_terms::Val::Struct(encode_terms::dt_fields(&lowered::value_ty(&inputs[i].ty), x.as_str(), tb)) } else { inputs[i].v.clone() } },
+                encode_terms::Val::A(ae, al) => inputs[i].v.clone(),
+                encode_terms::Val::Unit => inputs[i].v.clone(),
+                encode_terms::Val::Struct(sf) => inputs[i].v.clone(),
+                encode_terms::Val::Arr(re, rl) => inputs[i].v.clone(),
+            };
+            let path: String = match types::named_path(&lowered::value_ty(&inputs[i].ty)) {
+                None => String::new(),
+                Some(p) => p,
+            };
+            let mut spread: bool = false;
+            if inputs[i].name == "self" && names.has(path.as_str()) {
+                match &v {
+                    encode_terms::Val::S(x1) => {},
+                    encode_terms::Val::A(ae1, al1) => {},
+                    encode_terms::Val::Unit => {},
+                    encode_terms::Val::Struct(vs) => { match lowered::struct_fields(&inputs[i].ty, tb) { None => {}, Some(fs) => { spread = true; for k in 0..fs.len() invariant 0 <= k && k <= fs.len(), { if k < vs.len() && fs[k].name != "item" { all.push(encode_spec::Shown { name: fs[k].name.clone(), v: vs[k].clone(), ty: fs[k].ty.clone() }); } } }, } },
+                    encode_terms::Val::Arr(re1, rl1) => {},
+                }
+            }
+            if !spread {
+                all.push(encode_spec::Shown { name: inputs[i].name.clone(), v: v.clone(), ty: inputs[i].ty.clone() });
+            }
+        }
+        let mut terms: Vec<String> = Vec::new();
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            model_terms(&all[i].v, &mut terms, 100000);
+        }
+        let vals: Vec<String> = match solver::get_values(sol, terms.as_slice()) {
+            Ok(got) => got,
+            Err(e) => { return None; },
+        };
+        let mut at: usize = 0;
+        let mut parts: Vec<Named> = Vec::new();
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            let unit: bool = match &all[i].v {
+                encode_terms::Val::S(x2) => false,
+                encode_terms::Val::A(ae2, al2) => false,
+                encode_terms::Val::Unit => true,
+                encode_terms::Val::Struct(sf2) => false,
+                encode_terms::Val::Arr(re2, rl2) => false,
+            };
+            if !unit {
+                let shown: String = show(&all[i].v, &all[i].ty, tb, vals.as_slice(), &mut at, 100000);
+                parts.push(Named { name: all[i].name.clone(), shown: shown });
+            }
+        }
+        Some(parts)
+    }
+
+    #[summary("`, ..` when the length len read from a model is above the 4 elements shown")]
+    #[effects(alloc)]
+    fn more_of(len: &str) -> String {
+        match cache::number(len) {
+            None => String::new(),
+            Some(l) => { if l > 4 { String::from(", ..") } else { String::new() } },
+        }
+    }
+
+    #[summary("The next of vals, empty text past the end (an iterator's next or the default)")]
+    #[effects(alloc)]
+    fn next(vals: &[String], at: &mut usize) -> String {
+        if *at < vals.len() {
+            let s: String = vals[*at].clone();
+            *at = *at + 1;
+            return s;
+        }
+        String::new()
+    }
+
+    #[summary("What helps with a refuted obligation that has no inputs to show (stage0 no_inputs_help): where the prover lost the fact")]
+    #[effects(alloc)]
+    fn no_inputs_help(code: &str) -> String {
+        if code == "E0813" {
+            return String::from("the recursive call's `decreases` value must be below this call's and not below 0; with the same arguments it is the same");
+        }
+        String::from("there is no input to show: it fails for the definition's own values or for values a loop or call left open; after a loop the prover knows only its invariants and after a call only the callee's `ensures`, so state there what this needs, or correct the claim")
+    }
+
+    #[summary("The error for a model value that is no f64")]
+    #[effects(alloc)]
+    fn not_f64() -> String {
+        String::from("a model value that is not an `f64`")
+    }
+
+    #[summary("Whether two f64 values have the same bits, any NaN the same as any other: equal, and for zeros of the same sign")]
+    #[effects(pure)]
+    fn same_f64(x: f64, y: f64) -> bool {
+        if x.is_nan() && y.is_nan() {
+            return true;
+        }
+        x == y && (x != 0.0 || 1.0 / x == 1.0 / y)
+    }
+
+    #[summary("The value of the ite chain e on variable var at index k (the lambda walk of stage0 model_select): each `(ite (= var n) a b)` is a when n is k and b otherwise, down to a term that is no such ite. None for an ite whose condition is no list")]
+    #[effects(alloc)]
+    fn select_ite(e: &encode_terms::Sexp, var: &str, k: u64, f: usize) -> Option<encode_terms::Sexp>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => Some(e.clone()),
+            encode_terms::Sexp::List(ys) => { if ys.len() == 4 && encode_query::atom_is(&ys[0], "ite") { match &ys[1] { encode_terms::Sexp::Atom(ca) => { return None; }, encode_terms::Sexp::List(c) => { let hit: bool = c.len() == 3 && encode_query::atom_is(&c[0], "=") && (encode_query::atom_is(&c[1], var) && small_is(&c[2], k) || encode_query::atom_is(&c[2], var) && small_is(&c[1], k)); if hit { return select_ite(&ys[2], var, k, f - 1); } return select_ite(&ys[3], var, k, f - 1); }, } } Some(e.clone()) },
+        }
+    }
+
+    #[summary("v in Rust notation from its model values (stage0 show), read from vals at at in the order model_terms wrote the terms. A recursive struct is `Name { .. }`; an enum value by show_variant; an array its first elements up to 4 and its length; a struct its fields by name")]
+    #[effects(alloc)]
+    fn show(v: &encode_terms::Val, t: &ast::TypeKind, tb: &lowered::Tables, vals: &[String], at: &mut usize, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match v {
+            encode_terms::Val::S(x) => { let raw: String = next(vals, at); if encode_decls::dt_struct(t, tb) { return types::cat2(encode_decls::dt_ctor_name(t).as_str(), " { .. }"); } if is_some(&encode_decls::variants(t, tb)) { return match encode_terms::parse(raw.as_str()) { None => raw, Some(px) => show_variant(&px, t, tb, f - 1), }; } raw },
+            encode_terms::Val::A(elems, alen) => { let len: String = next(vals, at); let n: usize = shown_count(len.as_str()); let e: ast::TypeKind = encode_decls::elem_ty(t); let mut parts: Vec<String> = Vec::new(); for k in 0..4 invariant 0 <= k && k <= 4, { if *at < vals.len() { let x1: String = next(vals, at); if parts.len() < n { if encode_decls::dt_struct(&e, tb) { parts.push(types::cat2(encode_decls::dt_ctor_name(&e).as_str(), " { .. }")); } else if is_some(&encode_decls::variants(&e, tb)) { match encode_terms::parse(x1.as_str()) { None => parts.push(x1.clone()), Some(pv) => parts.push(show_variant(&pv, &e, tb, f - 1)), } } else { parts.push(x1.clone()); } } } } let mut s: String = types::cat2("[", encode_terms::join(parts.as_slice(), ", ").as_str()); s.push_str(types::cat4(more_of(len.as_str()).as_str(), "] (len ", len.as_str(), ")").as_str()); s },
+            encode_terms::Val::Unit => String::new(),
+            encode_terms::Val::Struct(fs) => { let decl: Vec<types::FieldSig> = match lowered::struct_fields(t, tb) { None => Vec::new(), Some(d) => d, }; let name: String = match body::ref_inner(t) { None => types::text(t), Some(inner) => types::text(&inner), }; let mut shown: Vec<String> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < decl.len() { shown.push(types::cat3(decl[i].name.as_str(), ": ", show(&fs[i], &decl[i].ty, tb, vals, at, f - 1).as_str())); } } types::cat4(last_part(name.as_str()).as_str(), " { ", encode_terms::join(shown.as_slice(), ", ").as_str(), " }") },
+            encode_terms::Val::Arr(elem, rlen) => { let len2: String = next(vals, at); let n2: usize = shown_count(len2.as_str()); let e2: ast::TypeKind = encode_decls::elem_ty(t); let mut parts2: Vec<String> = Vec::new(); for j in 0..4 invariant 0 <= j && j <= 4, { let ev: encode_terms::Val = encode_terms::select_val(&**elem, encode_terms::dec(j as u64).as_str(), 100000); let one: String = show(&ev, &e2, tb, vals, at, f - 1); if parts2.len() < n2 { parts2.push(one.clone()); } } let mut s2: String = types::cat2("[", encode_terms::join(parts2.as_slice(), ", ").as_str()); s2.push_str(types::cat4(more_of(len2.as_str()).as_str(), "] (len ", len2.as_str(), ")").as_str()); s2 },
+        }
+    }
+
+    #[summary("A value of type t from its model leaves (stage0 show_leaves), the constructor arguments args read from at: a struct of leaves by its fields; a payload array of scalars or enum values by its elements read from the model's array value, anything else elided; a recursive struct as `Name { .. }`")]
+    #[effects(alloc)]
+    fn show_leaves(t: &ast::TypeKind, tb: &lowered::Tables, args: &[encode_terms::Sexp], at: &mut usize, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match encode_decls::flat_fields(t, tb) {
+            None => {},
+            Some(fs) => { let short: String = last_part(types::text(&lowered::value_ty(t)).as_str()); let mut shown: Vec<String> = Vec::new(); for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { shown.push(types::cat3(fs[i].name.as_str(), ": ", show_leaves(&fs[i].ty, tb, args, at, f - 1).as_str())); } return types::cat4(short.as_str(), " { ", encode_terms::join(shown.as_slice(), ", ").as_str(), " }"); },
+        }
+        if encode_decls::is_array(t) {
+            let elems: Option<encode_terms::Sexp> = take(args, at);
+            let len: Option<encode_terms::Sexp> = take(args, at);
+            let e: ast::TypeKind = encode_decls::elem_ty(t);
+            let enums: bool = is_some(&encode_decls::variants(&e, tb));
+            match elems {
+                None => {},
+                Some(a) => { match len { None => {}, Some(l) => { match small_int(&l) { None => {}, Some(n) => { if types::is_int(&e) || is_bool(&e) || enums { let upto: u64 = if n <= 0 { 0 } else if n < 4 { n as u64 } else { 4 }; let mut xs: Vec<String> = Vec::new(); let mut whole: bool = true; for k in 0..upto invariant 0 <= k && k <= upto, { if whole { match model_select(&a, k, 100000) { None => { whole = false; }, Some(x) => { if enums { xs.push(show_variant(&x, &e, tb, f - 1)); } else { xs.push(encode_terms::render_value(&x, 100000)); } }, } } } if whole { let more: String = if n > 4 { String::from(", ..") } else { String::new() }; return types::cat4("[", encode_terms::join(xs.as_slice(), ", ").as_str(), more.as_str(), "]"); } } }, } }, } },
+            }
+            return String::from("[..]");
+        }
+        match take(args, at) {
+            None => String::new(),
+            Some(x2) => { if encode_decls::dt_struct(t, tb) { return types::cat2(encode_decls::dt_ctor_name(t).as_str(), " { .. }"); } if is_some(&encode_decls::variants(t, tb)) { return show_variant(&x2, t, tb, f - 1); } encode_terms::render_value(&x2, 100000) },
+        }
+    }
+
+    #[summary("A datatype value from the model in Rust notation (stage0 show_variant, ADR-0026 §4): `Some(992)`, `Shape::Rect(Point { x: 1, y: 2 }, ..)`. The model's `let` bindings are substituted first. A value that is no constructor of t's type is printed as the model writes it")]
+    #[effects(alloc)]
+    fn show_variant(x0: &encode_terms::Sexp, t: &ast::TypeKind, tb: &lowered::Tables, f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        let env: table::Table<encode_terms::Sexp> = table::new::<encode_terms::Sexp>();
+        let x: encode_terms::Sexp = unlet(x0, &env, 100000);
+        let mut args: Vec<encode_terms::Sexp> = Vec::new();
+        let head: String = match &x {
+            encode_terms::Sexp::Atom(a) => a.clone(),
+            encode_terms::Sexp::List(xs) => { if xs.len() == 0 { return encode_terms::render_value(&x, 100000); } for i in 1..xs.len() invariant 1 <= i && i <= xs.len(), { args.push(xs[i].clone()); } match &xs[0] { encode_terms::Sexp::Atom(h) => h.clone(), encode_terms::Sexp::List(hl) => { return encode_terms::render_value(&x, 100000); }, } },
+        };
+        let ts: String = types::text(&lowered::value_ty(t));
+        let pre: String = types::cat3("|", ts.as_str(), "::");
+        if !encode_terms::starts_at(head.as_str(), 0, pre.as_str()) || head.len() <= pre.len() || head.as_bytes()[head.len() - 1] != 124 {
+            return encode_terms::render_value(&x, 100000);
+        }
+        let v: String = lexer::cut(head.as_str(), pre.len(), head.len() - 1);
+        let vs: Vec<types::VariantSig> = match encode_decls::variants(t, tb) {
+            None => Vec::new(),
+            Some(got) => got,
+        };
+        let mut ps: Vec<ast::TypeKind> = Vec::new();
+        let mut found: bool = false;
+        for i in 0..vs.len()
+            invariant 0 <= i && i <= vs.len(),
+        {
+            if !found && vs[i].name == v {
+                found = true;
+                ps = vs[i].tys.clone();
+            }
+        }
+        let generic: String = match encode_query::find(ts.as_str(), "<", 0) {
+            None => ts.clone(),
+            Some(lt) => lexer::cut(ts.as_str(), 0, lt),
+        };
+        let name: String = if generic.as_str() == "Option" || generic.as_str() == "Result" {
+            v.clone()
+        } else {
+            types::cat3(last_part(ts.as_str()).as_str(), "::", v.as_str())
+        };
+        if ps.len() == 0 {
+            return name;
+        }
+        let mut at: usize = 0;
+        let mut shown: Vec<String> = Vec::new();
+        for i in 0..ps.len()
+            invariant 0 <= i && i <= ps.len(),
+        {
+            shown.push(show_leaves(&ps[i], tb, args.as_slice(), &mut at, f - 1));
+        }
+        types::cat4(name.as_str(), "(", encode_terms::join(shown.as_slice(), ", ").as_str(), ")")
+    }
+
+    #[summary("How many elements a counterexample shows of an array whose length the model gives as len: the length up to 4, and 4 for a length that is no number")]
+    #[effects(pure)]
+    fn shown_count(len: &str) -> usize {
+        match cache::number(len) {
+            None => 4,
+            Some(l) => { if l < 4 { l as usize } else { 4 } },
+        }
+    }
+
+    #[summary("The integer a model value denotes when it is one of an i64 (Rust's parse of its rendered form)")]
+    #[effects(alloc)]
+    fn small_int(x: &encode_terms::Sexp) -> Option<i64> {
+        let n: encode_terms::Int = encode_sub::parse_i128(encode_terms::render_value(x, 100000).as_str())?;
+        if n.mag.hi != 0 {
+            return None;
+        }
+        if n.neg {
+            if n.mag.lo > 9223372036854775808 {
+                return None;
+            }
+            if n.mag.lo == 9223372036854775808 {
+                return Some(-9223372036854775807 - 1);
+            }
+            return Some(0 - n.mag.lo as i64);
+        }
+        if n.mag.lo > 9223372036854775807 {
+            return None;
+        }
+        Some(n.mag.lo as i64)
+    }
+
+    #[summary("Whether model value x is the integer k")]
+    #[effects(alloc)]
+    fn small_is(x: &encode_terms::Sexp, k: u64) -> bool {
+        match small_int(x) {
+            None => false,
+            Some(i) => i >= 0 && i as u64 == k,
+        }
+    }
+
+    #[summary("The free variables of a failed sub-proof in its model, as values of their types (stage0 sub_counterexample): `x = 4294967295, b = -1`; empty when the model cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn sub_counterexample(sol: &mut solver::Solver, q: &encode_sub::Query) -> String {
+        let mut terms: Vec<String> = Vec::new();
+        for i in 0..q.vars.len()
+            invariant 0 <= i && i <= q.vars.len(),
+        {
+            terms.push(q.vars[i].sym.clone());
+        }
+        match solver::get_values(sol, terms.as_slice()) {
+            Ok(vals) => encode_query::sub_values(q.vars.as_slice(), vals.as_slice()),
+            Err(e) => String::new(),
+        }
+    }
+
+    #[summary("The next of args, None past the end")]
+    #[effects(alloc)]
+    fn take(args: &[encode_terms::Sexp], at: &mut usize) -> Option<encode_terms::Sexp> {
+        if *at < args.len() {
+            let x: encode_terms::Sexp = args[*at].clone();
+            *at = *at + 1;
+            return Some(x);
+        }
+        None
+    }
+
+    #[summary("x with Z3's `let` bindings substituted (stage0 unlet): a model value may share subterms, as with a datatype nested in an array. env holds the bindings around x; the terms of a `let` are read outside it")]
+    #[effects(alloc)]
+    fn unlet(x: &encode_terms::Sexp, env: &table::Table<encode_terms::Sexp>, f: usize) -> encode_terms::Sexp
+        decreases f,
+    {
+        if f == 0 {
+            return x.clone();
+        }
+        match x {
+            encode_terms::Sexp::Atom(a) => match env.find(a.as_str()) { None => x.clone(), Some(at) => { if at < env.items.len() { env.items[at].clone() } else { x.clone() } }, },
+            encode_terms::Sexp::List(xs) => { if xs.len() == 3 && encode_query::atom_is(&xs[0], "let") { match &xs[1] { encode_terms::Sexp::Atom(ba) => {}, encode_terms::Sexp::List(binds) => { let mut inner: table::Table<encode_terms::Sexp> = env.clone(); for i in 0..binds.len() invariant 0 <= i && i <= binds.len(), { match &binds[i] { encode_terms::Sexp::Atom(pa) => {}, encode_terms::Sexp::List(p) => { if p.len() == 2 { match &p[0] { encode_terms::Sexp::Atom(n) => { let bound: encode_terms::Sexp = unlet(&p[1], env, f - 1); inner.insert(n.as_str(), bound); }, encode_terms::Sexp::List(nl) => {}, } } }, } } return unlet(&xs[2], &inner, f - 1); }, } } let mut out: Vec<encode_terms::Sexp> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { out.push(unlet(&xs[i], env, f - 1)); } encode_terms::Sexp::List(out) },
+        }
+    }
+
+    #[summary("Whether the model value got is the f64 x (same_f64); an error for a value that is no f64")]
+    #[effects(alloc)]
+    fn value_is(got: &encode_terms::Sexp, x: f64) -> Result<bool, String> {
+        match encode_terms::fp_value(got) {
+            None => Err(not_f64()),
+            Some(bits) => Ok(same_f64(x, f64_of_bits(bits))),
+        }
+    }
+}

@@ -1,0 +1,114 @@
+#[summary("Recursive and quantified definitions: the ground-instance retries of the proof driver")]
+mod series {
+    spec fn tri_spec(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { n + tri_spec(n - 1) }
+    }
+
+    spec fn all_small(a: &[u64], n: usize) -> bool {
+        forall |k: usize| k < n ==> #[trigger] a[k] < 10
+    }
+
+    #[effects(pure)]
+    #[uses(tri_spec)]
+    fn three() -> (r: u64)
+        ensures r == tri_spec(2),
+    {
+        3
+    }
+
+    #[effects(pure)]
+    #[uses(tri_spec)]
+    fn wrong() -> (r: u64)
+        ensures r == tri_spec(3),
+    {
+        5
+    }
+
+    #[effects(pure)]
+    #[uses(tri_spec)]
+    fn open(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == tri_spec(n),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn hidden(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == tri_spec(n),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    #[uses(tri_spec)]
+    fn grows(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures tri_spec(n) <= tri_spec(n + 1),
+    {
+        n
+    }
+
+    #[effects(pure)]
+    #[uses(all_small)]
+    fn first(a: &[u64]) -> (r: u64)
+        requires a.len() > 2 && all_small(a, a.len()),
+        ensures r < 10,
+    {
+        a[1]
+    }
+
+    #[effects(pure)]
+    #[uses(all_small)]
+    fn second(a: &[u64]) -> (r: u64)
+        requires a.len() > 2 && all_small(a, 1),
+        ensures r < 10,
+    {
+        a[1]
+    }
+
+    #[effects(pure)]
+    #[uses(all_small, tri_spec)]
+    fn both(a: &[u64], n: u64) -> (r: u64)
+        requires a.len() > 2 && all_small(a, a.len()) && n < 4,
+        ensures r <= tri_spec(n) * 10 + 9,
+    {
+        a[0] * n
+    }
+
+    spec fn even(n: u64) -> bool {
+        n % 2 == 0
+    }
+
+    #[effects(pure)]
+    fn inside(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == n,
+    {
+        assert(even(n + n));
+        n
+    }
+
+    #[effects(pure)]
+    fn inside_two(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == n,
+    {
+        assert(even(n + n) && tri_spec(n) == n);
+        n
+    }
+
+    #[effects(pure)]
+    #[uses(even)]
+    fn inside_shown(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r == n,
+    {
+        assert(even(n + n));
+        assert(even(n + n + 1));
+        n
+    }
+}

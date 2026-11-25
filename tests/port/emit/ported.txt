@@ -316,6 +316,11 @@ tests/port/gen/g37.txt
 tests/port/gen/g38.txt
 tests/port/gen/g39.txt
 tests/port/json_roundtrip.bmb
+tests/port/prove/ieee.bmb
+tests/port/prove/nb.bmb
+tests/port/prove/series.bmb
+tests/port/prove/shapes.bmb
+tests/port/prove/trust.bmb
 tests/port/sha256_files.bmb
 tests/port/types/by-path.txt
 tests/port/types/identity.txt

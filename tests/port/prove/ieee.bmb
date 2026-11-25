@@ -1,0 +1,148 @@
+#[summary("f64 obligations: a model is shown only when IEEE 754 arithmetic gives its values; every operation the check recomputes")]
+mod ieee {
+    #[effects(pure)]
+    fn two() -> () {
+        let one: f64 = 1.0;
+        assert(one + one == 2.0);
+    }
+
+    #[effects(pure)]
+    fn commutes(x: f64, y: f64) -> () {
+        assert(x + y == y + x);
+    }
+
+    #[effects(pure)]
+    fn below(x: f64) -> () {
+        assert(x * x >= 0.0);
+    }
+
+    #[effects(pure)]
+    fn irreflexive(x: f64) -> () {
+        assert(!(x < x));
+    }
+
+    #[effects(pure)]
+    fn exactly(x: f64) -> () {
+        assert(!(x < x)) by (bit_vector);
+        assert(x * x >= 0.0 || x.is_nan()) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn inexactly(x: f64, y: f64) -> () {
+        assert(x + y == y + x) by (bit_vector);
+        assert(x.min(y) <= x) by (bit_vector);
+        assert(x - y == 0.0 - (y - x)) by (bit_vector);
+    }
+
+    #[effects(pure)]
+    fn subtracts(x: f64, y: f64) -> () {
+        assert(x - y <= x);
+    }
+
+    #[effects(pure)]
+    fn divides(x: f64, y: f64) -> () {
+        assert(x / y != 0.5);
+    }
+
+    #[effects(pure)]
+    fn negates(x: f64) -> () {
+        assert(-x != 2.5);
+    }
+
+    #[effects(pure)]
+    fn roots(x: f64) -> () {
+        assert(x.sqrt() != 3.0);
+    }
+
+    #[effects(pure)]
+    fn magnitudes(x: f64) -> () {
+        assert(x.abs() != 1.0e300);
+    }
+
+    #[effects(pure)]
+    fn least(x: f64, y: f64) -> () {
+        assert(x.min(y) != 4.0);
+    }
+
+    #[effects(pure)]
+    fn greatest(x: f64, y: f64) -> () {
+        assert(x.max(y) != 4.0);
+    }
+
+    #[effects(pure)]
+    fn zeros(x: f64, y: f64) -> () {
+        assert(x.max(y) != 0.0 || x != 0.0 || y != 0.0);
+    }
+
+    #[effects(pure)]
+    fn converts(n: i32, m: u64, k: i64) -> () {
+        assert(f64::from(n) != 7.0);
+    }
+
+    #[effects(pure)]
+    fn converts_wide(m: u64) -> (r: f64)
+        requires m <= 9007199254740992,
+        ensures r != 9007199254740992.0,
+    {
+        f64::from(m)
+    }
+
+    #[effects(pure)]
+    fn converts_too_wide(m: u64) -> (r: f64)
+        ensures r != 1.0,
+    {
+        f64::from(m)
+    }
+
+    #[effects(pure)]
+    fn orders(x: f64, y: f64) -> () {
+        assert(!(x <= y) || x < y);
+    }
+
+    #[effects(pure)]
+    fn equals(x: f64) -> () {
+        assert(x == x);
+    }
+
+    #[effects(pure)]
+    fn nans(x: f64) -> () {
+        assert(!x.is_nan());
+    }
+
+    #[effects(pure)]
+    fn finite(x: f64) -> () {
+        assert(x.is_finite());
+    }
+
+    #[effects(pure)]
+    fn tiny(x: f64) -> () {
+        assert(x * 0.5 != 5.0e-324);
+    }
+
+    #[effects(pure)]
+    fn huge(x: f64) -> () {
+        assert(x + x != f64::INFINITY || x == f64::INFINITY);
+    }
+
+    spec fn doubled(x: f64) -> f64 {
+        x + x
+    }
+
+    #[effects(pure)]
+    #[uses(doubled)]
+    fn defined(x: f64) -> () {
+        assert(doubled(x) != 3.0);
+    }
+
+    spec fn above(a: &[f64]) -> bool {
+        forall |k: usize| k < a.len() ==> #[trigger] a[k] + 1.0 > 0.0
+    }
+
+    #[effects(pure)]
+    #[uses(above)]
+    fn quantified(a: &[f64]) -> ()
+        requires above(a),
+    {
+        assert(a.len() == 0);
+    }
+}

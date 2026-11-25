@@ -12,6 +12,9 @@ mod lib {
     #[summary("Result of a command: if ok, the text to write to standard output, otherwise JSONL of diagnostics")]
     struct Outcome { ok: bool, text: String }
 
+    #[summary("Result of bmb verify (stage0 VerifyOutput): ok when the program checks and every definition is proved; output is the diagnostics and the status rows; scripts holds per encoded definition (a) its script (b) as written before canonical symbols; hits and misses are the proof cache's lookups; missing names the definitions asked for that got no status; cache_error is why the proof cache could not be written back, if it could not")]
+    struct Proved { ok: bool, output: String, scripts: Vec<encode_terms::Pair>, hits: usize, misses: usize, missing: Vec<String>, cache_error: Option<String> }
+
     #[summary("bmb check: reads the files as one program and checks it. Diagnostics are JSONL, ok is false if there are errors")]
     #[effects(alloc)]
     fn check(files: &[Input]) -> Outcome {
@@ -732,5 +735,62 @@ mod lib {
             out.push_str("]");
         }
         out.push_str("]");
+    }
+
+    #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only without the per-definition cache): reads the files as one program, checks it and, when it checks, proves it. cache_dir is the directory of the proof cache when there is one: proofs found before are not asked again and new ones are written back. only names the definitions to prove when it is not empty; the whole program is still checked and each gets its whole-program status. bounded asks each undecided obligation once more with its inputs bounded")]
+    #[effects(alloc, io, nondet)]
+    fn verify(files: &[Input], cache_dir: &Option<String>, only: &[String], bounded: bool) -> Proved {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Proved { ok: false, output: diags.to_jsonl(&sm), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None };
+        }
+        let mut store: Option<cache::ProofCache> = match cache_dir {
+            None => None,
+            Some(dir) => Some(cache::load(dir.as_str())),
+        };
+        let mut wanted: Vec<String> = Vec::new();
+        for i in 0..only.len()
+            invariant 0 <= i && i <= only.len(),
+        {
+            wanted.push(only[i].clone());
+        }
+        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, rlimit: solver::rlimit() };
+        let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut diags);
+        let mut hits: usize = 0;
+        let mut misses: usize = 0;
+        let mut cache_error: Option<String> = None;
+        match &store {
+            None => {},
+            Some(c) => { hits = c.hits; misses = c.misses; match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
+        }
+        let mut output: String = diags.to_jsonl(&sm);
+        output.push_str(prove::status_lines(out.statuses.as_slice()).as_str());
+        let mut ok: bool = !diags.has_errors();
+        let mut missing: Vec<String> = Vec::new();
+        for k in 0..only.len()
+            invariant 0 <= k && k <= only.len(),
+        {
+            let mut found: bool = false;
+            for j in 0..out.statuses.len()
+                invariant 0 <= j && j <= out.statuses.len(),
+            {
+                if out.statuses[j].path == only[k] {
+                    found = true;
+                }
+            }
+            if !found {
+                missing.push(only[k].clone());
+            }
+        }
+        for j2 in 0..out.statuses.len()
+            invariant 0 <= j2 && j2 <= out.statuses.len(),
+        {
+            if out.statuses[j2].failed != 0 {
+                ok = false;
+            }
+        }
+        Proved { ok: ok, output: output, scripts: out.scripts, hits: hits, misses: misses, missing: missing, cache_error: cache_error }
     }
 }

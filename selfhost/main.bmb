@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (without the per-definition cache: --cache needs --emit-smt), emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -108,6 +108,69 @@ mod main {
             eprint_str("usage: stage1 emit-llvm --all-checks FILE.. -o OUT.ll\n");
             std::process::exit(2);
         }
+        if args.len() > 2 && args[1] == "verify" {
+            let mut emit: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut stats: Option<String> = None;
+            let mut bounded: bool = false;
+            let mut defs: Vec<String> = Vec::new();
+            let mut at: usize = 2;
+            while at < args.len()
+                decreases args.len() - at,
+            {
+                let left: usize = args.len() - at;
+                if args[at] == "--audit" && left > 1 {
+                    at = at + 1;
+                } else if args[at] == "--bounded-search" && left > 1 {
+                    bounded = true;
+                    at = at + 1;
+                } else if args[at] == "--emit-smt" && left > 2 {
+                    emit = Some(args[at + 1].clone());
+                    at = at + 2;
+                } else if args[at] == "--cache" && left > 2 {
+                    cache_dir = Some(args[at + 1].clone());
+                    at = at + 2;
+                } else if args[at] == "--stats" && left > 2 {
+                    stats = Some(args[at + 1].clone());
+                    at = at + 2;
+                } else if args[at] == "--def" && left > 2 {
+                    defs.push(args[at + 1].clone());
+                    at = at + 2;
+                } else {
+                    break;
+                }
+            }
+            if per_definition(&cache_dir, &emit) {
+                eprint_str("stage1: verify --cache without --emit-smt: the per-definition cache is not ported yet\n");
+                std::process::exit(2);
+            }
+            let sources: Vec<lib::Input> = read_files(args.as_slice(), at);
+            let only: Vec<String> = body::sorted_set(defs.as_slice());
+            let vr: lib::Proved = lib::verify(sources.as_slice(), &cache_dir, only.as_slice(), bounded);
+            match &vr.cache_error {
+                None => {},
+                Some(cache_why) => { match &cache_dir { None => {}, Some(cd) => { eprint_str("bmb: cannot write proof cache in "); eprint_str(cd.as_str()); eprint_str(": "); eprint_str(cache_why.as_str()); eprint_str("\n"); }, } },
+            }
+            if vr.missing.len() > 0 {
+                eprint_str("bmb: no definition ");
+                eprint_str(encode_terms::join(vr.missing.as_slice(), ", ").as_str());
+                eprint_str("\n");
+                std::process::exit(2);
+            }
+            match &emit {
+                None => {},
+                Some(dir) => { match std::fs::create_dir_all(dir.as_str()) { Ok(made) => {}, Err(e1) => { eprint_str("bmb: cannot create "); eprint_str(dir.as_str()); eprint_str(": "); eprint_str(e1.message.as_str()); eprint_str("\n"); std::process::exit(2); }, } for i in 0..vr.scripts.len() invariant 0 <= i && i <= vr.scripts.len(), { let cs: encode_query::Script = encode_query::canonical_script(vr.scripts[i].b.as_str()); let file: String = types::cat4(dir.as_str(), "/", encode_terms::replace(vr.scripts[i].a.as_str(), "::", ".").as_str(), ".smt2"); write_or_exit(file.as_str(), cs.text.as_str()); write_or_exit(types::cat2(file.as_str(), ".legend").as_str(), cs.legend.as_str()); } },
+            }
+            match &stats {
+                None => {},
+                Some(sf) => { let mut line: String = String::from("{\"encoded\":[],\"reused\":[],\"lowered\":[],\"ir_reused\":[],\"proof_cache_hits\":"); std::num::push_u64(&mut line, vr.hits as u64); line.push_str(",\"proof_cache_misses\":"); std::num::push_u64(&mut line, vr.misses as u64); line.push_str(",\"audit_mismatches\":[],\"damaged\":0}\n"); write_or_exit(sf.as_str(), line.as_str()); },
+            }
+            print_str(vr.output.as_str());
+            if !vr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -117,11 +180,20 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
         std::process::exit(2);
     }
 
-    #[summary("Reads the files of the arguments. If one cannot be read, writes to standard error and exit code 2")]
+    #[summary("Whether a run of verify would use the per-definition cache (stage0 incremental.rs), which is not ported: with a cache directory and without --emit-smt, which encodes every definition")]
+    #[effects(pure)]
+    fn per_definition(cache_dir: &Option<String>, emit: &Option<String>) -> bool {
+        match cache_dir {
+            None => false,
+            Some(dir) => match emit { None => true, Some(to) => false, },
+        }
+    }
+
+    #[summary("Reads the files of the arguments. If one cannot be read, writes that with the system's reason to standard error and exit code 2")]
     #[effects(alloc, io, nondet)]
     fn read_files(args: &[String], from: usize) -> Vec<lib::Input> {
         let mut files: Vec<lib::Input> = Vec::new();
@@ -131,10 +203,19 @@ mod main {
         {
             match std::fs::read_to_string(args[i].as_str()) {
                 Ok(text) => files.push(lib::Input { name: args[i].clone(), text: text }),
-                Err(e) => { eprint_str("bmb: cannot read "); eprint_str(args[i].as_str()); eprint_str("\n"); std::process::exit(2); },
+                Err(e) => { eprint_str("bmb: cannot read "); eprint_str(args[i].as_str()); eprint_str(": "); eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(2); },
             }
             i = i + 1;
         }
         files
+    }
+
+    #[summary("Writes text to the file path. If it cannot be written, writes to standard error and exit code 2")]
+    #[effects(alloc, io)]
+    fn write_or_exit(path: &str, text: &str) -> () {
+        match std::fs::write(path, text.as_bytes()) {
+            Ok(done) => {},
+            Err(e) => { eprint_str("bmb: cannot write "); eprint_str(path); eprint_str(": "); eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(2); },
+        }
     }
 }

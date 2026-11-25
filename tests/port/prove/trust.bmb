@@ -1,0 +1,91 @@
+#[summary("Escapes: the passes of the proof gate with and without trusted facts")]
+mod trust {
+    spec fn small(x: i64) -> bool {
+        x < 100
+    }
+
+    #[effects(panic)]
+    #[external_body]
+    #[rationale(kind = boundary, "a stand-in for a function the prover does not read")]
+    fn outside(x: i64) -> (r: i64)
+        ensures r >= 0 && r <= 10,
+    {
+        if x > 0 { 1 } else { 0 }
+    }
+
+    #[effects(panic)]
+    fn mid(x: i64) -> (r: i64)
+        ensures r >= 0 && r <= 10,
+    {
+        outside(x)
+    }
+
+    #[effects(panic)]
+    fn top(x: i64) -> (r: i64)
+        ensures r >= 0 && r <= 11,
+    {
+        mid(x) + 1
+    }
+
+    #[effects(panic)]
+    fn above(x: i64) -> (r: i64)
+        ensures r >= 1,
+    {
+        top(x) + 1
+    }
+
+    #[effects(panic)]
+    fn ignores(x: i64) -> (r: i64)
+        ensures r == 1,
+    {
+        let y: i64 = top(x);
+        1
+    }
+
+    #[effects(panic)]
+    fn overflows(x: i64) -> (r: i64)
+        ensures r >= 1,
+    {
+        top(x) + x
+    }
+
+    #[effects(panic)]
+    fn bad(x: i64) -> (r: i64)
+        ensures r > 0,
+    {
+        outside(x)
+    }
+
+    #[effects(panic)]
+    fn assumes(x: i64) -> (r: i64)
+        ensures r > x,
+    {
+        #[rationale(kind = boundary, "the caller never passes the largest value")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(panic)]
+    fn assumes_badly(x: i64) -> (r: i64)
+        ensures r > x + 1,
+    {
+        #[rationale(kind = boundary, "the caller never passes the largest value")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn alone(x: i64) -> (r: i64)
+        requires x < 10,
+        ensures r > x,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn alone_badly(x: i64) -> (r: i64)
+        ensures r > x,
+    {
+        x + 1
+    }
+}

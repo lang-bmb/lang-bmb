@@ -1,0 +1,192 @@
+#[summary("Counterexamples of every shape the model printer reads: scalars, arrays, structs, enums with payloads, values nested in arrays")]
+mod shapes {
+    struct Point { x: i64, y: i64 }
+
+    struct Line { a: Point, b: Point, tag: bool }
+
+    enum Shape { Dot, Circle(i64), Rect(Point, Point), Poly(Vec<i64>), Flags(Vec<bool>), Many(Vec<Shape>), Maybe(Option<i64>) }
+
+    struct Node { v: i64, kids: Vec<Node> }
+
+    #[effects(pure)]
+    fn scalars(a: bool, b: u8, c: char, d: f64, e: i8) -> (r: bool)
+        ensures r,
+    {
+        a && b > 3 && e > 0
+    }
+
+    #[effects(pure)]
+    fn points(p: Point, q: &Point) -> (r: i64)
+        requires p.x < 100 && p.x > -100 && q.x < 100 && q.x > -100,
+        ensures r != 7,
+    {
+        p.x + q.x
+    }
+
+    #[effects(pure)]
+    fn lines(l: &Line) -> (r: i64)
+        requires l.a.x < 100 && l.a.x > -100 && l.b.y < 100 && l.b.y > -100,
+        ensures r != 7 || l.tag,
+    {
+        l.a.x + l.b.y
+    }
+
+    #[effects(pure)]
+    fn shape(s: &Shape) -> (r: i64)
+        ensures r != 7,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => { if *c == 7 { 7 } else { 1 } },
+            Shape::Rect(p, q) => 2,
+            Shape::Poly(vs) => 3,
+            Shape::Flags(fs) => 4,
+            Shape::Many(ms) => 5,
+            Shape::Maybe(o) => 6,
+        }
+    }
+
+    #[effects(pure)]
+    fn rect(s: &Shape) -> (r: i64)
+        ensures r != 2,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 1,
+            Shape::Rect(p, q) => { if p.x == 3 && q.y == 4 { 2 } else { 1 } },
+            Shape::Poly(vs) => 3,
+            Shape::Flags(fs) => 4,
+            Shape::Many(ms) => 5,
+            Shape::Maybe(o) => 6,
+        }
+    }
+
+    #[effects(pure)]
+    fn poly(s: &Shape) -> (r: i64)
+        ensures r != 3,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 1,
+            Shape::Rect(p, q) => 2,
+            Shape::Poly(vs) => { if vs.len() > 5 && vs[0] == 1 && vs[2] == 9 { 3 } else { 1 } },
+            Shape::Flags(fs) => 4,
+            Shape::Many(ms) => 5,
+            Shape::Maybe(o) => 6,
+        }
+    }
+
+    #[effects(pure)]
+    fn flags(s: &Shape) -> (r: i64)
+        ensures r != 4,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 1,
+            Shape::Rect(p, q) => 2,
+            Shape::Poly(vs) => 3,
+            Shape::Flags(fs) => { if fs.len() == 2 && fs[0] && !fs[1] { 4 } else { 1 } },
+            Shape::Many(ms) => 5,
+            Shape::Maybe(o) => 6,
+        }
+    }
+
+    #[effects(pure)]
+    fn many(s: &Shape) -> (r: i64)
+        ensures r != 5,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 1,
+            Shape::Rect(p, q) => 2,
+            Shape::Poly(vs) => 3,
+            Shape::Flags(fs) => 4,
+            Shape::Many(ms) => { if ms.len() == 3 { 5 } else { 1 } },
+            Shape::Maybe(o) => 6,
+        }
+    }
+
+    #[effects(pure)]
+    fn maybe(s: &Shape) -> (r: i64)
+        ensures r != 6,
+    {
+        match s {
+            Shape::Dot => 0,
+            Shape::Circle(c) => 1,
+            Shape::Rect(p, q) => 2,
+            Shape::Poly(vs) => 3,
+            Shape::Flags(fs) => 4,
+            Shape::Many(ms) => 5,
+            Shape::Maybe(o) => match o { None => 1, Some(v) => { if *v == 41 { 6 } else { 1 } }, },
+        }
+    }
+
+    #[effects(pure)]
+    fn options(o: Option<i64>, p: Result<u8, bool>, q: &Option<Point>) -> (r: bool)
+        ensures r,
+    {
+        match o {
+            None => true,
+            Some(v) => v != 5,
+        }
+    }
+
+    #[effects(pure)]
+    fn results(p: Result<u8, bool>) -> (r: bool)
+        ensures r,
+    {
+        match p {
+            Ok(v) => true,
+            Err(e) => e,
+        }
+    }
+
+    #[effects(pure)]
+    fn shapes_in(v: &Vec<Shape>, w: &[Point], n: [Option<u8>; 6]) -> (r: usize)
+        ensures r != 6,
+    {
+        v.len() + w.len()
+    }
+
+    #[effects(pure)]
+    fn nodes(n: &Node, ns: &Vec<Node>) -> (r: i64)
+        ensures r != 6,
+    {
+        if n.kids.len() == 2 && ns.len() == 1 { 6 } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn rows(m: &Vec<Vec<u8>>, g: [[bool; 2]; 3]) -> (r: usize)
+        ensures r != 6,
+    {
+        if m.len() == 6 && m[5].len() == 5 && g[0][1] { 6 } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn text(s: &str, t: String, b: &[u8]) -> (r: usize)
+        ensures r != 6,
+    {
+        s.len() + t.len() + b.len()
+    }
+
+    #[effects(pure)]
+    fn generic<T: Copy + Eq>(a: T, b: T, v: &Vec<T>) -> (r: bool)
+        ensures r,
+    {
+        a == b
+    }
+
+    #[effects(pure)]
+    fn nothing() -> (r: i64)
+        ensures r == 1,
+    {
+        2
+    }
+
+    #[effects(pure)]
+    fn units(u: (), x: i64) -> (r: i64)
+        ensures r == 1,
+    {
+        2
+    }
+}

@@ -1,0 +1,55 @@
+#!/bin/sh
+# A stand-in for the solver in the differential cases `verify-fake*`
+# (tests/port/README.md): it answers `(check-sat)` by the words of FAKE_SEQ
+# in turn, starting over at the end, so that the proof driver's two sides
+# are led through the same answers whatever a real solver would say, and it
+# writes down how it was started and every line it is sent in `z3.log` of
+# the working directory, so that both sides are compared on every byte they
+# send. The count of answers is kept in `z3.seq` there: a process started
+# later goes on where the last one stopped.
+#
+#   unsat, sat   that answer
+#   unknown      `unknown`, with the reason of an incomplete theory
+#   canceled     `unknown`, with the reason of a query the rlimit ended
+#   timeout      `unknown`, with the reason of a query the backstop ended
+#   error        an error in place of an answer
+#   oom          ends with status 101, as at the memory limit
+#   die          ends with status 3
+#
+# `(get-info :rlimit)` answers ten units per answer given so far, and
+# `(get-value ..)` a model of seven values under the first canonical symbols.
+log=z3.log
+. "$FAKE_HOME/../../../scripts/toolchain.env"
+if [ "$1" = --version ]; then
+  echo "--version" >> "$log"
+  echo "Z3 version $Z3_VERSION - 64 bit"
+  exit 0
+fi
+echo "start $*" >> "$log"
+why=
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    "(check-sat)")
+      n=$(cat z3.seq 2>/dev/null || echo 0)
+      echo $((n + 1)) > z3.seq
+      set -- $FAKE_SEQ
+      i=$((n % $# + 1))
+      eval "word=\${$i}"
+      case "$word" in
+        unsat|sat) echo "$word" ;;
+        unknown) why='(incomplete (theory arithmetic))'; echo unknown ;;
+        canceled) why=canceled; echo unknown ;;
+        timeout) why=timeout; echo unknown ;;
+        error) echo '(error "line 1 column 1: not today")' ;;
+        oom) exit 101 ;;
+        die) exit 3 ;;
+      esac ;;
+    "(get-info :reason-unknown)") echo "(:reason-unknown \"$why\")" ;;
+    "(get-info :rlimit)") n=$(cat z3.seq 2>/dev/null || echo 0); echo "(:rlimit $((n * 10)))" ;;
+    "(get-value "*) echo '((|$0| 3) (|$1| (- 4)) (|$2| true) (|$3| 0) (|$4| 1) (|$5| 2) (|$6| 6))' ;;
+    "(exit)") exit 0 ;;
+    *) echo success ;;
+  esac
+done
+exit 0

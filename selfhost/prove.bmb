@@ -1,0 +1,818 @@
+#[summary("The proof gate's driver (port of the solving part of stage0 compiler/src/verify.rs: verify_impl, verify_trusting, verify_pass): which query follows which answer for each obligation of each definition, the proof cache, the diagnostics of a failed or undecided obligation with counterexamples and hints, the passes with and without trusted facts (ADR-0029 §2), and the status of each definition")]
+mod prove {
+    #[summary("An answer to a query: kind 0 is unsat, 1 sat, 2 unknown with the solver's reason in text, 3 an error with its text (a limit that ended the query, or a solver that cannot be read)")]
+    struct Ans { kind: u8, text: String }
+
+    #[summary("What one pass decided for one definition (stage0 DefResult): its status, its diagnostics, and its script when it was encoded")]
+    struct DefResult { status: Status, diags: Vec<diag::Diag>, script: Option<String> }
+
+    #[summary("How a run of the gate is asked: only names the definitions to prove when not all, bounded asks each undecided obligation once more with its inputs bounded (ADR-0108 §1), rlimit is the resource limit of a query")]
+    struct Opts { only: Option<Vec<String>>, bounded: bool, rlimit: u64 }
+
+    #[summary("What proving found (stage0 Outcome, the part `bmb verify` shows): the status of each definition in path order, and the script of each definition that was encoded, as it is sent to the solver before canonical symbols (a is the path, b the script)")]
+    struct Outcome { statuses: Vec<Status>, scripts: Vec<encode_terms::Pair> }
+
+    #[summary("The status of a definition (stage0 FnStatus): its obligations and how many failed; trust is how the proof stands when none failed (0 proved without trusted facts, 1 assumed with them, 2 an `#[external_body]`, which has no obligations); total is the solver's resource units over all obligations and max the largest single run; backstop counts the queries the wall-clock backstop ended")]
+    struct Status { path: String, obligations: usize, failed: usize, trust: u8, total: u64, max: u64, backstop: u64 }
+
+    #[summary("The count of one definition while its obligations are decided: how many failed, the resource units, the script, and whether the solver is down for the rest of the definition (it could not start, or could not be read)")]
+    struct Tally { failed: usize, total: u64, max: u64, script: String, down: bool }
+
+    #[summary("What the solver decided of one obligation: whether it is proved, the largest single run among its queries, the retries that ran (cache stage bits), and whether the solver can no longer be read")]
+    struct Verdict { proved: bool, ob_max: u64, stages: u8, broken: bool }
+
+    #[summary("Adds a query's resource units to the definition's total, and to its largest run and the obligation's when the query counts there")]
+    #[effects(pure)]
+    fn add(t: &mut Tally, v: &mut Verdict, used: Option<u64>, peak: bool) -> () {
+        match used {
+            None => {},
+            Some(u) => { t.total = t.total.saturating_add(u); if peak { if u > t.max { t.max = u; } if u > v.ob_max { v.ob_max = u; } } },
+        }
+    }
+
+    #[summary("The solver's answer to a query: `(reset)`, then each of parts, then check-sat (the chain of stage0 verify_pass). The first command that fails is the answer")]
+    #[effects(alloc, io, nondet)]
+    fn asked(sol: &mut solver::Solver, parts: &[String]) -> Ans {
+        match solver::run(sol, "(reset)") {
+            Ok(u) => {},
+            Err(e) => { return Ans { kind: 3, text: e }; },
+        }
+        for i in 0..parts.len()
+            invariant 0 <= i && i <= parts.len(),
+        {
+            match solver::run(sol, parts[i].as_str()) {
+                Ok(u2) => {},
+                Err(e2) => { return Ans { kind: 3, text: e2 }; },
+            }
+        }
+        match solver::check_sat(sol) {
+            Ok(a) => match a { solver::Answer::Unsat => Ans { kind: 0, text: String::new() }, solver::Answer::Sat => Ans { kind: 1, text: String::new() }, solver::Answer::Unknown(why) => Ans { kind: 2, text: why }, },
+            Err(e3) => Ans { kind: 3, text: e3 },
+        }
+    }
+
+    #[summary("Decides obligation o, number k of definition path, with the solver (the solving part of stage0 verify_pass for an obligation that is no sub-proof). In order: the query with bit operations abstracted, when there is one, whose unsat proves; the probe, whose unsat proves and whose sat is a model; with the probe undecided and revealed quantified definitions, their ground instances at the probe's share (unsat proves, sat refutes when the instances are complete); the full query; undecided with quantified definitions, the ground instances again under the full limit; still undecided and asked for, the search within small bounds, and when it finds nothing the query of its domain. A model is shown as a counterexample when its `f64` values are IEEE's (else one is searched for with IEEE arithmetic); an undecided obligation says why, with the solver's candidate model as unconfirmed. The texts of the queries asked after the first answer are appended to the script")]
+    #[effects(alloc, io, nondet)]
+    fn decide(sol: &mut solver::Solver, cx: &encode_query::Ctx, pg: &encode_spec::Prog, o: &encode_spec::Obl, k: usize, pl: &encode_query::Plan, inputs: &[encode_spec::Shown], path: &str, unit: &str, names: &table::Table<String>, opts: &Opts, t: &mut Tally, diags: &mut diag::Diags) -> Verdict {
+        let mut v: Verdict = Verdict { proved: false, ob_max: 0, stages: 0, broken: false };
+        let num: String = encode_terms::dec(k as u64);
+        let mut answer: Option<Ans> = None;
+        let mut answered: String = types::cat3(pl.base.as_str(), "\n", pl.q.as_str());
+        match &pl.abstracted {
+            None => {},
+            Some(ab) => { let mut ps: Vec<String> = Vec::new(); ps.push(ab.head.clone()); ps.push(ab.query.clone()); let a: Ans = asked(sol, ps.as_slice()); add(t, &mut v, spent(sol, &a), true); if a.kind == 0 { answer = Some(a.clone()); } },
+        }
+        let mut retry: Option<encode_query::Retry> = None;
+        let mut retried: bool = false;
+        if is_open(&answer) {
+            match &pl.probe {
+                None => {},
+                Some(pb) => { let mut ps1: Vec<String> = Vec::new(); ps1.push(pb.clone()); ps1.push(cx.limit.clone()); ps1.push(pl.q.clone()); let a1: Ans = asked(sol, ps1.as_slice()); add(t, &mut v, spent(sol, &a1), true); if a1.kind == 0 || a1.kind == 1 { answered = types::cat3(pb.as_str(), "\n", pl.q.as_str()); answer = Some(a1.clone()); } if is_open(&answer) && cx.parts.len() > 0 { retry = encode_query::retry_script(cx, pg, pl.q.as_str()); retried = true; match &retry { None => {}, Some(r) => { v.stages = v.stages | cache::early_retry(); t.script.push_str(early_retry_text(num.as_str(), r.head.as_str(), cx.limit.as_str(), r.inst.as_str(), pl.q.as_str()).as_str()); let mut ps2: Vec<String> = Vec::new(); ps2.push(r.head.clone()); ps2.push(cx.limit.clone()); ps2.push(types::cat2(r.inst.as_str(), pl.q.as_str())); let a2: Ans = asked(sol, ps2.as_slice()); add(t, &mut v, spent(sol, &a2), false); if a2.kind == 0 { answer = Some(a2.clone()); } else if a2.kind == 1 && r.complete { answered = types::cat4(r.head.as_str(), "\n", r.inst.as_str(), pl.q.as_str()); answer = Some(a2.clone()); } }, } } },
+            }
+        }
+        let mut last: Ans = match answer {
+            None => { let mut ps3: Vec<String> = Vec::new(); ps3.push(pl.base.clone()); ps3.push(pl.q.clone()); let a3: Ans = asked(sol, ps3.as_slice()); add(t, &mut v, spent(sol, &a3), true); a3 },
+            Some(got) => got,
+        };
+        if undecided(&last) && cx.parts.len() > 0 {
+            if !retried {
+                retry = encode_query::retry_script(cx, pg, pl.q.as_str());
+            }
+            match &retry {
+                None => {},
+                Some(r2) => { t.script.push_str(types::cat3("; retry of obligation ", num.as_str(), " with ground instances\n(reset)\n").as_str()); t.script.push_str(types::cat5(r2.head.as_str(), "\n", r2.inst.as_str(), pl.q.as_str(), "\n(check-sat)\n").as_str()); let mut ps4: Vec<String> = Vec::new(); ps4.push(r2.head.clone()); ps4.push(types::cat2(r2.inst.as_str(), pl.q.as_str())); let a4: Ans = asked(sol, ps4.as_slice()); add(t, &mut v, spent(sol, &a4), false); if a4.kind == 0 { last = a4; v.stages = v.stages | cache::late_retry(); } else if a4.kind == 1 && r2.complete { last = a4; answered = types::cat4(r2.head.as_str(), "\n", r2.inst.as_str(), pl.q.as_str()); } else if a4.kind == 1 && last.kind != 3 { last = Ans { kind: 2, text: String::from("a model exists for the instantiated definitions only") }; } },
+            }
+        }
+        let shown: Vec<encode_spec::Shown> = shown_inputs(inputs, o);
+        let mut bounded_none: bool = false;
+        let mut bounded_found: bool = false;
+        if undecided(&last) && opts.bounded {
+            let bounds: String = model::input_bounds(shown.as_slice());
+            if bounds.len() > 0 {
+                let share: u64 = if opts.rlimit / 10 >= 1 {
+                    opts.rlimit / 10
+                } else {
+                    1
+                };
+                let blimit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
+                t.script.push_str(types::cat3("; bounded search of obligation ", num.as_str(), "\n(reset)\n").as_str());
+                t.script.push_str(types::cat5(pl.base.as_str(), "\n", blimit.as_str(), "\n", pl.q.as_str()).as_str());
+                t.script.push_str(types::cat3("\n", bounds.as_str(), "(check-sat)\n").as_str());
+                let mut ps5: Vec<String> = Vec::new();
+                ps5.push(pl.base.clone());
+                ps5.push(blimit.clone());
+                ps5.push(types::cat3(pl.q.as_str(), "\n", bounds.as_str()));
+                let a5: Ans = asked(sol, ps5.as_slice());
+                add(t, &mut v, spent(sol, &a5), false);
+                if a5.kind == 1 {
+                    last = a5;
+                    answered = types::cat5(pl.base.as_str(), "\n", pl.q.as_str(), "\n", bounds.as_str());
+                    bounded_found = true;
+                } else if a5.kind == 0 {
+                    let dom: String = domain(cx, pg, o);
+                    let dom_rel: String = encode_query::relevant_axioms(cx.axioms.as_slice(), dom.as_str());
+                    let dom_base: String = match encode_query::probe_base(cx, dom.as_str(), dom_rel.as_str(), encode_query::Forms::SatProbe) {
+                        None => { let used: String = encode_query::needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(dom_rel.as_str(), cx.decls.as_str(), "\n", dom.as_str()).as_str()); types::cat4(cx.prefix.as_str(), used.as_str(), dom_rel.as_str(), cx.decls.as_str()) },
+                        Some(b) => b,
+                    };
+                    t.script.push_str(types::cat3("; bounded domain of obligation ", num.as_str(), "\n(reset)\n").as_str());
+                    t.script.push_str(types::cat5(dom_base.as_str(), "\n", blimit.as_str(), "\n", dom.as_str()).as_str());
+                    t.script.push_str(types::cat3("\n", bounds.as_str(), "(check-sat)\n").as_str());
+                    let mut ps6: Vec<String> = Vec::new();
+                    ps6.push(dom_base.clone());
+                    ps6.push(blimit.clone());
+                    ps6.push(types::cat3(dom.as_str(), "\n", bounds.as_str()));
+                    let a6: Ans = asked(sol, ps6.as_slice());
+                    add(t, &mut v, spent(sol, &a6), false);
+                    bounded_none = a6.kind == 1;
+                }
+            }
+        }
+        if last.kind == 0 {
+            v.proved = true;
+            return v;
+        }
+        let mut msg: String = types::cat4(o.msg.as_str(), " in `", path, "`");
+        if last.kind == 1 {
+            let confirmed: Result<(), String> = match model::f64_model_check(sol, answered.as_str()) {
+                Ok(u) => Ok(()),
+                Err(why) => { let exact: String = model::f64_interpreted(answered.as_str()); let mut ps7: Vec<String> = Vec::new(); ps7.push(exact.clone()); let a7: Ans = asked(sol, ps7.as_slice()); if a7.kind == 1 { model::f64_model_check(sol, exact.as_str()) } else if a7.kind == 0 { Err(String::from("it holds with IEEE 754 arithmetic, which only `by (bit_vector)` uses")) } else { Err(why) } },
+            };
+            match confirmed {
+                Ok(u1) => { let cex: String = model::counterexample(sol, shown.as_slice(), &pg.pr.t, names); if cex.len() > 0 { msg.push_str("; counterexample: "); msg.push_str(cex.as_str()); } if bounded_found { msg.push_str(" (found by the search within |integers| <= 8, lengths <= 4, after the solver could not decide)"); } let hint: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); let d: diag::Diag = with_hint(diag::new(o.code.as_str(), o.span, msg.as_str()), hint.as_slice(), false); let plain: bool = no_fix(&d); if plain && o.code == "E0820" { diags.push(diag::fix(d, "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it", None)); } else if plain && cex.len() == 0 { diags.push(diag::fix(d, model::no_inputs_help(o.code.as_str()).as_str(), None)); } else { diags.push(d); } },
+                Err(why2) => diags.push(f64_undecided(o, path, why2.as_str())),
+            }
+            return v;
+        }
+        if last.kind == 2 {
+            msg.push_str(types::cat3(": solver could not decide (", solver::unknown_reason(last.text.as_str(), solver::Asker::Gate).as_str(), ")").as_str());
+            let cex2: String = match model::f64_model_check(sol, answered.as_str()) {
+                Ok(u2) => model::counterexample(sol, shown.as_slice(), &pg.pr.t, names),
+                Err(why3) => String::new(),
+            };
+            if cex2.len() > 0 {
+                msg.push_str("; unconfirmed counterexample: ");
+                msg.push_str(cex2.as_str());
+            }
+            let bound: Option<diag::Bound> = if bounded_none {
+                Some(diag::Bound { b: 8, l: 4 })
+            } else {
+                None
+            };
+            let d2: diag::Diag = diag::Diag { code: String::from("E0811"), span: o.span, message: msg, fix: None, obligation: Some(o.code.clone()), bounded: bound };
+            let hint2: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit);
+            diags.push(with_hint(d2, hint2.as_slice(), has_nonlinear_product(types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str())));
+            return v;
+        }
+        match limit_of(&last) {
+            None => { diags.push(diag::new("E0812", o.span, types::cat2("solver error: ", last.text.as_str()).as_str())); v.broken = true; },
+            Some(why4) => { msg.push_str(types::cat3(": solver could not decide (", why4.as_str(), ")").as_str()); let bound2: Option<diag::Bound> = if bounded_none { Some(diag::Bound { b: 8, l: 4 }) } else { None }; diags.push(diag::Diag { code: String::from("E0811"), span: o.span, message: msg.clone(), fix: None, obligation: Some(o.code.clone()), bounded: bound2 }); },
+        }
+        v
+    }
+
+    #[summary("Decides the sub-proof q of obligation o with the solver (the solving part of stage0 verify_pass for `by (bit_vector)`): its own query over the options alone. A model is a counterexample over the assertion's variables when its `f64` values are IEEE's; `min` and `max` of zeros of both signs are not defined there")]
+    #[effects(alloc, io, nondet)]
+    fn decide_sub(sol: &mut solver::Solver, o: &encode_spec::Obl, q: &encode_sub::Query, base: &str, neg: &str, path: &str, t: &mut Tally, diags: &mut diag::Diags) -> Verdict {
+        let mut v: Verdict = Verdict { proved: false, ob_max: 0, stages: 0, broken: false };
+        let mut ps: Vec<String> = Vec::new();
+        ps.push(String::from(base));
+        ps.push(String::from(neg));
+        let a: Ans = asked(sol, ps.as_slice());
+        add(t, &mut v, spent(sol, &a), true);
+        if a.kind == 0 {
+            v.proved = true;
+            return v;
+        }
+        let mut msg: String = types::cat4(o.msg.as_str(), " in `", path, "`");
+        if a.kind == 1 {
+            let cex: String = match model::f64_model_check(sol, types::cat2(base, neg).as_str()) {
+                Ok(u) => model::sub_counterexample(sol, q),
+                Err(why) => String::new(),
+            };
+            if cex.len() > 0 {
+                msg.push_str("; counterexample: ");
+                msg.push_str(cex.as_str());
+            }
+            diags.push(diag::fix(diag::new("E0818", o.span, msg.as_str()), "the sub-proof sees only the assertion's variables, each over its whole type, and no fact of the path: write what it needs into the assertion as `p ==> e`", None));
+            return v;
+        }
+        let reason: Option<String> = if a.kind == 2 {
+            Some(solver::unknown_reason(a.text.as_str(), solver::Asker::Gate))
+        } else {
+            limit_of(&a)
+        };
+        match reason {
+            None => { diags.push(diag::new("E0812", o.span, types::cat2("solver error: ", a.text.as_str()).as_str())); v.broken = true; },
+            Some(why2) => { msg.push_str(types::cat3(": solver could not decide (", why2.as_str(), ")").as_str()); diags.push(diag::Diag { code: String::from("E0811"), span: o.span, message: msg.clone(), fix: None, obligation: Some(o.code.clone()), bounded: None }); },
+        }
+        v
+    }
+
+    #[summary("The assumptions of o asserted, with the instances of the validity functions and the struct facts: the query of o without its goal (the domain of stage0's bounded search)")]
+    #[effects(alloc)]
+    fn domain(cx: &encode_query::Ctx, pg: &encode_spec::Prog, o: &encode_spec::Obl) -> String {
+        let mut asserted: Vec<String> = Vec::new();
+        for i in 0..o.assumptions.len()
+            invariant 0 <= i && i <= o.assumptions.len(),
+        {
+            asserted.push(types::cat3("(assert ", o.assumptions[i].as_str(), ")"));
+        }
+        let d1: String = encode_query::valid_instances(cx.valid.as_slice(), encode_terms::join(asserted.as_slice(), "\n"));
+        types::cat3(d1.as_str(), "\n", encode_spec::struct_facts(pg, d1.as_str()).as_str())
+    }
+
+    #[summary("The script text of the ground-instance retry at the probe's share (stage0 early_retry_text): a stage of obligation num, with the probe's limit")]
+    #[effects(alloc)]
+    fn early_retry_text(num: &str, head: &str, limit: &str, inst: &str, q: &str) -> String {
+        let mut s: String = types::cat3("; retry of obligation ", num, " with ground instances at the probe's share\n(reset)\n");
+        s.push_str(types::cat4(head, "\n", limit, "\n").as_str());
+        s.push_str(types::cat3(inst, q, "\n(check-sat)\n").as_str());
+        s
+    }
+
+    #[summary("E0811 for an obligation whose `f64` counterexample IEEE 754 arithmetic does not confirm (stage0 f64_undecided): undecided, no counterexample")]
+    #[effects(alloc)]
+    fn f64_undecided(o: &encode_spec::Obl, path: &str, why: &str) -> diag::Diag {
+        let mut msg: String = types::cat4(o.msg.as_str(), " in `", path, "`: solver could not decide (`f64` operations are uninterpreted here; no IEEE 754 counterexample: ");
+        msg.push_str(why);
+        msg.push_str(")");
+        let d: diag::Diag = diag::Diag { code: String::from("E0811"), span: o.span, message: msg, fix: None, obligation: Some(o.code.clone()), bounded: None };
+        diag::fix(d, "outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it", None)
+    }
+
+    #[summary("Whether some term of text (commands) multiplies two factors that are no constants (stage0 has_nonlinear_product)")]
+    #[effects(alloc)]
+    fn has_nonlinear_product(text: &str) -> bool {
+        let cmds: Vec<String> = encode_spec::split_commands(text);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            match encode_terms::parse(cmds[i].as_str()) {
+                None => {},
+                Some(e) => { if nonlinear(&e, 100000) { return true; } },
+            }
+        }
+        false
+    }
+
+    #[summary("Spec fns the obligation mentions by name but whose definition the proof cannot see, as names to add to `#[uses(..)]` (stage0 hidden_predicates): every spec fn that is no instance whose symbol is in text and that the definition does not reveal, by its own name when it is of the definition's unit, by its path otherwise")]
+    #[effects(alloc)]
+    fn hidden_predicates(pg: &encode_spec::Prog, revealed: &[encode_terms::Pair], text: &str, unit: &str) -> Vec<String> {
+        let ix: encode_query::Index = encode_query::index(text);
+        let pre: String = types::cat2(unit, "::");
+        let mut out: Vec<String> = Vec::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { if body::is_spec(pg.defs.items[at].d.kind) && !pg.defs.items[at].inst { let path: String = pg.defs.key(n); let s: String = encode_decls::sym(path.as_str()); let mut shown: bool = false; for r in 0..revealed.len() invariant 0 <= r && r <= revealed.len(), { if revealed[r].a == s { shown = true; } } if !shown && is_found(&encode_query::first_at(&ix, text, s.as_str())) { let local: bool = encode_terms::starts_at(path.as_str(), 0, pre.as_str()) && !encode_query::has(lexer::cut(path.as_str(), pre.len(), path.len()).as_str(), "::"); if local { out.push(lexer::cut(path.as_str(), pre.len(), path.len())); } else { out.push(path.clone()); } } } },
+            }
+        }
+        out
+    }
+
+    #[summary("Whether b is an ASCII letter, digit or underscore")]
+    #[effects(pure)]
+    fn ident(b: u8) -> bool {
+        b >= 48 && b <= 57 || b >= 65 && b <= 90 || b >= 97 && b <= 122 || b == 95
+    }
+
+    #[summary("Whether the slot holds no solver")]
+    #[effects(pure)]
+    fn idle(slot: &Option<solver::Solver>) -> bool {
+        match slot {
+            None => true,
+            Some(s) => false,
+        }
+    }
+
+    #[summary("Whether e is a constant factor (stage0's constant of has_nonlinear_product): a numeral, or the negation of one")]
+    #[effects(pure)]
+    fn is_constant(e: &encode_terms::Sexp, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => model::digits(a.as_str()),
+            encode_terms::Sexp::List(xs) => xs.len() == 2 && encode_query::atom_is(&xs[0], "-") && is_constant(&xs[1], f - 1),
+        }
+    }
+
+    #[summary("Whether a search found a position")]
+    #[effects(pure)]
+    fn is_found(o: &Option<usize>) -> bool {
+        match o {
+            None => false,
+            Some(at) => true,
+        }
+    }
+
+    #[summary("Whether no position is held")]
+    #[effects(pure)]
+    fn is_none(o: &Option<usize>) -> bool {
+        match o {
+            None => true,
+            Some(at) => false,
+        }
+    }
+
+    #[summary("Whether no answer stands yet")]
+    #[effects(pure)]
+    fn is_open(a: &Option<Ans>) -> bool {
+        match a {
+            None => true,
+            Some(x) => false,
+        }
+    }
+
+    #[summary("The proof cache's key of a query text when there is a cache, empty text without one (stage0 computes a key only with a cache)")]
+    #[effects(alloc, io, nondet)]
+    fn key_of(store: &Option<cache::ProofCache>, text: &str) -> String {
+        match store {
+            None => String::new(),
+            Some(c) => cache::key(text, solver::Asker::Gate),
+        }
+    }
+
+    #[summary("Closes the solver of a slot, if it holds one, and empties the slot: what stage0 does by dropping the solver")]
+    #[effects(alloc, io, nondet)]
+    fn let_go(slot: &mut Option<solver::Solver>) -> () {
+        match std::mem::replace(slot, None) {
+            None => {},
+            Some(held) => { let mut sol: solver::Solver = held; let status: Option<i32> = solver::close(&mut sol); },
+        }
+    }
+
+    #[summary("The reason in an undecided diagnostic when the answer is an error that is a limit, None for any other error")]
+    #[effects(alloc, io, nondet)]
+    fn limit_of(a: &Ans) -> Option<String> {
+        if a.kind != 3 {
+            return None;
+        }
+        solver::limit_reason(a.text.as_str(), solver::Asker::Gate)
+    }
+
+    #[summary("The proof the cache holds under key, when there is a cache")]
+    #[effects(alloc)]
+    fn lookup(store: &mut Option<cache::ProofCache>, key: &str) -> Option<cache::Entry> {
+        match store {
+            None => None,
+            Some(c) => cache::get(c, key),
+        }
+    }
+
+    #[summary("Whether d has no fix")]
+    #[effects(pure)]
+    fn no_fix(d: &diag::Diag) -> bool {
+        match &d.fix {
+            None => true,
+            Some(f) => false,
+        }
+    }
+
+    #[summary("Whether e holds a product of two factors that are no constants")]
+    #[effects(pure)]
+    fn nonlinear(e: &encode_terms::Sexp, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => false,
+            encode_terms::Sexp::List(xs) => { if xs.len() > 0 && encode_query::atom_is(&xs[0], "*") { let mut n: usize = 0; for i in 1..xs.len() invariant 1 <= i && i <= xs.len() && n <= i, { if !is_constant(&xs[i], 100000) { n = n + 1; } } if n >= 2 { return true; } } for k in 0..xs.len() invariant 0 <= k && k <= xs.len(), { if nonlinear(&xs[k], f - 1) { return true; } } false },
+        }
+    }
+
+    #[summary("Obligation k of an encoded definition that is no sub-proof (one obligation of stage0 verify_pass): its script; a proof the cache holds counts with the units and the retries of the run that stored it, and is not asked; otherwise a solver is started when there is none (a start that fails is E0812 at the definition's name, once per definition) and decides it (decide), and a proof is stored. Without a solver the obligation fails")]
+    #[effects(alloc, io, nondet)]
+    fn obligation(slot: &mut Option<solver::Solver>, z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, e: &encode_query::Encoded, pg: &encode_spec::Prog, k: usize, path: &str, unit: &str, at: source::Span, names: &table::Table<String>, opts: &Opts, t: &mut Tally, diags: &mut diag::Diags) -> ()
+        requires k < e.obls.len(),
+    {
+        let pl: encode_query::Plan = encode_query::plan(&e.cx, pg, &e.obls[k], k);
+        t.script.push_str(pl.script.as_str());
+        let key: String = key_of(store, types::cat3(pl.base.as_str(), "\n", pl.q.as_str()).as_str());
+        match lookup(store, key.as_str()) {
+            None => {},
+            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } if hit.stages != 0 { match encode_query::retry_script(&e.cx, pg, pl.q.as_str()) { None => {}, Some(r) => { let num: String = encode_terms::dec(k as u64); if hit.stages % 2 == 1 { t.script.push_str(early_retry_text(num.as_str(), r.head.as_str(), e.cx.limit.as_str(), r.inst.as_str(), pl.q.as_str()).as_str()); } if hit.stages / 2 % 2 == 1 { t.script.push_str(types::cat3("; retry of obligation ", num.as_str(), " with ground instances\n(reset)\n").as_str()); t.script.push_str(types::cat5(r.head.as_str(), "\n", r.inst.as_str(), pl.q.as_str(), "\n(check-sat)\n").as_str()); } }, } } return; },
+        }
+        start(slot, z3, at, t, diags);
+        match std::mem::replace(slot, None) {
+            None => { t.failed = t.failed.saturating_add(1); },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+        }
+    }
+
+    #[summary("One pass over the program's definitions (stage0 verify_pass), in path order: an instance is proved through its generic definition, an `#[external_body]` is checked and not proved (ADR-0029 §2), and every other definition that has obligations is encoded and each obligation decided on a reset solver that holds only the definition's base, so no result depends on another's (ADR-0017 §5). One solver process serves every definition of a pass; it is started at the first obligation the cache does not hold, replaced when too old to take on another definition, and closed at the end of the pass. trust is the pass of the gate and only the definitions to prove when not all. A solver that is missing or of another version is E0812 at the first definition's name")]
+    #[effects(alloc, io, nondet)]
+    fn pass(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, opts: &Opts, only: &Option<Vec<String>>, trust: &Option<encode_exec::Trust>, diags: &mut diag::Diags) -> Outcome {
+        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new() };
+        let mut held: Option<solver::Solver> = None;
+        let first: source::Span = match pg.defs.nth(0) {
+            None => source::Span { file: 0, lo: 0, hi: 0 },
+            Some(at0) => pg.defs.items[at0].d.name.span,
+        };
+        match toolchain::check_z3(z3) {
+            Ok(version) => {},
+            Err(why) => diags.push(diag::new("E0812", first, types::cat2("proof gate cannot run: ", why.as_str()).as_str())),
+        }
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); let wanted: bool = match only { None => true, Some(names) => types::has(names.as_slice(), path.as_str()), }; if !pg.defs.items[at].inst && wanted { if types::has(ck.b.external.as_slice(), path.as_str()) { out.statuses.push(Status { path: path.clone(), obligations: 0, failed: 0, trust: 2, total: 0, max: 0, backstop: 0 }); } else { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => { match encode_query::encoded(pg, path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, opts.rlimit, opts.bounded) { None => {}, Some(made) => { let e: encode_query::Encoded = made; if !reusable(&held) { let_go(&mut held); } let mut t: Tally = Tally { failed: 0, total: 0, max: 0, script: String::new(), down: false }; for k in 0..e.obls.len() invariant 0 <= k && k <= e.obls.len(), { match &e.obls[k].sub { None => obligation(&mut held, z3, store, &e, pg, k, path.as_str(), pg.defs.items[at].unit.as_str(), pg.defs.items[at].d.name.span, &ck.names, opts, &mut t, diags), Some(sq) => { match sq { Ok(q) => sub_obligation(&mut held, z3, store, &e, q, k, path.as_str(), pg.defs.items[at].d.name.span, &mut t, diags), Err(refused) => { t.failed = t.failed.saturating_add(1); let d: diag::Diag = diag::new("E0818", e.obls[k].span, types::cat4("the assertion has no bit-vector translation in `", path.as_str(), "`: ", refused.why.as_str()).as_str()); if refused.hidden.len() == 0 { diags.push(diag::fix(d, "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, `/` and `%` (integers; a divisor that may be zero becomes an antecedent), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`", None)); } else { diags.push(with_hint(d, refused.hidden.as_slice(), false)); } }, } }, } } let backstop: u64 = timeouts(&mut held); out.statuses.push(Status { path: path.clone(), obligations: e.obls.len(), failed: t.failed, trust: 0, total: t.total, max: t.max, backstop: backstop }); out.scripts.push(encode_terms::Pair { a: path.clone(), b: t.script.clone() }); }, } }, } } } },
+            }
+        }
+        let_go(&mut held);
+        out
+    }
+
+    #[summary("Stores a proof under key, when there is a cache")]
+    #[effects(alloc)]
+    fn remember(store: &mut Option<cache::ProofCache>, key: &str, total: u64, max: u64, stages: u8) -> () {
+        match store {
+            None => {},
+            Some(c) => cache::insert(c, key, total, max, stages),
+        }
+    }
+
+    #[summary("Whether the solver of the slot may take on another definition; an empty slot may")]
+    #[effects(io, nondet)]
+    fn reusable(slot: &Option<solver::Solver>) -> bool {
+        match slot {
+            None => true,
+            Some(s) => solver::reusable(s),
+        }
+    }
+
+    #[summary("Proves the definitions of a checked program, or only those opts names (stage0 verify_impl): one pass when no definition can reach an escape, the passes with and without trusted facts otherwise (ADR-0029). Failures go to diags, with generated items by the names a reader knows. store is the proof cache when there is one. Every pass closes its solver, so none is left when this returns")]
+    #[effects(alloc, io, nondet)]
+    fn run(ck: &body::Checked, opts: &Opts, store: &mut Option<cache::ProofCache>, diags: &mut diag::Diags) -> Outcome {
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(&pg);
+        let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let from: usize = diags.items.len();
+        let out: Outcome = if ck.untrusted.len() == 0 {
+            let none: Option<encode_exec::Trust> = None;
+            pass(ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, store, opts, &opts.only, &none, diags)
+        } else {
+            trusting(ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, store, opts, diags)
+        };
+        if ck.names.len() > 0 {
+            for i in from..diags.items.len()
+                invariant from <= i,
+            {
+                if i < diags.items.len() {
+                    let d: diag::Diag = diags.items[i].clone();
+                    let fix: Option<diag::Fix> = match &d.fix {
+                        None => None,
+                        Some(f) => Some(diag::Fix { message: shown(&ck.names, f.message.as_str()), replacement: f.replacement.clone() }),
+                    };
+                    diags.items[i] = diag::Diag { code: d.code.clone(), span: d.span, message: shown(&ck.names, d.message.as_str()), fix: fix, obligation: d.obligation.clone(), bounded: d.bounded };
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("text with the items the lowering of function values made by the names a reader knows (stage0 Tables::shown). names maps a made path to its name. A method `<made as tr>::m` of a closure (its name ends in a brace) is the closure for `call`, its `requires` for `pre`, its `ensures` for `post`; of a function item it is `<name as tr>::m` with the trait by its name too. Then the bare paths, longest first so that one is not a prefix of another, where no identifier character follows")]
+    #[effects(alloc)]
+    fn shown(names: &table::Table<String>, text: &str) -> String {
+        if names.len() == 0 {
+            return String::from(text);
+        }
+        let mut out: String = String::from(text);
+        let mut order: Vec<usize> = Vec::new();
+        for n in 0..names.len()
+            invariant 0 <= n,
+        {
+            match names.nth(n) {
+                None => {},
+                Some(at) => { let made: String = names.key(n); let name: String = names.items[at].clone(); let head: String = types::cat3("<", made.as_str(), " as "); let mut fuel: usize = 1000000; let mut going: bool = true; while going && fuel > 0 invariant 0 <= fuel, decreases fuel, { fuel = fuel - 1; going = false; match encode_query::find(out.as_str(), head.as_str(), 0) { None => {}, Some(found) => { let rest_at: usize = found.saturating_add(head.len()); match encode_query::find(out.as_str(), ">::", rest_at) { None => {}, Some(close) => { let tr: String = lexer::cut(out.as_str(), rest_at, close); let mut end: usize = close.saturating_add(3); let m_at: usize = end; while end < out.len() && ident(out.as_bytes()[end]) invariant m_at <= end, decreases out.len() - end, { end = end + 1; } let m: String = lexer::cut(out.as_str(), m_at, end); let with: String = if name.len() > 0 && name.as_bytes()[name.len() - 1] == 125 { if m.as_str() == "call" { name.clone() } else if m.as_str() == "pre" { types::cat2(name.as_str(), "::requires") } else if m.as_str() == "post" { types::cat2(name.as_str(), "::ensures") } else { types::cat3(name.as_str(), "::", m.as_str()) } } else { let trait_name: String = match names.find(tr.as_str()) { None => tr.clone(), Some(ti) => { if ti < names.items.len() { names.items[ti].clone() } else { tr.clone() } }, }; let mut w: String = types::cat5("<", name.as_str(), " as ", trait_name.as_str(), ">::"); w.push_str(m.as_str()); w }; out = types::cat3(lexer::cut(out.as_str(), 0, found).as_str(), with.as_str(), lexer::cut(out.as_str(), end, out.len()).as_str()); going = true; }, } }, } } let mut placed: Vec<usize> = Vec::new(); let mut put: bool = false; for i in 0..order.len() invariant 0 <= i && i <= order.len(), { if !put && names.key(order[i]).len() < made.len() { placed.push(n); put = true; } placed.push(order[i]); } if !put { placed.push(n); } order = placed; },
+            }
+        }
+        for b in 0..order.len()
+            invariant 0 <= b && b <= order.len(),
+        {
+            match names.nth(order[b]) {
+                None => {},
+                Some(at2) => { let made2: String = names.key(order[b]); let name2: String = names.items[at2].clone(); let mut from: usize = 0; let mut fuel2: usize = 1000000; let mut going2: bool = made2.len() > 0; while going2 && fuel2 > 0 invariant 0 <= fuel2, decreases fuel2, { fuel2 = fuel2 - 1; match encode_query::find(out.as_str(), made2.as_str(), from) { None => { going2 = false; }, Some(found2) => { let end2: usize = found2.saturating_add(made2.len()); if end2 < out.len() && ident(out.as_bytes()[end2]) { from = end2; } else { out = types::cat3(lexer::cut(out.as_str(), 0, found2).as_str(), name2.as_str(), lexer::cut(out.as_str(), end2, out.len()).as_str()); from = found2.saturating_add(name2.len()); } }, } } },
+            }
+        }
+        out
+    }
+
+    #[summary("The values a counterexample of o shows (stage0 shown_inputs): the inputs, and the value an invariant obligation is about")]
+    #[effects(alloc)]
+    fn shown_inputs(inputs: &[encode_spec::Shown], o: &encode_spec::Obl) -> Vec<encode_spec::Shown> {
+        let mut out: Vec<encode_spec::Shown> = Vec::new();
+        for i in 0..inputs.len()
+            invariant 0 <= i && i <= inputs.len(),
+        {
+            out.push(inputs[i].clone());
+        }
+        match &o.shown {
+            None => {},
+            Some(s) => out.push(s.clone()),
+        }
+        out
+    }
+
+    #[summary("The resource units the query that got answer a spent, when it answered and the solver says (stage0 reads rlimit_used after an answer that is no error)")]
+    #[effects(alloc, io, nondet)]
+    fn spent(sol: &mut solver::Solver, a: &Ans) -> Option<u64> {
+        if a.kind == 3 {
+            return None;
+        }
+        match solver::rlimit_used(sol) {
+            Ok(u) => Some(u),
+            Err(e) => None,
+        }
+    }
+
+    #[summary("Splits a pass's outcome and diagnostics by definition (stage0 split_pass): each status with the script of its definition, and each diagnostic with the first definition in path order that has a status and whose text holds its position; the diagnostics outside every such definition go to rest")]
+    #[effects(alloc)]
+    fn split(o: &Outcome, d: &[diag::Diag], spans: &table::Table<source::Span>, rest: &mut Vec<diag::Diag>) -> table::Table<DefResult> {
+        let mut out: table::Table<DefResult> = table::new::<DefResult>();
+        for i in 0..o.statuses.len()
+            invariant 0 <= i && i <= o.statuses.len(),
+        {
+            let mut script: Option<String> = None;
+            for s in 0..o.scripts.len()
+                invariant 0 <= s && s <= o.scripts.len(),
+            {
+                if o.scripts[s].a == o.statuses[i].path {
+                    script = Some(o.scripts[s].b.clone());
+                }
+            }
+            out.insert(o.statuses[i].path.as_str(), DefResult { status: o.statuses[i].clone(), diags: Vec::new(), script: script });
+        }
+        for x in 0..d.len()
+            invariant 0 <= x && x <= d.len(),
+        {
+            let mut home: Option<usize> = None;
+            for n in 0..spans.len()
+                invariant 0 <= n,
+            {
+                match spans.nth(n) {
+                    None => {},
+                    Some(at) => { if is_none(&home) && spans.items[at].file == d[x].span.file && spans.items[at].lo <= d[x].span.lo && d[x].span.hi <= spans.items[at].hi { home = out.find(spans.key(n).as_str()); } },
+                }
+            }
+            match home {
+                None => rest.push(d[x].clone()),
+                Some(slot) => { if slot < out.items.len() { out.items[slot].diags.push(d[x].clone()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("Starts a solver in an empty slot unless the solver is down for this definition (the start of stage0 verify_pass). A start that fails is E0812 at the definition's name, and the solver is down for the rest of the definition")]
+    #[effects(alloc, io, nondet)]
+    fn start(slot: &mut Option<solver::Solver>, z3: &mut toolchain::Z3, at: source::Span, t: &mut Tally, diags: &mut diag::Diags) -> () {
+        if !idle(slot) || t.down {
+            return;
+        }
+        match solver::start(solver::Asker::Gate, z3) {
+            Ok(s) => { *slot = Some(s); },
+            Err(e) => { diags.push(diag::new("E0812", at, types::cat2("solver error: ", e.as_str()).as_str())); t.down = true; },
+        }
+    }
+
+    #[summary("The status rows `bmb verify` prints (stage0 status_lines): per definition its verdict, obligations, failures and resource units. A proof with trusted facts says so (ADR-0029 §5), and a definition whose queries the backstop ended says how many")]
+    #[effects(alloc)]
+    fn status_lines(statuses: &[Status]) -> String {
+        let mut out: String = String::new();
+        for i in 0..statuses.len()
+            invariant 0 <= i && i <= statuses.len(),
+        {
+            out.push_str("{\"def\":");
+            std::json::push_string(&mut out, statuses[i].path.as_str());
+            if statuses[i].failed == 0 {
+                out.push_str(",\"status\":\"verified\",\"obligations\":");
+            } else {
+                out.push_str(",\"status\":\"failed\",\"obligations\":");
+            }
+            std::num::push_u64(&mut out, statuses[i].obligations as u64);
+            out.push_str(",\"failed\":");
+            std::num::push_u64(&mut out, statuses[i].failed as u64);
+            out.push_str(",\"rlimit\":");
+            std::num::push_u64(&mut out, statuses[i].total);
+            out.push_str(",\"rlimit_max\":");
+            std::num::push_u64(&mut out, statuses[i].max);
+            if statuses[i].failed == 0 && statuses[i].trust == 1 {
+                out.push_str(",\"trust\":\"assumed\"");
+            }
+            if statuses[i].failed == 0 && statuses[i].trust == 2 {
+                out.push_str(",\"trust\":\"external\"");
+            }
+            if statuses[i].backstop > 0 {
+                out.push_str(",\"backstop\":");
+                std::num::push_u64(&mut out, statuses[i].backstop);
+            }
+            out.push_str("}\n");
+        }
+        out
+    }
+
+    #[summary("Obligation k of an encoded definition that is a sub-proof with the translation q (one `by (bit_vector)` obligation of stage0 verify_pass): its own query over the options, through the proof cache and the solver as any other obligation")]
+    #[effects(alloc, io, nondet)]
+    fn sub_obligation(slot: &mut Option<solver::Solver>, z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, e: &encode_query::Encoded, q: &encode_sub::Query, k: usize, path: &str, at: source::Span, t: &mut Tally, diags: &mut diag::Diags) -> ()
+        requires k < e.obls.len(),
+    {
+        let base: String = types::cat3(e.cx.header.as_str(), "\n", encode_query::sub_base(q).as_str());
+        let neg: String = encode_query::sub_goal(q);
+        t.script.push_str(types::cat5("; obligation ", encode_terms::dec(k as u64).as_str(), ": ", e.obls[k].code.as_str(), " ").as_str());
+        t.script.push_str(types::cat5(e.obls[k].msg.as_str(), " (sub-proof)\n(reset)\n", base.as_str(), neg.as_str(), "\n(check-sat)\n").as_str());
+        let key: String = key_of(store, types::cat3(base.as_str(), "\n", neg.as_str()).as_str());
+        match lookup(store, key.as_str()) {
+            None => {},
+            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } return; },
+        }
+        start(slot, z3, at, t, diags);
+        match std::mem::replace(slot, None) {
+            None => { t.failed = t.failed.saturating_add(1); },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide_sub(&mut sol, &e.obls[k], q, base.as_str(), neg.as_str(), path, t, diags); if v.proved { remember(store, key.as_str(), t.total.saturating_sub(before), t.total.saturating_sub(before), 0); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+        }
+    }
+
+    #[summary("The queries the backstop ended since the last call, 0 without a solver (stage0 take_timeouts at the end of a definition)")]
+    #[effects(pure)]
+    fn timeouts(slot: &mut Option<solver::Solver>) -> u64 {
+        match slot {
+            None => 0,
+            Some(s) => solver::take_timeouts(s),
+        }
+    }
+
+    #[summary("The proof gate with trusted facts (stage0 verify_trusting, ADR-0029 §2). The first pass proves every definition without them: no `assume`, no `ensures` of a callee that is not proved (at first the `#[external_body]` ones). A definition that fails there and can reach an escape is proved again with every fact: assumed if that proves it, failed otherwise (its diagnostics are that pass's). The assumed ones join the untrusted callees, and the definitions proved before that can reach an escape are proved again without trusted facts, until the set of untrusted callees no longer grows. The diagnostics are those outside every definition from the first pass, then each definition's in path order")]
+    #[effects(alloc, io, nondet)]
+    fn trusting(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, opts: &Opts, diags: &mut diag::Diags) -> Outcome {
+        let mut spans: table::Table<source::Span> = table::new::<source::Span>();
+        for i in 0..pg.defs.len()
+            invariant 0 <= i,
+        {
+            match pg.defs.nth(i) {
+                None => {},
+                Some(d0) => { if !pg.defs.items[d0].inst { spans.insert(pg.defs.key(i).as_str(), pg.defs.items[d0].d.span); } },
+            }
+        }
+        let mut untrusted: Vec<String> = encode_query::trust_closed(ck.b.external.as_slice());
+        let mut rest: Vec<diag::Diag> = Vec::new();
+        let mut da: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let ta: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: false, untrusted: untrusted.clone() });
+        let a: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &opts.only, &ta, &mut da);
+        let mut result: table::Table<DefResult> = split(&a, da.items.as_slice(), &spans, &mut rest);
+        let mut trusted_pass: Vec<String> = Vec::new();
+        let mut fuel: usize = pg.defs.len().saturating_mul(2).saturating_add(2);
+        let mut going: bool = true;
+        while going && fuel > 0
+            invariant 0 <= fuel,
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut cands: Vec<String> = Vec::new();
+            for n in 0..result.len()
+                invariant 0 <= n,
+            {
+                match result.nth(n) {
+                    None => {},
+                    Some(at) => { let p: String = result.key(n); if result.items[at].status.failed > 0 && types::has(ck.untrusted.as_slice(), p.as_str()) && !types::has(trusted_pass.as_slice(), p.as_str()) { cands.push(p.clone()); } },
+                }
+            }
+            if cands.len() > 0 {
+                let mut db: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+                let tb: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: true, untrusted: untrusted.clone() });
+                let only_b: Option<Vec<String>> = Some(cands.clone());
+                let b: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &only_b, &tb, &mut db);
+                let mut dropped: Vec<diag::Diag> = Vec::new();
+                let rb: table::Table<DefResult> = split(&b, db.items.as_slice(), &spans, &mut dropped);
+                for n2 in 0..rb.len()
+                    invariant 0 <= n2,
+                {
+                    match rb.nth(n2) {
+                        None => {},
+                        Some(at2) => { let p2: String = rb.key(n2); let mut r: DefResult = rb.items[at2].clone(); if r.status.failed == 0 { r.status.trust = 1; } trusted_pass.push(p2.clone()); result.insert(p2.as_str(), r); },
+                    }
+                }
+            }
+            let mut not_proved: Vec<String> = Vec::new();
+            for n3 in 0..result.len()
+                invariant 0 <= n3,
+            {
+                match result.nth(n3) {
+                    None => {},
+                    Some(at3) => { if result.items[at3].status.failed == 0 && result.items[at3].status.trust != 0 { not_proved.push(result.key(n3)); } },
+                }
+            }
+            for x in 0..ck.b.external.len()
+                invariant 0 <= x && x <= ck.b.external.len(),
+            {
+                not_proved.push(ck.b.external[x].clone());
+            }
+            let grown: Vec<String> = encode_query::trust_closed(not_proved.as_slice());
+            let mut news: bool = false;
+            for g in 0..grown.len()
+                invariant 0 <= g && g <= grown.len(),
+            {
+                if !types::has(untrusted.as_slice(), grown[g].as_str()) {
+                    news = true;
+                    untrusted.push(grown[g].clone());
+                }
+            }
+            going = false;
+            if news {
+                untrusted = body::sorted_set(untrusted.as_slice());
+                let mut again: Vec<String> = Vec::new();
+                for n4 in 0..result.len()
+                    invariant 0 <= n4,
+                {
+                    match result.nth(n4) {
+                        None => {},
+                        Some(at4) => { let p4: String = result.key(n4); if result.items[at4].status.failed == 0 && result.items[at4].status.trust == 0 && types::has(ck.untrusted.as_slice(), p4.as_str()) && !types::has(ck.b.external.as_slice(), p4.as_str()) { again.push(p4.clone()); } },
+                    }
+                }
+                if again.len() > 0 {
+                    let mut dc: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+                    let tc: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: false, untrusted: untrusted.clone() });
+                    let only_c: Option<Vec<String>> = Some(again.clone());
+                    let c: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &only_c, &tc, &mut dc);
+                    let mut dropped2: Vec<diag::Diag> = Vec::new();
+                    let rc: table::Table<DefResult> = split(&c, dc.items.as_slice(), &spans, &mut dropped2);
+                    for n5 in 0..rc.len()
+                        invariant 0 <= n5,
+                    {
+                        match rc.nth(n5) {
+                            None => {},
+                            Some(at5) => result.insert(rc.key(n5).as_str(), rc.items[at5].clone()),
+                        }
+                    }
+                    going = true;
+                }
+            }
+        }
+        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new() };
+        for i2 in 0..rest.len()
+            invariant 0 <= i2 && i2 <= rest.len(),
+        {
+            diags.push(rest[i2].clone());
+        }
+        for n6 in 0..result.len()
+            invariant 0 <= n6,
+        {
+            match result.nth(n6) {
+                None => {},
+                Some(at6) => { for j in 0..result.items[at6].diags.len() invariant 0 <= j && j <= result.items[at6].diags.len(), { diags.push(result.items[at6].diags[j].clone()); } match &result.items[at6].script { None => {}, Some(s) => out.scripts.push(encode_terms::Pair { a: result.key(n6), b: s.clone() }), } out.statuses.push(result.items[at6].status.clone()); },
+            }
+        }
+        out
+    }
+
+    #[summary("Whether a query's answer is undecided (stage0 undecided): unknown, or a limit ended the query before it answered. What follows an undecided query (the ground-instance retry, the bounded search) follows either")]
+    #[effects(alloc, io, nondet)]
+    fn undecided(a: &Ans) -> bool {
+        if a.kind == 2 {
+            return true;
+        }
+        match limit_of(a) {
+            None => false,
+            Some(why) => true,
+        }
+    }
+
+    #[summary("Attaches the deterministic hints that apply to a failed obligation (stage0 with_hint): the spec fns it sees only by name, and nonlinear arithmetic")]
+    #[effects(alloc)]
+    fn with_hint(d: diag::Diag, hidden: &[String], nonlinear_product: bool) -> diag::Diag {
+        let mut parts: Vec<String> = Vec::new();
+        if hidden.len() > 0 {
+            let mut ticked: Vec<String> = Vec::new();
+            for i in 0..hidden.len()
+                invariant 0 <= i && i <= hidden.len(),
+            {
+                ticked.push(types::cat3("`", hidden[i].as_str(), "`"));
+            }
+            let whose: String = if hidden.len() == 1 {
+                String::from("its definition")
+            } else {
+                String::from("their definitions")
+            };
+            let mut s: String = types::cat5("the proof sees ", encode_terms::join(ticked.as_slice(), ", ").as_str(), " only by name; if the failure depends on ", whose.as_str(), ", add to #[uses(");
+            s.push_str(encode_terms::join(hidden, ", ").as_str());
+            s.push_str(")]");
+            parts.push(s);
+        }
+        if nonlinear_product {
+            parts.push(String::from("the obligation multiplies variables (nonlinear arithmetic), which the solver cannot always decide; state the needed fact as a precondition or as the postcondition of a helper, or bound the operands"));
+        }
+        if parts.len() == 0 {
+            return d;
+        }
+        diag::fix(d, encode_terms::join(parts.as_slice(), "; also, ").as_str(), None)
+    }
+}

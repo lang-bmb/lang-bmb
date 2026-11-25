@@ -1,0 +1,42 @@
+#[summary("Nonlinear obligations the solver does not decide: the search within small bounds")]
+mod nb {
+    #[effects(pure)]
+    fn h(x: i64, y: i64, z: i64) -> i64
+        requires 100 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,
+        ensures x * x * x + y * y * y != z * z * z,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn f(x: i64, y: i64, z: i64) -> i64
+        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,
+        ensures x * x * x + y * y * y != z * z * z,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn g(x: i64, y: i64, z: i64) -> i64
+        requires 0 < x && x < 1000 && 0 < y && y < 1000 && 0 < z && z < 1000,
+        ensures x * x * x + y * y * y + 2 != z * z * z * x,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn in_slice(a: &[i64], b: &Vec<i64>, c: [i64; 3]) -> i64
+        requires a.len() > 2 && b.len() > 1 && 0 < a[0] && a[0] < 1000 && 0 < a[1] && a[1] < 1000 && 0 < b[0] && b[0] < 1000,
+        ensures a[0] * a[0] * a[0] + a[1] * a[1] * a[1] + 2 != b[0] * b[0] * b[0] * a[0],
+    {
+        c[0]
+    }
+
+    #[effects(pure)]
+    fn in_rows(m: &Vec<Vec<i64>>, flag: bool) -> i64
+        requires m.len() > 1 && m[0].len() > 2 && 0 < m[0][0] && m[0][0] < 1000 && 0 < m[0][1] && m[0][1] < 1000 && 0 < m[0][2] && m[0][2] < 1000,
+        ensures m[0][0] * m[0][0] * m[0][0] + m[0][1] * m[0][1] * m[0][1] != m[0][2] * m[0][2] * m[0][2],
+    {
+        0
+    }
+}

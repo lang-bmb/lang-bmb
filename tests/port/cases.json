@@ -1691,6 +1691,558 @@
         ],
         "chunk": 2
       }
+    },
+    {
+      "name": "verify",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-bounded",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/nb.bmb",
+          "tests/port/prove/series.bmb",
+          "tests/verify/fail/floats.bmb",
+          "tests/verify/fail/nonlinear.bmb",
+          "tests/verify/fail/proofs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-limits",
+      "component": "C6",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/fail/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-cache",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/series.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/verify/pass/const_division.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/fail/proofs.bmb",
+          "tests/run/escapes.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-cache-damaged",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/damaged.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/damaged.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-ends",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/errors.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/errors.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "verify-fake-unknown",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-retry",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-models",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-limits",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-broken",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-memory",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-fake-cache",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unknown unsat unsat",
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unknown unsat unsat",
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-solver-old",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-solver-dead",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-solver-full",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-solver-mute",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-solver-vanish",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }
