@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """The gate's own scripts: scripts/fresh.sh fails on
 a stale generated document within seconds and names it, the gate lock lets
-one holder run at a time, and scripts/tree_state.py sees what a run left."""
+one holder run at a time, scripts/tree_state.py sees what a run left, and
+the nightly workflow runs every case of the port's nightly set."""
 import fcntl
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import difftest  # noqa: E402
 import tree_state  # noqa: E402
 
 
@@ -95,6 +99,45 @@ def test_a_run_that_leaves_a_file_shows():
         (root / "x.bmb").write_text("fn main() {}\n")
         (root / "kept.txt").write_text("changed by a test\n")
         assert tree_state.left(before, root) == [" M kept.txt", "?? x.bmb"]
+
+
+def test_the_nightly_workflow_runs_every_nightly_case():
+    """.github/workflows/nightly.yml runs tests/port/nightly/cases.json every
+    night as one job per part, and the parts hold every case once: the set
+    cannot drop out of CI by an edit of the workflow or of the cases."""
+    text = (ROOT / ".github" / "workflows" / "nightly.yml").read_text()
+    assert re.search(r"(?m)^on:\n(?:  .*\n)*  schedule:\n    - cron: \"[^\"]+\"$", text), "nightly.yml runs on a schedule"
+    jobs = re.split(r"(?m)^  (?=[a-z][a-z-]*:\n)", text.split("\njobs:\n", 1)[1])
+    port = [j for j in jobs if re.search(r"(?m)^        run: scripts/port_nightly\.sh ", j)]
+    assert len(port) == 1, "one job runs the nightly cases"
+    job = port[0]
+    parts = re.findall(r"(?m)^        part: \[([0-9, ]+)\]$", job)
+    assert len(parts) == 1, "the job has one matrix of parts"
+    numbers = [int(x) for x in parts[0].split(",")]
+    runs = re.findall(r"(?m)^        run: scripts/port_nightly\.sh (.*)$", job)
+    assert runs == [f"--shard ${{{{ matrix.part }}}}/{len(numbers)}"], runs
+    assert numbers == list(range(1, len(numbers) + 1)), numbers
+    n = len(numbers)
+    assert re.search(r"(?m)^    timeout-minutes: \d+$", job), "the job has a time limit"
+    assert "if: failure()" in job and "upload-artifact" in job, "a failing part keeps its differences"
+    # The script runs the whole set, narrowed only by its arguments.
+    sh = (ROOT / "scripts" / "port_nightly.sh").read_text().replace("\\\n", " ")
+    runs = re.findall(r"(?m)^python3 scripts/difftest\.py run (\S+) .*$", sh)
+    assert runs == ["tests/port/nightly/cases.json"], runs
+    assert '"$@"' in re.search(r"(?m)^python3 scripts/difftest\.py run .*$", sh).group(0)
+    assert "difftest.py build tests/port/nightly/cases.json target/nightly-build" in sh
+    path = ROOT / "tests" / "port" / "nightly" / "cases.json"
+    cases = json.loads(path.read_text())["cases"]
+    names = [c["name"] for c in cases]
+    assert len(set(names)) == len(names), "case names are unique"
+    parts, _ = difftest.shards(cases, difftest.load_costs(str(path)), n)
+    held = sorted(cases[i]["name"] for p in parts for i in p)
+    assert held == sorted(names), "every case is in exactly one part"
+    assert all(parts), "every part has a case"
+    stale = sorted(set(difftest.load_costs(str(path))) - set(names))
+    assert stale == [], f"costs.json names cases that are gone: {stale}"
+    # The per-push gate does not run the nightly set.
+    assert "nightly" not in (ROOT / "scripts" / "check.sh").read_text()
 
 
 if __name__ == "__main__":

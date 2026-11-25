@@ -32,5 +32,6 @@ The language surface carries its own version, apart from the compiler crate's.
 
 ### Repository
 
+- The comparisons of the port with the Rust compiler too long for the per-push gate run every night in CI (`tests/port/nightly/`, `scripts/port_nightly.sh` locally): the port verifying itself cold and warm, dumping its queries (3.7 GB) and emitting itself through the cache, and `verify`, the proof cache, `lint`, `examples` and `stability` over every file of the test and library sets. Until now they were each compared once by hand.
 - The working records of the project (task lists, reports, measurement logs) moved out; this repository holds the product and its documents. Decision records are in `docs/adr/`.
 - The benchmarks (harnesses, task sets, results, reports) moved to [`bmb-bench`](https://github.com/lang-bmb/bmb-bench). The programs the compiler's tests read stay as `tests/corpus/`; the gate no longer runs the harness self-checks, which are that repository's own check.

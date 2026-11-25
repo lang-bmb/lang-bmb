@@ -1,0 +1,1033 @@
+{
+  "builds": {
+    "stage1": {
+      "bmb": [
+        "selfhost/*.bmb"
+      ]
+    },
+    "port_cache": {
+      "proved": [
+        "selfhost/*.bmb"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "verify-port",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--cache",
+        "cache",
+        "--emit-smt",
+        "smt",
+        "--stats",
+        "stats",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--cache",
+        "cache",
+        "--emit-smt",
+        "smt",
+        "--stats",
+        "stats",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "digest": true,
+      "timeout": 5400
+    },
+    {
+      "name": "verify-port-warm",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/nightly/warm.sh",
+        "{bmb}",
+        "{build:port_cache}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/nightly/warm.sh",
+        "{build:stage1}",
+        "{build:port_cache}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "digest": true,
+      "timeout": 3600
+    },
+    {
+      "name": "verify-port-def",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--def",
+        "main::read_files",
+        "--def",
+        "main::take_flag",
+        "--def",
+        "main::take_value",
+        "--def",
+        "main::write_or_exit",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--def",
+        "main::read_files",
+        "--def",
+        "main::take_flag",
+        "--def",
+        "main::take_value",
+        "--def",
+        "main::write_or_exit",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "timeout": 1800
+    },
+    {
+      "name": "smt-queries-port",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "smt-queries",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "digest": true,
+      "timeout": 3600
+    },
+    {
+      "name": "build-port",
+      "component": "C8",
+      "a": [
+        "sh",
+        "{root}/tests/port/nightly/emit.sh",
+        "{bmb}",
+        "{build:port_cache}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/nightly/emit.sh",
+        "{build:stage1}",
+        "{build:port_cache}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "timeout": 3600
+    },
+    {
+      "name": "incr-port",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/nightly/incr.sh",
+        "{bmb}",
+        "{build:port_cache}",
+        "{root}/tests/port/incr/base.txt",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/nightly/incr.sh",
+        "{build:stage1}",
+        "{build:port_cache}",
+        "{root}/tests/port/incr/base.txt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 1000
+      },
+      "timeout": 3600
+    },
+    {
+      "name": "verify-files",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-bounded-files",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-limits-files",
+      "component": "C6",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{bmb}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{build:stage1}",
+        "verify",
+        "--bounded-search",
+        "--emit-smt",
+        "smt",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-cache-files",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/cache.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "verify-cache-damaged-files",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/damaged.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/damaged.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "incr-files",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "lib/std/*.bmb",
+          "tests/run/*.bmb",
+          "tests/lib_run/*.bmb",
+          "tests/corpus/*.bmb",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fail",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/fail/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-unknown-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-retry-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-models-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-limits-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-broken-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-memory-pass",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-unknown-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-models-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-sat-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-limits-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-broken-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-memory-files",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom sat",
+        "sh",
+        "{root}/tests/port/nightly/examples.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}",
+        "--count",
+        "2"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-files",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-limits-2000-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=2000",
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=2000",
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-limits-5000-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=5000",
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=5000",
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-limits-20000-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=20000",
+        "{bmb}",
+        "stability",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=20000",
+        "{build:stage1}",
+        "stability",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-seed-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unknown",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unknown",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-models-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat unsat unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat unsat unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "3",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "stability-fake-alternate-pass",
+      "component": "C10",
+      "a": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unsat",
+        "{bmb}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "FAKE_BY_SEED=1",
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unsat",
+        "{build:stage1}",
+        "stability",
+        "--seeds",
+        "4",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    }
+  ]
+}

@@ -23,7 +23,7 @@ cargo build
 scripts/check.sh      # the whole gate; judge it by its exit code
 ```
 
-`scripts/check.sh` is the one gate: formatting, lints, the tests, the proofs of the standard library and of the port, the differential tests between the Rust compiler and its port, and the fixed point. CI runs the same script. The benchmarks and the self-checks of their harnesses are in the [`bmb-bench`](https://github.com/lang-bmb/bmb-bench) repository, whose own check runs against a checkout of this one. It takes tens of minutes on four cores. While you work, `scripts/fresh.sh` (seconds) tells you which generated file went stale, and `scripts/regen.sh` rewrites them.
+`scripts/check.sh` is the one gate: formatting, lints, the tests, the proofs of the standard library and of the port, the differential tests between the Rust compiler and its port, and the fixed point. CI runs the same script. The benchmarks and the self-checks of their harnesses are in the [`bmb-bench`](https://github.com/lang-bmb/bmb-bench) repository, whose own check runs against a checkout of this one. It takes tens of minutes on four cores. Every night CI also runs the fuzzers at length and the port's differential cases too long for the gate (the port verifying, dumping and emitting itself, and the wider input sets: `tests/port/README.md`); `scripts/port_nightly.sh` runs those cases locally. While you work, `scripts/fresh.sh` (seconds) tells you which generated file went stale, and `scripts/regen.sh` rewrites them.
 
 A change is ready when the gate passes on it. Do not skip or weaken a check to get there: a check that is wrong is itself a defect to report.
 
