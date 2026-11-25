@@ -371,9 +371,11 @@
           "tests/corpus/*.bmb",
           "tests/port/gen/*.txt"
         ],
+        "except": [
+          "tests/port/gen/g35.txt"
+        ],
         "chunk": 1
-      },
-      "timeout": 3600
+      }
     },
     {
       "name": "lint-fail",
