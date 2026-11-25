@@ -1,0 +1,404 @@
+#[summary("The contract lint (port of the satisfiability part of stage0 compiler/src/lint.rs, lint_sources_selected): with `--select`, the checks that ask whether facts of the prover's own encoding can hold together. W0901: preconditions that cannot hold together. W0918: postconditions that allow two results for one input, with the witness. W0905: a loop exit or the end of a verified function's body that its own proof cannot reach. W0902: a precondition the function's proof does not need, found by proving the function again without it (stop at the first failure). The other checks of stage0's lint are not ported. Every query after the first verification is advisory (ADR-0131): the advisory memory limit, and for the full queries the advisory resource limit; a query that reaches either is undecided, so a report can be left out but none is added")]
+mod lint {
+    #[summary("A definition of the program as the lint reads it (stage0 lint's FnDef): its kind, the span of each precondition, and its span")]
+    struct LDef { kind: ast::FnKind, pre: Vec<source::Span>, span: source::Span }
+
+    #[summary("Result of bmb lint: checked is false when the program does not check (text is then its diagnostics); otherwise text is the report, and ok is false when the proof gate could not run")]
+    struct Linted { checked: bool, ok: bool, text: String }
+
+    #[summary("Whether the definitions in paths verify completely (stage0 clean): each has a status with no failed obligation and no diagnostic inside its span")]
+    #[effects(alloc)]
+    fn clean(statuses: &[prove::Status], diags: &[diag::Diag], spans: &table::Table<source::Span>, paths: &[String]) -> bool {
+        for k in 0..paths.len()
+            invariant 0 <= k && k <= paths.len(),
+        {
+            let sp: source::Span = match spans.find(paths[k].as_str()) {
+                None => { return false; },
+                Some(at) => { if at < spans.items.len() { spans.items[at] } else { return false; } },
+            };
+            let mut status: bool = false;
+            for i in 0..statuses.len()
+                invariant 0 <= i && i <= statuses.len(),
+            {
+                if statuses[i].path == paths[k] && statuses[i].failed == 0 {
+                    status = true;
+                }
+            }
+            if !status {
+                return false;
+            }
+            for j in 0..diags.len()
+                invariant 0 <= j && j <= diags.len(),
+            {
+                if diags[j].span.file == sp.file && diags[j].span.lo >= sp.lo && diags[j].span.hi <= sp.hi {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    #[summary("The checks of stage0's lint by the code each reports (stage0 CODES), for the text of an unknown one")]
+    #[effects(alloc)]
+    fn codes() -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        out.push(String::from("W0901"));
+        out.push(String::from("W0902"));
+        out.push(String::from("W0903"));
+        out.push(String::from("W0904"));
+        out.push(String::from("W0905"));
+        out.push(String::from("W0906"));
+        out.push(String::from("W0907"));
+        out.push(String::from("W0909"));
+        out.push(String::from("W0910"));
+        out.push(String::from("W0911"));
+        out.push(String::from("W0912"));
+        out.push(String::from("W0913"));
+        out.push(String::from("W0914"));
+        out.push(String::from("W0915"));
+        out.push(String::from("W0916"));
+        out.push(String::from("W0917"));
+        out.push(String::from("W0918"));
+        out.push(String::from("W1001"));
+        out.push(String::from("W1002"));
+        out
+    }
+
+    #[summary("The definitions of unit m and its inner units, by path (stage0 lint's collect): the inner units first, and of two definitions of one path the first")]
+    #[effects(alloc)]
+    fn collect(m: &ast::Mod, prefix: &str, out: &mut table::Table<LDef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let inner: String = types::cat2(mp.as_str(), "::");
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            collect(&m.mods[i], inner.as_str(), out, f - 1);
+        }
+        for j in 0..m.fns.len()
+            invariant 0 <= j && j <= m.fns.len(),
+        {
+            let path: String = types::cat2(inner.as_str(), m.fns[j].name.name.as_str());
+            if !out.has(path.as_str()) {
+                let mut pre: Vec<source::Span> = Vec::new();
+                for k in 0..m.fns[j].pre.len()
+                    invariant 0 <= k && k <= m.fns[j].pre.len(),
+                {
+                    pre.push(m.fns[j].pre[k].span);
+                }
+                out.insert(path.as_str(), LDef { kind: m.fns[j].kind, pre: pre, span: m.fns[j].span });
+            }
+        }
+    }
+
+    #[summary("A cost of a satisfiability check in the summary row: its resource units and its undecided count, or null twice when the check did not run")]
+    #[effects(alloc)]
+    fn cost_fields(out: &mut String, name: &str, c: &Option<sat::Cost>) -> () {
+        out.push_str(",\"");
+        out.push_str(name);
+        out.push_str("_rlimit\":");
+        match c {
+            None => out.push_str("null"),
+            Some(k) => std::num::push_u64(out, k.rlimit),
+        }
+        out.push_str(",\"");
+        out.push_str(name);
+        out.push_str("_undecided\":");
+        match c {
+            None => out.push_str("null"),
+            Some(k2) => std::num::push_u64(out, k2.undecided as u64),
+        }
+    }
+
+    #[summary("Rust's Debug text of a string, as stage0's message for an unknown check prints it: in double quotes, with a backslash before a quote and a backslash, and the escapes of the tab, the line feed, the carriage return, NUL and the other control characters of ASCII")]
+    #[effects(alloc)]
+    fn debug_str(s: &str) -> String {
+        let mut out: String = String::from("\"");
+        let mut from: usize = 0;
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len() && from <= i,
+        {
+            let c: u8 = s.as_bytes()[i];
+            if c == 34 || c == 92 || c < 32 || c == 127 {
+                out.push_str(lexer::cut(s, from, i).as_str());
+                if c == 34 {
+                    out.push_str("\\\"");
+                } else if c == 92 {
+                    out.push_str("\\\\");
+                } else if c == 9 {
+                    out.push_str("\\t");
+                } else if c == 10 {
+                    out.push_str("\\n");
+                } else if c == 13 {
+                    out.push_str("\\r");
+                } else if c == 0 {
+                    out.push_str("\\0");
+                } else {
+                    out.push_str("\\u{");
+                    out.push_str(hex(c).as_str());
+                    out.push_str("}");
+                }
+                from = i + 1;
+            }
+        }
+        out.push_str(lexer::cut(s, from, s.len()).as_str());
+        out.push_str("\"");
+        out
+    }
+
+    #[summary("Removes precondition i of the first definition at path in unit m or its inner units (stage0 lint's find_mut and remove); false when none is there")]
+    #[effects(alloc)]
+    fn drop_pre(m: &mut ast::Mod, prefix: &str, path: &str, i: usize, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "::");
+        if !encode_terms::starts_at(path, 0, mp.as_str()) {
+            return false;
+        }
+        let rest: String = lexer::cut(path, mp.len(), path.len());
+        let defs: usize = m.fns.len();
+        for j in 0..defs
+            invariant 0 <= j && j <= defs,
+        {
+            if j < m.fns.len() && m.fns[j].name.name == rest {
+                let mut kept: Vec<ast::Expr> = Vec::new();
+                for k in 0..m.fns[j].pre.len()
+                    invariant 0 <= k && k <= m.fns[j].pre.len(),
+                {
+                    if k != i {
+                        kept.push(m.fns[j].pre[k].clone());
+                    }
+                }
+                m.fns[j].pre = kept;
+                return true;
+            }
+        }
+        let inner: usize = m.mods.len();
+        for s in 0..inner
+            invariant 0 <= s && s <= inner,
+        {
+            if s < m.mods.len() && drop_pre(&mut m.mods[s], mp.as_str(), path, i, f - 1) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Two lowercase hexadecimal digits at most of a byte, without leading zeros (Rust's {:x})")]
+    #[effects(alloc)]
+    fn hex(c: u8) -> String {
+        let mut out: String = String::new();
+        if c >= 16 {
+            out.push_str(lexer::cut("0123456789abcdef", (c / 16) as usize, (c / 16) as usize + 1).as_str());
+        }
+        out.push_str(lexer::cut("0123456789abcdef", (c % 16) as usize, (c % 16) as usize + 1).as_str());
+        out
+    }
+
+    #[summary("Whether the port has the check code: the satisfiability checks and the precondition check that proves again")]
+    #[effects(pure)]
+    fn ported(code: &str) -> bool {
+        code == "W0901" || code == "W0902" || code == "W0905" || code == "W0918"
+    }
+
+    #[summary("bmb lint --select (stage0 lint_sources_selected) over the files as one program, running the checks select names, each reporting what it reports in a full run. The first verification (the gate's limits, through a proof cache kept in memory, or loaded from cache_dir) runs only for the checks that judge verified functions (W0902, W0905), the precondition check also for the ones that skip the functions it refutes (W0902, W0905, W0918). Without a first verification, a solver that cannot run is still E0812 at the first unit's name when the precondition check runs. Each re-verification of W0902 proves the function alone with one precondition removed from the checked program, at the advisory limits, and stops at its first failure; at most 32 run, the rest are counted as skipped. A summary count of a check that did not run is 0, the cost of a satisfiability check that did not run null. With cache_dir the proof cache is written back there")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], cache_dir: &Option<String>, select: &[String]) -> Linted {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Linted { checked: false, ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let needs_base: bool = types::has(select, "W0902") || types::has(select, "W0905");
+        let needs_pre: bool = types::has(select, "W0901") || types::has(select, "W0902") || types::has(select, "W0905") || types::has(select, "W0918");
+        let mut store: Option<cache::ProofCache> = match cache_dir {
+            None => Some(cache::empty()),
+            Some(dir) => Some(cache::load(dir.as_str())),
+        };
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let gate: u64 = solver::rlimit();
+        let mut statuses: Vec<prove::Status> = Vec::new();
+        if !needs_base {
+            if needs_pre {
+                match toolchain::check_z3(&mut z3) {
+                    Ok(v) => {},
+                    Err(why) => { let first: source::Span = if fe.ck.program.mods.len() > 0 { fe.ck.program.mods[0].name.span } else { source::Span { file: 0, lo: 0, hi: 0 } }; diags.push(diag::new("E0812", first, types::cat2("proof gate cannot run: ", why.as_str()).as_str())); },
+                }
+            }
+        } else {
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false };
+            let base: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut diags);
+            statuses = base.statuses;
+        }
+        let mut out: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut ok: bool = true;
+        for i in 0..diags.items.len()
+            invariant 0 <= i && i <= diags.items.len(),
+        {
+            if diags.items[i].code == "E0812" {
+                out.push(diags.items[i].clone());
+                ok = false;
+            }
+        }
+        let mut defs: table::Table<LDef> = table::new::<LDef>();
+        for m in 0..fe.ck.program.mods.len()
+            invariant 0 <= m && m <= fe.ck.program.mods.len(),
+        {
+            if !stdlib::is_std(&fe.ck.program.mods[m]) {
+                collect(&fe.ck.program.mods[m], "", &mut defs, 1000000);
+            }
+        }
+        let mut spans: table::Table<source::Span> = table::new::<source::Span>();
+        let mut exec: Vec<String> = Vec::new();
+        for n in 0..defs.len()
+            invariant 0 <= n,
+        {
+            match defs.nth(n) {
+                None => {},
+                Some(dn) => { let path: String = defs.key(n); spans.insert(path.as_str(), defs.items[dn].span); if sat::is_exec(defs.items[dn].kind) { exec.push(path.clone()); } },
+            }
+        }
+        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(&pg);
+        let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
+        let advisory: u64 = solver::query_rlimit(solver::Asker::Refutations);
+        let mut unsat: Vec<String> = Vec::new();
+        let mut pre_cost: Option<sat::Cost> = None;
+        if needs_pre {
+            let pres: sat::Pres = sat::preconditions(&fe.ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, solver::Asker::Refutations, advisory, gate);
+            for i in 0..pres.rows.len()
+                invariant 0 <= i && i <= pres.rows.len(),
+            {
+                if pres.rows[i].verdict == 0 {
+                    if types::has(select, "W0901") {
+                        let p: String = pres.rows[i].path.clone();
+                        let mut msg: String = types::cat3("the preconditions of `", p.as_str(), "` cannot hold together (with the definitions its #[uses] reveals): no call can satisfy them, and every proof about `");
+                        msg.push_str(p.as_str());
+                        msg.push_str("` holds vacuously");
+                        out.push(diag::fix(diag::new("W0901", pres.rows[i].span, msg.as_str()), "weaken or correct the preconditions", None));
+                    }
+                    unsat.push(pres.rows[i].path.clone());
+                }
+            }
+            pre_cost = Some(pres.cost);
+        }
+        let mut det_cost: Option<sat::Cost> = None;
+        if types::has(select, "W0918") {
+            let dets: sat::Dets = sat::determined(&fe.ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, solver::Asker::Refutations, advisory, gate);
+            for i in 0..dets.rows.len()
+                invariant 0 <= i && i <= dets.rows.len(),
+            {
+                let p: String = dets.rows[i].path.clone();
+                if dets.rows[i].kind == 1 && !types::has(unsat.as_slice(), p.as_str()) && defs.has(p.as_str()) {
+                    let at_input: String = if dets.rows[i].input.len() == 0 {
+                        String::new()
+                    } else {
+                        types::cat2(" at ", dets.rows[i].input.as_str())
+                    };
+                    let mut msg: String = types::cat5("the postconditions of `", p.as_str(), "` allow two results for one input", at_input.as_str(), ": ");
+                    msg.push_str(types::cat4(dets.rows[i].first.as_str(), " and ", dets.rows[i].second.as_str(), " both hold").as_str());
+                    out.push(diag::fix(diag::new("W0918", dets.rows[i].span, msg.as_str()), "if one result is meant, state what tells them apart; if the freedom is meant, this is information", None));
+                }
+            }
+            det_cost = Some(dets.cost);
+        }
+        let mut reach_cost: Option<sat::Cost> = None;
+        if types::has(select, "W0905") {
+            let pts: sat::Points = sat::vacuous(&fe.ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, solver::Asker::Refutations, advisory, gate);
+            for i in 0..pts.rows.len()
+                invariant 0 <= i && i <= pts.rows.len(),
+            {
+                let p: String = pts.rows[i].path.clone();
+                let mut one: Vec<String> = Vec::new();
+                one.push(p.clone());
+                if !types::has(unsat.as_slice(), p.as_str()) && !types::has(fe.ck.b.external.as_slice(), p.as_str()) && clean(statuses.as_slice(), diags.items.as_slice(), &spans, one.as_slice()) {
+                    let mut msg: String = types::cat5("the ", pts.rows[i].what.as_str(), " of `", p.as_str(), "` is unreachable in its proof: every obligation after it holds vacuously");
+                    out.push(diag::fix(diag::new("W0905", pts.rows[i].span, msg.as_str()), "look for a contradiction in the loop invariants, the callees' postconditions and the revealed definitions", None));
+                }
+            }
+            reach_cost = Some(pts.cost);
+        }
+        let mut verifications: usize = 0;
+        let mut skipped: usize = 0;
+        let mut trials: usize = 0;
+        if types::has(select, "W0902") {
+            for x in 0..exec.len()
+                invariant 0 <= x && x <= exec.len(),
+            {
+                let path: String = exec[x].clone();
+                let mut one: Vec<String> = Vec::new();
+                one.push(path.clone());
+                match defs.find(path.as_str()) {
+                    None => {},
+                    Some(di) => { let pre: Vec<source::Span> = defs.items[di].pre.clone(); if pre.len() > 0 && !types::has(unsat.as_slice(), path.as_str()) && !types::has(fe.ck.b.external.as_slice(), path.as_str()) && clean(statuses.as_slice(), diags.items.as_slice(), &spans, one.as_slice()) { for i in 0..pre.len() invariant 0 <= i && i <= pre.len(), { if trials == 32 { skipped = skipped.saturating_add(1); } else { trials = trials.saturating_add(1); verifications = verifications.saturating_add(1); if unneeded(&fe.ck, path.as_str(), i, &mut store, &mut z3, gate, advisory, &spans) { let mut msg: String = types::cat3("precondition `", lexer::cut(source_text(files, pre[i].file).as_str(), pre[i].lo as usize, pre[i].hi as usize).as_str(), "` is not needed by this function's proof: `"); msg.push_str(path.as_str()); msg.push_str("` verifies without it"); out.push(diag::fix(diag::new("W0902", pre[i], msg.as_str()), "remove or weaken it if it does not state intent; callers then have less to prove", None)); } } } } },
+                }
+            }
+        }
+        match cache_dir {
+            None => {},
+            Some(dir) => { match &store { None => {}, Some(c) => { match cache::save(c, dir.as_str()) { Ok(u) => {}, Err(why) => { eprint_str("bmb: cannot write proof cache in "); eprint_str(dir.as_str()); eprint_str(": "); eprint_str(why.as_str()); eprint_str("\n"); }, } }, } },
+        }
+        let mut reports: usize = 0;
+        for i in 0..out.items.len()
+            invariant 0 <= i && i <= out.items.len(),
+        {
+            if encode_terms::starts_at(out.items[i].code.as_str(), 0, "W") {
+                reports = reports.saturating_add(1);
+            }
+        }
+        let mut text: String = out.to_jsonl(&sm);
+        text.push_str("{\"summary\":true,\"defs\":");
+        std::num::push_u64(&mut text, exec.len() as u64);
+        text.push_str(",\"reports\":");
+        std::num::push_u64(&mut text, reports as u64);
+        text.push_str(",\"verifications\":");
+        std::num::push_u64(&mut text, verifications as u64);
+        text.push_str(",\"skipped\":");
+        std::num::push_u64(&mut text, skipped as u64);
+        text.push_str(",\"mutants\":0,\"surviving\":0,\"mutants_skipped\":0");
+        cost_fields(&mut text, "pre", &pre_cost);
+        cost_fields(&mut text, "reach", &reach_cost);
+        cost_fields(&mut text, "det", &det_cost);
+        text.push_str("}\n");
+        Linted { checked: true, ok: ok, text: text }
+    }
+
+    #[summary("The text of source file file among the inputs; empty for a file of the library")]
+    #[effects(alloc)]
+    fn source_text(files: &[lib::Input], file: u32) -> String {
+        if (file as usize) < files.len() {
+            files[file as usize].text.clone()
+        } else {
+            String::new()
+        }
+    }
+
+    #[summary("Whether function path verifies completely with its precondition i removed from the checked program (one re-verification of stage0's W0902): it alone is proved, every other definition seen as in the whole program, through the proof cache, at the advisory limits (rlimit is the gate's limit, of which the shares are, and advisory the limit of a full query), stopping at the first obligation that fails")]
+    #[effects(alloc, io, nondet)]
+    fn unneeded(ck: &body::Checked, path: &str, i: usize, store: &mut Option<cache::ProofCache>, z3: &mut toolchain::Z3, rlimit: u64, advisory: u64, spans: &table::Table<source::Span>) -> bool {
+        let mut changed: body::Checked = ck.clone();
+        let mut done: bool = false;
+        let units: usize = changed.program.mods.len();
+        for m in 0..units
+            invariant 0 <= m && m <= units,
+        {
+            if !done && m < changed.program.mods.len() {
+                done = drop_pre(&mut changed.program.mods[m], "", path, i, 1000000);
+            }
+        }
+        let mut only: Vec<String> = Vec::new();
+        only.push(String::from(path));
+        let opts: prove::Opts = prove::Opts { only: Some(only.clone()), bounded: false, rlimit: rlimit, query: advisory, who: solver::Asker::Refutations, stop: true };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let o: prove::Outcome = prove::run(&changed, &opts, store, z3, &mut diags);
+        clean(o.statuses.as_slice(), diags.items.as_slice(), spans, only.as_slice())
+    }
+}

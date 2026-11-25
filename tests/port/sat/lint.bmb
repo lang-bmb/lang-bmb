@@ -1,0 +1,255 @@
+#[summary("Contracts for the satisfiability tools of the lint: preconditions that cannot hold together, results a contract leaves open, points a proof cannot reach, preconditions a proof does not need")]
+mod lint {
+    struct Pt { x: i64, y: i64 }
+
+    spec fn pos(x: i64) -> bool { x > 0 }
+
+    spec fn neg(x: i64) -> bool { x < 0 }
+
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn big(r: i64) -> bool { huge(r) }
+
+    spec fn huge(r: i64) -> bool { r > 10 }
+
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    spec fn bounded(a: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> -10 < #[trigger] a[i] && a[i] < 10
+    }
+
+    #[summary("Preconditions through two spec fns that cannot hold together")]
+    #[effects(pure)]
+    #[uses(pos, neg)]
+    fn never(x: i64) -> i64
+        requires pos(x), neg(x),
+    {
+        x
+    }
+
+    #[summary("The same, written out")]
+    #[effects(pure)]
+    fn never_plain(x: u8, y: u8) -> u8
+        requires x > y, y > x,
+    {
+        x
+    }
+
+    #[summary("Preconditions through a spec fn the proof does not reveal: satisfiable by its free reading")]
+    #[effects(pure)]
+    fn hidden(x: i64) -> i64
+        requires pos(x), neg(x),
+    {
+        0
+    }
+
+    #[summary("A recursive definition at a point it cannot reach")]
+    #[effects(pure)]
+    #[uses(count)]
+    fn deep(n: u64) -> (r: u64)
+        requires n == 2, count(n) == 5,
+        ensures r == n,
+    {
+        n
+    }
+
+    #[summary("A recursive definition at a point it reaches")]
+    #[effects(pure)]
+    #[uses(count)]
+    fn reach(n: u64) -> (r: u64)
+        requires count(n) == 3,
+        ensures r == n,
+    {
+        n
+    }
+
+    #[summary("Preconditions over a slice that hold")]
+    #[effects(pure)]
+    #[uses(bounded)]
+    fn first(a: &[i64]) -> (r: i64)
+        requires a.len() > 0, bounded(a),
+        ensures -10 < r && r < 10,
+    {
+        a[0]
+    }
+
+    #[summary("Small rules out the overflow; pos is not needed")]
+    #[effects(pure)]
+    #[uses(small, pos)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x), pos(x),
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    #[summary("Both preconditions are needed for the call")]
+    #[effects(pure)]
+    #[uses(small, pos)]
+    fn add2(x: i64) -> i64
+        requires small(x), pos(x),
+    {
+        inc(x) + 1
+    }
+
+    #[summary("A bound the contract does not fix: two results for one input")]
+    #[effects(pure)]
+    fn above(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r >= x,
+    {
+        x + 1
+    }
+
+    #[summary("A fixed result")]
+    #[effects(pure)]
+    fn twice(x: i64) -> (r: i64)
+        requires x < 1000 && x > -1000,
+        ensures r == 2 * x,
+    {
+        2 * x
+    }
+
+    #[summary("A struct result with one field left open")]
+    #[effects(pure)]
+    fn half_fixed(x: i64) -> (r: Pt)
+        requires x < 100 && x > -100,
+        ensures r.x == x,
+    {
+        Pt { x: x, y: 0 }
+    }
+
+    #[summary("A bool result the contract leaves open")]
+    #[effects(pure)]
+    fn either(x: u8) -> (r: bool)
+        ensures r ==> x > 0,
+    {
+        false
+    }
+
+    #[summary("A contract through a spec fn seen by name only: not judged")]
+    #[effects(pure)]
+    #[uses(big)]
+    fn opaque() -> (r: i64)
+        ensures big(r),
+    {
+        11
+    }
+
+    #[summary("A &mut parameter: its new value would be a result too, not judged")]
+    #[effects(pure)]
+    fn bump(a: &mut i64) -> (r: i64)
+        requires *a < 1000,
+        ensures r >= 0,
+    {
+        *a = *a + 1;
+        0
+    }
+
+    #[summary("A callee whose postconditions cannot hold together: it does not verify")]
+    #[effects(pure)]
+    fn liar(x: i64) -> (r: i64)
+        ensures r > x, r < x,
+    {
+        x
+    }
+
+    #[summary("After the call nothing is reachable: the end of the body holds vacuously")]
+    #[effects(pure)]
+    fn trusts_liar(x: i64) -> (r: i64)
+        requires x < 10,
+        ensures r == 7,
+    {
+        let y: i64 = liar(x);
+        y + 1
+    }
+
+    #[summary("A loop whose body always returns: its exit is not reachable")]
+    #[effects(pure)]
+    fn early(n: u64) -> (r: u64)
+        requires n < 10,
+        ensures r == 5,
+    {
+        let mut i: u64 = 0;
+        while i < 10
+            invariant i < 10,
+            decreases 10 - i,
+        {
+            return 5;
+        }
+        5
+    }
+
+    #[summary("A loop that runs to its end")]
+    #[effects(pure)]
+    fn sum_to(n: u64) -> (r: u64)
+        requires n < 100,
+        ensures r <= 100 * n,
+    {
+        let mut s: u64 = 0;
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n, s <= 100 * i,
+            decreases n - i,
+        {
+            s = s + 1;
+            i = i + 1;
+        }
+        s
+    }
+
+    #[summary("Ten preconditions, of which the proof needs none: with the three below they pass the cap of re-verifications")]
+    #[effects(pure)]
+    fn many_a(x: i64) -> i64
+        requires x > 0, x > 1, x > 2, x > 3, x > 4, x > 5, x > 6, x > 7, x > 8, x > 9,
+    {
+        0
+    }
+
+    #[summary("The same")]
+    #[effects(pure)]
+    fn many_b(x: i64) -> i64
+        requires x > 0, x > 1, x > 2, x > 3, x > 4, x > 5, x > 6, x > 7, x > 8, x > 9,
+    {
+        0
+    }
+
+    #[summary("The same")]
+    #[effects(pure)]
+    fn many_c(x: i64) -> i64
+        requires x > 0, x > 1, x > 2, x > 3, x > 4, x > 5, x > 6, x > 7, x > 8, x > 9,
+    {
+        0
+    }
+
+    #[summary("The same, past the cap")]
+    #[effects(pure)]
+    fn many_d(x: i64) -> i64
+        requires x > 0, x > 1, x > 2, x > 3, x > 4, x > 5, x > 6, x > 7, x > 8, x > 9,
+    {
+        0
+    }
+
+    #[summary("Definitions of an inner unit")]
+    mod inner {
+        #[summary("A precondition the proof needs, one it does not, and preconditions that cannot hold together")]
+        #[effects(pure)]
+        fn dec(x: u8, y: u8) -> u8
+            requires x > 0, y < 10,
+        {
+            x - 1
+        }
+
+        #[summary("Preconditions that cannot hold together")]
+        #[effects(pure)]
+        fn never(x: u8) -> u8
+            requires x > 5, x < 3,
+        {
+            x
+        }
+    }
+}

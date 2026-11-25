@@ -171,6 +171,109 @@ mod main {
             }
             return;
         }
+        if args.len() > 1 && args[1] == "examples" {
+            let mut count: usize = 3;
+            let mut at: usize = 2;
+            if args.len() > 3 && args[2] == "--count" {
+                match lib::parse_count(args[3].as_str()) {
+                    None => { eprint_str("bmb: --count takes a number from 1 to 64\n"); std::process::exit(2); },
+                    Some(k) => { count = k; },
+                }
+                at = 4;
+            }
+            let mut sep: usize = at;
+            while sep < args.len() && args[sep] != "--"
+                invariant at <= sep,
+                decreases args.len() - sep,
+            {
+                sep = sep + 1;
+            }
+            if sep >= args.len() {
+                eprint_str("bmb: put `--` between the definitions and the files\n");
+                std::process::exit(2);
+            }
+            if sep == at || sep + 1 >= args.len() {
+                eprint_str("usage: stage1 examples [--count N] DEF.. -- FILE..\n");
+                std::process::exit(2);
+            }
+            let mut defs: Vec<String> = Vec::new();
+            for d in at..sep
+                invariant at <= d && d <= sep,
+            {
+                defs.push(args[d].clone());
+            }
+            let shown: Vec<lib::Input> = read_files(args.as_slice(), sep + 1);
+            let xr: lib::Outcome = lib::examples(shown.as_slice(), defs.as_slice(), count);
+            print_str(xr.text.as_str());
+            if !xr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        if args.len() > 1 && args[1] == "lint" {
+            let mut cache_dir: Option<String> = None;
+            let mut select: Vec<String> = Vec::new();
+            let mut selected: bool = false;
+            let mut at: usize = 2;
+            while at < args.len()
+                decreases args.len() - at,
+            {
+                if args[at] == "--cache" && at + 1 < args.len() {
+                    cache_dir = Some(args[at + 1].clone());
+                    at = at + 2;
+                } else if args[at] == "--select" && at + 1 < args.len() {
+                    select = Vec::new();
+                    selected = true;
+                    let known: Vec<String> = lint::codes();
+                    let asked: Vec<String> = encode_terms::split(args[at + 1].as_str(), 44);
+                    for c in 0..asked.len()
+                        invariant 0 <= c && c <= asked.len(),
+                    {
+                        if !types::has(known.as_slice(), asked[c].as_str()) {
+                            eprint_str("bmb: lint has no check ");
+                            eprint_str(lint::debug_str(asked[c].as_str()).as_str());
+                            eprint_str(" (the checks are ");
+                            eprint_str(encode_terms::join(known.as_slice(), ", ").as_str());
+                            eprint_str(")\n");
+                            std::process::exit(2);
+                        }
+                        select.push(asked[c].clone());
+                    }
+                    at = at + 2;
+                } else {
+                    break;
+                }
+            }
+            if at >= args.len() {
+                eprint_str("usage: stage1 lint [--cache DIR] --select CODES FILE..\n");
+                std::process::exit(2);
+            }
+            if !selected {
+                eprint_str("stage1: lint without --select: only W0901, W0902, W0905 and W0918 are ported yet\n");
+                std::process::exit(2);
+            }
+            for c2 in 0..select.len()
+                invariant 0 <= c2 && c2 <= select.len(),
+            {
+                if !lint::ported(select[c2].as_str()) {
+                    eprint_str("stage1: lint: ");
+                    eprint_str(select[c2].as_str());
+                    eprint_str(" is not ported yet (W0901, W0902, W0905 and W0918 are)\n");
+                    std::process::exit(2);
+                }
+            }
+            if !per_definition_lint(&cache_dir, select.as_slice()) {
+                eprint_str("stage1: lint --cache with W0902 or W0905: the per-definition cache is not ported yet\n");
+                std::process::exit(2);
+            }
+            let linted: Vec<lib::Input> = read_files(args.as_slice(), at);
+            let lr: lint::Linted = lint::run(linted.as_slice(), &cache_dir, select.as_slice());
+            print_str(lr.text.as_str());
+            if !lr.checked || !lr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -190,6 +293,15 @@ mod main {
         match cache_dir {
             None => false,
             Some(dir) => match emit { None => true, Some(to) => false, },
+        }
+    }
+
+    #[summary("Whether a run of lint can do without the per-definition cache (stage0 incremental.rs), which is not ported: without a cache directory, or with one when no selected check needs the first verification (W0902, W0905), which with a cache directory goes through that cache")]
+    #[effects(alloc)]
+    fn per_definition_lint(cache_dir: &Option<String>, select: &[String]) -> bool {
+        match cache_dir {
+            None => true,
+            Some(dir) => !types::has(select, "W0902") && !types::has(select, "W0905"),
         }
     }
 

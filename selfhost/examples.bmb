@@ -1,0 +1,947 @@
+#[summary("Examples of a contract (port of stage0 compiler/src/verify/examples.rs, ADR-0078 H-INTENT): from a function's reqs and enss alone, never its body, inputs with a result the specification allows, results it rejects for the same inputs, and inputs the reqs exclude. Every value shown is read from a model of a query over the entry state the proof gate assumes (the one encoding the precondition check uses), decided as the satisfiability checks decide (sat::sat_of) under the gate's resource limit and the advisory memory limit; a query that is not decided shows nothing and is counted. Small values first: each query is asked within the bounds of the bounded search, then without them; a query the solver leaves undecided with its input free is asked again at written inputs (ADR-0134). The spec fns a contract names are read by their definitions whether or not the function's #[uses] names them")]
+mod examples {
+    #[summary("The examples of one definition's contract (stage0 Examples): its rows in order, the queries that were not decided, the resource units spent, and why there are no examples when there are none (a type whose values are not shown in full, a contract through a spec fn seen by name only, or f64 operations)")]
+    struct Examples { def: String, rows: Vec<Row>, undecided: usize, rlimit: u64, reason: Option<String> }
+
+    #[summary("What a query found (stage0 Found): kind 0 a model, 1 no model within the lengths shown, 2 undecided")]
+    struct Found { kind: u8, m: Option<Model> }
+
+    #[summary("One definition's queries (stage0 Gen): what they are asked over, the parameters' values on entry, the result named as the contract names it when it is not the unit value, and the values behind the &mut parameters after the function")]
+    struct Gen { cx: encode_query::Ctx, inputs: Vec<encode_spec::Shown>, result: Option<encode_spec::Shown>, after: Vec<encode_spec::Shown> }
+
+    #[summary("A term whose model value fixes part of a value, whether it is a bool, and that value")]
+    struct Leaf { term: String, boolean: bool, x: encode_terms::Sexp }
+
+    #[summary("A model, as shown and as terms (stage0 Model): the inputs, the result and the values after as a counterexample shows them; the inputs equal to their values, and the result and the values after equal to theirs")]
+    struct Model { input: Vec<model::Named>, result: Option<String>, after: Vec<model::Named>, same_input: String, same_output: String }
+
+    #[summary("One example (stage0 Example): its kind (allowed, rejected, excluded), the parameters' values on entry, the result (none for the unit value and for excluded), and the values behind the &mut parameters afterwards")]
+    struct Row { kind: String, input: Vec<model::Named>, result: Option<String>, after: Vec<model::Named> }
+
+    #[summary("Why a model does not give a value (stage0 Unread): open, the bool term term has no literal value (asked again with it asserted, then denied); otherwise a value that is not a literal, or a length that is not shown whole")]
+    struct Unread { open: bool, term: String }
+
+    #[summary("`(and ..)` of terms; `true` of none (stage0 all)")]
+    #[effects(alloc)]
+    fn all(terms: &[String]) -> String {
+        if terms.len() == 0 {
+            return String::from("true");
+        }
+        if terms.len() == 1 {
+            return terms[0].clone();
+        }
+        types::cat3("(and ", encode_terms::join(terms, " ").as_str(), ")")
+    }
+
+    #[summary("A model of facts, small values first (stage0 Gen::ask). With outputs, the result and the values after are part of the query and of the model. nth is which input of its kind this is, from 0: asked first with every input length at least nth, then without that. With vary, a bool result is first asked to be true for an even nth and false for an odd one. The preferences are dropped one after another; the lengths stay within what a counterexample shows in full. With free, a query left undecided is asked again at written inputs")]
+    #[effects(alloc, io, nondet)]
+    fn ask(g: &Gen, st: &mut sat::Solving, z3: &mut toolchain::Z3, pg: &encode_spec::Prog, names: &table::Table<String>, facts: &[String], outputs: bool, nth: usize, vary: bool, free: bool) -> Found {
+        let mut vals: Vec<encode_spec::Shown> = copy(g.inputs.as_slice());
+        if outputs {
+            match &g.result {
+                None => {},
+                Some(r) => vals.push(r.clone()),
+            }
+            for i in 0..g.after.len()
+                invariant 0 <= i && i <= g.after.len(),
+            {
+                vals.push(g.after[i].clone());
+            }
+        }
+        let mut caps: Vec<String> = Vec::new();
+        let mut flats: Vec<encode_spec::Shown> = Vec::new();
+        for i in 0..vals.len()
+            invariant 0 <= i && i <= vals.len(),
+        {
+            let mut ls: Vec<String> = Vec::new();
+            lens(&vals[i].v, &mut ls, 100000);
+            for j in 0..ls.len()
+                invariant 0 <= j && j <= ls.len(),
+            {
+                caps.push(types::cat3("(<= ", ls[j].as_str(), " 4)"));
+            }
+            flat(&vals[i].v, &vals[i].ty, &pg.pr.t, &mut flats, 100000);
+        }
+        let length_caps: Vec<String> = encode_query::to_vec(caps.as_slice());
+        let mut longer: Vec<String> = Vec::new();
+        if nth != 0 {
+            let at_least: usize = if nth < 4 {
+                nth
+            } else {
+                4
+            };
+            for i in 0..g.inputs.len()
+                invariant 0 <= i && i <= g.inputs.len(),
+            {
+                let mut ls2: Vec<String> = Vec::new();
+                lens(&g.inputs[i].v, &mut ls2, 100000);
+                for j in 0..ls2.len()
+                    invariant 0 <= j && j <= ls2.len(),
+                {
+                    longer.push(types::cat5("(<= ", encode_terms::dec(at_least as u64).as_str(), " ", ls2[j].as_str(), ")"));
+                }
+            }
+        }
+        let bounds: Vec<String> = model::bound_terms(flats.as_slice());
+        let mut small: Vec<String> = Vec::new();
+        for i in 0..bounds.len()
+            invariant 0 <= i && i <= bounds.len(),
+        {
+            if !types::has(caps.as_slice(), bounds[i].as_str()) {
+                small.push(bounds[i].clone());
+            }
+        }
+        let mut turn: Vec<String> = Vec::new();
+        if vary {
+            match &g.result {
+                None => {},
+                Some(r) => { match &r.v { encode_terms::Val::S(rv) => { if is_bool(&r.ty) { if nth % 2 == 0 { turn.push(rv.clone()); } else { turn.push(types::cat3("(not ", rv.as_str(), ")")); } } }, encode_terms::Val::A(e1, l1) => {}, encode_terms::Val::Unit => {}, encode_terms::Val::Struct(s1) => {}, encode_terms::Val::Arr(r1, n1) => {}, } },
+            }
+        }
+        let mut tries: Vec<Vec<String>> = Vec::new();
+        if turn.len() > 0 {
+            if small.len() > 0 {
+                tries.push(joined4(caps.as_slice(), small.as_slice(), longer.as_slice(), turn.as_slice()));
+            }
+            let none: Vec<String> = Vec::new();
+            tries.push(joined4(caps.as_slice(), longer.as_slice(), turn.as_slice(), none.as_slice()));
+        }
+        if small.len() > 0 {
+            let none2: Vec<String> = Vec::new();
+            if longer.len() > 0 {
+                tries.push(joined4(caps.as_slice(), small.as_slice(), longer.as_slice(), none2.as_slice()));
+            }
+            tries.push(joined4(caps.as_slice(), small.as_slice(), none2.as_slice(), none2.as_slice()));
+        }
+        tries.push(caps);
+        let last: usize = tries.len() - 1;
+        for k in 0..tries.len()
+            invariant 0 <= k && k <= tries.len(),
+        {
+            let none3: Vec<String> = Vec::new();
+            let q: Vec<String> = joined4(facts, tries[k].as_slice(), none3.as_slice(), none3.as_slice());
+            let d: u8 = decide(g, st, z3, pg, q.as_slice());
+            if d == 1 {
+                return settle(g, st, z3, pg, names, q, outputs);
+            }
+            if d == 0 && k == last {
+                return Found { kind: 1, m: None };
+            }
+        }
+        if free {
+            for k2 in 0..written_tries()
+                invariant 0 <= k2,
+            {
+                let mut given: Vec<String> = Vec::new();
+                let mut at: usize = 0;
+                for i in 0..g.inputs.len()
+                    invariant 0 <= i && i <= g.inputs.len(),
+                {
+                    written(&g.inputs[i].v, &g.inputs[i].ty, &pg.pr.t, nth.saturating_add(k2), &mut at, &mut given, 100000);
+                }
+                let none4: Vec<String> = Vec::new();
+                let q2: Vec<String> = joined4(facts, length_caps.as_slice(), given.as_slice(), none4.as_slice());
+                if decide(g, st, z3, pg, q2.as_slice()) == 1 {
+                    return settle(g, st, z3, pg, names, q2, outputs);
+                }
+            }
+        }
+        Found { kind: 2, m: None }
+    }
+
+    #[summary("A copy of the values xs")]
+    #[effects(alloc)]
+    fn copy(xs: &[encode_spec::Shown]) -> Vec<encode_spec::Shown> {
+        let mut out: Vec<encode_spec::Shown> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("How many rows are of kind kind")]
+    #[effects(alloc)]
+    fn count_of(rows: &[Row], kind: &str) -> u64 {
+        let mut n: u64 = 0;
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len() && n <= i as u64,
+        {
+            if rows[i].kind == kind {
+                n = n + 1;
+            }
+        }
+        n
+    }
+
+    #[summary("Whether q can hold, as the satisfiability checks ask (stage0 Gen::decide): 0 no, 1 yes (the solver is then at a model of it), 2 undecided or no solver")]
+    #[effects(alloc, io, nondet)]
+    fn decide(g: &Gen, st: &mut sat::Solving, z3: &mut toolchain::Z3, pg: &encode_spec::Prog, q: &[String]) -> u8 {
+        if st.down {
+            return 2;
+        }
+        sat::sat_of(st, z3, solver::Asker::Models, &g.cx, pg, q)
+    }
+
+    #[summary("The examples of the contracts of defs (paths of executable functions), count inputs each, in the order given (stage0 examples). The error names a path that is not an executable function of the program; the queries asked for the definitions before it were asked")]
+    #[effects(alloc, io, nondet)]
+    fn examples(ck: &body::Checked, defs: &[String], count: usize) -> Result<Vec<Examples>, String> {
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(&pg);
+        let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let mut st: sat::Solving = sat::Solving { slot: None, down: sat::is_err(&toolchain::check_z3(&mut z3)), spent: 0 };
+        let gate: u64 = solver::rlimit();
+        let mut out: Vec<Examples> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            let found: Option<encode_spec::Def> = match pg.defs.find(defs[i].as_str()) {
+                None => None,
+                Some(at) => { if at < pg.defs.items.len() && sat::is_exec(pg.defs.items[at].d.kind) && !pg.defs.items[at].inst { Some(pg.defs.items[at].clone()) } else { None } },
+            };
+            match found {
+                None => { prove::let_go(&mut st.slot); return Err(types::cat3("`", defs[i].as_str(), "` is not an executable function")); },
+                Some(def) => { st.spent = 0; let ex: Examples = of_def(ck, &pg, sds.as_slice(), dts.as_slice(), &mut z3, &mut st, defs[i].as_str(), &def, count, gate); out.push(ex); },
+            }
+        }
+        prove::let_go(&mut st.slot);
+        Ok(out)
+    }
+
+    #[summary("A fixed length as Rust reads a usize from its numeral text, at most 4 (stage0 written's len_of for a fixed length; text that is no usize is 0)")]
+    #[effects(alloc)]
+    fn fixed_count(len: &str) -> usize {
+        if len.len() == 0 {
+            return 0;
+        }
+        let mut sig: usize = 0;
+        let mut first: usize = 0;
+        let mut v: usize = 0;
+        for i in 0..len.len()
+            invariant 0 <= i && i <= len.len() && v <= 49 && sig <= 21 && first <= len.len(),
+        {
+            let b: u8 = len.as_bytes()[i];
+            if b < 48 || b > 57 {
+                return 0;
+            }
+            let d: usize = (b - 48) as usize;
+            if sig > 0 || d != 0 {
+                if sig == 0 {
+                    first = i;
+                }
+                if sig < 21 {
+                    sig = sig + 1;
+                }
+            }
+            if v <= 4 {
+                v = v * 10 + d;
+            }
+        }
+        if sig > 20 || sig == 20 && lexer::cut(len, first, len.len()).as_str() > "18446744073709551615" {
+            return 0;
+        }
+        if v > 4 {
+            4
+        } else {
+            v
+        }
+    }
+
+    #[summary("The values with each struct replaced by its fields (stage0 flat), for bound_terms, which bounds an integer and an array, not a struct of them")]
+    #[effects(alloc)]
+    fn flat(v: &encode_terms::Val, t: &ast::TypeKind, tb: &lowered::Tables, out: &mut Vec<encode_spec::Shown>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            encode_terms::Val::S(x) => { out.push(encode_spec::Shown { name: String::new(), v: v.clone(), ty: t.clone() }); },
+            encode_terms::Val::A(e, l) => { out.push(encode_spec::Shown { name: String::new(), v: v.clone(), ty: t.clone() }); },
+            encode_terms::Val::Unit => { out.push(encode_spec::Shown { name: String::new(), v: v.clone(), ty: t.clone() }); },
+            encode_terms::Val::Struct(vs) => { match encode_decls::flat_fields(t, tb) { None => { out.push(encode_spec::Shown { name: String::new(), v: v.clone(), ty: t.clone() }); }, Some(fs) => { for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if i < fs.len() { flat(&vs[i], &fs[i].ty, tb, out, f - 1); } } }, } },
+            encode_terms::Val::Arr(r, n) => { out.push(encode_spec::Shown { name: String::new(), v: v.clone(), ty: t.clone() }); },
+        }
+    }
+
+    #[summary("Whether t is bool, or a reference to one (stage0 is_bool)")]
+    #[effects(alloc)]
+    fn is_bool(t: &ast::TypeKind) -> bool {
+        match body::ref_inner(t) {
+            None => model::is_bool(t),
+            Some(inner) => model::is_bool(&inner),
+        }
+    }
+
+    #[summary("Whether nothing is held")]
+    #[effects(pure)]
+    fn is_none(o: &Option<String>) -> bool {
+        match o {
+            None => true,
+            Some(s) => false,
+        }
+    }
+
+    #[summary("Whether no value is held")]
+    #[effects(pure)]
+    fn is_none_shown(o: &Option<encode_spec::Shown>) -> bool {
+        match o {
+            None => true,
+            Some(s) => false,
+        }
+    }
+
+    #[summary("Whether t is the unit type")]
+    #[effects(pure)]
+    fn is_unit(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(a) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => true,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(b, c) => false,
+            ast::TypeKind::ArrayN(d, e) => false,
+            ast::TypeKind::Slice(g) => false,
+            ast::TypeKind::Ref(h, i) => false,
+            ast::TypeKind::Named(j, k) => false,
+            ast::TypeKind::Vec(l) => false,
+            ast::TypeKind::Box(m) => false,
+            ast::TypeKind::Param(n) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("The lists one after another")]
+    #[effects(alloc)]
+    fn joined4(a: &[String], b: &[String], c: &[String], d: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = encode_query::to_vec(a);
+        encode_exec::extend(&mut out, b);
+        encode_exec::extend(&mut out, c);
+        encode_exec::extend(&mut out, d);
+        out
+    }
+
+    #[summary("a then b")]
+    #[effects(alloc)]
+    fn joined_shown(a: &[encode_spec::Shown], b: &[encode_spec::Shown]) -> Vec<encode_spec::Shown> {
+        let mut out: Vec<encode_spec::Shown> = copy(a);
+        for i in 0..b.len()
+            invariant 0 <= i && i <= b.len(),
+        {
+            out.push(b[i].clone());
+        }
+        out
+    }
+
+    #[summary("The rows as JSONL, then the summary row (stage0 Examples::jsonl)")]
+    #[effects(alloc)]
+    fn jsonl(e: &Examples) -> String {
+        let mut out: String = String::new();
+        for i in 0..e.rows.len()
+            invariant 0 <= i && i <= e.rows.len(),
+        {
+            out.push_str("{\"def\":");
+            std::json::push_string(&mut out, e.def.as_str());
+            out.push_str(",\"kind\":\"");
+            out.push_str(e.rows[i].kind.as_str());
+            out.push_str("\",\"input\":");
+            push_obj(&mut out, e.rows[i].input.as_slice());
+            match &e.rows[i].result {
+                None => {},
+                Some(r) => { out.push_str(",\"result\":"); std::json::push_string(&mut out, r.as_str()); },
+            }
+            if e.rows[i].after.len() > 0 {
+                out.push_str(",\"after\":");
+                push_obj(&mut out, e.rows[i].after.as_slice());
+            }
+            out.push_str("}\n");
+        }
+        out.push_str("{\"def\":");
+        std::json::push_string(&mut out, e.def.as_str());
+        out.push_str(",\"summary\":true,\"allowed\":");
+        std::num::push_u64(&mut out, count_of(e.rows.as_slice(), "allowed"));
+        out.push_str(",\"rejected\":");
+        std::num::push_u64(&mut out, count_of(e.rows.as_slice(), "rejected"));
+        out.push_str(",\"excluded\":");
+        std::num::push_u64(&mut out, count_of(e.rows.as_slice(), "excluded"));
+        out.push_str(",\"undecided\":");
+        std::num::push_u64(&mut out, e.undecided as u64);
+        out.push_str(",\"rlimit\":");
+        std::num::push_u64(&mut out, e.rlimit);
+        out.push_str(",\"max_len\":4");
+        match &e.reason {
+            None => {},
+            Some(why) => { out.push_str(",\"reason\":"); std::json::push_string(&mut out, why.as_str()); },
+        }
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The terms whose model values fix v of type t, in the order pin reads them, each with whether it is a bool (stage0 leaves): a scalar; a length and the first four elements; the fields of a struct, as far as its type has them")]
+    #[effects(alloc)]
+    fn leaves(v: &encode_terms::Val, t: &ast::TypeKind, tb: &lowered::Tables, out: &mut Vec<Leaf>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let none: encode_terms::Sexp = encode_terms::Sexp::Atom(String::new());
+        match v {
+            encode_terms::Val::S(x) => out.push(Leaf { term: x.clone(), boolean: is_bool(t), x: none }),
+            encode_terms::Val::A(elems, len) => { out.push(Leaf { term: len.clone(), boolean: false, x: none.clone() }); let b: bool = is_bool(&encode_decls::elem_ty(t)); for k in 0..4 invariant 0 <= k && k <= 4, { out.push(Leaf { term: types::cat5("(select ", elems.as_str(), " ", encode_terms::dec(k as u64).as_str(), ")"), boolean: b, x: none.clone() }); } },
+            encode_terms::Val::Unit => {},
+            encode_terms::Val::Struct(fs) => { match encode_decls::flat_fields(t, tb) { None => {}, Some(tys) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < tys.len() { leaves(&fs[i], &tys[i].ty, tb, out, f - 1); } } }, } },
+            encode_terms::Val::Arr(elem, len2) => { out.push(Leaf { term: len2.clone(), boolean: false, x: none }); let e: ast::TypeKind = encode_decls::elem_ty(t); for k2 in 0..4 invariant 0 <= k2 && k2 <= 4, { leaves(&encode_terms::select_val(&**elem, encode_terms::dec(k2 as u64).as_str(), 100000), &e, tb, out, f - 1); } },
+        }
+    }
+
+    #[summary("A length the model gives, when it is a number of at most 4 as Rust reads a usize from its text (stage0 pin's len_of)")]
+    #[effects(alloc)]
+    fn len_of(x: &encode_terms::Sexp) -> Option<usize> {
+        let text: String = encode_terms::render_value(x, 100000);
+        let digits: String = if encode_terms::starts_at(text.as_str(), 0, "+") {
+            lexer::cut(text.as_str(), 1, text.len())
+        } else {
+            text.clone()
+        };
+        if digits.len() == 0 {
+            return None;
+        }
+        let mut n: usize = 0;
+        for i in 0..digits.len()
+            invariant 0 <= i && i <= digits.len() && n <= 4,
+        {
+            let b: u8 = digits.as_bytes()[i];
+            if b < 48 || b > 57 {
+                return None;
+            }
+            let d: usize = (b - 48) as usize;
+            if n * 10 + d > 4 {
+                return None;
+            }
+            n = n * 10 + d;
+        }
+        Some(n)
+    }
+
+    #[summary("The lengths of v that are not fixed (stage0 lens)")]
+    #[effects(alloc)]
+    fn lens(v: &encode_terms::Val, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            encode_terms::Val::S(x) => {},
+            encode_terms::Val::A(e, len) => { if !encode_terms::fixed_len(len.as_str()) { out.push(len.clone()); } },
+            encode_terms::Val::Unit => {},
+            encode_terms::Val::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { lens(&fs[i], out, f - 1); } },
+            encode_terms::Val::Arr(r, len2) => { if !encode_terms::fixed_len(len2.as_str()) { out.push(len2.clone()); } },
+        }
+    }
+
+    #[summary("An integer or bool literal as the solver writes it (stage0 literal): true, false, digits, or `(- digits)`")]
+    #[effects(alloc)]
+    fn literal(x: &encode_terms::Sexp) -> bool {
+        match x {
+            encode_terms::Sexp::Atom(a) => a.as_str() == "true" || a.as_str() == "false" || a.len() > 0 && model::digits(a.as_str()),
+            encode_terms::Sexp::List(xs) => xs.len() == 2 && encode_query::atom_is(&xs[0], "-") && (match &xs[1] { encode_terms::Sexp::Atom(n) => n.len() > 0 && model::digits(n.as_str()), encode_terms::Sexp::List(m) => false, }),
+        }
+    }
+
+    #[summary("The most bool values of one model fixed by asking again (stage0 MAX_OPEN)")]
+    #[effects(pure)]
+    fn max_open() -> usize {
+        64
+    }
+
+    #[summary("Rejected rows at inputs other than those seen, while fewer than count are shown (the second loop of stage0 examples); rejected is how many there are")]
+    #[effects(alloc, io, nondet)]
+    fn more_rejected(g: &Gen, st: &mut sat::Solving, z3: &mut toolchain::Z3, pg: &encode_spec::Prog, names: &table::Table<String>, ex: &mut Examples, fails: &[String], seen: &mut Vec<String>, from: usize, count: usize) -> () {
+        let none: Vec<String> = Vec::new();
+        let mut rejected: usize = from;
+        while rejected < count
+            invariant 0 <= rejected,
+            decreases count - rejected,
+        {
+            let q4: Vec<String> = joined4(fails, seen.as_slice(), none.as_slice(), none.as_slice());
+            let f4: Found = ask(g, st, z3, pg, names, q4.as_slice(), true, rejected, false, true);
+            match &f4.m {
+                None => { if f4.kind == 2 { ex.undecided = ex.undecided.saturating_add(1); } break; },
+                Some(m4) => { ex.rows.push(row("rejected", m4)); seen.push(types::cat3("(not ", m4.same_input.as_str(), ")")); rejected = rejected + 1; },
+            }
+        }
+    }
+
+    #[summary("The examples of the contract of the executable function def at path (one definition of stage0 examples), count inputs: allowed rows, each with a second allowed result and a rejected one for its input; rejected rows at other inputs while fewer than count are shown; excluded inputs. gate is the gate's resource limit")]
+    #[effects(alloc, io, nondet)]
+    fn of_def(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, st: &mut sat::Solving, path: &str, def: &encode_spec::Def, count: usize, gate: u64) -> Examples {
+        let mut ex: Examples = Examples { def: String::from(path), rows: Vec::new(), undecided: 0, rlimit: 0, reason: None };
+        let mut enc: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
+        let ret: ast::TypeKind = enc.ret_ty(pg);
+        let mut odd: Option<String> = None;
+        for i in 0..def.d.params.len()
+            invariant 0 <= i && i <= def.d.params.len(),
+        {
+            if is_none(&odd) {
+                let ty: ast::TypeKind = enc.enc.local_ty(def.d.params[i].name.name.as_str(), pg);
+                if encode_exec::text_at(pg, path, i) || !shown_whole(&ty, &pg.pr.t, false, 100) {
+                    odd = Some(types::cat5("parameter `", def.d.params[i].name.name.as_str(), "` of type `", fmt::type_str(&def.d.params[i].ty).as_str(), "`: its values are not shown in full"));
+                }
+            }
+        }
+        if is_none(&odd) && !is_unit(&ret) && (encode_exec::text_ret(pg, path) || !shown_whole(&ret, &pg.pr.t, false, 100)) {
+            odd = Some(types::cat3("result of type `", fmt::type_str(&def.d.ret.ty).as_str(), "`: its values are not shown in full"));
+        }
+        if !is_none(&odd) {
+            ex.reason = odd;
+            return ex;
+        }
+        let mut shown: encode_query::Revealed = encode_query::revealed_axioms(pg, path, def);
+        enc.entry_params(&def.d, pg);
+        let inputs: Vec<encode_spec::Shown> = enc.inputs.clone();
+        let reqs: Vec<String> = enc.entry_requires(&def.d, pg);
+        let entry: Vec<String> = enc.enc.pc.clone();
+        let mut env: table::Table<encode_terms::Val> = enc.vars.clone();
+        let was: table::Table<encode_terms::Val> = enc.was.clone();
+        let mut after: Vec<encode_spec::Shown> = Vec::new();
+        for i in 0..def.d.params.len()
+            invariant 0 <= i && i <= def.d.params.len(),
+        {
+            if i < inputs.len() && encode_exec::mut_ref(&def.d.params[i].ty.kind) {
+                let inner: ast::TypeKind = match body::ref_inner(&def.d.params[i].ty.kind) {
+                    None => ast::TypeKind::Unit,
+                    Some(t) => t,
+                };
+                let v: encode_terms::Val = enc.behind_mut_after(types::cat2(inputs[i].name.as_str(), ".after").as_str(), &inputs[i].v, &inputs[i].ty, encode_exec::growable(&inner), pg);
+                enc.assume_valid(&v, &inputs[i].ty, pg);
+                env.insert(inputs[i].name.as_str(), v.clone());
+                after.push(encode_spec::Shown { name: inputs[i].name.clone(), v: v, ty: inputs[i].ty.clone() });
+            }
+        }
+        let mut result: Option<encode_spec::Shown> = None;
+        if !is_unit(&ret) {
+            let rv: encode_terms::Val = enc.enc.fresh_val("result", &ret, pg, 100000);
+            enc.assume_valid(&rv, &ret, pg);
+            let name: String = match &def.d.ret.name {
+                None => String::from("result"),
+                Some(rn) => rn.name.clone(),
+            };
+            match &def.d.ret.name {
+                None => {},
+                Some(n2) => env.insert(n2.name.as_str(), rv.clone()),
+            }
+            result = Some(encode_spec::Shown { name: name, v: rv, ty: ret.clone() });
+        }
+        let mut enss: Vec<String> = Vec::new();
+        for i in 0..def.d.post.len()
+            invariant 0 <= i && i <= def.d.post.len(),
+        {
+            enss.push(encode_terms::scalar_of(&enc.enc.spec_expr(&def.d.post[i], &env, &was, pg, 100000)));
+        }
+        let post: Vec<String> = enc.enc.pc.clone();
+        let none: Vec<String> = Vec::new();
+        let mut text: String = encode_terms::join(joined4(post.as_slice(), reqs.as_slice(), enss.as_slice(), none.as_slice()).as_slice(), "\n");
+        for k in 0..shown.axioms.len()
+            invariant 0 <= k && k <= shown.axioms.len(),
+        {
+            text.push_str(shown.axioms[k].b.as_str());
+        }
+        let mut fuel: usize = pg.defs.len().saturating_add(1);
+        let mut growing: bool = true;
+        while growing && fuel > 0
+            invariant 0 <= fuel,
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut more: Vec<String> = Vec::new();
+            for n in 0..pg.defs.len()
+                invariant 0 <= n,
+            {
+                match pg.defs.nth(n) {
+                    None => {},
+                    Some(at) => { if body::is_spec(pg.defs.items[at].d.kind) && !pg.defs.items[at].inst { let p: String = pg.defs.key(n); let s: String = encode_decls::sym(p.as_str()); let mut known: bool = false; for r in 0..shown.axioms.len() invariant 0 <= r && r <= shown.axioms.len(), { if shown.axioms[r].a == s { known = true; } } if !known && encode_query::has(text.as_str(), s.as_str()) { more.push(p.clone()); } } },
+                }
+            }
+            let before: usize = shown.axioms.len();
+            for m in 0..more.len()
+                invariant 0 <= m && m <= more.len(),
+            {
+                let key: String = encode_decls::spec_key(more[m].as_str(), &pg.pr.t);
+                if key == encode_decls::sym(more[m].as_str()) {
+                    let ax: encode_spec::Axiom = encode_spec::axiom(pg, more[m].as_str());
+                    text.push_str(ax.text.as_str());
+                    shown.axioms.push(encode_terms::Pair { a: key.clone(), b: ax.text.clone() });
+                    for q in 0..ax.parts.len()
+                        invariant 0 <= q && q <= ax.parts.len(),
+                    {
+                        shown.parts.push(ax.parts[q].clone());
+                    }
+                }
+            }
+            growing = shown.axioms.len() != before;
+        }
+        let hidden: Vec<String> = prove::hidden_predicates(pg, shown.axioms.as_slice(), text.as_str(), def.unit.as_str());
+        if hidden.len() > 0 {
+            let mut named: Vec<String> = Vec::new();
+            for h in 0..hidden.len()
+                invariant 0 <= h && h <= hidden.len(),
+            {
+                named.push(types::cat3("`", hidden[h].as_str(), "`"));
+            }
+            ex.reason = Some(types::cat3("the contract names ", encode_terms::join(named.as_slice(), ", ").as_str(), " by name only (not in `#[uses(..)]`)"));
+            return ex;
+        }
+        if encode_query::has(text.as_str(), "(f64.") {
+            ex.reason = Some(String::from("the contract uses `f64` operations"));
+            return ex;
+        }
+        let has_output: bool = !is_none_shown(&result) || after.len() > 0;
+        match pg.pr.t.fns.find(path) {
+            None => { return ex; },
+            Some(si) => { let cx: encode_query::Ctx = sat::ctx(&pg.pr.t.fns.items[si], enc.enc.fr.decls.as_slice(), &shown, enc.valid_defs.as_slice(), sds, dts, gate, gate); let g: Gen = Gen { cx: cx, inputs: inputs, result: result, after: after }; rows_of(&g, st, z3, pg, &ck.names, &mut ex, post.as_slice(), reqs.as_slice(), enss.as_slice(), entry.as_slice(), count, has_output); },
+        }
+        ex.rlimit = st.spent;
+        ex
+    }
+
+    #[summary("v equal to its model value (stage0 pin): vals are the leaves with their values, read from pos on, one equation per leaf, the length and the elements below it. A bool without a literal value is open; any other value that is not a literal, and a length that is not shown whole, is not read")]
+    #[effects(alloc)]
+    fn pin(v: &encode_terms::Val, vals: &[Leaf], pos: &mut usize, out: &mut Vec<String>, f: usize) -> Result<(), Unread>
+        decreases f,
+    {
+        if f == 0 {
+            return Err(Unread { open: false, term: String::new() });
+        }
+        match v {
+            encode_terms::Val::S(x) => { pin_leaf(vals, pos, true, out)?; Ok(()) },
+            encode_terms::Val::A(e, len) => { let lx: encode_terms::Sexp = pin_leaf(vals, pos, !encode_terms::fixed_len(len.as_str()), out)?; let n: usize = match len_of(&lx) { None => { return Err(Unread { open: false, term: String::new() }); }, Some(k) => k, }; for k2 in 0..shown_len() invariant 0 <= k2, { pin_leaf(vals, pos, k2 < n, out)?; } Ok(()) },
+            encode_terms::Val::Unit => Ok(()),
+            encode_terms::Val::Struct(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { pin(&fs[i], vals, pos, out, f - 1)?; } Ok(()) },
+            encode_terms::Val::Arr(elem, len2) => { let lx2: encode_terms::Sexp = pin_leaf(vals, pos, !encode_terms::fixed_len(len2.as_str()), out)?; let n2: usize = match len_of(&lx2) { None => { return Err(Unread { open: false, term: String::new() }); }, Some(k3) => k3, }; for k4 in 0..shown_len() invariant 0 <= k4, { let mut one: Vec<String> = Vec::new(); let r: Result<(), Unread> = pin(&encode_terms::select_val(&**elem, encode_terms::dec(k4 as u64).as_str(), 100000), vals, pos, &mut one, f - 1); if k4 < n2 { match &r { Ok(u) => {}, Err(why) => { return Err(why.clone()); }, } encode_exec::extend(out, one.as_slice()); } } Ok(()) },
+        }
+    }
+
+    #[summary("The next leaf of vals at pos (stage0 pin's leaf): with keep, its value must be a literal and is pinned by an equation")]
+    #[effects(alloc)]
+    fn pin_leaf(vals: &[Leaf], pos: &mut usize, keep: bool, out: &mut Vec<String>) -> Result<encode_terms::Sexp, Unread> {
+        if *pos >= vals.len() {
+            return Err(Unread { open: false, term: String::new() });
+        }
+        let lf: Leaf = vals[*pos].clone();
+        *pos = *pos + 1;
+        if keep {
+            if !literal(&lf.x) {
+                return Err(Unread { open: lf.boolean, term: lf.term.clone() });
+            }
+            out.push(types::cat5("(= ", lf.term.as_str(), " ", encode_terms::print(&lf.x, 100000).as_str(), ")"));
+        }
+        Ok(lf.x)
+    }
+
+    #[summary("The values xs equal to theirs in the current model, as one term (stage0 read's pinned): their leaves are asked of the solver at once")]
+    #[effects(alloc, io, nondet)]
+    fn pinned(sol: &mut solver::Solver, xs: &[encode_spec::Shown], tb: &lowered::Tables) -> Result<String, Unread> {
+        let mut terms: Vec<Leaf> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            leaves(&xs[i].v, &xs[i].ty, tb, &mut terms, 100000);
+        }
+        let mut asked: Vec<String> = Vec::new();
+        for i in 0..terms.len()
+            invariant 0 <= i && i <= terms.len(),
+        {
+            asked.push(terms[i].term.clone());
+        }
+        let got: Vec<encode_terms::Sexp> = match solver::get_value_terms(sol, asked.as_slice()) {
+            Ok(g) => g,
+            Err(e) => { return Err(Unread { open: false, term: String::new() }); },
+        };
+        let mut vals: Vec<Leaf> = Vec::new();
+        for i in 0..terms.len()
+            invariant 0 <= i && i <= terms.len(),
+        {
+            if i < got.len() {
+                vals.push(Leaf { term: terms[i].term.clone(), boolean: terms[i].boolean, x: got[i].clone() });
+            }
+        }
+        let mut pos: usize = 0;
+        let mut eqs: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            pin(&xs[i].v, vals.as_slice(), &mut pos, &mut eqs, 100000)?;
+        }
+        Ok(all(eqs.as_slice()))
+    }
+
+    #[summary("`{\"name\":\"value\",..}` of named values")]
+    #[effects(alloc)]
+    fn push_obj(out: &mut String, xs: &[model::Named]) -> () {
+        out.push_str("{");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, xs[i].name.as_str());
+            out.push_str(":");
+            std::json::push_string(out, xs[i].shown.as_str());
+        }
+        out.push_str("}");
+    }
+
+    #[summary("The current model (stage0 Gen::read): the inputs' values as terms first, so that every value shown is a literal, then as shown; with outputs also the result and the values after")]
+    #[effects(alloc, io, nondet)]
+    fn read(g: &Gen, st: &mut sat::Solving, pg: &encode_spec::Prog, names: &table::Table<String>, outputs: bool) -> Result<Model, Unread> {
+        match std::mem::replace(&mut st.slot, None) {
+            None => Err(Unread { open: false, term: String::new() }),
+            Some(held) => { let mut sol: solver::Solver = held; let r: Result<Model, Unread> = read_with(&mut sol, g, pg, names, outputs); st.slot = Some(sol); r },
+        }
+    }
+
+    #[summary("The current model of the solver sol (the reading of stage0 Gen::read)")]
+    #[effects(alloc, io, nondet)]
+    fn read_with(sol: &mut solver::Solver, g: &Gen, pg: &encode_spec::Prog, names: &table::Table<String>, outputs: bool) -> Result<Model, Unread> {
+        let same_input: String = pinned(sol, g.inputs.as_slice(), &pg.pr.t)?;
+        let input: Vec<model::Named> = shown_values(sol, g.inputs.as_slice(), pg, names)?;
+        if !outputs {
+            return Ok(Model { input: input, result: None, after: Vec::new(), same_input: same_input, same_output: String::from("true") });
+        }
+        let mut res: Vec<encode_spec::Shown> = Vec::new();
+        match &g.result {
+            None => {},
+            Some(r) => res.push(r.clone()),
+        }
+        let outs: Vec<encode_spec::Shown> = joined_shown(res.as_slice(), g.after.as_slice());
+        let same_output: String = pinned(sol, outs.as_slice(), &pg.pr.t)?;
+        let mut rs: Vec<model::Named> = shown_values(sol, res.as_slice(), pg, names)?;
+        let result: Option<String> = match rs.pop() {
+            None => None,
+            Some(last) => Some(last.shown),
+        };
+        let after: Vec<model::Named> = shown_values(sol, g.after.as_slice(), pg, names)?;
+        Ok(Model { input: input, result: result, after: after, same_input: same_input, same_output: same_output })
+    }
+
+    #[summary("A row of kind kind from model m")]
+    #[effects(alloc)]
+    fn row(kind: &str, m: &Model) -> Row {
+        Row { kind: String::from(kind), input: m.input.clone(), result: m.result.clone(), after: m.after.clone() }
+    }
+
+    #[summary("The rows of one contract (the loops of stage0 examples): post is the facts of the state after (the entry state's and the result's types), reqs and enss the clauses, entry the facts of the parameters' types alone")]
+    #[effects(alloc, io, nondet)]
+    fn rows_of(g: &Gen, st: &mut sat::Solving, z3: &mut toolchain::Z3, pg: &encode_spec::Prog, names: &table::Table<String>, ex: &mut Examples, post: &[String], reqs: &[String], enss: &[String], entry: &[String], count: usize, has_output: bool) -> () {
+        let none: Vec<String> = Vec::new();
+        let holds: Vec<String> = joined4(post, reqs, enss, none.as_slice());
+        let mut negated: Vec<String> = Vec::new();
+        negated.push(types::cat3("(not ", all(enss).as_str(), ")"));
+        let fails: Vec<String> = joined4(post, reqs, negated.as_slice(), none.as_slice());
+        let mut seen: Vec<String> = Vec::new();
+        let mut rejected: usize = 0;
+        for nth in 0..count
+            invariant 0 <= nth && nth <= count,
+        {
+            let q: Vec<String> = joined4(holds.as_slice(), seen.as_slice(), none.as_slice(), none.as_slice());
+            let f1: Found = ask(g, st, z3, pg, names, q.as_slice(), true, nth, true, true);
+            if f1.kind == 1 {
+                break;
+            }
+            if f1.kind == 2 {
+                ex.undecided = ex.undecided.saturating_add(1);
+                break;
+            }
+            match &f1.m {
+                None => { break; },
+                Some(m) => { ex.rows.push(row("allowed", m)); seen.push(types::cat3("(not ", m.same_input.as_str(), ")")); if has_output { let mut pair: Vec<String> = Vec::new(); pair.push(m.same_input.clone()); pair.push(types::cat3("(not ", m.same_output.as_str(), ")")); let other: Vec<String> = joined4(holds.as_slice(), pair.as_slice(), none.as_slice(), none.as_slice()); let f2: Found = ask(g, st, z3, pg, names, other.as_slice(), true, 0, false, false); match &f2.m { None => { if f2.kind == 2 { ex.undecided = ex.undecided.saturating_add(1); } }, Some(m2) => ex.rows.push(row("allowed", m2)), } if enss.len() > 0 { let mut same: Vec<String> = Vec::new(); same.push(m.same_input.clone()); let q3: Vec<String> = joined4(fails.as_slice(), same.as_slice(), none.as_slice(), none.as_slice()); let f3: Found = ask(g, st, z3, pg, names, q3.as_slice(), true, 0, false, false); match &f3.m { None => { if f3.kind == 2 { ex.undecided = ex.undecided.saturating_add(1); } }, Some(m3) => { ex.rows.push(row("rejected", m3)); rejected = rejected.saturating_add(1); }, } } } },
+            }
+        }
+        if has_output && enss.len() > 0 {
+            more_rejected(g, st, z3, pg, names, ex, fails.as_slice(), &mut seen, rejected, count);
+        }
+        if reqs.len() > 0 {
+            let mut q5: Vec<String> = encode_query::to_vec(entry);
+            q5.push(types::cat3("(not ", all(reqs).as_str(), ")"));
+            for nth2 in 0..count
+                invariant 0 <= nth2 && nth2 <= count,
+            {
+                let f5: Found = ask(g, st, z3, pg, names, q5.as_slice(), false, nth2, false, true);
+                if f5.kind == 1 {
+                    break;
+                }
+                if f5.kind == 2 {
+                    ex.undecided = ex.undecided.saturating_add(1);
+                    break;
+                }
+                match &f5.m {
+                    None => { break; },
+                    Some(m5) => { ex.rows.push(row("excluded", m5)); q5.push(types::cat3("(not ", m5.same_input.as_str(), ")")); },
+                }
+            }
+        }
+    }
+
+    #[summary("The model of q the solver is at, with each bool it leaves open fixed by asking again: q with it, and where that cannot hold, q without it (stage0 Gen::settle); at most 64 times")]
+    #[effects(alloc, io, nondet)]
+    fn settle(g: &Gen, st: &mut sat::Solving, z3: &mut toolchain::Z3, pg: &encode_spec::Prog, names: &table::Table<String>, q0: Vec<String>, outputs: bool) -> Found {
+        let mut q: Vec<String> = q0;
+        for k in 0..max_open()
+            invariant 0 <= k,
+        {
+            let open: String = match read(g, st, pg, names, outputs) {
+                Ok(m) => { return Found { kind: 0, m: Some(m) }; },
+                Err(u) => { if !u.open { return Found { kind: 2, m: None }; } u.term },
+            };
+            q.push(open.clone());
+            let d: u8 = decide(g, st, z3, pg, q.as_slice());
+            if d == 0 {
+                let n: usize = q.len();
+                q.truncate(n - 1);
+                q.push(types::cat3("(not ", open.as_str(), ")"));
+                if decide(g, st, z3, pg, q.as_slice()) != 1 {
+                    return Found { kind: 2, m: None };
+                }
+            } else if d == 2 {
+                return Found { kind: 2, m: None };
+            }
+        }
+        Found { kind: 2, m: None }
+    }
+
+    #[summary("The longest length a counterexample shows in full (stage0 SHOW)")]
+    #[effects(pure)]
+    fn shown_len() -> usize {
+        4
+    }
+
+    #[summary("Each of xs by name with its value in the current model, as a counterexample shows it, one per parameter that is not the unit value (stage0 read's shown: a closure's self would be several)")]
+    #[effects(alloc, io, nondet)]
+    fn shown_values(sol: &mut solver::Solver, xs: &[encode_spec::Shown], pg: &encode_spec::Prog, names: &table::Table<String>) -> Result<Vec<model::Named>, Unread> {
+        let named: Vec<model::Named> = match model::model_values(sol, xs, &pg.pr.t, names) {
+            None => { return Err(Unread { open: false, term: String::new() }); },
+            Some(v) => v,
+        };
+        let mut wanted: usize = 0;
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len() && wanted <= i,
+        {
+            match &xs[i].v {
+                encode_terms::Val::S(a) => { wanted = wanted + 1; },
+                encode_terms::Val::A(b, c) => { wanted = wanted + 1; },
+                encode_terms::Val::Unit => {},
+                encode_terms::Val::Struct(d) => { wanted = wanted + 1; },
+                encode_terms::Val::Arr(e, h) => { wanted = wanted + 1; },
+            }
+        }
+        if named.len() == wanted {
+            Ok(named)
+        } else {
+            Err(Unread { open: false, term: String::new() })
+        }
+    }
+
+    #[summary("Whether every value of type t is shown in full by a counterexample and fixed by pin (stage0 shown_whole): integers and bool, structs of them, and arrays and slices (of at most 4 elements when the length is fixed) of integers, bool or structs of those; element is whether t is an element's type")]
+    #[effects(alloc)]
+    fn shown_whole(t: &ast::TypeKind, tb: &lowered::Tables, element: bool, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        if encode_decls::is_array(t) {
+            let short: bool = match t {
+                ast::TypeKind::Int(s1) => true,
+                ast::TypeKind::F64 => true,
+                ast::TypeKind::Bool => true,
+                ast::TypeKind::Unit => true,
+                ast::TypeKind::Char => true,
+                ast::TypeKind::String => true,
+                ast::TypeKind::Str => true,
+                ast::TypeKind::Array(s2, n) => *n <= 4,
+                ast::TypeKind::ArrayN(s3, s4) => true,
+                ast::TypeKind::Slice(s5) => true,
+                ast::TypeKind::Ref(s6, s7) => true,
+                ast::TypeKind::Named(s8, s9) => true,
+                ast::TypeKind::Vec(s10) => true,
+                ast::TypeKind::Box(s11) => true,
+                ast::TypeKind::Param(s12) => true,
+                ast::TypeKind::Never => true,
+                ast::TypeKind::Error => true,
+            };
+            return !element && short && shown_whole(&encode_decls::elem_ty(t), tb, true, f - 1);
+        }
+        if types::is_int(t) || model::is_bool(t) {
+            return true;
+        }
+        match body::ref_inner(t) {
+            None => {},
+            Some(inner) => { return !element && shown_whole(&inner, tb, false, f - 1); },
+        }
+        match encode_decls::flat_fields(t, tb) {
+            None => false,
+            Some(fs) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if !shown_whole(&fs[i].ty, tb, element, f - 1) { return false; } } true },
+        }
+    }
+
+    #[summary("v (of type t) equal to the n-th written value (stage0 written): a length of 1, 2, 3, 0, 4 in turn and, for the at-th integer of the input, the n + 5 * at-th written integer (5 and 12 share no factor, so the elements of an array differ); a bool true or false in turn. An array of scalars is one array value, so that a quantifier over a written array is decided. A value outside the type or the reqs makes the query unsatisfiable and the next one is tried")]
+    #[effects(alloc)]
+    fn written(v: &encode_terms::Val, t0: &ast::TypeKind, tb: &lowered::Tables, n: usize, at: &mut usize, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let t: ast::TypeKind = match body::ref_inner(t0) {
+            None => t0.clone(),
+            Some(inner) => inner,
+        };
+        match v {
+            encode_terms::Val::S(x) => { if is_bool(&t) { if n.wrapping_add(*at) % 2 == 0 { out.push(x.clone()); } else { out.push(types::cat3("(not ", x.as_str(), ")")); } *at = (*at).saturating_add(1); } else { let w: String = written_int(n.wrapping_add((*at).wrapping_mul(5))); *at = (*at).saturating_add(1); out.push(types::cat5("(= ", x.as_str(), " ", w.as_str(), ")")); } },
+            encode_terms::Val::A(elems, len) => { let et: ast::TypeKind = encode_decls::elem_ty(&t); let boolean: bool = is_bool(&et); let mut value: String = if boolean { String::from("((as const (Array Int Bool)) false)") } else { String::from("((as const (Array Int Int)) 0)") }; let k: usize = written_len(len.as_str(), n, out); for j in 0..k invariant 0 <= j && j <= k, { let x2: String = if boolean { *at = (*at).saturating_add(1); if n.wrapping_add(*at) % 2 == 0 { String::from("true") } else { String::from("false") } } else { let w2: String = written_int(n.wrapping_add((*at).wrapping_mul(5))); *at = (*at).saturating_add(1); w2 }; value = types::cat7("(store ", value.as_str(), " ", encode_terms::dec(j as u64).as_str(), " ", x2.as_str(), ")"); } out.push(types::cat5("(= ", elems.as_str(), " ", value.as_str(), ")")); },
+            encode_terms::Val::Unit => {},
+            encode_terms::Val::Struct(fs) => { match encode_decls::flat_fields(&t, tb) { None => {}, Some(fts) => { for i in 0..fs.len() invariant 0 <= i && i <= fs.len(), { if i < fts.len() { written(&fs[i], &fts[i].ty, tb, n, at, out, f - 1); } } }, } },
+            encode_terms::Val::Arr(elem, len2) => { let et2: ast::TypeKind = encode_decls::elem_ty(&t); let k2: usize = written_len(len2.as_str(), n, out); for j2 in 0..k2 invariant 0 <= j2 && j2 <= k2, { written(&encode_terms::select_val(&**elem, encode_terms::dec(j2 as u64).as_str(), 100000), &et2, tb, n, at, out, f - 1); } },
+        }
+    }
+
+    #[summary("The integers of the written inputs, small and of both signs (stage0 WRITTEN_INTS), the k-th modulo their count, as a term")]
+    #[effects(alloc)]
+    fn written_int(k: usize) -> String {
+        let i: usize = k % 12;
+        let xs: [i64; 12] = [2, 3, 1, 0, 5, 4, 7, -1, 6, -2, 8, -3];
+        let x: i64 = xs[i];
+        if x < 0 {
+            types::cat3("(- ", encode_terms::dec((0 - x) as u64).as_str(), ")")
+        } else {
+            encode_terms::dec(x as u64)
+        }
+    }
+
+    #[summary("The length of a written value (stage0 written's len_of): a fixed length as it is, at most 4; any other is the n-th of 1, 2, 3, 0, 4, stated")]
+    #[effects(alloc)]
+    fn written_len(len: &str, n: usize, out: &mut Vec<String>) -> usize {
+        if encode_terms::fixed_len(len) {
+            return fixed_count(len);
+        }
+        let ks: [usize; 5] = [1, 2, 3, 0, 4];
+        let k: usize = ks[n % 5];
+        out.push(types::cat5("(= ", len, " ", encode_terms::dec(k as u64).as_str(), ")"));
+        k
+    }
+
+    #[summary("The written inputs tried per query that the solver leaves undecided (stage0 WRITTEN)")]
+    #[effects(pure)]
+    fn written_tries() -> usize {
+        8
+    }
+}

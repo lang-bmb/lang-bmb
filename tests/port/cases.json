@@ -2243,6 +2243,1065 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "lint",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-alone",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-results",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/prove/shapes.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-reach",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0905",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0905",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-limits",
+      "component": "C10",
+      "a": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_RLIMIT=3000",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-unknown",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-retry",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-models",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-limits",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-broken",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-fake-memory",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom unsat",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-solver-old",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "old",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-solver-dead",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "dead",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-solver-full",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "full",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-solver-mute",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "mute",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-solver-vanish",
+      "component": "C7",
+      "a": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/answers/fake.sh",
+        "vanish",
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0901,W0902,W0905,W0918",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "sat-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/sat/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/sat/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "examples",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "examples",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "examples",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-count",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "examples",
+        "--count",
+        "6",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "6",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-shapes",
+      "component": "C6",
+      "a": [
+        "{bmb}",
+        "examples",
+        "shapes::flags",
+        "shapes::generic",
+        "shapes::lines",
+        "shapes::many",
+        "shapes::maybe",
+        "shapes::nodes",
+        "shapes::nothing",
+        "shapes::options",
+        "shapes::points",
+        "shapes::poly",
+        "shapes::rect",
+        "shapes::results",
+        "shapes::rows",
+        "shapes::scalars",
+        "shapes::shape",
+        "shapes::shapes_in",
+        "shapes::text",
+        "shapes::units",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "examples",
+        "shapes::flags",
+        "shapes::generic",
+        "shapes::lines",
+        "shapes::many",
+        "shapes::maybe",
+        "shapes::nodes",
+        "shapes::nothing",
+        "shapes::options",
+        "shapes::points",
+        "shapes::poly",
+        "shapes::rect",
+        "shapes::results",
+        "shapes::rows",
+        "shapes::scalars",
+        "shapes::shape",
+        "shapes::shapes_in",
+        "shapes::text",
+        "shapes::units",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/shapes.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-unknown",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-models",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-sat",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-limits",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-broken",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "examples-fake-memory",
+      "component": "C6",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom sat",
+        "{bmb}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown oom oom sat",
+        "{build:stage1}",
+        "examples",
+        "--count",
+        "2",
+        "d::head",
+        "d::sum3",
+        "d::any_on",
+        "d::total",
+        "d::twice",
+        "d::above",
+        "d::find",
+        "d::maxi",
+        "d::within",
+        "d::sum",
+        "d::bump",
+        "d::swap",
+        "u::first",
+        "u::half",
+        "u::long",
+        "u::opaque",
+        "u::clear",
+        "--",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/examples.bmb"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }

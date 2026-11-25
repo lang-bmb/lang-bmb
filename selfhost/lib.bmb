@@ -154,6 +154,21 @@ mod lib {
         Emitted { ok: true, diags: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo }
     }
 
+    #[summary("bmb examples (stage0 examples_sources): reads the files as one program, checks it and, when it checks, the examples of each named function's contract (examples::examples), as JSONL. Not ok with the diagnostics of a program that does not check, or with the line naming a path that is not an executable function")]
+    #[effects(alloc, io, nondet)]
+    fn examples(files: &[Input], defs: &[String], count: usize) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        match examples::examples(&fe.ck, defs, count) {
+            Ok(found) => { let mut text: String = String::new(); for i in 0..found.len() invariant 0 <= i && i <= found.len(), { text.push_str(examples::jsonl(&found[i]).as_str()); } Outcome { ok: true, text: text } },
+            Err(e) => Outcome { ok: false, text: types::cat2(e.as_str(), "\n") },
+        }
+    }
+
     #[summary("bmb fmt: normal form of the program (ADR-0019 §1), in unit name order with one line in between. Method calls written as paths become method syntax (ADR-0051). Library units are not text of the program (ADR-0092 §1). If there are errors, emits only diagnostics and ok is false")]
     #[effects(alloc)]
     fn format(files: &[Input]) -> Outcome {
@@ -266,6 +281,38 @@ mod lib {
             out.push_str("\"}\n");
         }
         Outcome { ok: true, text: out }
+    }
+
+    #[summary("The value of `--count` as Rust reads a usize (an optional `+`, then digits), when it is from 1 to 64")]
+    #[effects(alloc)]
+    fn parse_count(s: &str) -> Option<usize> {
+        let digits: String = if encode_terms::starts_at(s, 0, "+") {
+            lexer::cut(s, 1, s.len())
+        } else {
+            String::from(s)
+        };
+        if digits.len() == 0 {
+            return None;
+        }
+        let mut n: usize = 0;
+        for i in 0..digits.len()
+            invariant 0 <= i && i <= digits.len() && n <= 64,
+        {
+            let b: u8 = digits.as_bytes()[i];
+            if b < 48 || b > 57 {
+                return None;
+            }
+            let d: usize = (b - 48) as usize;
+            if n * 10 + d > 64 {
+                return None;
+            }
+            n = n * 10 + d;
+        }
+        if n == 0 {
+            None
+        } else {
+            Some(n)
+        }
     }
 
     #[summary(",\"file\":..,\"lo\":..,\"hi\":..")]

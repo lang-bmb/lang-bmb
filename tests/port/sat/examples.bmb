@@ -1,0 +1,227 @@
+#[summary("Contracts of every shape the examples show: scalars, slices, a struct, a bool result, &mut parameters, quantified and recursive definitions")]
+mod d {
+
+    struct Cell { v: i64, on: bool }
+
+    #[summary("A slice of structs: the first element's value")]
+    #[effects(pure)]
+    fn head(a: &[Cell]) -> (r: i64)
+        requires a.len() > 0 && a[0].v < 100 && a[0].v > -100,
+        ensures r == a[0].v,
+    {
+        a[0].v
+    }
+
+    #[summary("An array of a fixed length")]
+    #[effects(pure)]
+    fn sum3(a: [i64; 3]) -> (r: i64)
+        requires a[0] < 100 && a[0] > -100 && a[1] < 100 && a[1] > -100 && a[2] < 100 && a[2] > -100,
+        ensures r == a[0] + a[1] + a[2],
+    {
+        a[0] + a[1] + a[2]
+    }
+
+    #[summary("An array of structs of a fixed length, with a result that is a bool")]
+    #[effects(pure)]
+    fn any_on(a: [Cell; 2]) -> (r: bool)
+        ensures r == (a[0].on || a[1].on),
+    {
+        a[0].on || a[1].on
+    }
+    struct Point { x: i64, y: bool }
+
+    spec fn sorted(a: &[i64]) -> bool {
+        forall|i: usize, j: usize| i < j && j < a.len() ==> #[trigger] a[i] <= #[trigger] a[j]
+    }
+
+    spec fn upper(a: &[i64], r: i64) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] <= r
+    }
+
+    spec fn has(a: &[i64], r: i64) -> bool {
+        exists|i: usize| i < a.len() && #[trigger] a[i] == r
+    }
+
+    spec fn all_in(a: &[i64], lo: i64, hi: i64) -> bool {
+        forall|i: usize| i < a.len() ==> lo <= #[trigger] a[i] && a[i] <= hi
+    }
+
+    spec fn pre_twice(x: i64) -> bool { x < 1000 && x > -1000 }
+
+    spec fn post_twice(x: i64, r: i64) -> bool { r == 2 * x }
+
+    spec fn pre_above(x: i64) -> bool { x < 1000 }
+
+    spec fn post_above(x: i64, r: i64) -> bool { r >= x }
+
+    spec fn pre_find(a: &[i64], k: i64) -> bool { sorted(a) && a.len() > 1 }
+
+    spec fn post_find(a: &[i64], k: i64, r: usize) -> bool {
+        r <= a.len() && (r < a.len() ==> a[r] == k)
+    }
+
+    spec fn pre_maxi(a: &[i64]) -> bool { a.len() > 0 }
+
+    spec fn post_maxi(a: &[i64], r: i64) -> bool { upper(a, r) && has(a, r) }
+
+    spec fn pre_within(a: &[i64], lo: i64, hi: i64) -> bool { lo <= hi }
+
+    spec fn post_within(a: &[i64], lo: i64, hi: i64, r: bool) -> bool { r == all_in(a, lo, hi) }
+
+    spec fn pre_sum(p: &Point, q: Point) -> bool { p.x < q.x && q.x < 100 && p.x > -100 }
+
+    spec fn post_sum(p: &Point, q: Point, r: Point) -> bool {
+        r.x == p.x + q.x && r.y == (p.y && q.y)
+    }
+
+    spec fn pre_bump(a: i64) -> bool { a < 1000 }
+
+    spec fn post_bump(before: i64, after: i64, r: i64) -> bool { r >= 0 && after == before + 1 }
+
+    spec fn pre_swap(v: &[u64]) -> bool { v.len() == 2 }
+
+    spec fn post_swap(before: &[u64], after: &[u64]) -> bool {
+        after[0] == before[1] && after[1] == before[0]
+    }
+
+    // A recursive definition and a quantifier over the slice: the solver decides this contract at a written input.
+    spec fn tally(a: &[i64], n: usize) -> i64
+        decreases n,
+    {
+        if n == 0 { 0 } else { tally(a, n - 1) + a[n - 1] }
+    }
+
+    spec fn pre_total(a: &[i64]) -> bool {
+        a.len() > 0 && (forall|i: usize| i < a.len() ==> -100 < #[trigger] a[i] && a[i] < 100)
+    }
+
+    spec fn post_total(a: &[i64], r: i64) -> bool { r == tally(a, a.len()) }
+
+    #[effects(pure)]
+    #[uses(pre_total, post_total, tally)]
+    fn total(a: &[i64]) -> (r: i64)
+        requires pre_total(a),
+        ensures post_total(a, r),
+    {
+        0
+    }
+
+    #[effects(pure)]
+    #[uses(pre_twice, post_twice)]
+    fn twice(x: i64) -> (r: i64)
+        requires pre_twice(x),
+        ensures post_twice(x, r),
+    {
+        2 * x
+    }
+
+    #[effects(pure)]
+    #[uses(pre_above, post_above)]
+    fn above(x: i64) -> (r: i64)
+        requires pre_above(x),
+        ensures post_above(x, r),
+    {
+        x
+    }
+
+    #[effects(pure)]
+    #[uses(pre_find, post_find, sorted)]
+    fn find(a: &[i64], k: i64) -> (r: usize)
+        requires pre_find(a, k),
+        ensures post_find(a, k, r),
+    {
+        a.len()
+    }
+
+    #[effects(pure)]
+    #[uses(pre_maxi, post_maxi, upper, has)]
+    fn maxi(a: &[i64]) -> (r: i64)
+        requires pre_maxi(a),
+        ensures post_maxi(a, r),
+    {
+        a[0]
+    }
+
+    #[effects(pure)]
+    #[uses(pre_within, post_within, all_in)]
+    fn within(a: &[i64], lo: i64, hi: i64) -> (r: bool)
+        requires pre_within(a, lo, hi),
+        ensures post_within(a, lo, hi, r),
+    {
+        true
+    }
+
+    #[effects(pure)]
+    #[uses(pre_sum, post_sum)]
+    fn sum(p: &Point, q: Point) -> (r: Point)
+        requires pre_sum(p, q),
+        ensures post_sum(p, q, r),
+    {
+        Point { x: p.x + q.x, y: p.y && q.y }
+    }
+
+    #[effects(pure)]
+    #[uses(pre_bump, post_bump)]
+    fn bump(a: &mut i64) -> (r: i64)
+        requires pre_bump(*a),
+        ensures post_bump(*old(a), *a, r),
+    {
+        *a = *a + 1;
+        0
+    }
+
+    #[effects(pure)]
+    #[uses(pre_swap, post_swap)]
+    fn swap(v: &mut [u64]) -> ()
+        requires pre_swap(v),
+        ensures post_swap(old(v), v),
+    {
+        let t: u64 = v[0];
+        v[0] = v[1];
+        v[1] = t;
+    }
+}
+
+#[summary("Definitions without examples: types not shown in full, a contract through a spec fn seen by name only, f64; and the same contract with its spec fns revealed")]
+mod u {
+    spec fn big(r: i64) -> bool { huge(r) }
+
+    spec fn huge(r: i64) -> bool { r > 10 }
+
+    #[effects(pure)]
+    fn first(a: Option<i64>) -> (r: i64)
+        ensures r == 0,
+    {
+        0
+    }
+
+    #[effects(pure)]
+    fn half(x: i64) -> (r: f64)
+        ensures x == 0 ==> r == 0.0,
+    {
+        0.0
+    }
+
+    #[effects(pure)]
+    fn long(a: [i64; 5]) -> (r: i64)
+        ensures r == a[0],
+    {
+        a[0]
+    }
+
+    #[effects(pure)]
+    #[uses(big)]
+    fn opaque() -> (r: i64)
+        ensures big(r),
+    {
+        11
+    }
+
+    #[effects(pure)]
+    #[uses(big, huge)]
+    fn clear() -> (r: i64)
+        ensures big(r),
+    {
+        11
+    }
+}

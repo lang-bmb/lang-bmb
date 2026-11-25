@@ -1,0 +1,351 @@
+#[summary("The satisfiability checks of the proof side (port of stage0 compiler/src/verify.rs: sat_of, preconditions_satisfiable, results_determined, and vacuous_ends with the reach points of verify_pass): whether a set of facts in the prover's own encoding can hold together, asked as an obligation is (the probe in the forms of a satisfiability check, the definitions as recursive functions, the full query, ground instances), and the three checks the lint makes of it: preconditions that cannot hold together (W0901), contracts that allow two results for one input (W0918), and points of a definition its own proof cannot reach (W0905). An undecided query is never a report; it is counted in the check's cost")]
+mod sat {
+    #[summary("What a satisfiability check cost the solver (stage0 SatCost): the resource units of every query it sent, and the functions or points it left undecided")]
+    struct Cost { rlimit: u64, undecided: usize }
+
+    #[summary("Whether the result of one function is fixed by its contract (stage0 Determinacy, with None): kind 0 one result for every input, 1 two results for one input (the input and each result, as a counterexample shows them), 2 undecided or not judged")]
+    struct Det { path: String, span: source::Span, kind: u8, input: String, first: String, second: String }
+
+    #[summary("The determinacy check of every function it judges, in path order, and what it cost")]
+    struct Dets { rows: Vec<Det>, cost: Cost }
+
+    #[summary("A point of a definition whose path condition the solver refutes: the definition, the point and what it is")]
+    struct Point { path: String, span: source::Span, what: String }
+
+    #[summary("The points the program's own proofs cannot reach, in path order, and what deciding them cost")]
+    struct Points { rows: Vec<Point>, cost: Cost }
+
+    #[summary("Whether the preconditions of one function can hold together: verdict 0 they cannot, 1 they can, 2 undecided")]
+    struct Pre { path: String, span: source::Span, verdict: u8 }
+
+    #[summary("The precondition check of every function with preconditions, in path order, and what it cost")]
+    struct Pres { rows: Vec<Pre>, cost: Cost }
+
+    #[summary("The solver one check holds from one function to the next (stage0's solver and solver_down of a check), whether it is down (it could not start, or the version check failed), and the resource units spent")]
+    struct Solving { slot: Option<solver::Solver>, down: bool, spent: u64 }
+
+    #[summary("Adds the units a query spent, when it says")]
+    #[effects(pure)]
+    fn count(st: &mut Solving, used: Option<u64>) -> () {
+        match used {
+            None => {},
+            Some(u) => { st.spent = st.spent.saturating_add(u); },
+        }
+    }
+
+    #[summary("What a satisfiability check of a definition is asked over (the base of stage0 sat_of): the options with the resource limit query of a full query, the declarations of its type parameters, its local declarations, the definitions it reveals, its validity functions, and the probe's limit, a hundredth of the gate's limit rlimit")]
+    #[effects(alloc)]
+    fn ctx(sig: &types::FnSig, decls: &[String], shown: &encode_query::Revealed, valid: &[encode_spec::AxiomParts], sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], query: u64, rlimit: u64) -> encode_query::Ctx {
+        let head: String = encode_query::header(query);
+        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
+        let share: u64 = if rlimit / 100 >= 1 {
+            rlimit / 100
+        } else {
+            1
+        };
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
+        let mut vs: Vec<encode_spec::AxiomParts> = Vec::new();
+        for i in 0..valid.len()
+            invariant 0 <= i && i <= valid.len(),
+        {
+            vs.push(valid[i].clone());
+        }
+        encode_query::Ctx { header: head, prefix: prefix, decls: encode_terms::join(decls, "\n"), limit: limit, axioms: shown.axioms.clone(), parts: shown.parts.clone(), valid: vs, sds: encode_query::to_decls(sds), dts: encode_query::to_dts(dts) }
+    }
+
+    #[summary("Whether each executable function's contract fixes its result (stage0 results_determined, W0918): without the body, can its requires and its ensures of two results that differ hold together? The query is the precondition check's with two results. Only functions with a named result of a scalar or struct type, ensures clauses and no &mut parameter (whose new values would be results too). A clause through a spec fn seen by name only allows any result of it, so such a function is not judged. who asks, query is the resource limit of a full query and rlimit the gate's")]
+    #[effects(alloc, io, nondet)]
+    fn determined(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, who: solver::Asker, query: u64, rlimit: u64) -> Dets {
+        let mut st: Solving = Solving { slot: None, down: is_err(&toolchain::check_z3(z3)), spent: 0 };
+        let mut rows: Vec<Det> = Vec::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); let def: encode_spec::Def = pg.defs.items[at].clone(); match &def.d.ret.name { None => {}, Some(rn) => { if !def.inst && is_exec(def.d.kind) && def.d.post.len() > 0 && !has_mut_param(&def.d) { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(si) => { let sig: types::FnSig = pg.pr.t.fns.items[si].clone(); let span: source::Span = def.d.post[0].span.to(def.d.post[def.d.post.len() - 1].span); let shown: encode_query::Revealed = encode_query::revealed_axioms(pg, path.as_str(), &def); let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path.as_str(), def.unit.as_str()); ex.entry_params(&def.d, pg); let inputs: Vec<encode_spec::Shown> = ex.inputs.clone(); let req: Vec<String> = ex.entry_requires(&def.d, pg); encode_exec::extend(&mut ex.enc.pc, req.as_slice()); let env: table::Table<encode_terms::Val> = ex.vars.clone(); let was: table::Table<encode_terms::Val> = ex.was.clone(); let ret: ast::TypeKind = ex.ret_ty(pg); let r1: encode_terms::Val = ex.enc.fresh_val("result.one", &ret, pg, 100000); let r2: encode_terms::Val = ex.enc.fresh_val("result.two", &ret, pg, 100000); match differ(&r1, &r2, 100000) { None => {}, Some(neq) => { two_results(&mut ex, &def.d, rn.name.as_str(), &r1, &ret, &env, &was, pg); two_results(&mut ex, &def.d, rn.name.as_str(), &r2, &ret, &env, &was, pg); ex.enc.pc.push(neq); let mut text: String = encode_terms::join(ex.enc.pc.as_slice(), "\n"); for k in 0..shown.axioms.len() invariant 0 <= k && k <= shown.axioms.len(), { text.push_str(shown.axioms[k].b.as_str()); } let hidden: Vec<String> = prove::hidden_predicates(pg, shown.axioms.as_slice(), text.as_str(), def.unit.as_str()); if hidden.len() > 0 || st.down { rows.push(Det { path: path.clone(), span: span, kind: 2, input: String::new(), first: String::new(), second: String::new() }); } else { let cx: encode_query::Ctx = ctx(&sig, ex.enc.fr.decls.as_slice(), &shown, ex.valid_defs.as_slice(), sds, dts, query, rlimit); let verdict: u8 = sat_of(&mut st, z3, who, &cx, pg, ex.enc.pc.as_slice()); rows.push(witness(&mut st, verdict, path.as_str(), span, inputs.as_slice(), rn.name.as_str(), &r1, &r2, &ret, ck, pg)); } }, } }, } } }, } },
+            }
+        }
+        prove::let_go(&mut st.slot);
+        let mut undecided: usize = 0;
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if rows[i].kind == 2 {
+                undecided = undecided.saturating_add(1);
+            }
+        }
+        Dets { rows: rows, cost: Cost { rlimit: st.spent, undecided: undecided } }
+    }
+
+    #[summary("`a != b` of two values of one type (stage0 differ): for scalars and structs of them, false for a struct of no fields; None for arrays and slices, which have no extensional disequality here")]
+    #[effects(alloc)]
+    fn differ(a: &encode_terms::Val, b: &encode_terms::Val, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match a {
+            encode_terms::Val::S(x) => match b { encode_terms::Val::S(y) => Some(types::cat5("(not (= ", x.as_str(), " ", y.as_str(), "))")), encode_terms::Val::A(e1, l1) => None, encode_terms::Val::Unit => None, encode_terms::Val::Struct(s1) => None, encode_terms::Val::Arr(r1, n1) => None, },
+            encode_terms::Val::A(e2, l2) => None,
+            encode_terms::Val::Unit => None,
+            encode_terms::Val::Struct(xs) => match b { encode_terms::Val::S(y2) => None, encode_terms::Val::A(e3, l3) => None, encode_terms::Val::Unit => None, encode_terms::Val::Struct(ys) => { if xs.len() != ys.len() { return None; } let mut parts: Vec<String> = Vec::new(); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i < ys.len() { parts.push(differ(&xs[i], &ys[i], f - 1)?); } } if parts.len() == 0 { Some(String::from("false")) } else if parts.len() == 1 { Some(parts[0].clone()) } else { Some(types::cat3("(or ", encode_terms::join(parts.as_slice(), " ").as_str(), ")")) } }, encode_terms::Val::Arr(r2, n2) => None, },
+            encode_terms::Val::Arr(r3, n3) => None,
+        }
+    }
+
+    #[summary("Whether any parameter of d is a &mut")]
+    #[effects(pure)]
+    fn has_mut_param(d: &ast::FnDef) -> bool {
+        for i in 0..d.params.len()
+            invariant 0 <= i && i <= d.params.len(),
+        {
+            if encode_exec::mut_ref(&d.params[i].ty.kind) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether the version check failed")]
+    #[effects(pure)]
+    fn is_err(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(v) => false,
+            Err(e) => true,
+        }
+    }
+
+    #[summary("Whether a definition of kind k is an executable function")]
+    #[effects(pure)]
+    fn is_exec(k: ast::FnKind) -> bool {
+        !body::is_spec(k) && !body::is_proof(k)
+    }
+
+    #[summary("Whether the preconditions of every executable function that has any can hold together (stage0 preconditions_satisfiable, W0901). The query is the prover's own encoding of the function's entry state: parameter range facts and type invariants (ADR-0060), the definitions its #[uses] reveals, and the clauses. Per function with clauses, in path order: its path, the span from the first to the last clause, and its verdict (0: they cannot hold together, so the function can never be called and every proof about it is vacuous; 1: they can; 2: undecided, or the solver could not run). who asks, query is the resource limit of a full query and rlimit the gate's")]
+    #[effects(alloc, io, nondet)]
+    fn preconditions(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, who: solver::Asker, query: u64, rlimit: u64) -> Pres {
+        let mut st: Solving = Solving { slot: None, down: is_err(&toolchain::check_z3(z3)), spent: 0 };
+        let mut rows: Vec<Pre> = Vec::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); let def: encode_spec::Def = pg.defs.items[at].clone(); if !def.inst && is_exec(def.d.kind) && def.d.pre.len() > 0 { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(si) => { let sig: types::FnSig = pg.pr.t.fns.items[si].clone(); let span: source::Span = def.d.pre[0].span.to(def.d.pre[def.d.pre.len() - 1].span); let shown: encode_query::Revealed = encode_query::revealed_axioms(pg, path.as_str(), &def); let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path.as_str(), def.unit.as_str()); ex.entry_params(&def.d, pg); let req: Vec<String> = ex.entry_requires(&def.d, pg); encode_exec::extend(&mut ex.enc.pc, req.as_slice()); if st.down { rows.push(Pre { path: path.clone(), span: span, verdict: 2 }); } else { let cx: encode_query::Ctx = ctx(&sig, ex.enc.fr.decls.as_slice(), &shown, ex.valid_defs.as_slice(), sds, dts, query, rlimit); let verdict: u8 = sat_of(&mut st, z3, who, &cx, pg, ex.enc.pc.as_slice()); rows.push(Pre { path: path.clone(), span: span, verdict: verdict }); } }, } } },
+            }
+        }
+        prove::let_go(&mut st.slot);
+        let mut undecided: usize = 0;
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            if rows[i].verdict == 2 {
+                undecided = undecided.saturating_add(1);
+            }
+        }
+        Pres { rows: rows, cost: Cost { rlimit: st.spent, undecided: undecided } }
+    }
+
+    #[summary("Asks each reach point of the encoded definition r of path (the reach loop of stage0 verify_pass): the refuted ones are appended to rows, and the count of undecided ones is returned. The solver is replaced when too old before a point; a point without a solver, and every point after it, is undecided")]
+    #[effects(alloc, io, nondet)]
+    fn reach_points(st: &mut Solving, z3: &mut toolchain::Z3, who: solver::Asker, r: &encode_query::Reaching, pg: &encode_spec::Prog, path: &str, unit: &str, rows: &mut Vec<Point>) -> usize {
+        let mut undecided: usize = 0;
+        for k in 0..r.points.len()
+            invariant 0 <= k && k <= r.points.len(),
+        {
+            let mut asserted: Vec<String> = Vec::new();
+            for i in 0..r.points[k].pc.len()
+                invariant 0 <= i && i <= r.points[k].pc.len(),
+            {
+                asserted.push(types::cat3("(assert ", r.points[k].pc[i].as_str(), ")"));
+            }
+            let q1: String = encode_query::valid_instances(r.cx.valid.as_slice(), encode_terms::join(asserted.as_slice(), "\n"));
+            let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str());
+            let relevant: String = encode_query::relevant_axioms(r.cx.axioms.as_slice(), q.as_str());
+            let used: String = encode_query::needed_decls(r.cx.sds.as_slice(), r.cx.dts.as_slice(), types::cat4(relevant.as_str(), r.cx.decls.as_str(), "\n", q.as_str()).as_str());
+            let base: String = types::cat4(r.cx.prefix.as_str(), used.as_str(), relevant.as_str(), r.cx.decls.as_str());
+            if !prove::reusable(&st.slot) {
+                prove::let_go(&mut st.slot);
+            }
+            if prove::idle(&st.slot) {
+                match solver::start(who, z3) {
+                    Ok(s) => { st.slot = Some(s); },
+                    Err(e) => {},
+                }
+            }
+            if prove::idle(&st.slot) {
+                undecided = undecided.saturating_add(r.points.len() - k);
+                break;
+            }
+            match std::mem::replace(&mut st.slot, None) {
+                None => {},
+                Some(held) => { let mut sol: solver::Solver = held; let a: prove::Ans = reach_with(&mut sol, st, who, &r.cx, pg, q.as_str(), relevant.as_str(), base.as_str(), path, unit); if a.kind == 0 { rows.push(Point { path: String::from(path), span: r.points[k].span, what: r.points[k].what.clone() }); st.slot = Some(sol); } else if a.kind == 1 { st.slot = Some(sol); } else if a.kind == 2 { undecided = undecided.saturating_add(1); st.slot = Some(sol); } else { undecided = undecided.saturating_add(1); match prove::limit_of(&a, who) { None => { let status: Option<i32> = solver::close(&mut sol); }, Some(why) => { st.slot = Some(sol); }, } } },
+            }
+        }
+        undecided
+    }
+
+    #[summary("The answer to the reach-point query q with the solver (the queries of one reach point in stage0 verify_pass): the probe in the forms of a satisfiability check, the exact bit-vector form (its sat reaches the point, its unsat refutes it only when it is exact), the definitions as recursive functions, each at the probe's share and taken when it answers; then the full query under the reach limit, whose refutation comes fast; then, undecided with quantified definitions, their ground instances at the probe's share")]
+    #[effects(alloc, io, nondet)]
+    fn reach_with(sol: &mut solver::Solver, st: &mut Solving, who: solver::Asker, cx: &encode_query::Ctx, pg: &encode_spec::Prog, q: &str, relevant: &str, base: &str, path: &str, unit: &str) -> prove::Ans {
+        let mut answer: Option<prove::Ans> = None;
+        match encode_query::probe_base(cx, q, relevant, encode_query::Forms::SatProbe) {
+            None => {},
+            Some(pb) => { let mut ps: Vec<String> = Vec::new(); ps.push(pb.clone()); ps.push(cx.limit.clone()); ps.push(String::from(q)); let a: prove::Ans = prove::asked(sol, ps.as_slice()); count(st, prove::spent(sol, &a)); if a.kind == 0 || a.kind == 1 { answer = Some(a.clone()); } },
+        }
+        if prove::is_open(&answer) {
+            let mut scratch: encode_spec::Enc = encode_spec::new_enc(pg, path, unit);
+            match encode_query::bv_reach(cx.decls.as_str(), q, &mut scratch, pg) {
+                None => {},
+                Some(bq) => { let mut ps1: Vec<String> = Vec::new(); ps1.push(types::cat3(cx.header.as_str(), "\n", bq.script.as_str())); ps1.push(cx.limit.clone()); let a1: prove::Ans = prove::asked(sol, ps1.as_slice()); count(st, prove::spent(sol, &a1)); if a1.kind == 1 || a1.kind == 0 && bq.exact { answer = Some(a1.clone()); } },
+            }
+        }
+        if prove::is_open(&answer) {
+            match encode_query::rec_base(cx, q) {
+                None => {},
+                Some(rb) => { let mut ps2: Vec<String> = Vec::new(); ps2.push(rb.clone()); ps2.push(cx.limit.clone()); ps2.push(String::from(q)); let a2: prove::Ans = prove::asked(sol, ps2.as_slice()); count(st, prove::spent(sol, &a2)); if a2.kind == 0 || a2.kind == 1 { answer = Some(a2.clone()); } },
+            }
+        }
+        let mut last: prove::Ans = match answer {
+            None => { let mut ps3: Vec<String> = Vec::new(); ps3.push(String::from(base)); ps3.push(String::from("(set-option :rlimit 1000000)")); ps3.push(String::from(q)); let a3: prove::Ans = prove::asked(sol, ps3.as_slice()); count(st, prove::spent(sol, &a3)); a3 },
+            Some(got) => got,
+        };
+        if prove::undecided(&last, who) && cx.parts.len() > 0 {
+            let gi: encode_query::Instances = encode_query::ground_instances(cx.parts.as_slice(), q, 3);
+            let inst: String = types::cat2(gi.text.as_str(), encode_spec::struct_facts(pg, gi.text.as_str()).as_str());
+            if inst.len() > 0 {
+                let used: String = encode_query::needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(cx.decls.as_str(), "\n", inst.as_str(), q).as_str());
+                let mut ps4: Vec<String> = Vec::new();
+                ps4.push(types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()));
+                ps4.push(cx.limit.clone());
+                ps4.push(types::cat2(inst.as_str(), q));
+                let a4: prove::Ans = prove::asked(sol, ps4.as_slice());
+                count(st, prove::spent(sol, &a4));
+                if a4.kind == 0 || a4.kind == 1 && gi.complete {
+                    last = a4.clone();
+                }
+            }
+        }
+        last
+    }
+
+    #[summary("Whether the facts pc can hold together over what cx holds (stage0 sat_of): the probe first in the forms of a satisfiability check (ADR-0072), then the definitions the query reaches as recursive functions at the probe's share, then the full query, then, when that is undecided and there are quantified definitions, their ground instances (ADR-0075: unsat with them is unsat, sat with an instance for every application is sat). 0: unsat, 1: sat, which leaves the solver at that model, 2: undecided, or the solver could not run. A solver that cannot start marks the check down; one that cannot be read is closed, and the next check starts a new one. who asks")]
+    #[effects(alloc, io, nondet)]
+    fn sat_of(st: &mut Solving, z3: &mut toolchain::Z3, who: solver::Asker, cx: &encode_query::Ctx, pg: &encode_spec::Prog, pc: &[String]) -> u8 {
+        let mut asserted: Vec<String> = Vec::new();
+        for i in 0..pc.len()
+            invariant 0 <= i && i <= pc.len(),
+        {
+            asserted.push(types::cat3("(assert ", pc[i].as_str(), ")"));
+        }
+        let q1: String = encode_query::valid_instances(cx.valid.as_slice(), encode_terms::join(asserted.as_slice(), "\n"));
+        let q: String = types::cat3(q1.as_str(), "\n", encode_spec::struct_facts(pg, q1.as_str()).as_str());
+        let relevant: String = encode_query::relevant_axioms(cx.axioms.as_slice(), q.as_str());
+        let used: String = encode_query::needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(relevant.as_str(), cx.decls.as_str(), "\n", q.as_str()).as_str());
+        let full: String = types::cat4(cx.prefix.as_str(), used.as_str(), relevant.as_str(), cx.decls.as_str());
+        if !prove::reusable(&st.slot) {
+            prove::let_go(&mut st.slot);
+        }
+        if prove::idle(&st.slot) {
+            match solver::start(who, z3) {
+                Ok(s) => { st.slot = Some(s); },
+                Err(e) => { st.down = true; return 2; },
+            }
+        }
+        match std::mem::replace(&mut st.slot, None) {
+            None => 2,
+            Some(held) => { let mut sol: solver::Solver = held; let a: prove::Ans = sat_with(&mut sol, st, who, cx, pg, q.as_str(), relevant.as_str(), full.as_str()); if a.kind == 0 { st.slot = Some(sol); return 0; } if a.kind == 1 { st.slot = Some(sol); return 1; } if a.kind == 2 { st.slot = Some(sol); return 2; } match prove::limit_of(&a, who) { None => { let status: Option<i32> = solver::close(&mut sol); }, Some(why) => { st.slot = Some(sol); }, } 2 },
+        }
+    }
+
+    #[summary("The answer to the satisfiability query q with the solver (the queries of stage0 sat_of): relevant is the definitions q reaches in the full query's forms, full the full query's base")]
+    #[effects(alloc, io, nondet)]
+    fn sat_with(sol: &mut solver::Solver, st: &mut Solving, who: solver::Asker, cx: &encode_query::Ctx, pg: &encode_spec::Prog, q: &str, relevant: &str, full: &str) -> prove::Ans {
+        let mut answer: Option<prove::Ans> = None;
+        match encode_query::probe_base(cx, q, relevant, encode_query::Forms::SatProbe) {
+            None => {},
+            Some(pb) => { let mut ps: Vec<String> = Vec::new(); ps.push(pb.clone()); ps.push(cx.limit.clone()); ps.push(String::from(q)); let a: prove::Ans = prove::asked(sol, ps.as_slice()); count(st, prove::spent(sol, &a)); if a.kind == 0 || a.kind == 1 { answer = Some(a.clone()); } },
+        }
+        if prove::is_open(&answer) {
+            match encode_query::rec_base(cx, q) {
+                None => {},
+                Some(rb) => { let mut ps1: Vec<String> = Vec::new(); ps1.push(rb.clone()); ps1.push(cx.limit.clone()); ps1.push(String::from(q)); let a1: prove::Ans = prove::asked(sol, ps1.as_slice()); count(st, prove::spent(sol, &a1)); if a1.kind == 0 || a1.kind == 1 { answer = Some(a1.clone()); } },
+            }
+        }
+        let mut last: prove::Ans = match answer {
+            None => { let mut ps2: Vec<String> = Vec::new(); ps2.push(String::from(full)); ps2.push(String::from(q)); let a2: prove::Ans = prove::asked(sol, ps2.as_slice()); count(st, prove::spent(sol, &a2)); a2 },
+            Some(got) => got,
+        };
+        if prove::undecided(&last, who) && cx.parts.len() > 0 {
+            let gi: encode_query::Instances = encode_query::ground_instances(cx.parts.as_slice(), q, 3);
+            let inst: String = types::cat2(gi.text.as_str(), encode_spec::struct_facts(pg, gi.text.as_str()).as_str());
+            if inst.len() > 0 {
+                let used: String = encode_query::needed_decls(cx.sds.as_slice(), cx.dts.as_slice(), types::cat4(cx.decls.as_str(), "\n", inst.as_str(), q).as_str());
+                let mut ps3: Vec<String> = Vec::new();
+                ps3.push(types::cat3(cx.prefix.as_str(), used.as_str(), cx.decls.as_str()));
+                ps3.push(types::cat2(inst.as_str(), q));
+                let a3: prove::Ans = prove::asked(sol, ps3.as_slice());
+                count(st, prove::spent(sol, &a3));
+                if a3.kind == 0 || a3.kind == 1 && gi.complete {
+                    last = a3.clone();
+                }
+            }
+        }
+        last
+    }
+
+    #[summary("Assumes result r of type ret valid and each ensures clause of d with the result named name bound to r (one result of stage0 results_determined)")]
+    #[effects(alloc)]
+    fn two_results(ex: &mut encode_exec::Exec, d: &ast::FnDef, name: &str, r: &encode_terms::Val, ret: &ast::TypeKind, env: &table::Table<encode_terms::Val>, was: &table::Table<encode_terms::Val>, pg: &encode_spec::Prog) -> () {
+        ex.assume_valid(r, ret, pg);
+        let mut e: table::Table<encode_terms::Val> = env.clone();
+        e.insert(name, r.clone());
+        for i in 0..d.post.len()
+            invariant 0 <= i && i <= d.post.len(),
+        {
+            let g: String = encode_terms::scalar_of(&ex.enc.spec_expr(&d.post[i], &e, was, pg, 100000));
+            ex.enc.pc.push(g);
+        }
+    }
+
+    #[summary("The points of each definition that its own encoding makes unreachable (stage0 vacuous_ends, the reach points of verify_pass): each loop exit and the end of each executable body, with the path condition there refuted by the solver. In a verified function with satisfiable preconditions this cannot happen honestly, so a refuted point means the proofs after it hold vacuously. Each point is asked in turn: the probe, its exact bit-vector form, the definitions as recursive functions (each at the probe's share and taken when it answers), the full query under the reach limit, and the ground instances; an undecided point is counted. The pass is the first of the proof gate, without trusted facts in a program with escapes (ADR-0029 §2). who asks, query is the resource limit of a full query and rlimit the gate's")]
+    #[effects(alloc, io, nondet)]
+    fn vacuous(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, who: solver::Asker, query: u64, rlimit: u64) -> Points {
+        let checked: Result<String, String> = toolchain::check_z3(z3);
+        let trust: Option<encode_exec::Trust> = if ck.untrusted.len() == 0 {
+            None
+        } else {
+            Some(encode_exec::Trust { trusted: false, untrusted: encode_query::trust_closed(ck.b.external.as_slice()) })
+        };
+        let mut st: Solving = Solving { slot: None, down: false, spent: 0 };
+        let mut undecided: usize = 0;
+        let mut rows: Vec<Point> = Vec::new();
+        for n in 0..pg.defs.len()
+            invariant 0 <= n,
+        {
+            match pg.defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = pg.defs.key(n); if !pg.defs.items[at].inst && !types::has(ck.b.external.as_slice(), path.as_str()) { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(si) => { match encode_query::reach_encoded(pg, path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[si], sds, dts, &trust, query, rlimit) { None => {}, Some(r) => { let left: usize = reach_points(&mut st, z3, who, &r, pg, path.as_str(), pg.defs.items[at].unit.as_str(), &mut rows); undecided = undecided.saturating_add(left); }, } }, } } },
+            }
+        }
+        prove::let_go(&mut st.slot);
+        Points { rows: rows, cost: Cost { rlimit: st.spent, undecided: undecided } }
+    }
+
+    #[summary("The row of a determinacy check from its verdict: one result when the two cannot differ; two, with the input and each result as a counterexample shows them from the solver's model, when they can; undecided otherwise")]
+    #[effects(alloc, io, nondet)]
+    fn witness(st: &mut Solving, verdict: u8, path: &str, span: source::Span, inputs: &[encode_spec::Shown], name: &str, r1: &encode_terms::Val, r2: &encode_terms::Val, ret: &ast::TypeKind, ck: &body::Checked, pg: &encode_spec::Prog) -> Det {
+        if verdict == 0 {
+            return Det { path: String::from(path), span: span, kind: 0, input: String::new(), first: String::new(), second: String::new() };
+        }
+        if verdict == 1 {
+            match &mut st.slot {
+                None => {},
+                Some(sol) => { let input: String = model::counterexample(sol, inputs, &pg.pr.t, &ck.names); let mut one: Vec<encode_spec::Shown> = Vec::new(); one.push(encode_spec::Shown { name: String::from(name), v: r1.clone(), ty: ret.clone() }); let first: String = model::counterexample(sol, one.as_slice(), &pg.pr.t, &ck.names); let mut other: Vec<encode_spec::Shown> = Vec::new(); other.push(encode_spec::Shown { name: String::from(name), v: r2.clone(), ty: ret.clone() }); let second: String = model::counterexample(sol, other.as_slice(), &pg.pr.t, &ck.names); return Det { path: String::from(path), span: span, kind: 1, input: input, first: first, second: second }; },
+            }
+        }
+        Det { path: String::from(path), span: span, kind: 2, input: String::new(), first: String::new(), second: String::new() }
+    }
+}
