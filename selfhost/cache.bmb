@@ -53,13 +53,30 @@ mod cache {
         2
     }
 
-    #[summary("One line of text without the carriage return at its end, as Rust's lines gives it")]
+    #[summary("One line of text that a line feed ends, without the carriage return before it, as Rust's lines gives it")]
     #[effects(alloc)]
     fn line_of(s: &str) -> String {
         if s.len() > 0 && s.as_bytes()[s.len() - 1] == 13 {
             return lexer::cut(s, 0, s.len() - 1);
         }
         String::from(s)
+    }
+
+    #[summary("The lines of text as Rust's lines gives them: split at line feeds, a carriage return before a line feed dropped, the line after the last line feed only when it is not empty (and kept as it is)")]
+    #[effects(alloc)]
+    fn lines_of(text: &str) -> Vec<String> {
+        let parts: Vec<String> = encode_terms::split(text, 10);
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..parts.len()
+            invariant 0 <= i && i <= parts.len(),
+        {
+            if i + 1 < parts.len() {
+                out.push(line_of(parts[i].as_str()));
+            } else if parts[i].len() > 0 {
+                out.push(parts[i].clone());
+            }
+        }
+        out
     }
 
     #[summary("Loads `dir/proofs` (stage0 ProofCache::load); a file that is missing, is not UTF-8 or starts with another header is an empty cache. A line is `KEY TOTAL MAX STAGES`: a key that starts with `sha256:`, two numbers as Rust reads a u64 and the stage bits, at most 3; any other line is skipped, and what follows the fourth word is not read")]
@@ -70,14 +87,14 @@ mod cache {
             Ok(read) => read,
             Err(e) => { return c; },
         };
-        let lines: Vec<String> = encode_sub::lines(text.as_str());
-        if lines.len() == 0 || line_of(lines[0].as_str()) != magic() {
+        let lines: Vec<String> = lines_of(text.as_str());
+        if lines.len() == 0 || lines[0] != magic() {
             return c;
         }
         for i in 1..lines.len()
             invariant 1 <= i && i <= lines.len(),
         {
-            let words: Vec<String> = encode_terms::split(line_of(lines[i].as_str()).as_str(), 32);
+            let words: Vec<String> = encode_terms::split(lines[i].as_str(), 32);
             if words.len() >= 4 {
                 match number(words[1].as_str()) {
                     None => {},
