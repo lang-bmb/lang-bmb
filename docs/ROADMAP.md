@@ -53,7 +53,7 @@ flowchart LR
 | 5 Surface decisions and freeze | The surface is settled before the port; the Rust compiler stops gaining features | Done (`0.1.0`) |
 | 6 Port, front half | Lexer, parser, checker, normal form, identity hash, code generation in BMB. Each component closes when its command output is byte-identical to the Rust compiler's | Done: about 41,000 lines, every definition proved |
 | 7 Early fixed point | The Rust compiler builds the port (stage 1); stage 1 builds it again (stage 2); stage 2 builds it again (stage 3); stage 2 IR = stage 3 IR | Done, checked on every commit |
-| 8 Port, back half; full fixed point | Proof encoding and the solver connection, map, caches, tools, workspace, MCP, command line. Then the whole chain again with the whole compiler | Not started: opens after gate B |
+| 8 Port, back half; full fixed point | Proof encoding and the solver connection, map, caches, tools, workspace, MCP, command line. Then the whole chain again with the whole compiler | In progress. Ported and byte-identical to the Rust compiler: proof encoding, the solver connection, the proving driver, the satisfiability tools, the stability check, the incremental cache, and code generation that drops proved checks. Left: map and queries, the read and write tools, workspace, MCP, the rest of the lint and of the command line; then the whole chain |
 | 9 Self-proof; retirement | The BMB compiler passes its own proof gate under a bound on unproved area; the Rust compiler is frozen and kept as the seed | Not started |
 | 10 Maturity and ecosystem | Specification and conformance tests, stability policy, reproducible builds, more targets, debug information, tools; packages and bindings | Reference and conformance tests exist; the rest waits |
 

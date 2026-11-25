@@ -202,3 +202,19 @@ The files of `emit/` (the head of a name is the stage of the code generator port
 `nightly/cases.json` holds the comparisons too long for the per-push gate, in the same format and run by the same `scripts/difftest.py`. CI runs them every night (`.github/workflows/nightly.yml`, job `port`) as three jobs on runners of their own, each a part `--shard I/3` balanced by the seconds in `nightly/costs.json`; `scripts/test_gate_scripts.py` fails when the workflow no longer runs every case of the set in exactly one part. Locally one command runs them all, or the parts and cases its arguments name: `scripts/port_nightly.sh [--shard I/N] [--case NAME]..`. It builds the optimized compiler, which is the compiler under test here, proves the port into a cache of its own (`target/nightly-proof`, as the gate's port proof does), builds what the cases compare (`target/nightly-build`) and runs the cases; the lines of the run are left in `target/nightly.jsonl` and, for a case that differs, the difference and the bytes around it in `target/nightly-excerpts/CASE` (CI keeps both when a part fails).
 
 The cases over the whole port compare outputs of gigabytes (`"digest": true`): each side's standard output and error are hashed as they are written and its files as soon as it ends, in blocks of 64 KiB, and its directory is removed before the other side starts, so neither output is held in memory or kept on disk beside the other. A difference is located to the block and line where it starts, with the SHA-256 and size of each side; the excerpt holds the first bytes of each side and side b's first block that differs.
+
+Measured once with the optimized compiler on 4 cores and 15 GB (2026-11-25; the cases over the whole port ran beside the others, so alone they are faster). Every case was the same on both sides. Memory is the peak of the largest single process of a side (the compiler or the solver).
+
+| Case | Seconds, both sides | Rust compiler | Port | Peak memory |
+| --- | --- | --- | --- | --- |
+| `verify-port` | 4030 | 1995 | 2032 | 4.1 GB |
+| `verify-port-warm` | 1007 | 553 | 450 | 4.1 GB |
+| `verify-port-def` | 15 | 10 | 5 | 591 MB |
+| `smt-queries-port` | 1081 | 611 | 470 | 9.9 GB |
+| `build-port` | 986 | 581 | 405 | 4.7 GB |
+| `incr-port` | 54 | 32 | 22 | 625 MB |
+| the 27 cases over single files, together | 4043 | 1979 | 2060 | 344 MB |
+
+The whole set is 11216 seconds (3.1 hours) of cases after about 8 minutes of setup (the port's proof and the builds); each of the three parts is 60 to 67 minutes of cases. `smt-queries-port` is the case nearest a limit: the Rust compiler holds 10.2 GB while it writes the dump and the port 8.8 GB, one after the other, on a runner of 16 GB.
+
+`incr-files` leaves out `gen/g35.txt`: one query of it is ended by the 300-second wall-clock safeguard, and the resource units that query had spent by then are in the status row, so the row differs from run to run of one compiler (three runs of the Rust compiler gave three sums). The gate's `incr-fake` case covers a query the safeguard ends, with a stand-in solver.
