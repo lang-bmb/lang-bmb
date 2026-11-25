@@ -20,9 +20,11 @@
 # FAKE_Z3 chooses what it is: `old`, `garbage`, `silent`, `cut` and `spaced`
 # print for `--version` another version, bytes that are not UTF-8 without a
 # version, nothing, the line up to the version, and the pinned version
-# between white space outside ASCII; `dead` ends at once with
-# status 3 when started as a solver, `full` with 101, `no-alone` with 3 when
-# its `-memory` is the pinned limit; `mute` answers its first line with an
+# between white space outside ASCII; `dead` ends with status 3 when started
+# as a solver, `full` with 101, `no-alone` with 3 when its `-memory` is the
+# pinned limit, each once it has read the first line it is sent (ending
+# before that read made the writer meet a closed pipe or not by which
+# process ran first); `mute` answers its first line with an
 # error; `vanish` (a copy that `fake.sh` makes the only `z3` on PATH) prints
 # the pinned version and removes itself, so the check passes and no solver
 # can be started.
@@ -44,11 +46,16 @@ if [ "$1" = --version ]; then
 fi
 echo "start $*" >> "$log"
 memory=${5#-memory:}
+ends=
 case "$FAKE_Z3" in
-  dead) exit 3 ;;
-  full) exit 101 ;;
-  no-alone) [ "$memory" = "$Z3_MEMORY_MB" ] && exit 3 ;;
+  dead) ends=3 ;;
+  full) ends=101 ;;
+  no-alone) [ "$memory" = "$Z3_MEMORY_MB" ] && ends=3 ;;
 esac
+if [ -n "$ends" ]; then
+  IFS= read -r line && printf '%s\n' "$line" >> "$log"
+  exit "$ends"
+fi
 first=1
 queue=
 while IFS= read -r line; do
