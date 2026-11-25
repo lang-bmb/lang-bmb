@@ -1,10 +1,13 @@
 # Differential test cases of the port
 
-Read by `scripts/difftest.py run tests/port/cases.json`. Each case runs the stage0 side (`a`) and the port side (`b`) on the same input and compares stdout, stderr, the exit code and the files left behind, byte for byte. The gate job "port difftest" runs them every time.
+Read by `scripts/difftest.py run tests/port/cases.json`. Each case runs the stage0 side (`a`) and the port side (`b`) on the same input and compares stdout, stderr, the exit code and the files left behind, byte for byte. The gate runs every case every time.
+
+The gate builds the programs the cases compare once and concurrently (`difftest.py build tests/port/cases.json target/port-build`, with the debug compiler, which is the compiler under test; each build of a BMB program reads a copy of its own of the port's proof cache) and runs the cases as concurrent jobs "port difftest 1/N" to "port difftest N/N", each `difftest.py run tests/port/cases.json --built target/port-build --shard I/N` (N is `port_shards` in `scripts/check.sh`). The parts are disjoint and together hold every case: the cases in decreasing recorded seconds go one by one to the part with the least so far; a case `costs.json` does not list counts as the mean. `scripts/test_difftest.py` fails when a case is in no job or in two. A build that fails does not stop the gate in its build step: the jobs that need the program fail with its error. The script checks that went with the cases and the formatting of the port (`bmb fmt --check selfhost/*.bmb`) are the job "port checks".
 
 | File | Contents |
 | --- | --- |
 | `cases.json` | The cases and the list of builds |
+| `costs.json` | The seconds of each case in one run with the debug compiler, which only the balance of the gate's parts depends on. Rewrite it when the cases change much: run every part with `run --shard I/N > part-I.jsonl` and then `difftest.py costs tests/port/cases.json part-*.jsonl` |
 | `sha256_files.bmb` | The `std::sha256` value of each file given as an argument, in the line format of `sha256sum` |
 | `json_roundtrip.bmb` | Reads each line of standard input with `std::json` and writes it back without whitespace |
 | `json_ref.rs` | The same job with stage0's `json.rs` (compiled as is through `#[path]`) |

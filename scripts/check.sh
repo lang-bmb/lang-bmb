@@ -44,7 +44,7 @@ step "lint";    cargo clippy --all-targets --quiet -- -D warnings
 step "build"   # every test executable and target/debug/bmb, which the jobs below use
 cargo test --no-run --quiet --message-format=json-render-diagnostics > "$built"
 # The port is proved once, into an empty cache: the jobs that read its proof
-# (port difftest, components, health S7) reuse it instead of each proving the
+# (the port's differential tests, components, health S7) reuse it instead of each proving the
 # whole port again. Its definitions are proved in as many
 # processes as the machine has cores, each from an empty cache of its own,
 # and the single run below gives the verdict from the merged cache. The optimized build of the same sources proves it: no solver time
@@ -63,11 +63,30 @@ if ! "$BMB_PROOF_BMB" verify --cache target/port-proof selfhost/*.bmb > "$built.
 fi
 rm -f "$built.port"
 
-step "test, surface, port difftest, bootstrap fixed point, gate scripts, gate power rules, solver stability rules, conformance suite, components and port ledger (concurrent)"
-python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" \
+# The programs the port's differential cases compare (stage1 and the
+# others in tests/port/cases.json), built once by the compiler under test
+# for the jobs below, as many at once as there are cores, each BMB program
+# from a copy of the proof cache above. A build that fails leaves its error next to where the
+# program would be and does not stop the gate here: the jobs whose cases need
+# it fail with it, so the failure is a job's.
+step "port build"
+rm -rf target/port-build
+python3 scripts/difftest.py build tests/port/cases.json target/port-build > /dev/null || true
+
+# The cases run as port_shards jobs, each a part balanced by the cases'
+# recorded seconds (tests/port/costs.json); every case is in exactly one
+# (scripts/test_difftest.py).
+port_shards=6
+port_jobs=()
+for i in $(seq 1 "$port_shards"); do
+  port_jobs+=(--job "port difftest $i/$port_shards=python3 scripts/difftest.py run tests/port/cases.json --built target/port-build --shard $i/$port_shards")
+done
+
+step "test, surface, port checks, port difftest 1..$port_shards, bootstrap fixed point, gate scripts, gate power rules, solver stability rules, conformance suite, components and port ledger (concurrent)"
+python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" "${port_jobs[@]}" \
   --job "test doc=cargo test --doc --quiet" \
   --job "surface=python3 scripts/test_surface.py" \
-  --job "port difftest=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && python3 scripts/difftest.py run tests/port/cases.json > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
+  --job "port checks=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
   --job "bootstrap fixed point=python3 scripts/bootstrap.py run > /dev/null" \
   --job "gate scripts=python3 scripts/test_gate_scripts.py" \
   --job "gate power rules=python3 scripts/test_gate_power.py" \

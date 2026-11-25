@@ -11,12 +11,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gate_power as g  # noqa: E402
 
-JOBS = ["== format", "== lint", "== build", "== fresh", "== test, port difftest, conformance suite (concurrent)"]
+JOBS = ["== format", "== lint", "== build", "== fresh", "== test, port checks, port difftest 1..6, conformance suite (concurrent)"]
 
 
 def test_a_job_catches():
-    lines = JOBS + ["== test verify: FAILED (101) after 3.0s; output:", "failed: test verify, port difftest"]
-    assert g.classify(1, lines) == ("caught", "test", ["test verify", "port difftest"])
+    lines = JOBS + ["== test verify: FAILED (101) after 3.0s; output:", "failed: test verify, port difftest 2/6"]
+    assert g.classify(1, lines) == ("caught", "test", ["test verify", "port difftest 2/6"])
 
 
 def test_a_step_before_the_jobs_does_not():
