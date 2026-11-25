@@ -704,10 +704,10 @@ mod encode_query {
         out
     }
 
-    #[summary("Definition path encoded for the proof gate (the encoding part of stage0 verify_pass): the termination obligations of a recursive spec fn with a measure, the body of a lemma or of an executable function against its contract, with the definitions it reveals. None for a definition that is not encoded: a spec fn that is not recursive or has no measure. trust is the pass of the gate (ADR-0029 §2), query the resource limit of a full query (the options) and rlimit the gate's, of which the probe's limit is a share; with bounded the options say that undecided obligations are searched within small bounds (ADR-0108 §1), so that a run with the search and one without share no cached proof")]
+    #[summary("Definition path encoded for the proof gate (the encoding part of stage0 verify_pass): the termination obligations of a recursive spec fn with a measure, the body of a lemma or of an executable function against its contract, with the definitions it reveals. None for a definition that is not encoded: a spec fn that is not recursive or has no measure. trust is the pass of the gate (ADR-0029 §2), seed the solver's random seed, query the resource limit of a full query (the options) and rlimit the gate's, of which the probe's limit is a share; with bounded the options say that undecided obligations are searched within small bounds (ADR-0108 §1), so that a run with the search and one without share no cached proof")]
     #[effects(alloc)]
-    fn encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, query: u64, rlimit: u64, bounded: bool) -> Option<Encoded> {
-        let mut head: String = header(query);
+    fn encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, seed: u64, query: u64, rlimit: u64, bounded: bool) -> Option<Encoded> {
+        let mut head: String = header(seed, query);
         if bounded {
             head.push_str("\n; bounded search |x| <= 8, lengths <= 4");
         }
@@ -904,10 +904,14 @@ mod encode_query {
         }
     }
 
-    #[summary("What every query starts with (stage0 header at seed 0): the options, with the resource limit rlimit of a query")]
+    #[summary("What every query starts with (stage0 header): the options, with the solver's random seed (0 is the pinned configuration; `bmb stability` asks under others) and the resource limit rlimit of a query")]
     #[effects(alloc)]
-    fn header(rlimit: u64) -> String {
-        types::cat3("(set-option :produce-models true)\n(set-option :smt.random_seed 0)\n(set-option :sat.random_seed 0)\n(set-option :rlimit ", encode_terms::dec(rlimit).as_str(), ")")
+    fn header(seed: u64, rlimit: u64) -> String {
+        let s: String = encode_terms::dec(seed);
+        let mut out: String = types::cat3("(set-option :produce-models true)\n(set-option :smt.random_seed ", s.as_str(), ")\n(set-option :sat.random_seed ");
+        out.push_str(types::cat3(s.as_str(), ")\n(set-option :rlimit ", encode_terms::dec(rlimit).as_str()).as_str());
+        out.push_str(")");
+        out
     }
 
     #[summary("The index of text: for every bar, the piece from it to the next bar, the last one to the end")]
@@ -1398,7 +1402,7 @@ mod encode_query {
     #[summary("Definition path encoded for its reach points (the encoding of stage0 verify_pass under vacuous_ends): an executable function or a lemma with its reach points recorded, with the definitions it reveals; a recursive spec fn with a measure, which has none. None for a definition that is not encoded. trust is the pass, query the resource limit of a full query and rlimit the gate's, of which the probe's limit is a share")]
     #[effects(alloc)]
     fn reach_encoded(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, query: u64, rlimit: u64) -> Option<Reaching> {
-        let head: String = header(query);
+        let head: String = header(0, query);
         let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
         let share: u64 = if rlimit / 100 >= 1 {
             rlimit / 100
@@ -1690,7 +1694,7 @@ mod encode_query {
     #[effects(alloc)]
     fn script_of(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, rlimit: u64, reach: bool) -> Option<String> {
         if !reach {
-            let e: Encoded = encoded(pg, path, def, sig, sds, dts, trust, rlimit, rlimit, false)?;
+            let e: Encoded = encoded(pg, path, def, sig, sds, dts, trust, 0, rlimit, rlimit, false)?;
             return Some(obligations(&e.cx, pg, e.obls.as_slice()));
         }
         let r: Reaching = reach_encoded(pg, path, def, sig, sds, dts, trust, rlimit, rlimit)?;

@@ -234,7 +234,7 @@ mod lint {
                 }
             }
         } else {
-            let opts: prove::Opts = prove::Opts { only: None, bounded: false, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false };
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false };
             let base: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut diags);
             statuses = base.statuses;
         }
@@ -396,7 +396,7 @@ mod lint {
         }
         let mut only: Vec<String> = Vec::new();
         only.push(String::from(path));
-        let opts: prove::Opts = prove::Opts { only: Some(only.clone()), bounded: false, rlimit: rlimit, query: advisory, who: solver::Asker::Refutations, stop: true };
+        let opts: prove::Opts = prove::Opts { only: Some(only.clone()), bounded: false, seed: 0, rlimit: rlimit, query: advisory, who: solver::Asker::Refutations, stop: true };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let o: prove::Outcome = prove::run(&changed, &opts, store, z3, &mut diags);
         clean(o.statuses.as_slice(), diags.items.as_slice(), spans, only.as_slice())

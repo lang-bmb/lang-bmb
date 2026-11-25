@@ -36,7 +36,7 @@ mod sat {
     #[summary("What a satisfiability check of a definition is asked over (the base of stage0 sat_of): the options with the resource limit query of a full query, the declarations of its type parameters, its local declarations, the definitions it reveals, its validity functions, and the probe's limit, a hundredth of the gate's limit rlimit")]
     #[effects(alloc)]
     fn ctx(sig: &types::FnSig, decls: &[String], shown: &encode_query::Revealed, valid: &[encode_spec::AxiomParts], sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], query: u64, rlimit: u64) -> encode_query::Ctx {
-        let head: String = encode_query::header(query);
+        let head: String = encode_query::header(0, query);
         let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
         let share: u64 = if rlimit / 100 >= 1 {
             rlimit / 100
