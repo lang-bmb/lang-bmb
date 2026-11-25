@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -81,32 +81,81 @@ mod main {
             }
             return;
         }
-        if args.len() > 1 && args[1] == "emit-llvm" {
-            let mut srcs: Vec<String> = Vec::new();
-            let mut ir_path: Option<String> = None;
-            let mut all_checks: bool = false;
-            let mut a: usize = 2;
-            while a < args.len()
-                decreases args.len() - a,
+        if args.len() > 1 && (args[1] == "emit-llvm" || args[1] == "build") {
+            let building: bool = args[1] == "build";
+            let mut pos: usize = 2;
+            while pos < args.len() && args[pos] != "-o"
+                invariant 2 <= pos && pos <= args.len(),
+                decreases args.len() - pos,
             {
-                if args[a] == "-o" && a + 1 < args.len() {
-                    ir_path = Some(args[a + 1].clone());
-                    a = a + 2;
-                } else {
-                    if args[a] == "--all-checks" {
-                        all_checks = true;
-                    } else {
-                        srcs.push(args[a].clone());
-                    }
-                    a = a + 1;
+                pos = pos + 1;
+            }
+            if pos + 1 >= args.len() {
+                eprint_str("usage: stage1 emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+                std::process::exit(2);
+            }
+            let out_path: String = args[pos + 1].clone();
+            let mut emit_args: Vec<String> = Vec::new();
+            for a in 2..args.len()
+                invariant 2 <= a && a <= args.len(),
+            {
+                if a != pos && a != pos + 1 {
+                    emit_args.push(args[a].clone());
                 }
             }
-            match ir_path {
+            let cache_dir: Option<String> = take_value(&mut emit_args, "--cache");
+            let stats: Option<String> = take_value(&mut emit_args, "--stats");
+            let all_checks: bool = !building && take_flag(&mut emit_args, "--all-checks");
+            let audit: bool = take_flag(&mut emit_args, "--audit");
+            let units: Vec<lib::Input> = read_files(emit_args.as_slice(), 0);
+            let er: lib::Emitted = lib::emit_llvm(units.as_slice(), all_checks, &cache_dir, audit);
+            match &er.cache_error {
                 None => {},
-                Some(to) => { if all_checks && srcs.len() > 0 { let units: Vec<lib::Input> = read_files(srcs.as_slice(), 0); let er: lib::Emitted = lib::emit_llvm(units.as_slice()); print_str(er.diags.as_str()); if !er.ok { std::process::exit(1); } if er.todo.len() > 0 { eprint_str("stage1: emit-llvm: not ported yet, nothing written:\n"); for q in 0..er.todo.len() invariant 0 <= q && q <= er.todo.len(), { eprint_str("  "); eprint_str(er.todo[q].as_str()); eprint_str("\n"); } std::process::exit(2); } match std::fs::write(to.as_str(), er.ir.as_bytes()) { Ok(done) => {}, Err(why) => { eprint_str("bmb: cannot write "); eprint_str(to.as_str()); eprint_str("\n"); std::process::exit(2); }, } return; } },
+                Some(cache_why) => { match &cache_dir { None => {}, Some(cd) => { eprint_str("bmb: cannot write proof cache in "); eprint_str(cd.as_str()); eprint_str(": "); eprint_str(cache_why.as_str()); eprint_str("\n"); }, } },
             }
-            eprint_str("usage: stage1 emit-llvm --all-checks FILE.. -o OUT.ll\n");
-            std::process::exit(2);
+            match &er.incr_error {
+                None => {},
+                Some(incr_why) => { match &cache_dir { None => {}, Some(cd2) => { eprint_str("bmb: cannot write incremental cache in "); eprint_str(cd2.as_str()); eprint_str(": "); eprint_str(incr_why.as_str()); eprint_str("\n"); }, } },
+            }
+            match &stats {
+                None => {},
+                Some(sf) => { let none: incremental::Stats = incremental::no_stats(); let line: String = match &er.incr { None => incremental::checks_line(&none, er.hits, er.misses, er.checks), Some(ist) => incremental::checks_line(ist, er.hits, er.misses, er.checks), }; write_or_exit(sf.as_str(), line.as_str()); },
+            }
+            print_str(er.output.as_str());
+            if !er.built {
+                std::process::exit(1);
+            }
+            if er.todo.len() > 0 {
+                eprint_str("stage1: emit-llvm: not ported yet, nothing written:\n");
+                for q in 0..er.todo.len()
+                    invariant 0 <= q && q <= er.todo.len(),
+                {
+                    eprint_str("  ");
+                    eprint_str(er.todo[q].as_str());
+                    eprint_str("\n");
+                }
+                std::process::exit(2);
+            }
+            if !building {
+                write_or_exit(out_path.as_str(), er.ir.as_str());
+                if !er.ok {
+                    std::process::exit(1);
+                }
+                return;
+            }
+            if !er.ok || er.checks > 0 {
+                eprint_str("bmb: build refused: the program is not fully proved\n");
+                std::process::exit(1);
+            }
+            if !er.has_main {
+                eprint_str("bmb: build needs a `main`\n");
+                std::process::exit(1);
+            }
+            match toolchain::build_executable(er.ir.as_str(), out_path.as_str()) {
+                Ok(built) => {},
+                Err(why) => { eprint_str("bmb: "); eprint_str(why.as_str()); eprint_str("\n"); std::process::exit(1); },
+            }
+            return;
         }
         if args.len() > 2 && args[1] == "verify" {
             let mut emit: Option<String> = None;
@@ -169,7 +218,7 @@ mod main {
             }
             match &stats {
                 None => {},
-                Some(sf) => { let none: incremental::Stats = incremental::Stats { encoded: Vec::new(), reused: Vec::new(), damaged: 0, mismatches: Vec::new() }; let line: String = match &vr.incr { None => incremental::stats_line(&none, vr.hits, vr.misses), Some(ist) => incremental::stats_line(ist, vr.hits, vr.misses), }; write_or_exit(sf.as_str(), line.as_str()); },
+                Some(sf) => { let none: incremental::Stats = incremental::no_stats(); let line: String = match &vr.incr { None => incremental::stats_line(&none, vr.hits, vr.misses), Some(ist) => incremental::stats_line(ist, vr.hits, vr.misses), }; write_or_exit(sf.as_str(), line.as_str()); },
             }
             print_str(vr.output.as_str());
             if !vr.ok {
@@ -303,7 +352,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
         std::process::exit(2);
     }
 
@@ -322,6 +371,50 @@ mod main {
             i = i + 1;
         }
         files
+    }
+
+    #[summary("Removes the first argument that is flag and gives whether there was one (stage0's position and remove)")]
+    #[effects(alloc)]
+    fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
+        let mut out: Vec<String> = Vec::new();
+        let mut found: bool = false;
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            if !found && args[i] == flag {
+                found = true;
+            } else {
+                out.push(args[i].clone());
+            }
+        }
+        *args = out;
+        found
+    }
+
+    #[summary("Removes the first argument that is flag and the argument after it, and gives that one, when flag is not the last argument (stage0's position, `c + 1 < len` and remove); otherwise leaves the arguments as they are")]
+    #[effects(alloc)]
+    fn take_value(args: &mut Vec<String>, flag: &str) -> Option<String> {
+        let mut at: usize = 0;
+        while at < args.len() && args[at] != flag
+            invariant at <= args.len(),
+            decreases args.len() - at,
+        {
+            at = at + 1;
+        }
+        if at + 1 >= args.len() {
+            return None;
+        }
+        let value: String = args[at + 1].clone();
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..args.len()
+            invariant 0 <= i && i <= args.len(),
+        {
+            if i != at && i != at + 1 {
+                out.push(args[i].clone());
+            }
+        }
+        *args = out;
+        Some(value)
     }
 
     #[summary("Writes text to the file path. If it cannot be written, writes to standard error and exit code 2")]

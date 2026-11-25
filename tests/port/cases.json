@@ -958,6 +958,201 @@
       }
     },
     {
+      "name": "build-emit",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "emit-llvm",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "b": [
+        "python3",
+        "{root}/scripts/port_emit.py",
+        "run",
+        "{build:stage1}",
+        "{bmb}",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/emit/*.txt",
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "build-fake-unknown",
+      "component": "C8",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{bmb}",
+        "emit-llvm",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "{build:stage1}",
+        "emit-llvm",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "build-fake-retry",
+      "component": "C8",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "emit-llvm",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "emit-llvm",
+        "--stats",
+        "stats",
+        "{inputs}",
+        "-o",
+        "out.ll"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb",
+          "tests/verify/pass/bits.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/const_division.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "build-runs",
+      "component": "C8",
+      "a": [
+        "sh",
+        "{root}/tests/port/build/runs.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/build/runs.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/emit/*.txt",
+          "tests/run/escapes.bmb",
+          "tests/run/collatz.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "build-edits",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/build/edits.sh",
+        "{bmb}",
+        "{root}/tests/port/incr"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/build/edits.sh",
+        "{build:stage1}",
+        "{root}/tests/port/incr"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "build-cross",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/build/cross.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/build/cross.sh",
+        "{build:stage1}",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/incr/base.txt",
+          "tests/port/prove/trust.bmb",
+          "tests/verify/pass/generics.bmb",
+          "tests/port/emit/g2-traits.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "build-ends",
+      "component": "C8",
+      "a": [
+        "sh",
+        "{root}/tests/port/build/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/build/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
       "name": "smt-decls",
       "component": "C6",
       "a": [

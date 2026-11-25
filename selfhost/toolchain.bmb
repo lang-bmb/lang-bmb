@@ -38,6 +38,53 @@ mod toolchain {
         }
     }
 
+    #[summary("Builds an executable at out from the module ir (stage0 build_executable): the pinned LLVM is checked first, the module is written to out with `.ll` added, clang builds it with the flags of `bmb build`, and that file is removed. The error is what stage0 says: the LLVM check, a file that cannot be written, clang that cannot be run, or clang's standard error when it fails")]
+    #[effects(alloc, io, nondet)]
+    fn build_executable(ir: &str, out: &str) -> Result<(), String> {
+        let found: String = check_llvm()?;
+        let ll: String = types::cat2(out, ".ll");
+        match std::fs::write(ll.as_str(), ir.as_bytes()) {
+            Ok(done) => {},
+            Err(e) => { return Err(types::cat4("cannot write ", ll.as_str(), ": ", e.message.as_str())); },
+        }
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("-O2"));
+        args.push(String::from("-Wno-override-module"));
+        args.push(String::from("-o"));
+        args.push(String::from(out));
+        args.push(ll.clone());
+        let none: Vec<u8> = Vec::new();
+        let res: std::process::Output = match std::process::run("clang", args.as_slice(), none.as_slice()) {
+            Ok(o) => o,
+            Err(e2) => { return Err(types::cat2("cannot run clang: ", e2.message.as_str())); },
+        };
+        match std::fs::remove_file(ll.as_str()) {
+            Ok(gone) => {},
+            Err(e3) => {},
+        }
+        if res.status == 0 {
+            Ok(())
+        } else {
+            Err(types::cat2("clang failed: ", lossy(res.stderr.as_slice()).as_str()))
+        }
+    }
+
+    #[summary("The major version of the `llc` on PATH when it is the pinned one (stage0 check_llvm): the text after `LLVM version ` up to the first dot of what `llc --version` prints")]
+    #[effects(alloc, io, nondet)]
+    fn check_llvm() -> Result<String, String> {
+        let mut args: Vec<String> = Vec::new();
+        args.push(String::from("--version"));
+        let none: Vec<u8> = Vec::new();
+        let out: String = match std::process::run("llc", args.as_slice(), none.as_slice()) {
+            Ok(o) => lossy(o.stdout.as_slice()),
+            Err(e) => { return Err(types::cat2("`llc` not found: ", e.message.as_str())); },
+        };
+        match parse_llvm_major(out.as_str()) {
+            None => Err(String::from("cannot read llc version")),
+            Some(found) => { if found == llvm_major() { Ok(found) } else { Err(types::cat5("LLVM ", found.as_str(), " found, ", llvm_major().as_str(), " required (run scripts/setup.sh)")) } },
+        }
+    }
+
     #[summary("The version of the `z3` on PATH when it is exactly the pinned one (stage0 check_z3). A passed check is remembered in seen as long as PATH is unchanged: every proof run asks, and `z3 --version` is a process start. Failures are not remembered, so a missing or wrong solver is reported on every call. A PATH that is not UTF-8 reads as no PATH, so two such values are one here (stage0 compares the bytes)")]
     #[effects(alloc, io, nondet)]
     fn check_z3(seen: &mut Z3) -> Result<String, String> {
@@ -66,6 +113,12 @@ mod toolchain {
             None => { let mut why: String = String::from("cannot read z3 version from "); std::json::push_string(&mut why, out.as_str()); Err(why) },
             Some(found) => { if found == z3_version() { Ok(found) } else { Err(types::cat5("z3 ", found.as_str(), " found, ", z3_version().as_str(), " required (run scripts/setup.sh)")) } },
         }
+    }
+
+    #[summary("LLVM_MAJOR of scripts/toolchain.env")]
+    #[effects(alloc)]
+    fn llvm_major() -> String {
+        String::from("18")
     }
 
     #[summary("Bytes as text (Rust's String::from_utf8_lossy): well-formed sequences as they are, each ill-formed piece (bad_len) as U+FFFD")]
@@ -101,6 +154,18 @@ mod toolchain {
     #[effects(alloc)]
     fn new() -> Z3 {
         Z3 { known: false, path: None, version: String::new() }
+    }
+
+    #[summary("The major version in the output of `llc --version` (stage0 parse_llvm_major): what follows the first `LLVM version ` up to the next dot, or to the end")]
+    #[effects(alloc)]
+    fn parse_llvm_major(out: &str) -> Option<String> {
+        let at: usize = encode_query::find(out, "LLVM version ", 0)?;
+        let from: usize = at.saturating_add(13);
+        let to: usize = match encode_query::find_byte(out, 46, from) {
+            None => out.len(),
+            Some(d) => d,
+        };
+        Some(lexer::cut(out, from, to))
     }
 
     #[summary("X.Y.Z of `Z3 version X.Y.Z - 64 bit` (stage0 parse_z3_version): the word after the first word `version`")]

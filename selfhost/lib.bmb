@@ -1,7 +1,10 @@
-#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check")]
+#[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, verify, emit-llvm and build")]
 mod lib {
-    #[summary("Result of emit-llvm: JSONL of diagnostics, text of the module, reasons for syntax not yet ported")]
-    struct Emitted { ok: bool, diags: String, ir: String, todo: Vec<String> }
+    #[summary("One call the walk of a body finds (stage0 map::calls_in_expr): the path called, whether it is in specification context, and the position of the call")]
+    struct CallAt { path: Vec<ast::Ident>, ghost: bool, span: source::Span }
+
+    #[summary("Result of emit-llvm and build (stage0 LlvmOutput): built is whether the program checks, so that there is a module; ok whether it checks and every definition is proved; output the diagnostics and the status rows; ir the text of the module; todo the reasons for syntax not yet ported (if not empty, ir is not used); checks the runtime checks the module keeps because their obligation is not proved, outside the definitions compiled with every check (ADR-0029 §4); has_main whether the program has an entry point; hits and misses the proof cache's lookups; incr what the per-definition cache did, when the run went through it; cache_error and incr_error why the proof cache or the per-definition cache could not be written back, if it could not")]
+    struct Emitted { built: bool, ok: bool, output: String, ir: String, todo: Vec<String>, checks: u32, has_main: bool, hits: usize, misses: usize, incr: Option<incremental::Stats>, cache_error: Option<String>, incr_error: Option<String> }
 
     #[summary("Result of the front end: the program as written (with library units attached) and its checked form")]
     struct Front { source: ast::Program, ck: body::Checked }
@@ -14,6 +17,97 @@ mod lib {
 
     #[summary("Result of bmb verify (stage0 VerifyOutput): ok when the program checks and every definition is proved; output is the diagnostics and the status rows; scripts holds per encoded definition (a) its script (b) as written before canonical symbols; hits and misses are the proof cache's lookups; missing names the definitions asked for that got no status; cache_error is why the proof cache could not be written back, if it could not; incr is what the per-definition cache did, when the run went through it, and incr_error why its file could not be written back, if it could not")]
     struct Proved { ok: bool, output: String, scripts: Vec<encode_terms::Pair>, hits: usize, misses: usize, missing: Vec<String>, cache_error: Option<String>, incr: Option<incremental::Stats>, incr_error: Option<String> }
+
+    #[summary("The calls in block b (stage0 map::calls_in_block): the conditions of `assert` and `assume`, the invariants and measures of loops and `proof` blocks are specification context. f is the remaining depth")]
+    #[effects(alloc)]
+    fn calls_in_block(b: &ast::Block, ghost: bool, out: &mut Vec<CallAt>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(l) => calls_in_expr(&l.init, ghost, out, f - 1),
+                ast::Stmt::Assign(a) => { calls_in_expr(&a.target, ghost, out, f - 1); calls_in_expr(&a.value, ghost, out, f - 1); },
+                ast::Stmt::While(w) => { calls_in_expr(&w.cond, ghost, out, f - 1); for k in 0..w.invariants.len() invariant 0 <= k && k <= w.invariants.len(), { calls_in_expr(&w.invariants[k], true, out, f - 1); } match &w.measure { None => {}, Some(m) => calls_in_expr(m, true, out, f - 1), } calls_in_block(&w.body, ghost, out, f - 1); },
+                ast::Stmt::For(x) => { calls_in_expr(&x.lo, ghost, out, f - 1); calls_in_expr(&x.hi, ghost, out, f - 1); for k in 0..x.invariants.len() invariant 0 <= k && k <= x.invariants.len(), { calls_in_expr(&x.invariants[k], true, out, f - 1); } calls_in_block(&x.body, ghost, out, f - 1); },
+                ast::Stmt::Assert(at) => calls_in_expr(&at.cond, true, out, f - 1),
+                ast::Stmt::Assume(am) => calls_in_expr(&am.cond, true, out, f - 1),
+                ast::Stmt::Proof(p) => calls_in_block(&p.body, true, out, f - 1),
+                ast::Stmt::LetFields(lf) => calls_in_expr(&lf.init, ghost, out, f - 1),
+                ast::Stmt::Expr(e) => calls_in_expr(e, ghost, out, f - 1),
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => calls_in_expr(&**t, ghost, out, f - 1),
+        }
+    }
+
+    #[summary("The calls in expression e (stage0 map::calls_in_expr): a call and then those in its arguments; the bodies of quantifiers and the invariants and measures of loops are specification context, and closures are not walked. f is the remaining depth")]
+    #[effects(alloc)]
+    fn calls_in_expr(e: &ast::Expr, ghost: bool, out: &mut Vec<CallAt>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(xv, xr) => {},
+            ast::ExprKind::Float(xf) => {},
+            ast::ExprKind::ByteLit(xb) => {},
+            ast::ExprKind::ByteStr(xbs) => {},
+            ast::ExprKind::StrLit(xs) => {},
+            ast::ExprKind::CharLit(xc) => {},
+            ast::ExprKind::Bool(xbo) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(var) => {},
+            ast::ExprKind::Call(c) => { out.push(CallAt { path: c.path.clone(), ghost: ghost, span: e.span }); calls_in_exprs(c.args.as_slice(), ghost, out, f - 1); },
+            ast::ExprKind::Method(m) => { calls_in_expr(&*m.recv, ghost, out, f - 1); calls_in_exprs(m.args.as_slice(), ghost, out, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { calls_in_expr(&**ib, ghost, out, f - 1); calls_in_expr(&**ii, ghost, out, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => calls_in_expr(&**ux, ghost, out, f - 1),
+            ast::ExprKind::Binary(bo, bl, br) => { calls_in_expr(&**bl, ghost, out, f - 1); calls_in_expr(&**br, ghost, out, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => calls_in_expr(&**rx, ghost, out, f - 1),
+            ast::ExprKind::If(ife) => { calls_in_expr(&*ife.cond, ghost, out, f - 1); calls_in_block(&ife.then, ghost, out, f - 1); match &ife.els { None => {}, Some(el) => calls_in_expr(&**el, ghost, out, f - 1), } },
+            ast::ExprKind::Block(blk) => calls_in_block(blk, ghost, out, f - 1),
+            ast::ExprKind::Array(arr) => calls_in_exprs(arr.as_slice(), ghost, out, f - 1),
+            ast::ExprKind::Repeat(rp) => calls_in_expr(&*rp.value, ghost, out, f - 1),
+            ast::ExprKind::Old(ox) => calls_in_expr(&**ox, ghost, out, f - 1),
+            ast::ExprKind::Quant(qu) => calls_in_expr(&*qu.body, true, out, f - 1),
+            ast::ExprKind::Trigger(tx) => calls_in_expr(&**tx, ghost, out, f - 1),
+            ast::ExprKind::Closure(clo) => {},
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { calls_in_expr(&sl.fields[i].value, ghost, out, f - 1); } },
+            ast::ExprKind::Path(pa) => {},
+            ast::ExprKind::Deref(dx) => calls_in_expr(&**dx, ghost, out, f - 1),
+            ast::ExprKind::Field(fb, fname) => calls_in_expr(&**fb, ghost, out, f - 1),
+            ast::ExprKind::Match(ma) => { calls_in_expr(&*ma.scrut, ghost, out, f - 1); for i in 0..ma.arms.len() invariant 0 <= i && i <= ma.arms.len(), { calls_in_expr(&ma.arms[i].body, ghost, out, f - 1); } },
+            ast::ExprKind::Return(ret) => { match ret { None => {}, Some(rv) => calls_in_expr(&**rv, ghost, out, f - 1), } },
+            ast::ExprKind::Try(trx) => calls_in_expr(&**trx, ghost, out, f - 1),
+            ast::ExprKind::Loop(lo) => { for i in 0..lo.invariants.len() invariant 0 <= i && i <= lo.invariants.len(), { calls_in_expr(&lo.invariants[i], true, out, f - 1); } match &lo.measure { None => {}, Some(lm) => calls_in_expr(&**lm, true, out, f - 1), } calls_in_block(&lo.body, ghost, out, f - 1); },
+            ast::ExprKind::Break(br2) => { match &br2.value { None => {}, Some(bv) => calls_in_expr(&**bv, ghost, out, f - 1), } },
+            ast::ExprKind::Continue(cl) => {},
+            ast::ExprKind::Range(ra) => { calls_in_expr(&*ra.lo, ghost, out, f - 1); calls_in_expr(&*ra.hi, ghost, out, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("The calls in each expression of xs")]
+    #[effects(alloc)]
+    fn calls_in_exprs(xs: &[ast::Expr], ghost: bool, out: &mut Vec<CallAt>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            calls_in_expr(&xs[i], ghost, out, f - 1);
+        }
+    }
 
     #[summary("bmb check: reads the files as one program and checks it. Diagnostics are JSONL, ok is false if there are errors")]
     #[effects(alloc)]
@@ -140,18 +234,69 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("bmb emit-llvm --all-checks (stage0 lib::emit_llvm_sources_with): checks and builds the module from the lowered tables. ok is false if there are errors. Otherwise ir is the text of the module, and if todo is not empty, syntax not yet ported was met, so ir is not used")]
-    #[effects(alloc)]
-    fn emit_llvm(files: &[Input]) -> Emitted {
+    #[summary("bmb emit-llvm and bmb build (stage0 lib::emit_llvm_sources_cached and emit_llvm_sources_with): checks the program and, when it checks, builds the module from the lowered tables. With all_checks the prover does not run and every obligation keeps its runtime check. Otherwise the program is proved first, through the caches in cache_dir when there is one (with audit, every reused proof and fragment of IR is computed again and compared), and the runtime check of an obligation is dropped when its proof is usable (usable_proofs). The module is built even when some obligations are not proved: those keep their checks")]
+    #[effects(alloc, io, nondet)]
+    fn emit_llvm(files: &[Input], all_checks: bool, cache_dir: &Option<String>, audit: bool) -> Emitted {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let fe: Front = frontend(files, &mut sm, &mut diags);
         if diags.has_errors() {
-            return Emitted { ok: false, diags: diags.to_jsonl(&sm), ir: String::new(), todo: Vec::new() };
+            return Emitted { built: false, ok: false, output: diags.to_jsonl(&sm), ir: String::new(), todo: Vec::new(), checks: 0, has_main: false, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
         }
         let low: lowered::Tables = lowered::tables(&fe.ck);
-        let m: codegen::Module = codegen::emit(&fe.ck, &low);
-        Emitted { ok: true, diags: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo }
+        if all_checks {
+            let none: Vec<encode_spec::Trivial> = Vec::new();
+            let mut no_incr: Option<incremental::Session> = None;
+            let m: codegen::Module = codegen::emit(&fe.ck, &low, &codegen::proofs(none.as_slice()), &mut no_incr);
+            let none_checked: Vec<String> = Vec::new();
+            let has_main: bool = match &m.main {
+                None => false,
+                Some(x) => true,
+            };
+            return Emitted { built: true, ok: true, output: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo, checks: kept_checks(&m.checks_by, none_checked.as_slice()), has_main: has_main, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
+        }
+        let mut store: Option<cache::ProofCache> = match cache_dir {
+            None => None,
+            Some(dir) => Some(cache::load(dir.as_str())),
+        };
+        let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        let mut incr: Option<incremental::Session> = match cache_dir {
+            None => None,
+            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, false, audit)),
+        };
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let out: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut diags);
+        let mut hits: usize = 0;
+        let mut misses: usize = 0;
+        let mut cache_error: Option<String> = None;
+        match &store {
+            None => {},
+            Some(c) => { hits = c.hits; misses = c.misses; match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
+        }
+        let defs: Vec<codegen::Def> = codegen::sorted_defs(&fe.ck.program, &low);
+        let usable: Vec<encode_spec::Trivial> = usable_proofs(&fe.ck, defs.as_slice(), &out);
+        match &mut incr {
+            None => {},
+            Some(s0) => incremental::with_ir(s0, &fe.ck, &low, &sm),
+        }
+        let m2: codegen::Module = codegen::emit(&fe.ck, &low, &codegen::proofs(usable.as_slice()), &mut incr);
+        let incr_error: Option<String> = incremental::save_slot(&mut incr);
+        let mut output: String = diags.to_jsonl(&sm);
+        output.push_str(prove::status_lines(out.statuses.as_slice()).as_str());
+        let mut ok: bool = !diags.has_errors();
+        for j in 0..out.statuses.len()
+            invariant 0 <= j && j <= out.statuses.len(),
+        {
+            if out.statuses[j].failed != 0 {
+                ok = false;
+            }
+        }
+        let has_main2: bool = match &m2.main {
+            None => false,
+            Some(y) => true,
+        };
+        Emitted { built: true, ok: ok, output: output, ir: m2.ir, todo: m2.todo, checks: kept_checks(&m2.checks_by, out.checked.as_slice()), has_main: has_main2, hits: hits, misses: misses, incr: incremental::stats_of(&incr), cache_error: cache_error, incr_error: incr_error }
     }
 
     #[summary("bmb examples (stage0 examples_sources): reads the files as one program, checks it and, when it checks, the examples of each named function's contract (examples::examples), as JSONL. Not ok with the diagnostics of a program that does not check, or with the line naming a path that is not an executable function")]
@@ -281,6 +426,47 @@ mod lib {
             out.push_str("\"}\n");
         }
         Outcome { ok: true, text: out }
+    }
+
+    #[summary("Whether a name is held")]
+    #[effects(pure)]
+    fn is_some(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(x) => true,
+        }
+    }
+
+    #[summary("The runtime checks of a module outside the definitions compiled with every check (stage0 sums checks_by over the definitions not in Outcome::checked: those checks are no missing proofs, ADR-0029 §4)")]
+    #[effects(alloc)]
+    fn kept_checks(by: &table::Table<u32>, checked: &[String]) -> u32 {
+        let mut n: u32 = 0;
+        for i in 0..by.len()
+            invariant 0 <= i,
+        {
+            match by.nth(i) {
+                None => {},
+                Some(at) => { if !types::has(checked, by.key(i).as_str()) { n = n.saturating_add(by.items[at]); } },
+            }
+        }
+        n
+    }
+
+    #[summary("The function a call names as the map resolves it (stage0 map::resolve): `f`, `T::f` of an impl function of the unit's type and `Trait::f` of a method of the unit's trait are local, any other path is as written")]
+    #[effects(alloc)]
+    fn map_resolve(path: &[ast::Ident], unit: &str, fns: &table::Table<types::FnSig>) -> String {
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len(),
+        {
+            names.push(path[i].name.clone());
+        }
+        let plain: String = types::join(names.as_slice(), "::");
+        let local: String = types::cat3(unit, "::", plain.as_str());
+        match fns.find(local.as_str()) {
+            None => plain,
+            Some(at) => { if path.len() == 1 || path.len() == 2 && (fns.items[at].in_impl || is_some(&fns.items[at].trait_of)) { local } else { plain } },
+        }
     }
 
     #[summary("The value of `--count` as Rust reads a usize (an optional `+`, then digits), when it is from 1 to 64")]
@@ -782,6 +968,106 @@ mod lib {
             out.push_str("]");
         }
         out.push_str("]");
+    }
+
+    #[summary("The proved obligations whose runtime checks may be dropped (stage0 usable_proofs). A proof assumes the function's `requires` (established by its callers), its callees' `ensures` (proved by them, under their own callees), and earlier facts in the same function, so a proof is usable only when every definition connected to its own by calls, in either direction, is fully proved: the calls of executable code to functions that are no lemmas (stage0's `calls` edges of the map, a trait call with a known `Self` naming its impl's function) join defs into components, and every obligation inside the text of a definition whose component holds a definition with a failure keeps its check")]
+    #[effects(alloc)]
+    fn usable_proofs(ck: &body::Checked, defs: &[codegen::Def], out: &prove::Outcome) -> Vec<encode_spec::Trivial> {
+        let mut index: table::Table<usize> = table::new::<usize>();
+        let mut adj: Vec<Vec<usize>> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            index.insert(defs[i].path.as_str(), i);
+            adj.push(Vec::new());
+        }
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if body::is_exec(defs[i].d.kind) {
+                let mut calls: Vec<CallAt> = Vec::new();
+                calls_in_block(&defs[i].d.body, false, &mut calls, 1000000000);
+                for c in 0..calls.len()
+                    invariant 0 <= c && c <= calls.len(),
+                {
+                    if !calls[c].ghost {
+                        let mut to: String = map_resolve(calls[c].path.as_slice(), defs[i].unit.as_str(), &ck.b.c.fns);
+                        match ck.b.targs.find(body::span_key(calls[c].span).as_str()) {
+                            None => {},
+                            Some(ta) => { match body::dispatch(&ck.b.c.fns, ck.b.c.trait_impls.as_slice(), to.as_str(), ck.b.targs.items[ta].as_slice()) { None => {}, Some(dd) => { to = dd.path.clone(); }, } },
+                        }
+                        match ck.b.c.fns.find(to.as_str()) {
+                            None => {},
+                            Some(sa) => { if !body::is_proof(ck.b.c.fns.items[sa].kind) { match index.find(to.as_str()) { None => {}, Some(j) => { let k: usize = index.items[j]; if k < adj.len() && i < adj.len() { adj[i].push(k); adj[k].push(i); } }, } } },
+                        }
+                    }
+                }
+            }
+        }
+        let mut broken: Vec<bool> = Vec::new();
+        for b in 0..defs.len()
+            invariant 0 <= b && b <= defs.len(),
+        {
+            broken.push(false);
+        }
+        let mut todo: Vec<usize> = Vec::new();
+        for s in 0..out.statuses.len()
+            invariant 0 <= s && s <= out.statuses.len(),
+        {
+            if out.statuses[s].failed > 0 {
+                match index.find(out.statuses[s].path.as_str()) {
+                    None => {},
+                    Some(at) => { let k2: usize = index.items[at]; if k2 < broken.len() && !broken[k2] { broken[k2] = true; todo.push(k2); } },
+                }
+            }
+        }
+        let mut fuel: usize = 1000000000;
+        while todo.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let n: usize = match todo.pop() {
+                None => 0,
+                Some(x) => x,
+            };
+            if n < adj.len() {
+                for k3 in 0..adj[n].len()
+                    invariant 0 <= k3 && k3 <= adj[n].len(),
+                {
+                    let m: usize = adj[n][k3];
+                    if m < broken.len() && !broken[m] {
+                        broken[m] = true;
+                        todo.push(m);
+                    }
+                }
+            }
+        }
+        let mut spans: Vec<source::Span> = Vec::new();
+        for d in 0..defs.len()
+            invariant 0 <= d && d <= defs.len(),
+        {
+            if d < broken.len() && broken[d] {
+                spans.push(defs[d].d.span);
+            }
+        }
+        let mut kept: Vec<encode_spec::Trivial> = Vec::new();
+        for o in 0..out.proven.len()
+            invariant 0 <= o && o <= out.proven.len(),
+        {
+            let at2: source::Span = out.proven[o].span;
+            let mut inside: bool = false;
+            for q in 0..spans.len()
+                invariant 0 <= q && q <= spans.len(),
+            {
+                if spans[q].file == at2.file && spans[q].lo <= at2.lo && at2.hi <= spans[q].hi {
+                    inside = true;
+                }
+            }
+            if !inside {
+                kept.push(out.proven[o].clone());
+            }
+        }
+        kept
     }
 
     #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only): reads the files as one program, checks it and, when it checks, proves it. cache_dir is the directory of the caches when there is one: proofs found before are not asked again and new ones are written back, and with reuse an unchanged fully proved definition is not encoded again (the per-definition cache; reuse is off for --emit-smt, which needs every script); audit proves such a definition anyway and compares. only names the definitions to prove when it is not empty; the whole program is still checked and each gets its whole-program status, and the per-definition cache is read lazily with the keys of those alone. bounded asks each undecided obligation once more with its inputs bounded")]

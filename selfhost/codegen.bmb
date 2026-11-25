@@ -1,4 +1,4 @@
-#[summary("Code generation (port of stage0 compiler/src/codegen.rs). All-checks mode: assumes no obligation is proven and keeps every check. Type layout and LLVM type definitions, scalar programs, arrays and slices of scalar elements, structs and memory values, enums·match·?, heap values and their drop·clone. For constructs not ported, the reason is left in Gen.todo. Types are lowered ones (lowered). The f of functions that walk types is the remaining depth (ADR-0140)")]
+#[summary("Code generation (port of stage0 compiler/src/codegen.rs). The runtime check of an obligation whose proof is usable is dropped (`; proved Exxxx`), every other one is kept; with no proofs (all-checks mode) every check is kept. With the per-definition cache, the IR of an unchanged definition is taken from it. Type layout and LLVM type definitions, scalar programs, arrays and slices of scalar elements, structs and memory values, enums·match·?, heap values and their drop·clone. For constructs not ported, the reason is left in Gen.todo. Types are lowered ones (lowered). The f of functions that walk types is the remaining depth (ADR-0140)")]
 mod codegen {
     #[summary("Place of any type (result of stage0 any_place): address, type, its register type if a scalar place (otherwise empty text: memory form), and if ok is false a place not ported")]
     struct AnyPlace { ptr: String, ty: ast::TypeKind, reg: String, ok: bool }
@@ -33,8 +33,8 @@ mod codegen {
     #[summary("Loop that break or continue can leave (stage0 GLoop): label (empty text if none), where continue goes, where break goes, the slot where break e of a loop puts its value and its type, the length of pending when the loop starts (temporaries after that belong to the region inside the loop)")]
     struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
-    #[summary("State of lowering one function (stage0 Gen). out is the text of the body, allocas are the slots of entry, tmp and label are the numbers of %tN and labels, slots are the places of local names, todo holds the reasons for constructs met that are not yet ported (if not empty, no module is emitted), print_f64 is whether print_f64 was called (that runtime fragment is attached to the module), loops are the loops enclosing the code being lowered (innermost last), globals are this function's constants and consts is their line count, pending are the temporaries that own heap memory (released when the region ends), clones are the texts of the types whose clone code was called")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind> }
+    #[summary("State of lowering one function (stage0 Gen). out is the text of the body, allocas are the slots of entry, tmp and label are the numbers of %tN and labels, slots are the places of local names, todo holds the reasons for constructs met that are not yet ported (if not empty, no module is emitted), print_f64 is whether print_f64 was called (that runtime fragment is attached to the module), loops are the loops enclosing the code being lowered (innermost last), globals are this function's constants and consts is their line count, pending are the temporaries that own heap memory (released when the region ends), clones are the texts of the types whose clone code was called, proven holds the obligations whose runtime checks are dropped (proof_key of each)")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind>, proven: table::Table<bool> }
 
     impl Gen {
         #[summary("Puts one slot of ty in entry and gives its name")]
@@ -135,10 +135,21 @@ mod codegen {
             AnyPlace { ptr: String::from("undef"), ty: ast::TypeKind::Error, reg: String::new(), ok: false }
         }
 
-        #[summary("Arithmetic (stage0 arith): checks for overflow and stops on overflow (all-checks mode: there are no proved obligations)")]
+        #[summary("Arithmetic (stage0 arith): `nsw`/`nuw` when the obligation at e is proved, otherwise checks for overflow and stops on overflow")]
         #[effects(alloc)]
-        fn arith(self: &mut Gen, inst: &str, a: &str, b: &str, signed: bool) -> CVal {
+        fn arith(self: &mut Gen, e: &ast::Expr, inst: &str, a: &str, b: &str, signed: bool) -> CVal {
             let r: String = self.t();
+            if self.proved("E0803", e) {
+                let flag: String = if signed {
+                    String::from("nsw")
+                } else {
+                    String::from("nuw")
+                };
+                let mut done: String = types::cat5(r.as_str(), " = ", inst, " ", flag.as_str());
+                done.push_str(types::cat5(" i64 ", a, ", ", b, " ; proved E0803").as_str());
+                self.emit(done.as_str());
+                return CVal::Imm(r);
+            }
             let s: String = if signed {
                 String::from("s")
             } else {
@@ -362,7 +373,7 @@ mod codegen {
             }
             match body::int_of(&lt) {
                 None => self.todo_expr("an operator on a type that is not an integer", e),
-                Some(i) => { if body::is_shift(op) { return self.shift(op, i, a.as_str(), r, b.as_str()); } match op { ast::BinOp::Add => { if body::bits(i) < 64 { self.narrow_arith("add", a.as_str(), b.as_str(), i) } else { self.arith("add", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Sub => { if body::bits(i) < 64 { self.narrow_arith("sub", a.as_str(), b.as_str(), i) } else { self.arith("sub", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Mul => { if body::bits(i) < 64 { self.narrow_arith("mul", a.as_str(), b.as_str(), i) } else { self.arith("mul", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Div => self.div_rem(true, i, a.as_str(), b.as_str()), ast::BinOp::Rem => self.div_rem(false, i, a.as_str(), b.as_str()), ast::BinOp::Eq => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ne => self.todo_expr("an operator outside executable code", e), ast::BinOp::Lt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Le => self.todo_expr("an operator outside executable code", e), ast::BinOp::Gt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ge => self.todo_expr("an operator outside executable code", e), ast::BinOp::And => self.todo_expr("an operator outside executable code", e), ast::BinOp::Or => self.todo_expr("an operator outside executable code", e), ast::BinOp::Implies => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitAnd => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitOr => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitXor => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shl => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shr => self.todo_expr("an operator outside executable code", e), } },
+                Some(i) => { if body::is_shift(op) { return self.shift(e, op, i, a.as_str(), r, b.as_str()); } match op { ast::BinOp::Add => { if body::bits(i) < 64 { self.narrow_arith(e, "add", a.as_str(), b.as_str(), i) } else { self.arith(e, "add", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Sub => { if body::bits(i) < 64 { self.narrow_arith(e, "sub", a.as_str(), b.as_str(), i) } else { self.arith(e, "sub", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Mul => { if body::bits(i) < 64 { self.narrow_arith(e, "mul", a.as_str(), b.as_str(), i) } else { self.arith(e, "mul", a.as_str(), b.as_str(), signed) } }, ast::BinOp::Div => self.div_rem(e, r, true, i, a.as_str(), b.as_str()), ast::BinOp::Rem => self.div_rem(e, r, false, i, a.as_str(), b.as_str()), ast::BinOp::Eq => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ne => self.todo_expr("an operator outside executable code", e), ast::BinOp::Lt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Le => self.todo_expr("an operator outside executable code", e), ast::BinOp::Gt => self.todo_expr("an operator outside executable code", e), ast::BinOp::Ge => self.todo_expr("an operator outside executable code", e), ast::BinOp::And => self.todo_expr("an operator outside executable code", e), ast::BinOp::Or => self.todo_expr("an operator outside executable code", e), ast::BinOp::Implies => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitAnd => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitOr => self.todo_expr("an operator outside executable code", e), ast::BinOp::BitXor => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shl => self.todo_expr("an operator outside executable code", e), ast::BinOp::Shr => self.todo_expr("an operator outside executable code", e), } },
             }
         }
 
@@ -612,7 +623,7 @@ mod codegen {
                 return self.expr(&c.args[0], ck, tb, f - 1);
             }
             if body::is_f64_from(c.path.as_slice()) && c.args.len() == 1 {
-                return self.f64_from(&c.args[0], ck, tb, f - 1);
+                return self.f64_from(e, &c.args[0], ck, tb, f - 1);
             }
             match body::from_bytes_int(c.path.as_slice()) {
                 None => {},
@@ -715,9 +726,11 @@ mod codegen {
                 if flat.len() != 2 {
                     return self.todo_expr("a `print_f64` whose arguments are not two values", e);
                 }
-                let pc: String = self.t();
-                self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str());
-                self.check(pc.as_str(), "`print_f64` decimals above 65535");
+                if !self.proved("E0801", e) {
+                    let pc: String = self.t();
+                    self.emit(types::cat4(pc.as_str(), " = icmp ule ", flat[1].as_str(), ", 65535").as_str());
+                    self.check(pc.as_str(), "`print_f64` decimals above 65535");
+                }
             }
             if exits {
                 self.emit(types::cat3("call void @bmb_exit(", types::join(flat.as_slice(), ", ").as_str(), ")").as_str());
@@ -937,18 +950,25 @@ mod codegen {
             let av: CVal = self.array_of(&*mc.recv, ck, tb, f - 1);
             match range_of(&mc.args[0]) {
                 None => self.todo_expr("a `copy_within` whose first argument is not a range", e),
-                Some(r) => { let lo: String = imm(&self.expr(&*r.lo, ck, tb, f - 1)); let hi: String = imm(&self.expr(&*r.hi, ck, tb, f - 1)); let dest: String = imm(&self.expr(&mc.args[1], ck, tb, f - 1)); if !is_arr(&av) { if !is_never(&av) { self.todo_at("a `copy_within` of a value that is not an array, a slice or a `Vec`", e.span); } return CVal::Never; } let ptr: String = arr_ptr(&av); let len: String = arr_len(&av); let a: String = self.t(); let b: String = self.t(); self.emit(types::cat5(a.as_str(), " = icmp ule i64 ", lo.as_str(), ", ", hi.as_str()).as_str()); self.emit(types::cat5(b.as_str(), " = icmp ule i64 ", hi.as_str(), ", ", len.as_str()).as_str()); let srcok: String = self.t(); self.emit(types::cat5(srcok.as_str(), " = and i1 ", a.as_str(), ", ", b.as_str()).as_str()); self.check(srcok.as_str(), "`copy_within` source range may be out of bounds"); let n0: String = self.t(); let room: String = self.t(); let c: String = self.t(); self.emit(types::cat5(n0.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()).as_str()); self.emit(types::cat5(room.as_str(), " = sub nuw i64 ", len.as_str(), ", ", n0.as_str()).as_str()); self.emit(types::cat5(c.as_str(), " = icmp ule i64 ", dest.as_str(), ", ", room.as_str()).as_str()); self.check(c.as_str(), "`copy_within` destination may be out of bounds"); let n: String = self.t(); let bytes: String = self.t(); let src: String = self.t(); let dst: String = self.t(); let et: String = mem_ty(&el); self.emit(types::cat5(n.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()).as_str()); self.emit(types::cat5(bytes.as_str(), " = mul nuw i64 ", n.as_str(), ", ", size_of(&el).as_str()).as_str()); self.emit(types::cat7(src.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", lo.as_str()).as_str()); self.emit(types::cat7(dst.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", dest.as_str()).as_str()); self.emit(types::cat7("call void @llvm.memmove.p0.p0.i64(ptr ", dst.as_str(), ", ptr ", src.as_str(), ", i64 ", bytes.as_str(), ", i1 false)").as_str()); CVal::Unit },
+                Some(r) => { let lo: String = imm(&self.expr(&*r.lo, ck, tb, f - 1)); let hi: String = imm(&self.expr(&*r.hi, ck, tb, f - 1)); let dest: String = imm(&self.expr(&mc.args[1], ck, tb, f - 1)); if !is_arr(&av) { if !is_never(&av) { self.todo_at("a `copy_within` of a value that is not an array, a slice or a `Vec`", e.span); } return CVal::Never; } let ptr: String = arr_ptr(&av); let len: String = arr_len(&av); let proved: bool = self.proved("E0805", e); if !proved { let a: String = self.t(); let b: String = self.t(); self.emit(types::cat5(a.as_str(), " = icmp ule i64 ", lo.as_str(), ", ", hi.as_str()).as_str()); self.emit(types::cat5(b.as_str(), " = icmp ule i64 ", hi.as_str(), ", ", len.as_str()).as_str()); let srcok: String = self.t(); self.emit(types::cat5(srcok.as_str(), " = and i1 ", a.as_str(), ", ", b.as_str()).as_str()); self.check(srcok.as_str(), "`copy_within` source range may be out of bounds"); let n0: String = self.t(); let room: String = self.t(); let c: String = self.t(); self.emit(types::cat5(n0.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()).as_str()); self.emit(types::cat5(room.as_str(), " = sub nuw i64 ", len.as_str(), ", ", n0.as_str()).as_str()); self.emit(types::cat5(c.as_str(), " = icmp ule i64 ", dest.as_str(), ", ", room.as_str()).as_str()); self.check(c.as_str(), "`copy_within` destination may be out of bounds"); } let n: String = self.t(); let bytes: String = self.t(); let src: String = self.t(); let dst: String = self.t(); let et: String = mem_ty(&el); let mut first: String = types::cat5(n.as_str(), " = sub nuw i64 ", hi.as_str(), ", ", lo.as_str()); if proved { first.push_str(" ; proved E0805"); } self.emit(first.as_str()); self.emit(types::cat5(bytes.as_str(), " = mul nuw i64 ", n.as_str(), ", ", size_of(&el).as_str()).as_str()); self.emit(types::cat7(src.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", lo.as_str()).as_str()); self.emit(types::cat7(dst.as_str(), " = getelementptr inbounds ", et.as_str(), ", ptr ", ptr.as_str(), ", i64 ", dest.as_str()).as_str()); self.emit(types::cat7("call void @llvm.memmove.p0.p0.i64(ptr ", dst.as_str(), ", ptr ", src.as_str(), ", i64 ", bytes.as_str(), ", i1 false)").as_str()); CVal::Unit },
             }
         }
 
-        #[summary("Address of an element of memory values (stage0 data_elem): checks that the index is within the length")]
+        #[summary("Address of an element of memory values (stage0 data_elem): checks that the index is within the length unless the obligation of the indexing e is proved")]
         #[effects(alloc)]
-        fn data_elem(self: &mut Gen, ptr: &str, len: &str, i: &str, ety: &ast::TypeKind) -> String {
-            let c: String = self.t();
-            self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", i, ", ", len).as_str());
-            self.check(c.as_str(), "index may be out of bounds");
+        fn data_elem(self: &mut Gen, e: &ast::Expr, ptr: &str, len: &str, i: &str, ety: &ast::TypeKind) -> String {
+            let proved: bool = self.proved("E0805", e);
+            if !proved {
+                let c: String = self.t();
+                self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", i, ", ", len).as_str());
+                self.check(c.as_str(), "index may be out of bounds");
+            }
             let p: String = self.t();
-            self.emit(types::cat7(p.as_str(), " = getelementptr inbounds ", mem_ty(ety).as_str(), ", ptr ", ptr, ", i64 ", i).as_str());
+            let mut line: String = types::cat7(p.as_str(), " = getelementptr inbounds ", mem_ty(ety).as_str(), ", ptr ", ptr, ", i64 ", i);
+            if proved {
+                line.push_str(" ; proved E0805");
+            }
+            self.emit(line.as_str());
             p
         }
 
@@ -999,12 +1019,15 @@ mod codegen {
 
         #[summary("Division and remainder (stage0 expr's Div·Rem): checks division by 0 and MIN / -1 of signed types")]
         #[effects(alloc)]
-        fn div_rem(self: &mut Gen, div: bool, i: ast::IntTy, a: &str, b: &str) -> CVal {
-            let c: String = self.t();
-            self.emit(types::cat4(c.as_str(), " = icmp ne i64 ", b, ", 0").as_str());
-            self.check(c.as_str(), "divisor may be zero");
+        fn div_rem(self: &mut Gen, e: &ast::Expr, r: &ast::Expr, div: bool, i: ast::IntTy, a: &str, b: &str) -> CVal {
+            let by_zero: bool = self.proved("E0804", r);
+            if !by_zero {
+                let c: String = self.t();
+                self.emit(types::cat4(c.as_str(), " = icmp ne i64 ", b, ", 0").as_str());
+                self.check(c.as_str(), "divisor may be zero");
+            }
             let signed: bool = body::signed(i);
-            if signed {
+            if signed && !self.proved("E0803", e) {
                 let m: String = self.t();
                 let n: String = self.t();
                 let both: String = self.t();
@@ -1027,7 +1050,11 @@ mod codegen {
                 String::from("urem")
             };
             let res: String = self.t();
-            self.emit(types::cat7(res.as_str(), " = ", inst.as_str(), " i64 ", a, ", ", b).as_str());
+            let mut line: String = types::cat7(res.as_str(), " = ", inst.as_str(), " i64 ", a, ", ", b);
+            if by_zero {
+                line.push_str(" ; proved E0804");
+            }
+            self.emit(line.as_str());
             CVal::Imm(res)
         }
 
@@ -1098,7 +1125,7 @@ mod codegen {
             }
         }
 
-        #[summary("Address of an element (stage0 elem_ptr): checks that the index is within the length (all-checks mode) and points at that element. An assignment target has no type record, so the element kind is read from the variable's place")]
+        #[summary("Address of an element (stage0 elem_ptr): checks that the index is within the length unless the obligation of the indexing e is proved, and points at that element. An assignment target has no type record, so the element kind is read from the variable's place")]
         #[effects(alloc)]
         fn elem_ptr(self: &mut Gen, e: &ast::Expr, base: &ast::Expr, index: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> ElemPtr
             decreases f,
@@ -1119,15 +1146,22 @@ mod codegen {
                 }
                 return ElemPtr { ptr: String::from("undef"), elem: elem };
             }
-            let c: String = self.t();
-            self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", i.as_str(), ", ", arr_len(&av).as_str()).as_str());
-            self.check(c.as_str(), "index may be out of bounds");
+            let proved: bool = self.proved("E0805", e);
+            if !proved {
+                let c: String = self.t();
+                self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", i.as_str(), ", ", arr_len(&av).as_str()).as_str());
+                self.check(c.as_str(), "index may be out of bounds");
+            }
             let p: String = self.t();
-            self.emit(types::cat7(p.as_str(), " = getelementptr inbounds ", mem(elem.as_str()).as_str(), ", ptr ", arr_ptr(&av).as_str(), ", i64 ", i.as_str()).as_str());
+            let mut line: String = types::cat7(p.as_str(), " = getelementptr inbounds ", mem(elem.as_str()).as_str(), ", ptr ", arr_ptr(&av).as_str(), ", i64 ", i.as_str());
+            if proved {
+                line.push_str(" ; proved E0805");
+            }
+            self.emit(line.as_str());
             ElemPtr { ptr: p, elem: elem }
         }
 
-        #[summary("&v[a..b] (stage0 elem_slice): checks that the range is within the length and gives the address and length of that slice")]
+        #[summary("&v[a..b] (stage0 elem_slice): checks that the range is within the length unless the obligation of the indexing idx is proved, and gives the address and length of that slice")]
         #[effects(alloc)]
         fn elem_slice(self: &mut Gen, idx: &ast::Expr, base: &ast::Expr, lo: &ast::Expr, hi: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
@@ -1153,13 +1187,17 @@ mod codegen {
                 }
                 return CVal::Never;
             }
-            let ord: String = self.t();
-            let end: String = self.t();
-            let c: String = self.t();
-            self.emit(types::cat5(ord.as_str(), " = icmp ule i64 ", a.as_str(), ", ", b.as_str()).as_str());
-            self.emit(types::cat5(end.as_str(), " = icmp ule i64 ", b.as_str(), ", ", arr_len(&av).as_str()).as_str());
-            self.emit(types::cat5(c.as_str(), " = and i1 ", ord.as_str(), ", ", end.as_str()).as_str());
-            self.check(c.as_str(), "the range may be out of bounds");
+            if self.proved("E0805", idx) {
+                self.emit("; proved E0805");
+            } else {
+                let ord: String = self.t();
+                let end: String = self.t();
+                let c: String = self.t();
+                self.emit(types::cat5(ord.as_str(), " = icmp ule i64 ", a.as_str(), ", ", b.as_str()).as_str());
+                self.emit(types::cat5(end.as_str(), " = icmp ule i64 ", b.as_str(), ", ", arr_len(&av).as_str()).as_str());
+                self.emit(types::cat5(c.as_str(), " = and i1 ", ord.as_str(), ", ", end.as_str()).as_str());
+                self.check(c.as_str(), "the range may be out of bounds");
+            }
             let ptr: String = self.t();
             let len: String = self.t();
             self.emit(types::cat7(ptr.as_str(), " = getelementptr ", mem_ty(&et).as_str(), ", ptr ", arr_ptr(&av).as_str(), ", i64 ", a.as_str()).as_str());
@@ -1249,9 +1287,9 @@ mod codegen {
             }
         }
 
-        #[summary("f64::from(x) (stage0 f64_from): a 64-bit integer is checked against the range that converts exactly (up to 2^53)")]
+        #[summary("f64::from(x) (stage0 f64_from), e the call: a 64-bit integer is checked against the range that converts exactly (up to 2^53) unless the obligation at e is proved")]
         #[effects(alloc)]
-        fn f64_from(self: &mut Gen, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
+        fn f64_from(self: &mut Gen, e: &ast::Expr, x: &ast::Expr, ck: &body::Checked, tb: &lowered::Tables, f: usize) -> CVal
             decreases f,
         {
             if f == 0 {
@@ -1261,7 +1299,7 @@ mod codegen {
             let v: String = imm(&self.expr(x, ck, tb, f - 1));
             match body::int_of(&st) {
                 None => CVal::Imm(v),
-                Some(i) => { if body::bits(i) == 64 { let c: String = self.t(); if body::signed(i) { let sh: String = self.t(); self.emit(types::cat4(sh.as_str(), " = add i64 ", v.as_str(), ", 9007199254740992").as_str()); self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", sh.as_str(), ", 18014398509481984").as_str()); } else { self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", v.as_str(), ", 9007199254740992").as_str()); } self.check(c.as_str(), "`f64::from` may not be exact"); } let r: String = self.t(); let inst: String = if body::signed(i) { String::from("sitofp") } else { String::from("uitofp") }; self.emit(types::cat7(r.as_str(), " = ", inst.as_str(), " i64 ", v.as_str(), " to double", "").as_str()); CVal::Imm(r) },
+                Some(i) => { if body::bits(i) == 64 && self.proved("E0815", e) { self.emit("; proved E0815"); } else if body::bits(i) == 64 { let c: String = self.t(); if body::signed(i) { let sh: String = self.t(); self.emit(types::cat4(sh.as_str(), " = add i64 ", v.as_str(), ", 9007199254740992").as_str()); self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", sh.as_str(), ", 18014398509481984").as_str()); } else { self.emit(types::cat4(c.as_str(), " = icmp ule i64 ", v.as_str(), ", 9007199254740992").as_str()); } self.check(c.as_str(), "`f64::from` may not be exact"); } let r: String = self.t(); let inst: String = if body::signed(i) { String::from("sitofp") } else { String::from("uitofp") }; self.emit(types::cat7(r.as_str(), " = ", inst.as_str(), " i64 ", v.as_str(), " to double", "").as_str()); CVal::Imm(r) },
             }
         }
 
@@ -1528,7 +1566,7 @@ mod codegen {
                     }
                     return CVal::Never;
                 }
-                let dp: String = self.data_elem(arr_ptr(&av).as_str(), arr_len(&av).as_str(), di.as_str(), &ety);
+                let dp: String = self.data_elem(e, arr_ptr(&av).as_str(), arr_len(&av).as_str(), di.as_str(), &ety);
                 return self.read(dp.as_str(), &ety);
             }
             if !is_scalar_ty(&ety) {
@@ -2147,7 +2185,7 @@ mod codegen {
             let name: String = mc.name.name.clone();
             match conv_parts(&*mc.recv) {
                 None => {},
-                Some(cv) => { let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); let needs: bool = body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)); if name == "unwrap" { if needs { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); } let kept: String = if needs { self.in_range_of(v.as_str(), is_signed(&st), cv.target) } else { String::from("true") }; return self.option(e, kept.as_str(), v.as_str(), tb); },
+                Some(cv) => { let st: ast::TypeKind = self.ty(&cv.arg, tb); let v: String = imm(&self.expr(&cv.arg, ck, tb, f - 1)); let needs: bool = body::conv_obligation(&st, &ast::TypeKind::Int(cv.target)); if name == "unwrap" { if needs && self.proved("E0815", e) { self.emit("; proved E0815"); } else if needs { let c: String = self.in_range_of(v.as_str(), is_signed(&st), cv.target); self.check(c.as_str(), "conversion may be out of range"); } return CVal::Imm(v); } let kept: String = if needs { self.in_range_of(v.as_str(), is_signed(&st), cv.target) } else { String::from("true") }; return self.option(e, kept.as_str(), v.as_str(), tb); },
             }
             if name == "copy_within" {
                 return self.copy_within(e, mc, ck, tb, f - 1);
@@ -2213,9 +2251,9 @@ mod codegen {
             }
         }
 
-        #[summary("Arithmetic of integers narrower than 64 bits (stage0 narrow_arith): computes in 64 bits and checks the type's range")]
+        #[summary("Arithmetic of integers narrower than 64 bits (stage0 narrow_arith): computes in 64 bits and checks the type's range unless the obligation at e is proved")]
         #[effects(alloc)]
-        fn narrow_arith(self: &mut Gen, inst: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
+        fn narrow_arith(self: &mut Gen, e: &ast::Expr, inst: &str, a: &str, b: &str, i: ast::IntTy) -> CVal {
             let r: String = self.t();
             let flag: String = if inst == "mul" && !body::signed(i) {
                 String::from("nuw")
@@ -2228,8 +2266,12 @@ mod codegen {
             line.push_str(", ");
             line.push_str(b);
             self.emit(line.as_str());
-            let c: String = self.fits(r.as_str(), i);
-            self.check(c.as_str(), types::cat5("`", inst, "` may overflow `", body::int_text(i).as_str(), "`").as_str());
+            if self.proved("E0803", e) {
+                self.emit("; proved E0803");
+            } else {
+                let c: String = self.fits(r.as_str(), i);
+                self.check(c.as_str(), types::cat5("`", inst, "` may overflow `", body::int_text(i).as_str(), "`").as_str());
+            }
             CVal::Imm(r)
         }
 
@@ -2315,7 +2357,7 @@ mod codegen {
                 ast::ExprKind::Var(id) => { match self.data_slot(id.name.as_str()) { None => { self.todo_at("a place that is a local not in memory", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(sl) => Place { ptr: sl.ptr, ty: sl.ty, ok: true }, } },
                 ast::ExprKind::Call(pl_call0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Method(pl_method0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
-                ast::ExprKind::Index(ib, ii) => { match var_name(&**ib) { None => { let ap: Place = self.place(&**ib, ck, tb, f - 1); if !ap.ok { return ap; } let avt: ast::TypeKind = lowered::value_ty(&ap.ty); if !body::is_array(&avt) && !body::is_vec(&avt) { self.todo_at("an element of a place that is not an array or a `Vec`", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } let ael: ast::TypeKind = elem_of(&avt); let aview: CVal = if body::is_vec(&avt) { self.vec_view(ap.ptr.as_str()) } else { CVal::Arr(ap.ptr.clone(), array_len_text(&avt)) }; let ai: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let aep: String = self.data_elem(arr_ptr(&aview).as_str(), arr_len(&aview).as_str(), ai.as_str(), &ael); Place { ptr: aep, ty: ael, ok: true } }, Some(bn) => { match self.arr_slot(bn.as_str()) { None => { match self.data_slot(bn.as_str()) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vsl) => { match body::vec_elem(&lowered::value_ty(&vsl.ty)) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vel) => { let vview: CVal = self.vec_view(vsl.ptr.as_str()); let wi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let wep: String = self.data_elem(arr_ptr(&vview).as_str(), arr_len(&vview).as_str(), wi.as_str(), &vel); Place { ptr: wep, ty: vel, ok: true } }, } }, } }, Some(asl) => { let vi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let vep: String = self.data_elem(asl.ptr.as_str(), asl.len.as_str(), vi.as_str(), &asl.ety); Place { ptr: vep, ty: asl.ety, ok: true } }, } }, } },
+                ast::ExprKind::Index(ib, ii) => { match var_name(&**ib) { None => { let ap: Place = self.place(&**ib, ck, tb, f - 1); if !ap.ok { return ap; } let avt: ast::TypeKind = lowered::value_ty(&ap.ty); if !body::is_array(&avt) && !body::is_vec(&avt) { self.todo_at("an element of a place that is not an array or a `Vec`", e.span); return Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false }; } let ael: ast::TypeKind = elem_of(&avt); let aview: CVal = if body::is_vec(&avt) { self.vec_view(ap.ptr.as_str()) } else { CVal::Arr(ap.ptr.clone(), array_len_text(&avt)) }; let ai: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let aep: String = self.data_elem(e, arr_ptr(&aview).as_str(), arr_len(&aview).as_str(), ai.as_str(), &ael); Place { ptr: aep, ty: ael, ok: true } }, Some(bn) => { match self.arr_slot(bn.as_str()) { None => { match self.data_slot(bn.as_str()) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vsl) => { match body::vec_elem(&lowered::value_ty(&vsl.ty)) { None => { self.todo_at("an element of a local that is not an array, a slice or a `Vec`", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } }, Some(vel) => { let vview: CVal = self.vec_view(vsl.ptr.as_str()); let wi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let wep: String = self.data_elem(e, arr_ptr(&vview).as_str(), arr_len(&vview).as_str(), wi.as_str(), &vel); Place { ptr: wep, ty: vel, ok: true } }, } }, } }, Some(asl) => { let vi: String = imm(&self.expr(&**ii, ck, tb, f - 1)); let vep: String = self.data_elem(e, asl.ptr.as_str(), asl.len.as_str(), vi.as_str(), &asl.ety); Place { ptr: vep, ty: asl.ety, ok: true } }, } }, } },
                 ast::ExprKind::Unary(pl_unary0, pl_unary1) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Binary(pl_binary0, pl_binary1, pl_binary2) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Ref(pl_m, rx) => self.place(&**rx, ck, tb, f - 1),
@@ -2340,6 +2382,12 @@ mod codegen {
                 ast::ExprKind::Range(pl_range0) => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
                 ast::ExprKind::Error => { self.todo_at("an expression that is not a place", e.span); Place { ptr: String::from("undef"), ty: ast::TypeKind::Error, ok: false } },
             }
+        }
+
+        #[summary("Whether the obligation of code at e is proved and its runtime check dropped (stage0 proved)")]
+        #[effects(alloc)]
+        fn proved(self: &Gen, code: &str, e: &ast::Expr) -> bool {
+            self.proven.has(proof_key(code, e.span).as_str())
         }
 
         #[summary("Writes value v to memory ptr (stage0 put): a scalar in memory form (bool is one byte, narrow integers their own width), arrays and memory values are copied")]
@@ -2631,9 +2679,9 @@ mod codegen {
             }
         }
 
-        #[summary("Shift (stage0 shift, shift_inst): checks unless the amount is a literal smaller than the width. A left shift of a narrow type truncates to its own width and widens again")]
+        #[summary("Shift (stage0 shift, shift_inst): checks unless the amount is a literal smaller than the width or the obligation at e is proved. A left shift of a narrow type truncates to its own width and widens again")]
         #[effects(alloc)]
-        fn shift(self: &mut Gen, op: ast::BinOp, i: ast::IntTy, a: &str, r: &ast::Expr, b: &str) -> CVal {
+        fn shift(self: &mut Gen, e: &ast::Expr, op: ast::BinOp, i: ast::IntTy, a: &str, r: &ast::Expr, b: &str) -> CVal {
             let w: u32 = body::bits(i);
             let mut wt: String = String::new();
             std::num::push_u64(&mut wt, w as u64);
@@ -2641,7 +2689,9 @@ mod codegen {
                 None => false,
                 Some(k) => k.hi == 0 && k.lo < w as u64,
             };
-            if !literal {
+            if !literal && self.proved("E0803", e) {
+                self.emit("; proved E0803");
+            } else if !literal {
                 let c: String = self.t();
                 self.emit(types::cat5(c.as_str(), " = icmp ult i64 ", b, ", ", wt.as_str()).as_str());
                 self.check(c.as_str(), types::cat2("shift amount out of 0..", wt.as_str()).as_str());
@@ -2751,15 +2801,19 @@ mod codegen {
             let n: String = arr_len(&sv);
             let a: String = imm(&self.expr(lo, ck, tb, f - 1));
             let b: String = imm(&self.expr(hi, ck, tb, f - 1));
-            let ord: String = self.t();
-            self.emit(types::cat5(ord.as_str(), " = icmp ule i64 ", a.as_str(), ", ", b.as_str()).as_str());
-            let ba: String = self.boundary(p.as_str(), n.as_str(), a.as_str());
-            let bb: String = self.boundary(p.as_str(), n.as_str(), b.as_str());
-            let ab: String = self.t();
-            let c: String = self.t();
-            self.emit(types::cat5(ab.as_str(), " = and i1 ", ba.as_str(), ", ", bb.as_str()).as_str());
-            self.emit(types::cat5(c.as_str(), " = and i1 ", ab.as_str(), ", ", ord.as_str()).as_str());
-            self.check(c.as_str(), "the range may not lie on character boundaries");
+            if self.proved("E0820", idx) {
+                self.emit("; proved E0820");
+            } else {
+                let ord: String = self.t();
+                self.emit(types::cat5(ord.as_str(), " = icmp ule i64 ", a.as_str(), ", ", b.as_str()).as_str());
+                let ba: String = self.boundary(p.as_str(), n.as_str(), a.as_str());
+                let bb: String = self.boundary(p.as_str(), n.as_str(), b.as_str());
+                let ab: String = self.t();
+                let c: String = self.t();
+                self.emit(types::cat5(ab.as_str(), " = and i1 ", ba.as_str(), ", ", bb.as_str()).as_str());
+                self.emit(types::cat5(c.as_str(), " = and i1 ", ab.as_str(), ", ", ord.as_str()).as_str());
+                self.check(c.as_str(), "the range may not lie on character boundaries");
+            }
             let ptr: String = self.t();
             let len: String = self.t();
             self.emit(types::cat5(ptr.as_str(), " = getelementptr i8, ptr ", p.as_str(), ", i64 ", a.as_str()).as_str());
@@ -3042,7 +3096,7 @@ mod codegen {
         #[effects(alloc)]
         fn ty(self: &mut Gen, e: &ast::Expr, tb: &lowered::Tables) -> ast::TypeKind {
             match tb.types.find(body::span_key(e.span).as_str()) {
-                None => ast::TypeKind::Error,
+                None => self.inst(&ast::TypeKind::Error),
                 Some(at) => self.inst(&tb.types.items[at]),
             }
         }
@@ -3073,7 +3127,7 @@ mod codegen {
                     Some(k) => { let mut s: String = String::from("-"); wide::push_radix(&mut s, k, 10); return CVal::Imm(s); },
                 }
                 let v: String = imm(&self.expr(x, ck, tb, f - 1));
-                return match body::int_of(&self.ty(e, tb)) { None => self.arith("sub", "0", v.as_str(), true), Some(i) => { if body::bits(i) < 64 { self.narrow_arith("sub", "0", v.as_str(), i) } else { self.arith("sub", "0", v.as_str(), true) } }, };
+                return match body::int_of(&self.ty(e, tb)) { None => self.arith(e, "sub", "0", v.as_str(), true), Some(i) => { if body::bits(i) < 64 { self.narrow_arith(e, "sub", "0", v.as_str(), i) } else { self.arith(e, "sub", "0", v.as_str(), true) } }, };
             }
             let nv: String = imm(&self.expr(x, ck, tb, f - 1));
             let r: String = self.t();
@@ -3300,9 +3354,13 @@ mod codegen {
             let hdr: String = self.temp(&t);
             let n: String = if c.args.len() > 0 {
                 let nv: String = imm(&self.expr(&c.args[0], ck, tb, f - 1));
-                let cc: String = self.t();
-                self.emit(types::cat5(cc.as_str(), " = icmp ule i64 ", nv.as_str(), ", ", vec_len_max(&el).as_str()).as_str());
-                self.check(cc.as_str(), "the capacity may exceed the maximum length");
+                if self.proved("E0816", e) {
+                    self.emit("; proved E0816");
+                } else {
+                    let cc: String = self.t();
+                    self.emit(types::cat5(cc.as_str(), " = icmp ule i64 ", nv.as_str(), ", ", vec_len_max(&el).as_str()).as_str());
+                    self.check(cc.as_str(), "the capacity may exceed the maximum length");
+                }
                 nv
             } else {
                 String::from("0")
@@ -3376,14 +3434,17 @@ mod codegen {
     #[summary("One function to lower (stage0 Lowering): path of the definition or instance, order of the definition, type arguments of the instance")]
     struct Low { path: String, def: usize, sub: types::Subst }
 
-    #[summary("Module (stage0 Module): IR text, entry point, reasons unported constructs were met")]
-    struct Module { ir: String, main: Option<String>, todo: Vec<String> }
+    #[summary("Module (stage0 Module): IR text, entry point, reasons unported constructs were met, and the runtime checks left in the IR because their obligation is not proved, by definition (an instance under its generic definition)")]
+    struct Module { ir: String, main: Option<String>, todo: Vec<String>, checks_by: table::Table<u32> }
 
     #[summary("Temporary owning heap memory (one cell of stage0 Gen.pending): address and type. It was only read and not moved, so it is dropped when its region ends")]
     struct Pend { ptr: String, ty: ast::TypeKind }
 
     #[summary("Place (the result of stage0 place): address and type. If ok is false it is an unported place")]
     struct Place { ptr: String, ty: ast::TypeKind, ok: bool }
+
+    #[summary("The proved obligations whose runtime checks code generation may drop, ordered by key: keys[i] is the position of obls[i] as body::span_key gives it followed by its code, so the order is stage0's (file, lo, hi, code)")]
+    struct Proofs { keys: Vec<String>, obls: Vec<encode_spec::Trivial> }
 
     #[summary("Place of a scalar local variable: the place's name and register type")]
     struct ScalarSlot { ptr: String, ty: String }
@@ -3568,6 +3629,23 @@ mod codegen {
             ast::BinOp::BitXor => String::from("xor"),
             ast::BinOp::Shl => String::from("xor"),
             ast::BinOp::Shr => String::from("xor"),
+        }
+    }
+
+    #[summary("Adds the texts of the types whose clone code the IR text ir calls to clones (stage0 clone_glue reads them off the calls of the whole IR)")]
+    #[effects(alloc)]
+    fn clone_calls(ir: &str, clones: &mut Vec<String>) -> () {
+        let call: String = String::from("call void @\"bmb_clone.");
+        let mut from: usize = 0;
+        let mut fuel: usize = ir.len().saturating_add(1);
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            match encode_query::find(ir, call.as_str(), from) {
+                None => { fuel = 0; },
+                Some(at) => { let name_at: usize = at.saturating_add(call.len()); match encode_query::find(ir, "\"(", name_at) { None => { fuel = 0; }, Some(end) => { clones.push(lexer::cut(ir, name_at, end)); from = end; }, } },
+            }
         }
     }
 
@@ -3794,6 +3872,16 @@ mod codegen {
         }
     }
 
+    #[summary("Adds n runtime checks to those of definition path")]
+    #[effects(alloc)]
+    fn count_checks(by: &mut table::Table<u32>, path: &str, n: u32) -> () {
+        let before: u32 = match by.find(path) {
+            None => 0,
+            Some(at) => by.items[at],
+        };
+        by.insert(path, before.saturating_add(n));
+    }
+
     #[summary("LLVM type of a struct or enum (stage0 data_ty): %\"geo::Point\"")]
     #[effects(alloc)]
     fn data_ty(t: &ast::TypeKind) -> String {
@@ -3946,9 +4034,9 @@ mod codegen {
         }
     }
 
-    #[summary("Module of the program (stage0 emit_with, all-checks mode): header, type definitions, non-generic executable functions in path order, then instances of generic functions once each in the order reached, @main. On a construct not yet ported, the reason is left in todo")]
+    #[summary("Module of the program (stage0 emit_with): header, type definitions, non-generic executable functions in path order, then instances of generic functions once each in the order reached, @main. The runtime check of an obligation in proofs is dropped (with no proofs, every check is kept: all-checks mode). With the per-definition cache incr, the IR of a definition or instance whose key (its texts, its callees' caller texts, the data types it reads, the usable proofs inside it) is unchanged comes from the cache, and what is lowered is stored; each fragment depends only on that key, so the module is the same either way. On a construct not yet ported, the reason is left in todo (and its fragment is not stored)")]
     #[effects(alloc)]
-    fn emit(ck: &body::Checked, tb: &lowered::Tables) -> Module {
+    fn emit(ck: &body::Checked, tb: &lowered::Tables, proofs: &Proofs, incr: &mut Option<incremental::Session>) -> Module {
         let mut todo: Vec<String> = Vec::new();
         let mut ir: String = String::new();
         let none_ty: Vec<ast::TypeKind> = Vec::new();
@@ -3993,6 +4081,8 @@ mod codegen {
             }
         }
         let mut used: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
+        let mut checks_by: table::Table<u32> = table::new::<u32>();
+        let mut proven: table::Table<bool> = proven_table(proofs.obls.as_slice());
         let mut qi: usize = 0;
         let mut fuel: usize = 100000000;
         while fuel > 0 && qi < queue.len()
@@ -4006,7 +4096,7 @@ mod codegen {
             if di < defs.len() {
                 match tb.fns.find(defs[di].path.as_str()) {
                     None => {},
-                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], ck, tb); ir.push_str(g.out.as_str()); for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()), } } for w in 0..g.wants.len() invariant 0 <= w && w <= g.wants.len(), { if types::add(&mut lowered, g.wants[w].key.as_str()) { match by_path.find(g.wants[w].callee.as_str()) { None => todo.push(types::cat2("an instance of a function without a body: ", g.wants[w].key.as_str())), Some(bi) => queue.push(Low { path: g.wants[w].key.clone(), def: by_path.items[bi], sub: g.wants[w].sub.clone() }), } } } },
+                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let usable: Vec<encode_spec::Trivial> = match incr { None => Vec::new(), Some(s0) => usable_in(proofs, defs[di].d.span), }; let targs: Vec<ast::TypeKind> = inst_args(&tb.fns.items[at], &qsub); let inst: Option<String> = if qsub.names.len() > 0 { Some(qpath.clone()) } else { None }; let hit: Option<incremental::IrHit> = match incr { None => None, Some(s1) => incremental::ir_lookup(s1, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice()), }; let auditing: bool = match incr { None => false, Some(s2) => incremental::audit(s2), }; let mut reused: bool = false; match &hit { None => {}, Some(h) => { if !auditing { reused = true; count_checks(&mut checks_by, defs[di].path.as_str(), h.checks); ir.push_str(h.ir.as_str()); match incr { None => {}, Some(s3) => s3.stats.ir_reused.push(qpath.clone()), } clone_calls(h.ir.as_str(), &mut clones); for u0 in 0..h.deps.used.len() invariant 0 <= u0 && u0 <= h.deps.used.len(), { used.insert(types::text(&h.deps.used[u0]).as_str(), h.deps.used[u0].clone()); } enqueue(h.deps.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } }, } if !reused { let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], proven, ck, tb); proven = std::mem::replace(&mut g.proven, table::new::<bool>()); count_checks(&mut checks_by, defs[di].path.as_str(), g.checks); ir.push_str(g.out.as_str()); for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } let mut deps: incremental::IrDeps = incremental::IrDeps { wants: g.wants.clone(), used: Vec::new() }; for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => { used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()); deps.used.push(g.used.items[ua].clone()); }, } } let differs: bool = match &hit { None => false, Some(h2) => h2.ir != g.out || h2.checks != g.checks || incremental::deps_text(&h2.deps) != incremental::deps_text(&deps), }; match incr { None => {}, Some(s4) => { s4.stats.lowered.push(qpath.clone()); if differs { s4.stats.mismatches.push(qpath.clone()); } if g.todo.len() == 0 { incremental::ir_record(s4, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice(), g.out.as_str(), g.checks, &deps); } }, } enqueue(g.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } },
                 }
             }
         }
@@ -4051,7 +4141,22 @@ mod codegen {
         whole.push_str(drop_glue(tb, extra.as_slice(), &mut todo).as_str());
         whole.push_str(clone_glue(tb, extra.as_slice(), clones.as_slice()).as_str());
         whole.push_str(ir.as_str());
-        Module { ir: whole, main: main, todo: todo }
+        Module { ir: whole, main: main, todo: todo, checks_by: checks_by }
+    }
+
+    #[summary("Queues the instances of wants that are not lowered or queued yet (the instance loop of stage0 emit_with); an instance of a definition without a body is a construct not ported")]
+    #[effects(alloc)]
+    fn enqueue(wants: &[Want], lowered: &mut Vec<String>, by_path: &table::Table<usize>, queue: &mut Vec<Low>, todo: &mut Vec<String>) -> () {
+        for w in 0..wants.len()
+            invariant 0 <= w && w <= wants.len(),
+        {
+            if types::add(lowered, wants[w].key.as_str()) {
+                match by_path.find(wants[w].callee.as_str()) {
+                    None => todo.push(types::cat2("an instance of a function without a body: ", wants[w].key.as_str())),
+                    Some(bi) => queue.push(Low { path: wants[w].key.clone(), def: by_path.items[bi], sub: wants[w].sub.clone() }),
+                }
+            }
+        }
     }
 
     #[summary("Entry point (main of stage0 emit_with): the non-generic executable function that is a unit's main. If several, the one whose path is last")]
@@ -4414,6 +4519,26 @@ mod codegen {
             None => false,
             Some(at) => true,
         }
+    }
+
+    #[summary("The type arguments of an instance in the order of its definition's type parameters (stage0's targs of emit_with): the type each parameter takes in sub, an error type for one it does not")]
+    #[effects(alloc)]
+    fn inst_args(sig: &types::FnSig, sub: &types::Subst) -> Vec<ast::TypeKind> {
+        let mut out: Vec<ast::TypeKind> = Vec::new();
+        for g in 0..sig.generics.len()
+            invariant 0 <= g && g <= sig.generics.len(),
+        {
+            let mut t: ast::TypeKind = ast::TypeKind::Error;
+            for k in 0..sub.names.len()
+                invariant 0 <= k && k <= sub.names.len(),
+            {
+                if sub.names[k] == sig.generics[g].name && k < sub.tys.len() {
+                    t = sub.tys[k].clone();
+                }
+            }
+            out.push(t);
+        }
+        out
     }
 
     #[summary("Predicate of an integer comparison (cmp of stage0 expr): according to signedness. Empty text if not a comparison")]
@@ -4983,8 +5108,8 @@ mod codegen {
 
     #[summary("Lowers one definition (one round of stage0 emit_with): parameter places, body, return. g.out is the whole text of that definition")]
     #[effects(alloc)]
-    fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>() };
+    fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, proven: table::Table<bool>, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
+        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>(), proven: proven };
         let mut ps: Vec<ast::TypeKind> = Vec::new();
         for pi in 0..sig.params.len()
             invariant 0 <= pi && pi <= sig.params.len(),
@@ -5202,6 +5327,50 @@ mod codegen {
         }
     }
 
+    #[summary("The key of an obligation in Gen.proven: its code, a space and body::span_key of its position")]
+    #[effects(alloc)]
+    fn proof_key(code: &str, s: source::Span) -> String {
+        types::cat3(code, " ", body::span_key(s).as_str())
+    }
+
+    #[summary("The proved obligations as Proofs: ordered by position and code, each once (stage0 holds them in a BTreeSet)")]
+    #[effects(alloc)]
+    fn proofs(obls: &[encode_spec::Trivial]) -> Proofs {
+        let mut texts: Vec<String> = Vec::new();
+        for i in 0..obls.len()
+            invariant 0 <= i && i <= obls.len(),
+        {
+            texts.push(types::cat2(body::span_key(obls[i].span).as_str(), obls[i].code.as_str()));
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(texts.as_slice());
+        let mut out: Proofs = Proofs { keys: Vec::new(), obls: Vec::new() };
+        for j in 0..ord.len()
+            invariant 0 <= j && j <= ord.len(),
+        {
+            let k: usize = ord[j];
+            if k < texts.len() && k < obls.len() {
+                let repeated: bool = out.keys.len() > 0 && out.keys[out.keys.len() - 1] == texts[k];
+                if !repeated {
+                    out.keys.push(texts[k].clone());
+                    out.obls.push(obls[k].clone());
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("The obligations as the table Gen.proven reads (proof_key of each)")]
+    #[effects(alloc)]
+    fn proven_table(obls: &[encode_spec::Trivial]) -> table::Table<bool> {
+        let mut out: table::Table<bool> = table::new::<bool>();
+        for i in 0..obls.len()
+            invariant 0 <= i && i <= obls.len(),
+        {
+            out.insert(proof_key(obls[i].code.as_str(), obls[i].span).as_str(), true);
+        }
+        out
+    }
+
     #[summary("Address of a value that lives in memory. Otherwise undef")]
     #[effects(alloc)]
     fn ptr_of(v: &CVal) -> String {
@@ -5409,6 +5578,36 @@ mod codegen {
             invariant 0 <= i && i <= all.len(),
         {
             visit(&all[i], tb, &mut seen, &mut out, 100000);
+        }
+        out
+    }
+
+    #[summary("The proved obligations inside position s (stage0's usable proofs of a definition: same file, s.lo <= lo and hi <= s.hi), in key order: a binary search for the first position at or after the start of s, then the positions that start inside it")]
+    #[effects(alloc)]
+    fn usable_in(ps: &Proofs, s: source::Span) -> Vec<encode_spec::Trivial> {
+        let mut out: Vec<encode_spec::Trivial> = Vec::new();
+        let start: String = body::span_key(source::Span { file: s.file, lo: s.lo, hi: 0 });
+        let mut a: usize = 0;
+        let mut b: usize = ps.keys.len();
+        while a < b
+            invariant a <= b && b <= ps.keys.len(),
+            decreases b - a,
+        {
+            let mid: usize = a + (b - a) / 2;
+            if ps.keys[mid] < start {
+                a = mid + 1;
+            } else {
+                b = mid;
+            }
+        }
+        let mut i: usize = a;
+        while i < ps.obls.len() && ps.obls[i].span.file == s.file && ps.obls[i].span.lo <= s.hi
+            decreases ps.obls.len() - i,
+        {
+            if ps.obls[i].span.hi <= s.hi {
+                out.push(ps.obls[i].clone());
+            }
+            i = i + 1;
         }
         out
     }

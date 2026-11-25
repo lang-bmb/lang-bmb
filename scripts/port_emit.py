@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The port's `emit-llvm --all-checks` against its allow-list.
+"""The port's `emit-llvm` against its allow-list.
 
 The port's code generator grows construct by construct. On a program with a
 construct it does not lower yet, stage1 writes nothing and exits 2 with the
@@ -7,7 +7,8 @@ reasons on stderr. `tests/port/emit/ported.txt` lists the tracked inputs it
 does lower; the differential test compares those with stage0 byte for byte.
 
     port_emit.py run STAGE1 BMB ARGS..    one side of the differential test:
-        stage1's `emit-llvm ARGS..`; on an input stage1 does not lower yet,
+        stage1's `emit-llvm ARGS..` (with or without `--all-checks`, `--stats`
+        and `--cache`); on an input stage1 does not lower yet,
         stage0's (BMB) instead, so the two sides agree there. Exit 3 when
         the input and the allow-list disagree: a listed input that stage1
         no longer lowers, or an unlisted one that it does.
@@ -42,11 +43,13 @@ def listed():
 
 
 def sources(args):
+    """The input files of `emit-llvm ARGS..`: what is no flag and no value
+    of `-o`, `--stats` or `--cache`."""
     out, skip = [], False
     for a in args:
         if skip:
             skip = False
-        elif a == "-o":
+        elif a in ("-o", "--stats", "--cache"):
             skip = True
         elif not a.startswith("--"):
             out.append(os.path.relpath(os.path.abspath(a), ROOT))
