@@ -15,8 +15,8 @@ mod encode_query {
     #[summary("What a definition is asked over: the options and the declarations of its type parameters (prefix), the options alone (header), its local declarations, the definitions it reveals by what marks them (axioms) and in parts, the validity functions it defines, and the program's spec fn and datatype declarations")]
     struct Ctx { header: String, prefix: String, decls: String, limit: String, axioms: Vec<encode_terms::Pair>, parts: Vec<encode_spec::AxiomParts>, valid: Vec<encode_spec::AxiomParts>, sds: Vec<encode_spec::SpecDecl>, dts: Vec<encode_decls::Decl> }
 
-    #[summary("A definition encoded for the proof gate (encoded): what it is asked over, its obligations, and the inputs a counterexample shows")]
-    struct Encoded { cx: Ctx, obls: Vec<encode_spec::Obl>, inputs: Vec<encode_spec::Shown> }
+    #[summary("A definition encoded for the proof gate (encoded): what it is asked over, its obligations, the inputs a counterexample shows, and the obligations that hold by their own text")]
+    struct Encoded { cx: Ctx, obls: Vec<encode_spec::Obl>, inputs: Vec<encode_spec::Shown>, trivial: Vec<encode_spec::Trivial> }
 
     #[summary("Which query the definitions are written for (stage0 Forms): the full query, where only leaves that bind an array are macros (ADR-0064); an obligation's probe, where every leaf is a macro (ADR-0067); the probe of a satisfiability check, where every definition outside recursion is a macro (ADR-0072)")]
     enum Forms { Full, Probe, SatProbe }
@@ -726,7 +726,7 @@ mod encode_query {
                 Some(dec) => enc.termination(&def.d, comp, dec, pg),
             }
             let cx0: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: Vec::new(), parts: Vec::new(), valid: Vec::new(), sds: to_decls(sds), dts: to_dts(dts) };
-            return Some(Encoded { cx: cx0, obls: enc.obls, inputs: Vec::new() });
+            return Some(Encoded { cx: cx0, obls: enc.obls, inputs: Vec::new(), trivial: enc.trivial });
         }
         let rv: Revealed = revealed_axioms(pg, path, def);
         let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
@@ -737,7 +737,7 @@ mod encode_query {
             ex.exec_body(&def.d, pg);
         }
         let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: rv.axioms, parts: rv.parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
-        Some(Encoded { cx: cx, obls: ex.enc.obls, inputs: ex.inputs })
+        Some(Encoded { cx: cx, obls: ex.enc.obls, inputs: ex.inputs, trivial: ex.enc.trivial })
     }
 
     #[summary("First position from from in s where pat starts (Rust's find)")]

@@ -1,0 +1,968 @@
+#[summary("The per-definition cache of the proof side (port of the proof part of stage0 compiler/src/incremental.rs, DESIGN.md §8.1): per definition the result of proving it (its obligations, resource units, the digest of its script and its proved obligations as positions of syntax nodes) under a key built from everything its queries read, so that a definition whose key is unchanged is not encoded again. The key names nothing (ADR-0063 §4): the nameless text of the definition and of what its queries read of each item it reaches, numbered in order of first reference, with the solver version, the memory limit and the head of every query. The file `DIR/defs` names the compiler build that wrote it on its second line; a file of another build is not read at all, and the keys do not hold the build, so the entries are the same bytes as stage0's for the same program. The IR side (entries of kind I) is kept as it was read: the port's code generation does not use the cache yet")]
+mod incremental {
+    #[summary("The entry of one slot: its kind, its definition path, its key and its payload")]
+    struct Entry { kind: String, path: String, key: String, payload: String }
+
+    #[summary("The fields of one line of the file")]
+    struct Entry4 { kind: String, path: String, key: String, sum: String, payload: String }
+
+    #[summary("A stored proof result relocated to a definition's current text (stage0 ProofHit): its obligations, resource units, the digest of its canonical script, and its proved obligations")]
+    struct Hit { obligations: usize, total: u64, max: u64, sha: String, proved: Vec<encode_spec::Trivial> }
+
+    #[summary("The lines read for one slot (kind and definition path) and not checked yet, in file order")]
+    struct Lines { kind: String, path: String, raws: Vec<Raw> }
+
+    #[summary("One line of the file not checked yet (stage0 RawLine): its key, its digest, and its payload as written (escaped)")]
+    struct Raw { key: String, sum: String, payload: String }
+
+    #[summary("What a key reads of the definitions: the kind of each by path (definitions with a body and trait method declarations), the spec fns its context reveals, its recursive component and the predicates of type invariants")]
+    struct Reads { kinds: table::Table<ast::FnKind>, uses: Vec<String>, comp: Vec<String>, invariants: Vec<String> }
+
+    #[summary("One run's view of the cache (stage0 Session): its directory, the identity of this build, the store, whether hits are proved again and compared (audit), the proof key of each definition it proves, and the counters")]
+    struct Session { dir: String, id: String, store: Store, audit: bool, keys: table::Table<String>, stats: Stats }
+
+    #[summary("What the cache did in one run (stage0 Stats, the proof part): the definitions encoded and those whose result came from the cache, in processing order, the damaged lines when the run started, and with an audit the definitions whose stored result differs from the one proved again")]
+    struct Stats { encoded: Vec<String>, reused: Vec<String>, damaged: usize, mismatches: Vec<String> }
+
+    #[summary("The cache file (stage0 Store): the entries by slot (slot_of), the lines of a lazy load not checked yet by slot, whether it must be written back, and how many lines were found damaged")]
+    struct Store { entries: table::Table<Entry>, pending: table::Table<Lines>, changed: bool, damaged: usize }
+
+    #[summary("Whether this run proves every hit again and compares (bmb verify --audit)")]
+    #[effects(pure)]
+    fn audit(s: &Session) -> bool {
+        s.audit
+    }
+
+    #[summary("Checks one line's digest (stage0 check_line): its key and payload when the payload unescapes and the digest holds")]
+    #[effects(alloc)]
+    fn check_line(kind: &str, path: &str, raw: &Raw) -> Option<Entry> {
+        let payload: String = unescape(raw.payload.as_str())?;
+        if line_digest(kind, path, raw.key.as_str(), payload.as_str()) == raw.sum {
+            Some(Entry { kind: String::from(kind), path: String::from(path), key: raw.key.clone(), payload: payload })
+        } else {
+            None
+        }
+    }
+
+    #[summary("Whether code is a diagnostic code of the compiler (stage0 code_static)")]
+    #[effects(alloc)]
+    fn code_known(code: &str) -> bool {
+        let all: Vec<diag::Code> = diag::codes();
+        for i in 0..all.len()
+            invariant 0 <= i && i <= all.len(),
+        {
+            if all[i].code == code {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("The identity of this build: `port+` and the SHA-256 of the executable that runs, which changes with any change of the port or of the compiler and toolchain that built it. `port+unknown` when the executable cannot be read, an identity under which nothing is read (unknown_id)")]
+    #[effects(alloc, io, nondet)]
+    fn compiler_id() -> String {
+        match std::fs::read("/proc/self/exe") {
+            Ok(bytes) => types::cat2("port+", sha256::hex(bytes.as_slice()).as_str()),
+            Err(e) => unknown_id(),
+        }
+    }
+
+    #[summary("Audit (stage0 proof_audit): whether a hit differs from the result proved again in the digest of the canonical script, the failures, the obligations, the resource units or the proved obligations as a set")]
+    #[effects(alloc)]
+    fn differs(h: &Hit, obligations: usize, failed: usize, total: u64, max: u64, proved: &[encode_spec::Trivial], script: &str) -> bool {
+        !(h.sha == script_digest(script) && failed == 0 && h.obligations == obligations && h.total == total && h.max == max && same_list(key_set(h.proved.as_slice()).as_slice(), key_set(proved).as_slice()))
+    }
+
+    #[summary("The error of a result, if it is one")]
+    #[effects(alloc)]
+    fn error_of(r: Result<(), String>) -> Option<String> {
+        match r {
+            Ok(u) => None,
+            Err(why) => Some(why),
+        }
+    }
+
+    #[summary("s with each backslash and line feed escaped (stage0 escape)")]
+    #[effects(alloc)]
+    fn escape(s: &str) -> String {
+        encode_terms::replace(encode_terms::replace(s, "\\", "\\\\").as_str(), "\n", "\\n")
+    }
+
+    #[summary("A path field of a line (stage0 escape_path): escaped, and a space (a trait impl function, `<unit::Sq as unit::Shape>::area`) as `\\s` so that the fields stay apart")]
+    #[effects(alloc)]
+    fn escape_path(s: &str) -> String {
+        encode_terms::replace(escape(s).as_str(), " ", "\\s")
+    }
+
+    #[summary("Any entry of kind stored under key, whatever its path (stage0 Store::find): the settled entries in slot order first, then the slots of a lazy load, each by its last line whose digest holds. Proof keys name nothing, so a renamed definition finds the entry its old name stored")]
+    #[effects(alloc)]
+    fn find(st: &Store, kind: &str, key: &str) -> Option<String> {
+        for n in 0..st.entries.len()
+            invariant 0 <= n,
+        {
+            match st.entries.nth(n) {
+                None => {},
+                Some(at) => { if st.entries.items[at].kind == kind && st.entries.items[at].key == key { return Some(st.entries.items[at].payload.clone()); } },
+            }
+        }
+        for m in 0..st.pending.len()
+            invariant 0 <= m,
+        {
+            match st.pending.nth(m) {
+                None => {},
+                Some(pa) => { if st.pending.items[pa].kind == kind { match last_valid(&st.pending.items[pa]) { None => {}, Some(e) => { if e.key == key { return Some(e.payload); } }, } } },
+            }
+        }
+        None
+    }
+
+    #[summary("The proved obligations of a node list, relocated to definition d's current spans (stage0 from_nodes): `-` is none, otherwise `CODE@INDEX` items split by commas; None when an item does not parse, names no code of the compiler or no node of d")]
+    #[effects(alloc)]
+    fn from_nodes(text: &str, d: &ast::FnDef) -> Option<Vec<encode_spec::Trivial>> {
+        let mut out: Vec<encode_spec::Trivial> = Vec::new();
+        if text == "-" {
+            return Some(out);
+        }
+        let nodes: Vec<source::Span> = node_spans(d);
+        let items: Vec<String> = encode_terms::split(text, 44);
+        for i in 0..items.len()
+            invariant 0 <= i && i <= items.len(),
+        {
+            let at: usize = encode_query::find_byte(items[i].as_str(), 64, 0)?;
+            let code: String = lexer::cut(items[i].as_str(), 0, at);
+            let k: u64 = cache::number(lexer::cut(items[i].as_str(), at + 1, items[i].len()).as_str())?;
+            if k >= nodes.len() as u64 || !code_known(code.as_str()) {
+                return None;
+            }
+            out.push(encode_spec::Trivial { code: code, span: nodes[k as usize] });
+        }
+        Some(out)
+    }
+
+    #[summary("The payload stored in slot (kind, path) when its key is key (stage0 Store::get): the settled entry, or for a lazy load the last line whose digest holds")]
+    #[effects(alloc)]
+    fn get(st: &Store, kind: &str, path: &str, key: &str) -> Option<String> {
+        let slot: String = slot_of(kind, path);
+        let e: Entry = match st.entries.find(slot.as_str()) {
+            None => { let pa: usize = st.pending.find(slot.as_str())?; last_valid(&st.pending.items[pa])? },
+            Some(at) => st.entries.items[at].clone(),
+        };
+        if e.key == key {
+            Some(e.payload)
+        } else {
+            None
+        }
+    }
+
+    #[summary("The impl functions a trait method w names (stage0 impls_of in Session::keys): for each impl of its trait, the function of the method's name, when it is a definition of the program")]
+    #[effects(alloc)]
+    fn impls_of(ck: &body::Checked, kinds: &table::Table<ast::FnKind>, w: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let at: usize = match ck.b.c.fns.find(w) {
+            None => { return out; },
+            Some(x) => x,
+        };
+        let tr: String = match &ck.b.c.fns.items[at].trait_of {
+            None => { return out; },
+            Some(t) => t.clone(),
+        };
+        let m: String = last_segment(w);
+        for i in 0..ck.b.c.trait_impls.len()
+            invariant 0 <= i && i <= ck.b.c.trait_impls.len(),
+        {
+            if ck.b.c.trait_impls[i].trait_path == tr {
+                let q: String = types::fn_path(&ck.b.c.trait_impls[i], m.as_str());
+                if kinds.has(q.as_str()) {
+                    out.push(q.clone());
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("The proved obligations as a sorted set of texts, to compare two lists as sets (stage0 sorts and dedups (code, file, lo, hi))")]
+    #[effects(alloc)]
+    fn key_set(xs: &[encode_spec::Trivial]) -> Vec<String> {
+        let mut texts: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut t: String = types::cat2(xs[i].code.as_str(), " ");
+            t.push_str(body::span_key(xs[i].span).as_str());
+            texts.push(t);
+        }
+        body::sorted_set(texts.as_slice())
+    }
+
+    #[summary("The keys of the definitions (stage0 Session::keys, the proof keys): every definition with a body of the checked program, or those of only when it names some. The key of a definition is the SHA-256 of the solver version, the memory limit of the gate, the digest of the head of every query (options at seed 0 under the gate's limit, the bounded search's line when it is on, the prelude) and its nameless reads")]
+    #[effects(alloc, io, nondet)]
+    fn keys(ck: &body::Checked, pr: &encode_decls::Prepared, only: &Option<Vec<String>>, bounded: bool) -> table::Table<String> {
+        let mut out: table::Table<String> = table::new::<String>();
+        let rows: Vec<body::DefRow> = body::defs_of(&ck.program, &ck.b.c.fns);
+        let mut w: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let ids: identity::Ids = identity::new(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &mut w);
+        let mut printer: fmt::Printer = fmt::identity(ck.b.c.fns.clone(), ck.b.c.adts.clone(), ck.b.types.clone(), w.traits.clone());
+        let mut kinds: table::Table<ast::FnKind> = table::new::<ast::FnKind>();
+        let mut paths: Vec<String> = Vec::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            match ids.ents.find(types::cat2("0:", rows[i].path.as_str()).as_str()) {
+                None => {},
+                Some(at) => { match &ids.ents.items[at].kind { identity::EntKind::Def(d, c) => { kinds.insert(rows[i].path.as_str(), d.kind); }, identity::EntKind::Type(td) => {}, identity::EntKind::Trait(t) => {}, } },
+            }
+            paths.push(rows[i].path.clone());
+        }
+        let mut decls: table::Table<encode_decls::Def> = table::new::<encode_decls::Def>();
+        for m in 0..ck.program.mods.len()
+            invariant 0 <= m && m <= ck.program.mods.len(),
+        {
+            encode_decls::trait_decls(&ck.program.mods[m], "", &mut decls, 100000);
+        }
+        for n in 0..decls.len()
+            invariant 0 <= n,
+        {
+            match decls.nth(n) {
+                None => {},
+                Some(at) => kinds.insert(decls.key(n).as_str(), decls.items[at].d.kind),
+            }
+        }
+        let sorted: Vec<String> = body::sorted_set(paths.as_slice());
+        let mut invariants: Vec<String> = Vec::new();
+        for n in 0..ck.b.c.adts.len()
+            invariant 0 <= n,
+        {
+            match ck.b.c.adts.nth(n) {
+                None => {},
+                Some(at) => { match &ck.b.c.adts.items[at].inv { None => {}, Some(p) => invariants.push(p.clone()), } },
+            }
+        }
+        let mut head: String = encode_query::header(0, solver::rlimit());
+        if bounded {
+            head.push_str("\n; bounded search |x| <= 8, lengths <= 4");
+        }
+        head.push_str("\n");
+        head.push_str(encode_terms::prelude().as_str());
+        let mut fixed: String = String::from("proof\n");
+        section(&mut fixed, "z3", toolchain::z3_version().as_str());
+        section(&mut fixed, "memory", encode_terms::dec(solver::query_memory_mb(solver::Asker::Gate)).as_str());
+        section(&mut fixed, "header", sha256::hex(head.as_bytes()).as_str());
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            let path: String = rows[i].path.clone();
+            let wanted: bool = match only {
+                None => true,
+                Some(names) => types::has(names.as_slice(), path.as_str()),
+            };
+            if wanted {
+                match ids.ents.find(types::cat2("0:", path.as_str()).as_str()) {
+                    None => {},
+                    Some(at) => { match &ids.ents.items[at].kind { identity::EntKind::Def(d, c) => { let ctx: Vec<String> = encode_decls::context_of(path.as_str(), d, rows[i].unit.as_str(), pr); let mut uses: Vec<String> = Vec::new(); for u in 0..ctx.len() invariant 0 <= u && u <= ctx.len(), { uses.push(ctx[u].clone()); let more: Vec<String> = impls_of(ck, &kinds, ctx[u].as_str()); for v in 0..more.len() invariant 0 <= v && v <= more.len(), { uses.push(more[v].clone()); } } let mut comp: Vec<String> = Vec::new(); match ck.b.recursive.find(path.as_str()) { None => {}, Some(c0) => { let id: usize = ck.b.recursive.items[c0]; for q in 0..sorted.len() invariant 0 <= q && q <= sorted.len(), { match ck.b.recursive.find(sorted[q].as_str()) { None => {}, Some(cq) => { if ck.b.recursive.items[cq] == id { comp.push(sorted[q].clone()); } }, } } }, } let rd: Reads = Reads { kinds: kinds.clone(), uses: body::sorted_set(uses.as_slice()), comp: comp, invariants: invariants.clone() }; let mut pk: String = fixed.clone(); section(&mut pk, "reads", nameless_reads(&ids, &mut printer, path.as_str(), &rd).as_str()); out.insert(path.as_str(), sha256::hex(pk.as_bytes())); }, identity::EntKind::Type(td) => {}, identity::EntKind::Trait(t) => {}, } },
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("The text after the last `::` of a path, the whole path without one (Rust's rsplit(\"::\").next())")]
+    #[effects(alloc)]
+    fn last_segment(path: &str) -> String {
+        match encode_decls::last_of(path, "::") {
+            None => String::from(path),
+            Some(i) => lexer::cut(path, i.saturating_add(2), path.len()),
+        }
+    }
+
+    #[summary("The last line of a slot whose digest holds (a slot's value in stage0's lazy load)")]
+    #[effects(alloc)]
+    fn last_valid(ls: &Lines) -> Option<Entry> {
+        let mut k: usize = ls.raws.len();
+        while k > 0
+            invariant k <= ls.raws.len(),
+            decreases k,
+        {
+            k = k - 1;
+            match check_line(ls.kind.as_str(), ls.path.as_str(), &ls.raws[k]) {
+                None => {},
+                Some(e) => { return Some(e); },
+            }
+        }
+        None
+    }
+
+    #[summary("The digest of one line's fields (stage0 line_digest)")]
+    #[effects(alloc)]
+    fn line_digest(kind: &str, path: &str, key: &str, payload: &str) -> String {
+        let mut text: String = types::cat4(kind, "\n", path, "\n");
+        text.push_str(types::cat4(key, "\n", payload, "").as_str());
+        sha256::hex(text.as_bytes())
+    }
+
+    #[summary("Loads `dir/defs` (stage0 Store::load_lazy, and with eager every line checked as Store::load does). A file that cannot be read is an empty store; one with another first line or another compiler is an empty store to be written back, and so is every file under the identity of a build that cannot name itself. A line is `KIND PATH KEY DIGEST PAYLOAD` split at its first four spaces with an escaped path; any other line is damaged")]
+    #[effects(alloc, io, nondet)]
+    fn load(dir: &str, id: &str, eager: bool) -> Store {
+        let mut st: Store = Store { entries: table::new::<Entry>(), pending: table::new::<Lines>(), changed: false, damaged: 0 };
+        let text: String = match std::fs::read_to_string(cache::within(dir, "defs").as_str()) {
+            Ok(read) => read,
+            Err(e) => { return st; },
+        };
+        let ls: Vec<String> = cache::lines_of(text.as_str());
+        if ls.len() < 2 || ls[0] != magic() || ls[1] != types::cat2("id ", id) || id == unknown_id().as_str() {
+            st.changed = true;
+            return st;
+        }
+        for i in 2..ls.len()
+            invariant 2 <= i && i <= ls.len(),
+        {
+            match split_line(ls[i].as_str()) {
+                None => { st.damaged = st.damaged.saturating_add(1); st.changed = true; },
+                Some(f4) => { let slot: String = slot_of(f4.kind.as_str(), f4.path.as_str()); let mut held: Lines = match st.pending.find(slot.as_str()) { None => Lines { kind: f4.kind.clone(), path: f4.path.clone(), raws: Vec::new() }, Some(at) => st.pending.items[at].clone(), }; held.raws.push(Raw { key: f4.key.clone(), sum: f4.sum.clone(), payload: f4.payload.clone() }); st.pending.insert(slot.as_str(), held); },
+            }
+        }
+        if eager {
+            settle_all(&mut st);
+        }
+        st
+    }
+
+    #[summary("The stored proof result of definition path, relocated to d's current spans (stage0 proof_lookup). An entry stored under the same key for another path (a rename, or a definition equal up to names) is kept under this path too, so that it stays when the other one changes. A payload is the obligations, the resource units in all and at most, the script's digest and the node list, split at single spaces; anything else is no hit")]
+    #[effects(alloc)]
+    fn lookup(s: &mut Session, path: &str, d: &ast::FnDef) -> Option<Hit> {
+        let at: usize = s.keys.find(path)?;
+        let key: String = s.keys.items[at].clone();
+        let payload: String = match get(&s.store, "P", path, key.as_str()) {
+            None => { let p2: String = find(&s.store, "P", key.as_str())?; put(&mut s.store, "P", path, key.as_str(), p2.as_str()); p2 },
+            Some(p) => p,
+        };
+        let words: Vec<String> = encode_terms::split(payload.as_str(), 32);
+        if words.len() != 5 {
+            return None;
+        }
+        let obligations: u64 = cache::number(words[0].as_str())?;
+        let total: u64 = cache::number(words[1].as_str())?;
+        let max: u64 = cache::number(words[2].as_str())?;
+        let proved: Vec<encode_spec::Trivial> = from_nodes(words[4].as_str(), d)?;
+        Some(Hit { obligations: obligations as usize, total: total, max: max, sha: words[3].clone(), proved: proved })
+    }
+
+    #[summary("The first line of the file (stage0 MAGIC)")]
+    #[effects(alloc)]
+    fn magic() -> String {
+        String::from("bmb incremental cache v3")
+    }
+
+    #[summary("What the queries of definition path read, without names (stage0 nameless_reads, ADR-0063 §4): `@0` is the definition's whole nameless text, and each item it reaches gets the next number at its first reference and, once, the text its queries read of it: an executable or proof function its caller surface; a spec fn revealed by #[uses], in the recursive component or as a type's invariant its whole text, any other spec fn its declaration; a data type its declaration; a trait method its declaration and the functions that define it. Members of the component nothing reaches come last, the least by their text with references erased (then path) first. Then the component's members by number")]
+    #[effects(alloc)]
+    fn nameless_reads(ids: &identity::Ids, pr: &mut fmt::Printer, path: &str, rd: &Reads) -> String {
+        pr.names.mode = fmt::Mode::Number;
+        pr.names.refs = table::new::<fmt::RefRow>();
+        pr.names.seen = Vec::new();
+        let first: String = pr.number(types::cat2("0:", path).as_str());
+        let mut out: String = String::new();
+        let mut i: usize = 0;
+        let mut fuel: usize = rd.comp.len().saturating_add(1);
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut more: usize = 1000000000;
+            while i < pr.names.seen.len() && more > 0
+                decreases more,
+            {
+                more = more - 1;
+                let r: String = pr.names.seen[i].clone();
+                let text: String = read_of(ids, pr, r.as_str(), path, rd);
+                out.push_str("@");
+                std::num::push_u64(&mut out, i as u64);
+                out.push_str("\n");
+                out.push_str(text.as_str());
+                i = i + 1;
+            }
+            let mut best: Option<usize> = None;
+            let mut best_text: String = String::new();
+            for q in 0..rd.comp.len()
+                invariant 0 <= q && q <= rd.comp.len(),
+            {
+                let key: String = types::cat2("0:", rd.comp[q].as_str());
+                if !pr.names.refs.has(key.as_str()) {
+                    pr.names.mode = fmt::Mode::Erase;
+                    let t: String = read_of(ids, pr, key.as_str(), path, rd);
+                    pr.names.mode = fmt::Mode::Number;
+                    let less: bool = match best {
+                        None => true,
+                        Some(b) => t < best_text || t == best_text && b < rd.comp.len() && rd.comp[q] < rd.comp[b],
+                    };
+                    if less {
+                        best = Some(q);
+                        best_text = t.clone();
+                    }
+                }
+            }
+            match best {
+                None => { fuel = 0; },
+                Some(b2) => { if b2 < rd.comp.len() { let n: String = pr.number(types::cat2("0:", rd.comp[b2].as_str()).as_str()); } },
+            }
+        }
+        let mut members: Vec<u64> = Vec::new();
+        for m in 0..rd.comp.len()
+            invariant 0 <= m && m <= rd.comp.len(),
+        {
+            let t: String = pr.number(types::cat2("0:", rd.comp[m].as_str()).as_str());
+            match cache::number(lexer::cut(t.as_str(), 1, t.len()).as_str()) {
+                None => {},
+                Some(k) => members.push(k),
+            }
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<u64>(members.as_slice());
+        out.push_str("component");
+        for j in 0..ord.len()
+            invariant 0 <= j && j <= ord.len(),
+        {
+            if ord[j] < members.len() {
+                if j > 0 {
+                    out.push_str(" @");
+                } else {
+                    out.push_str(" @");
+                }
+                std::num::push_u64(&mut out, members[ord[j]]);
+            }
+        }
+        if ord.len() == 0 {
+            out.push_str(" ");
+        }
+        out.push_str("\n");
+        pr.names.mode = fmt::Mode::Identity;
+        out
+    }
+
+    #[summary("Paths as a JSON array, sorted by their JSON text as stage0 sorts them")]
+    #[effects(alloc)]
+    fn names(out: &mut String, xs: &[String]) -> () {
+        let mut texts: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            let mut t: String = String::new();
+            std::json::push_string(&mut t, xs[i].as_str());
+            texts.push(t);
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(texts.as_slice());
+        out.push_str("[");
+        for j in 0..ord.len()
+            invariant 0 <= j && j <= ord.len(),
+        {
+            if ord[j] < texts.len() {
+                if j > 0 {
+                    out.push_str(",");
+                }
+                out.push_str(texts[ord[j]].as_str());
+            }
+        }
+        out.push_str("]");
+    }
+
+    #[summary("A session over the cache in dir (stage0 Session::new, and with only Session::new_for: a lazy load, and the keys of the named definitions alone). id is this build's identity; bounded is whether the search within small bounds is on, which every query's head says")]
+    #[effects(alloc, io, nondet)]
+    fn new(dir: &str, id: &str, ck: &body::Checked, pr: &encode_decls::Prepared, only: &Option<Vec<String>>, bounded: bool, audit: bool) -> Session {
+        let eager: bool = match only {
+            None => true,
+            Some(names) => false,
+        };
+        let st: Store = load(dir, id, eager);
+        let damaged: usize = st.damaged;
+        let keys: table::Table<String> = keys(ck, pr, only, bounded);
+        Session { dir: String::from(dir), id: String::from(id), store: st, audit: audit, keys: keys, stats: Stats { encoded: Vec::new(), reused: Vec::new(), damaged: damaged, mismatches: Vec::new() } }
+    }
+
+    #[summary("The spans of a definition's syntax nodes in a fixed order (stage0 node_spans, ADR-0059 §4): the definition, its name, parameters, result, contract, then its body, depth first. The order follows the tree, so two texts with the same qualified normal form list the same nodes whatever their layout. Attributes are left out; a path is one node whatever its length")]
+    #[effects(alloc)]
+    fn node_spans(d: &ast::FnDef) -> Vec<source::Span> {
+        let mut out: Vec<source::Span> = Vec::new();
+        out.push(d.span);
+        out.push(d.name.span);
+        for i in 0..d.params.len()
+            invariant 0 <= i && i <= d.params.len(),
+        {
+            out.push(d.params[i].name.span);
+            ns_ty(&d.params[i].ty, &mut out, 100000);
+        }
+        match &d.ret.name {
+            None => {},
+            Some(n) => out.push(n.span),
+        }
+        ns_ty(&d.ret.ty, &mut out, 100000);
+        for j in 0..d.pre.len()
+            invariant 0 <= j && j <= d.pre.len(),
+        {
+            ns_expr(&d.pre[j], &mut out, 1000000000);
+        }
+        for k in 0..d.post.len()
+            invariant 0 <= k && k <= d.post.len(),
+        {
+            ns_expr(&d.post[k], &mut out, 1000000000);
+        }
+        match &d.measure {
+            None => {},
+            Some(m) => ns_expr(m, &mut out, 1000000000),
+        }
+        ns_block(&d.body, &mut out, 1000000000);
+        out
+    }
+
+    #[summary("A node list as payload text (stage0 nodes_text): `-` for none, else `CODE@INDEX` by commas")]
+    #[effects(alloc)]
+    fn nodes_text(v: &[String]) -> String {
+        if v.len() == 0 {
+            return String::from("-");
+        }
+        encode_terms::join(v, ",")
+    }
+
+    #[summary("The nodes of a block: the block, its statements, its tail")]
+    #[effects(alloc)]
+    fn ns_block(b: &ast::Block, out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        out.push(b.span);
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            ns_stmt(&b.stmts[i], out, f - 1);
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => ns_expr(&**t, out, f - 1),
+        }
+    }
+
+    #[summary("The nodes of an expression: the expression, then its parts (a closure's are not walked)")]
+    #[effects(alloc)]
+    fn ns_expr(e: &ast::Expr, out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        out.push(e.span);
+        match &e.kind {
+            ast::ExprKind::Int(xv, xr) => {},
+            ast::ExprKind::Float(xf) => {},
+            ast::ExprKind::ByteLit(xb) => {},
+            ast::ExprKind::ByteStr(xbs) => {},
+            ast::ExprKind::StrLit(xs) => {},
+            ast::ExprKind::CharLit(xc) => {},
+            ast::ExprKind::Bool(xbo) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(var) => out.push(var.span),
+            ast::ExprKind::Call(call) => { ns_path(call.path.as_slice(), out); for i in 0..call.targs.len() invariant 0 <= i && i <= call.targs.len(), { out.push(call.targs[i].span); for j in 0..call.targs[i].args.len() invariant 0 <= j && j <= call.targs[i].args.len(), { ns_ty(&call.targs[i].args[j], out, 100000); } } ns_exprs(call.args.as_slice(), out, f - 1); },
+            ast::ExprKind::Method(me) => { ns_expr(&*me.recv, out, f - 1); out.push(me.name.span); ns_exprs(me.args.as_slice(), out, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { ns_expr(&**ib, out, f - 1); ns_expr(&**ii, out, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => ns_expr(&**ux, out, f - 1),
+            ast::ExprKind::Binary(bo, bl, br) => { ns_expr(&**bl, out, f - 1); ns_expr(&**br, out, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => ns_expr(&**rx, out, f - 1),
+            ast::ExprKind::If(ife) => { ns_expr(&*ife.cond, out, f - 1); ns_block(&ife.then, out, f - 1); match &ife.els { None => {}, Some(el) => ns_expr(&**el, out, f - 1), } },
+            ast::ExprKind::Block(blk) => ns_block(blk, out, f - 1),
+            ast::ExprKind::Array(arr) => ns_exprs(arr.as_slice(), out, f - 1),
+            ast::ExprKind::Repeat(rp) => { ns_expr(&*rp.value, out, f - 1); out.push(rp.count_span); },
+            ast::ExprKind::Old(ox) => ns_expr(&**ox, out, f - 1),
+            ast::ExprKind::Quant(qu) => { for i in 0..qu.binders.len() invariant 0 <= i && i <= qu.binders.len(), { out.push(qu.binders[i].name.span); ns_ty(&qu.binders[i].ty, out, 100000); } ns_expr(&*qu.body, out, f - 1); },
+            ast::ExprKind::Trigger(tx) => ns_expr(&**tx, out, f - 1),
+            ast::ExprKind::Closure(clo) => {},
+            ast::ExprKind::StructLit(sl) => { ns_path(sl.path.as_slice(), out); for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { out.push(sl.fields[i].name.span); ns_expr(&sl.fields[i].value, out, f - 1); } match &sl.rest { None => {}, Some(rest) => ns_expr(&**rest, out, f - 1), } },
+            ast::ExprKind::Path(pa) => ns_path(pa.as_slice(), out),
+            ast::ExprKind::Deref(dx) => ns_expr(&**dx, out, f - 1),
+            ast::ExprKind::Field(fb, fname) => { ns_expr(&**fb, out, f - 1); out.push(fname.span); },
+            ast::ExprKind::Match(ma) => { ns_expr(&*ma.scrut, out, f - 1); for i in 0..ma.arms.len() invariant 0 <= i && i <= ma.arms.len(), { out.push(ma.arms[i].span); out.push(ma.arms[i].pat.span); ns_path(ma.arms[i].pat.path.as_slice(), out); for j in 0..ma.arms[i].pat.binds.len() invariant 0 <= j && j <= ma.arms[i].pat.binds.len(), { match &ma.arms[i].pat.binds[j] { None => {}, Some(bound) => out.push(bound.span), } } ns_expr(&ma.arms[i].body, out, f - 1); } },
+            ast::ExprKind::Return(ret) => { match ret { None => {}, Some(rv) => ns_expr(&**rv, out, f - 1), } },
+            ast::ExprKind::Try(trx) => ns_expr(&**trx, out, f - 1),
+            ast::ExprKind::Loop(lo) => { match &lo.label { None => {}, Some(ll) => out.push(ll.span), } ns_exprs(lo.invariants.as_slice(), out, f - 1); match &lo.measure { None => {}, Some(lm) => ns_expr(&**lm, out, f - 1), } ns_block(&lo.body, out, f - 1); },
+            ast::ExprKind::Break(br2) => { match &br2.label { None => {}, Some(bl2) => out.push(bl2.span), } match &br2.value { None => {}, Some(bv) => ns_expr(&**bv, out, f - 1), } },
+            ast::ExprKind::Continue(cl) => { match cl { None => {}, Some(cn) => out.push(cn.span), } },
+            ast::ExprKind::Range(ra) => { ns_expr(&*ra.lo, out, f - 1); ns_expr(&*ra.hi, out, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("The nodes of an expression list")]
+    #[effects(alloc)]
+    fn ns_exprs(xs: &[ast::Expr], out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            ns_expr(&xs[i], out, f - 1);
+        }
+    }
+
+    #[summary("A path is one node, from its first segment to its last")]
+    #[effects(alloc)]
+    fn ns_path(p: &[ast::Ident], out: &mut Vec<source::Span>) -> () {
+        if p.len() > 0 {
+            out.push(p[0].span.to(p[p.len() - 1].span));
+        }
+    }
+
+    #[summary("The nodes of a statement")]
+    #[effects(alloc)]
+    fn ns_stmt(s: &ast::Stmt, out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match s {
+            ast::Stmt::Let(l) => { out.push(l.span); out.push(l.name.span); ns_ty(&l.ty, out, 100000); ns_expr(&l.init, out, f - 1); },
+            ast::Stmt::Assign(asg) => { out.push(asg.span); ns_expr(&asg.target, out, f - 1); ns_expr(&asg.value, out, f - 1); },
+            ast::Stmt::While(w) => { out.push(w.span); match &w.label { None => {}, Some(wl) => out.push(wl.span), } ns_expr(&w.cond, out, f - 1); ns_exprs(w.invariants.as_slice(), out, f - 1); match &w.measure { None => {}, Some(wm) => ns_expr(wm, out, f - 1), } ns_block(&w.body, out, f - 1); },
+            ast::Stmt::For(x) => { out.push(x.span); match &x.label { None => {}, Some(xl) => out.push(xl.span), } out.push(x.var.span); ns_expr(&x.lo, out, f - 1); ns_expr(&x.hi, out, f - 1); ns_exprs(x.invariants.as_slice(), out, f - 1); ns_block(&x.body, out, f - 1); },
+            ast::Stmt::Assert(a) => { out.push(a.span); ns_expr(&a.cond, out, f - 1); },
+            ast::Stmt::Assume(am) => { out.push(am.span); ns_expr(&am.cond, out, f - 1); },
+            ast::Stmt::Proof(p) => { out.push(p.span); ns_block(&p.body, out, f - 1); },
+            ast::Stmt::LetFields(lf) => { out.push(lf.span); ns_path(lf.path.as_slice(), out); for i in 0..lf.fields.len() invariant 0 <= i && i <= lf.fields.len(), { out.push(lf.fields[i].span); } ns_expr(&lf.init, out, f - 1); },
+            ast::Stmt::Expr(e) => ns_expr(e, out, f - 1),
+        }
+    }
+
+    #[summary("The nodes of a type: the type, then the types inside it")]
+    #[effects(alloc)]
+    fn ns_ty(t: &ast::Type, out: &mut Vec<source::Span>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        out.push(t.span);
+        match &t.kind {
+            ast::TypeKind::Int(it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => ns_ty(&**ae, out, f - 1),
+            ast::TypeKind::ArrayN(ne, np) => {},
+            ast::TypeKind::Slice(se) => ns_ty(&**se, out, f - 1),
+            ast::TypeKind::Ref(rm, re) => ns_ty(&**re, out, f - 1),
+            ast::TypeKind::Named(p, args) => { for i in 0..args.len() invariant 0 <= i && i <= args.len(), { ns_ty(&args[i], out, f - 1); } },
+            ast::TypeKind::Vec(ve) => ns_ty(&**ve, out, f - 1),
+            ast::TypeKind::Box(be) => ns_ty(&**be, out, f - 1),
+            ast::TypeKind::Param(ps) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("Stores slot (kind, path) (stage0 Store::put): the lines of a lazy load not checked yet for it are checked first; the store changes when the entry is new or differs")]
+    #[effects(alloc)]
+    fn put(st: &mut Store, kind: &str, path: &str, key: &str, payload: &str) -> () {
+        let slot: String = slot_of(kind, path);
+        settle(st, slot.as_str());
+        let same: bool = match st.entries.find(slot.as_str()) {
+            None => false,
+            Some(at) => st.entries.items[at].key == key && st.entries.items[at].payload == payload,
+        };
+        if !same {
+            st.entries.insert(slot.as_str(), Entry { kind: String::from(kind), path: String::from(path), key: String::from(key), payload: String::from(payload) });
+            st.changed = true;
+        }
+    }
+
+    #[summary("The text a key reads of reference r (the read_of of stage0 nameless_reads), references written by pr's mode: a definition path itself by its whole text, other definitions as rd says, a type or trait as read_text gives it, a trait method by method_read; `? PATH` and a line feed for what the program does not hold")]
+    #[effects(alloc)]
+    fn read_of(ids: &identity::Ids, pr: &mut fmt::Printer, r: &str, path: &str, rd: &Reads) -> String {
+        if encode_terms::starts_at(r, 0, "m:") {
+            let rest: String = lexer::cut(r, 2, r.len());
+            let sp: usize = match encode_query::find_byte(rest.as_str(), 32, 0) {
+                None => rest.len(),
+                Some(x) => x,
+            };
+            let tr: String = lexer::cut(rest.as_str(), 0, sp);
+            let m: String = lexer::cut(rest.as_str(), sp.saturating_add(1), rest.len());
+            return match ids.method_read(pr, tr.as_str(), m.as_str()) { None => types::cat5("? ", tr.as_str(), "::", m.as_str(), "\n"), Some(t) => t, };
+        }
+        let p: String = lexer::cut(r, 2, r.len());
+        let mut read: u8 = 0;
+        if encode_terms::starts_at(r, 0, "0:") && p != path {
+            read = 1;
+            match rd.kinds.find(p.as_str()) {
+                None => {},
+                Some(k) => { if body::is_spec(rd.kinds.items[k]) { if types::has(rd.uses.as_slice(), p.as_str()) || types::has(rd.comp.as_slice(), p.as_str()) || types::has(rd.invariants.as_slice(), p.as_str()) { read = 0; } else { read = 2; } } },
+            }
+        }
+        match ids.read_text(pr, r, read) {
+            None => types::cat3("? ", p.as_str(), "\n"),
+            Some(t) => t,
+        }
+    }
+
+    #[summary("Stores the result of a fully proved definition (stage0 proof_record): none with a failure or with a query the backstop ended (the machine's result, not the program's), and none when a proved obligation is no node of d")]
+    #[effects(alloc)]
+    fn record(s: &mut Session, path: &str, d: &ast::FnDef, obligations: usize, failed: usize, total: u64, max: u64, backstop: u64, proved: &[encode_spec::Trivial], script: &str) -> () {
+        if failed != 0 || backstop != 0 {
+            return;
+        }
+        let at: usize = match s.keys.find(path) {
+            None => { return; },
+            Some(x) => x,
+        };
+        let key: String = s.keys.items[at].clone();
+        let nodes: Vec<String> = match to_nodes(proved, d) {
+            None => { return; },
+            Some(v) => v,
+        };
+        let mut payload: String = String::new();
+        std::num::push_u64(&mut payload, obligations as u64);
+        payload.push_str(" ");
+        std::num::push_u64(&mut payload, total);
+        payload.push_str(" ");
+        std::num::push_u64(&mut payload, max);
+        payload.push_str(" ");
+        payload.push_str(script_digest(script).as_str());
+        payload.push_str(" ");
+        payload.push_str(nodes_text(nodes.as_slice()).as_str());
+        put(&mut s.store, "P", path, key.as_str(), payload.as_str());
+    }
+
+    #[summary("Whether two lists hold the same texts in the same order")]
+    #[effects(pure)]
+    fn same_list(a: &[String], b: &[String]) -> bool {
+        if a.len() != b.len() {
+            return false;
+        }
+        for i in 0..a.len()
+            invariant 0 <= i && i <= a.len() && a.len() == b.len(),
+        {
+            if a[i] != b[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Writes the cache back when something changed (stage0 Session::save, Store::save): every line not checked yet is checked first; then the header and one line per entry in slot order, written to `defs.tmp`, a new file in place of whatever was there, and renamed. The error is the system's text")]
+    #[effects(alloc, io)]
+    fn save(s: &mut Session) -> Result<(), String> {
+        settle_all(&mut s.store);
+        if !s.store.changed {
+            return Ok(());
+        }
+        let mut out: String = types::cat4(magic().as_str(), "\nid ", s.id.as_str(), "\n");
+        for n in 0..s.store.entries.len()
+            invariant 0 <= n,
+        {
+            match s.store.entries.nth(n) {
+                None => {},
+                Some(at) => { let e: Entry = s.store.entries.items[at].clone(); out.push_str(types::cat5(e.kind.as_str(), " ", escape_path(e.path.as_str()).as_str(), " ", e.key.as_str()).as_str()); out.push_str(types::cat4(" ", line_digest(e.kind.as_str(), e.path.as_str(), e.key.as_str(), e.payload.as_str()).as_str(), " ", escape(e.payload.as_str()).as_str()).as_str()); out.push_str("\n"); },
+            }
+        }
+        cache::write_file(s.dir.as_str(), "defs", out.as_str())
+    }
+
+    #[summary("Writes back the cache of a slot that holds a session (save): why it could not be written, if it could not")]
+    #[effects(alloc, io)]
+    fn save_slot(slot: &mut Option<Session>) -> Option<String> {
+        match slot {
+            None => None,
+            Some(s) => error_of(save(s)),
+        }
+    }
+
+    #[summary("The digest of a definition's script as the solver receives it (stage0 script_digest: canonical symbols, ADR-0063), the same for a renamed definition")]
+    #[effects(alloc)]
+    fn script_digest(script: &str) -> String {
+        sha256::hex(encode_query::canonical(script).as_bytes())
+    }
+
+    #[summary("Appends a section of a key: its tag, the length of its text in bytes, a line feed, the text, a line feed (stage0 section)")]
+    #[effects(alloc)]
+    fn section(out: &mut String, tag: &str, text: &str) -> () {
+        out.push_str(tag);
+        out.push_str(" ");
+        std::num::push_u64(out, text.len() as u64);
+        out.push_str("\n");
+        out.push_str(text);
+        out.push_str("\n");
+    }
+
+    #[summary("Checks the lines of slot into the entries (stage0 Store::settle): each line whose digest holds becomes the slot's entry in turn, each other line is damaged")]
+    #[effects(alloc)]
+    fn settle(st: &mut Store, slot: &str) -> () {
+        let at: usize = match st.pending.find(slot) {
+            None => { return; },
+            Some(x) => x,
+        };
+        let ls: Lines = st.pending.items[at].clone();
+        if ls.raws.len() == 0 {
+            return;
+        }
+        let empty: Lines = Lines { kind: ls.kind.clone(), path: ls.path.clone(), raws: Vec::new() };
+        st.pending.insert(slot, empty);
+        for i in 0..ls.raws.len()
+            invariant 0 <= i && i <= ls.raws.len(),
+        {
+            match check_line(ls.kind.as_str(), ls.path.as_str(), &ls.raws[i]) {
+                None => { st.damaged = st.damaged.saturating_add(1); st.changed = true; },
+                Some(e) => st.entries.insert(slot, e),
+            }
+        }
+    }
+
+    #[summary("Checks every line not checked yet")]
+    #[effects(alloc)]
+    fn settle_all(st: &mut Store) -> () {
+        let mut slots: Vec<String> = Vec::new();
+        for n in 0..st.pending.len()
+            invariant 0 <= n,
+        {
+            slots.push(st.pending.key(n));
+        }
+        for i in 0..slots.len()
+            invariant 0 <= i && i <= slots.len(),
+        {
+            settle(st, slots[i].as_str());
+        }
+    }
+
+    #[summary("The key of slot (kind, path) in the tables of a store, ordered as stage0 orders the pair: kind with each NUL byte as NUL and 1, then NUL NUL, then path")]
+    #[effects(alloc)]
+    fn slot_of(kind: &str, path: &str) -> String {
+        let mut out: String = encode_terms::replace(kind, "\0", "\0\u{1}");
+        out.push_str("\0\0");
+        out.push_str(path);
+        out
+    }
+
+    #[summary("One line split at its first four spaces (stage0 splitn(5, ' ')), the path unescaped: kind, path, key, digest and payload; None when it has fewer fields or its path does not unescape")]
+    #[effects(alloc)]
+    fn split_line(line: &str) -> Option<Entry4> {
+        let a: usize = encode_query::find_byte(line, 32, 0)?;
+        let b: usize = encode_query::find_byte(line, 32, a + 1)?;
+        let c: usize = encode_query::find_byte(line, 32, b + 1)?;
+        let d: usize = encode_query::find_byte(line, 32, c + 1)?;
+        let path: String = unescape(lexer::cut(line, a + 1, b).as_str())?;
+        Some(Entry4 { kind: lexer::cut(line, 0, a), path: path, key: lexer::cut(line, b + 1, c), sum: lexer::cut(line, c + 1, d), payload: lexer::cut(line, d + 1, line.len()) })
+    }
+
+    #[summary("The stats line of `--stats` (stage0 verify_stats without the IR): the definitions encoded and reused, sorted, the proof cache's hits and misses, the audit's mismatches, the damaged lines")]
+    #[effects(alloc)]
+    fn stats_line(st: &Stats, hits: usize, misses: usize) -> String {
+        let mut line: String = String::from("{\"encoded\":");
+        names(&mut line, st.encoded.as_slice());
+        line.push_str(",\"reused\":");
+        names(&mut line, st.reused.as_slice());
+        line.push_str(",\"lowered\":[],\"ir_reused\":[],\"proof_cache_hits\":");
+        std::num::push_u64(&mut line, hits as u64);
+        line.push_str(",\"proof_cache_misses\":");
+        std::num::push_u64(&mut line, misses as u64);
+        line.push_str(",\"audit_mismatches\":");
+        names(&mut line, st.mismatches.as_slice());
+        line.push_str(",\"damaged\":");
+        std::num::push_u64(&mut line, st.damaged as u64);
+        line.push_str("}\n");
+        line
+    }
+
+    #[summary("What the session of a slot did, when it holds one")]
+    #[effects(alloc)]
+    fn stats_of(slot: &Option<Session>) -> Option<Stats> {
+        match slot {
+            None => None,
+            Some(s) => Some(s.stats.clone()),
+        }
+    }
+
+    #[summary("Proved obligations as node positions in d (stage0 to_nodes): the code and the index of the first node with the obligation's span, sorted by code and index without repeats, as `CODE@INDEX` texts. None when an obligation is no node of d")]
+    #[effects(alloc)]
+    fn to_nodes(keys: &[encode_spec::Trivial], d: &ast::FnDef) -> Option<Vec<String>> {
+        let nodes: Vec<source::Span> = node_spans(d);
+        let mut first: table::Table<usize> = table::new::<usize>();
+        for i in 0..nodes.len()
+            invariant 0 <= i && i <= nodes.len(),
+        {
+            let k: String = body::span_key(nodes[i]);
+            if !first.has(k.as_str()) {
+                first.insert(k.as_str(), i);
+            }
+        }
+        let mut sortable: Vec<String> = Vec::new();
+        let mut shown: Vec<String> = Vec::new();
+        for j in 0..keys.len()
+            invariant 0 <= j && j <= keys.len(),
+        {
+            let at: usize = first.find(body::span_key(keys[j].span).as_str())?;
+            let n: usize = first.items[at];
+            let mut t: String = types::cat2(keys[j].code.as_str(), "@");
+            std::num::push_u64(&mut t, n as u64);
+            let digits: String = encode_terms::dec(n as u64);
+            let mut s: String = types::cat2(keys[j].code.as_str(), "\0");
+            for z in digits.len()..20
+                invariant digits.len() <= z,
+            {
+                s.push_str("0");
+            }
+            s.push_str(digits.as_str());
+            sortable.push(types::cat3(s.as_str(), "\0", t.as_str()));
+            shown.push(t);
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(sortable.as_slice());
+        let mut out: Vec<String> = Vec::new();
+        for o in 0..ord.len()
+            invariant 0 <= o && o <= ord.len(),
+        {
+            if ord[o] < shown.len() && !types::has(out.as_slice(), shown[ord[o]].as_str()) {
+                out.push(shown[ord[o]].clone());
+            }
+        }
+        Some(out)
+    }
+
+    #[summary("s with the escapes of escape_path undone (stage0 unescape): `\\\\`, `\\n` and `\\s`; None for any other backslash")]
+    #[effects(alloc)]
+    fn unescape(s: &str) -> Option<String> {
+        let mut out: String = String::new();
+        let mut from: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len()
+            invariant from <= i,
+            decreases s.len() - i,
+        {
+            if s.as_bytes()[i] == 92 {
+                out.push_str(lexer::cut(s, from, i).as_str());
+                if i + 1 >= s.len() {
+                    return None;
+                }
+                let c: u8 = s.as_bytes()[i + 1];
+                if c == 92 {
+                    out.push_str("\\");
+                } else if c == 110 {
+                    out.push_str("\n");
+                } else if c == 115 {
+                    out.push_str(" ");
+                } else {
+                    return None;
+                }
+                i = i + 2;
+                from = i;
+            } else {
+                i = i + 1;
+            }
+        }
+        out.push_str(lexer::cut(s, from, s.len()).as_str());
+        Some(out)
+    }
+
+    #[summary("The identity of a build that cannot read its own executable: under it nothing is read")]
+    #[effects(alloc)]
+    fn unknown_id() -> String {
+        String::from("port+unknown")
+    }
+}

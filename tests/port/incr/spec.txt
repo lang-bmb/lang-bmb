@@ -1,0 +1,103 @@
+#[summary("Units whose edits the per-definition cache follows")]
+mod a {
+    spec fn small(x: i64) -> bool {
+        0 <= x && x < 999
+    }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn twice(x: i64) -> (r: i64)
+        requires small(x),
+        ensures r == x + 2,
+    {
+        let y: i64 = inc(x);
+        y + 1
+    }
+
+    #[effects(pure)]
+    fn twin(x: i64) -> (r: i64)
+        requires small(x),
+        ensures r == x + 1,
+    {
+        inc(x)
+    }
+
+    #[effects(pure)]
+    fn down(n: u32) -> (r: u32)
+        ensures r == 0,
+        decreases n,
+    {
+        if n == 0 { 0 } else { down(n - 1) }
+    }
+
+    #[effects(pure)]
+    fn alone(x: u8) -> (r: u16)
+        ensures r <= 255,
+    {
+        x as u16
+    }
+}
+
+#[summary("A twin of a::twin called by path, a trait, a type with an invariant")]
+mod b {
+    #[effects(pure)]
+    fn twin(x: i64) -> (r: i64)
+        requires a::small(x),
+        ensures r == x + 1,
+    {
+        a::inc(x)
+    }
+
+    trait Area {
+        #[effects(pure)]
+        fn area(self: &Self) -> (r: i64)
+            ensures r >= 0;
+    }
+
+    struct Sq { s: i64 }
+
+    impl Area for Sq {
+        #[effects(pure)]
+        fn area(self: &Sq) -> (r: i64)
+            ensures r >= 0,
+        {
+            if self.s >= 0 && self.s <= 10 { self.s * self.s } else { 0 }
+        }
+    }
+
+    #[effects(pure)]
+    fn known(q: Sq) -> (r: i64)
+        ensures r >= 0,
+    {
+        q.area()
+    }
+
+    spec fn ordered(p: &Pair) -> bool { p.lo <= p.hi }
+
+    #[invariant(ordered)]
+    struct Pair { lo: i64, hi: i64 }
+
+    #[effects(pure)]
+    #[uses(ordered)]
+    fn width(p: Pair) -> (r: i64)
+        requires p.lo >= 0 && p.hi < 1000,
+        ensures r >= 0,
+    {
+        p.hi - p.lo
+    }
+
+    #[effects(pure)]
+    fn loose(x: i64) -> (r: i64)
+        ensures r > x,
+    {
+        x + 1
+    }
+}

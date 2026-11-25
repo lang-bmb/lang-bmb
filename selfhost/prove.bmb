@@ -15,8 +15,8 @@ mod prove {
     #[summary("The status of a definition (stage0 FnStatus): its obligations and how many failed; trust is how the proof stands when none failed (0 proved without trusted facts, 1 assumed with them, 2 an `#[external_body]`, which has no obligations); total is the solver's resource units over all obligations and max the largest single run; backstop counts the queries the wall-clock backstop ended")]
     struct Status { path: String, obligations: usize, failed: usize, trust: u8, total: u64, max: u64, backstop: u64 }
 
-    #[summary("The count of one definition while its obligations are decided: how many failed, the resource units, the script, and whether the solver is down for the rest of the definition (it could not start, or could not be read)")]
-    struct Tally { failed: usize, total: u64, max: u64, script: String, down: bool }
+    #[summary("The count of one definition while its obligations are decided: how many failed, the resource units, the script, whether the solver is down for the rest of the definition (it could not start, or could not be read), and the obligations proved (stage0 def_proved: those that hold by their own text, then each one proved or found in the proof cache), which the per-definition cache stores")]
+    struct Tally { failed: usize, total: u64, max: u64, script: String, down: bool, proved: Vec<encode_spec::Trivial> }
 
     #[summary("What the solver decided of one obligation: whether it is proved, the largest single run among its queries, the retries that ran (cache stage bits), and whether the solver can no longer be read")]
     struct Verdict { proved: bool, ob_max: u64, stages: u8, broken: bool }
@@ -209,6 +209,67 @@ mod prove {
         v
     }
 
+    #[summary("One definition of a pass that is no instance and no `#[external_body]` (the body of stage0 verify_pass's loop): with the per-definition cache, an unchanged fully proved definition that cannot reach an escape takes its stored status and is not encoded (its obligations count as proof cache hits), unless the run audits; otherwise it is encoded when it has obligations, each decided, its status and script added to out, and with the cache it is counted as encoded, compared with its hit when auditing, and stored when it cannot reach an escape (its result then depends on how its callees' proofs stand). Whether the pass stops here (opts.stop and a failure)")]
+    #[effects(alloc, io, nondet)]
+    fn definition(ck: &body::Checked, pg: &encode_spec::Prog, at: usize, path: &str, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, incr: &mut Option<incremental::Session>, held: &mut Option<solver::Solver>, opts: &Opts, trust: &Option<encode_exec::Trust>, out: &mut Outcome, diags: &mut diag::Diags) -> bool
+        requires at < pg.defs.items.len(),
+    {
+        let untrusted: bool = types::has(ck.untrusted.as_slice(), path);
+        let hit: Option<incremental::Hit> = match incr {
+            None => None,
+            Some(s) => { if untrusted { None } else { incremental::lookup(s, path, &pg.defs.items[at].d) } },
+        };
+        let auditing: bool = match incr {
+            None => false,
+            Some(s1) => incremental::audit(s1),
+        };
+        let reused: Option<Status> = match &hit {
+            None => None,
+            Some(h) => { if auditing { None } else { Some(Status { path: String::from(path), obligations: h.obligations, failed: 0, trust: 0, total: h.total, max: h.max, backstop: 0 }) } },
+        };
+        match reused {
+            None => {},
+            Some(st) => { match store { None => {}, Some(c) => { c.hits = c.hits.saturating_add(st.obligations); }, } match incr { None => {}, Some(s2) => s2.stats.reused.push(String::from(path)), } out.statuses.push(st); return false; },
+        }
+        let sig: usize = match pg.pr.t.fns.find(path) {
+            None => { return false; },
+            Some(x) => x,
+        };
+        let e: encode_query::Encoded = match encode_query::encoded(pg, path, &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, opts.seed, opts.query, opts.rlimit, opts.bounded) {
+            None => { return false; },
+            Some(made) => made,
+        };
+        if !reusable(held) {
+            let_go(held);
+        }
+        let mut t: Tally = Tally { failed: 0, total: 0, max: 0, script: String::new(), down: false, proved: e.trivial.clone() };
+        let unit: String = pg.defs.items[at].unit.clone();
+        let name_at: source::Span = pg.defs.items[at].d.name.span;
+        for k in 0..e.obls.len()
+            invariant 0 <= k && k <= e.obls.len(),
+        {
+            if opts.stop && t.failed > 0 {
+                break;
+            }
+            match &e.obls[k].sub {
+                None => obligation(held, z3, store, &e, pg, k, path, unit.as_str(), name_at, &ck.names, opts, &mut t, diags),
+                Some(sq) => { match sq { Ok(q) => sub_obligation(held, z3, store, &e, q, k, path, name_at, opts.who, &mut t, diags), Err(refused) => { t.failed = t.failed.saturating_add(1); let d: diag::Diag = diag::new("E0818", e.obls[k].span, types::cat4("the assertion has no bit-vector translation in `", path, "`: ", refused.why.as_str()).as_str()); if refused.hidden.len() == 0 { diags.push(diag::fix(d, "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, `/` and `%` (integers; a divisor that may be zero becomes an antecedent), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`", None)); } else { diags.push(with_hint(d, refused.hidden.as_slice(), false)); } }, } },
+            }
+        }
+        let backstop: u64 = timeouts(held);
+        let differs: bool = match &hit {
+            None => false,
+            Some(h2) => incremental::differs(h2, e.obls.len(), t.failed, t.total, t.max, t.proved.as_slice(), t.script.as_str()),
+        };
+        match incr {
+            None => {},
+            Some(s3) => { s3.stats.encoded.push(String::from(path)); if differs { s3.stats.mismatches.push(String::from(path)); } if !untrusted { incremental::record(s3, path, &pg.defs.items[at].d, e.obls.len(), t.failed, t.total, t.max, backstop, t.proved.as_slice(), t.script.as_str()); } },
+        }
+        out.statuses.push(Status { path: String::from(path), obligations: e.obls.len(), failed: t.failed, trust: 0, total: t.total, max: t.max, backstop: backstop });
+        out.scripts.push(encode_terms::Pair { a: String::from(path), b: t.script.clone() });
+        opts.stop && t.failed > 0
+    }
+
     #[summary("The assumptions of o asserted, with the instances of the validity functions and the struct facts: the query of o without its goal (the domain of stage0's bounded search)")]
     #[effects(alloc)]
     fn domain(cx: &encode_query::Ctx, pg: &encode_spec::Prog, o: &encode_spec::Obl) -> String {
@@ -398,18 +459,18 @@ mod prove {
         let key: String = key_of(store, types::cat3(pl.base.as_str(), "\n", pl.q.as_str()).as_str(), opts.who);
         match lookup(store, key.as_str()) {
             None => {},
-            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } if hit.stages != 0 { match encode_query::retry_script(&e.cx, pg, pl.q.as_str()) { None => {}, Some(r) => { let num: String = encode_terms::dec(k as u64); if hit.stages % 2 == 1 { t.script.push_str(early_retry_text(num.as_str(), r.head.as_str(), e.cx.limit.as_str(), r.inst.as_str(), pl.q.as_str()).as_str()); } if hit.stages / 2 % 2 == 1 { t.script.push_str(types::cat3("; retry of obligation ", num.as_str(), " with ground instances\n(reset)\n").as_str()); t.script.push_str(types::cat5(r.head.as_str(), "\n", r.inst.as_str(), pl.q.as_str(), "\n(check-sat)\n").as_str()); } }, } } return; },
+            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); if hit.stages != 0 { match encode_query::retry_script(&e.cx, pg, pl.q.as_str()) { None => {}, Some(r) => { let num: String = encode_terms::dec(k as u64); if hit.stages % 2 == 1 { t.script.push_str(early_retry_text(num.as_str(), r.head.as_str(), e.cx.limit.as_str(), r.inst.as_str(), pl.q.as_str()).as_str()); } if hit.stages / 2 % 2 == 1 { t.script.push_str(types::cat3("; retry of obligation ", num.as_str(), " with ground instances\n(reset)\n").as_str()); t.script.push_str(types::cat5(r.head.as_str(), "\n", r.inst.as_str(), pl.q.as_str(), "\n(check-sat)\n").as_str()); } }, } } return; },
         }
         start(slot, z3, at, opts.who, t, diags);
         match std::mem::replace(slot, None) {
             None => { t.failed = t.failed.saturating_add(1); },
-            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
         }
     }
 
     #[summary("One pass over the program's definitions (stage0 verify_pass), in path order: an instance is proved through its generic definition, an `#[external_body]` is checked and not proved (ADR-0029 §2), and every other definition that has obligations is encoded and each obligation decided on a reset solver that holds only the definition's base, so no result depends on another's (ADR-0017 §5). One solver process serves every definition of a pass; it is started at the first obligation the cache does not hold, replaced when too old to take on another definition, and closed at the end of the pass. trust is the pass of the gate and only the definitions to prove when not all. With opts.stop the pass ends at the first obligation that fails: the rest of that definition and the definitions after it are not asked. A solver that is missing or of another version is E0812 at the first definition's name")]
     #[effects(alloc, io, nondet)]
-    fn pass(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, opts: &Opts, only: &Option<Vec<String>>, trust: &Option<encode_exec::Trust>, diags: &mut diag::Diags) -> Outcome {
+    fn pass(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, incr: &mut Option<incremental::Session>, opts: &Opts, only: &Option<Vec<String>>, trust: &Option<encode_exec::Trust>, diags: &mut diag::Diags) -> Outcome {
         let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new() };
         let mut held: Option<solver::Solver> = None;
         let first: source::Span = match pg.defs.nth(0) {
@@ -429,7 +490,7 @@ mod prove {
             }
             match pg.defs.nth(n) {
                 None => {},
-                Some(at) => { let path: String = pg.defs.key(n); let wanted: bool = match only { None => true, Some(names) => types::has(names.as_slice(), path.as_str()), }; if !pg.defs.items[at].inst && wanted { if types::has(ck.b.external.as_slice(), path.as_str()) { out.statuses.push(Status { path: path.clone(), obligations: 0, failed: 0, trust: 2, total: 0, max: 0, backstop: 0 }); } else { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => { match encode_query::encoded(pg, path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, opts.seed, opts.query, opts.rlimit, opts.bounded) { None => {}, Some(made) => { let e: encode_query::Encoded = made; if !reusable(&held) { let_go(&mut held); } let mut t: Tally = Tally { failed: 0, total: 0, max: 0, script: String::new(), down: false }; for k in 0..e.obls.len() invariant 0 <= k && k <= e.obls.len(), { if opts.stop && t.failed > 0 { break; } match &e.obls[k].sub { None => obligation(&mut held, z3, store, &e, pg, k, path.as_str(), pg.defs.items[at].unit.as_str(), pg.defs.items[at].d.name.span, &ck.names, opts, &mut t, diags), Some(sq) => { match sq { Ok(q) => sub_obligation(&mut held, z3, store, &e, q, k, path.as_str(), pg.defs.items[at].d.name.span, opts.who, &mut t, diags), Err(refused) => { t.failed = t.failed.saturating_add(1); let d: diag::Diag = diag::new("E0818", e.obls[k].span, types::cat4("the assertion has no bit-vector translation in `", path.as_str(), "`: ", refused.why.as_str()).as_str()); if refused.hidden.len() == 0 { diags.push(diag::fix(d, "a bit-vector sub-proof takes integers, `f64`s and `bool`s, bit operations, `+`, `-`, `*`, `/` and `%` (integers; a divisor that may be zero becomes an antecedent), the `f64` operations, comparisons, and calls of non-recursive spec fns named in `#[uses(..)]`", None)); } else { diags.push(with_hint(d, refused.hidden.as_slice(), false)); } }, } }, } } let backstop: u64 = timeouts(&mut held); out.statuses.push(Status { path: path.clone(), obligations: e.obls.len(), failed: t.failed, trust: 0, total: t.total, max: t.max, backstop: backstop }); out.scripts.push(encode_terms::Pair { a: path.clone(), b: t.script.clone() }); if opts.stop && t.failed > 0 { stopped = true; } }, } }, } } } },
+                Some(at) => { let path: String = pg.defs.key(n); let wanted: bool = match only { None => true, Some(names) => types::has(names.as_slice(), path.as_str()), }; if !pg.defs.items[at].inst && wanted { if types::has(ck.b.external.as_slice(), path.as_str()) { out.statuses.push(Status { path: path.clone(), obligations: 0, failed: 0, trust: 2, total: 0, max: 0, backstop: 0 }); } else { stopped = definition(ck, pg, at, path.as_str(), sds, dts, z3, store, incr, &mut held, opts, trust, &mut out, diags); } } },
             }
         }
         let_go(&mut held);
@@ -458,14 +519,21 @@ mod prove {
     #[effects(alloc, io, nondet)]
     fn run(ck: &body::Checked, opts: &Opts, store: &mut Option<cache::ProofCache>, z3: &mut toolchain::Z3, diags: &mut diag::Diags) -> Outcome {
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
-        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(&pg);
+        let mut none: Option<incremental::Session> = None;
+        run_cached(ck, &pg, opts, store, &mut none, z3, diags)
+    }
+
+    #[summary("As run over the encoder's program pg, through the per-definition cache incr when there is one (stage0 verify_program_incremental and verify_only with a session): it serves the first pass alone, as the passes with trusted facts and the ones after them prove definitions that can reach an escape, which the cache neither looks up nor stores")]
+    #[effects(alloc, io, nondet)]
+    fn run_cached(ck: &body::Checked, pg: &encode_spec::Prog, opts: &Opts, store: &mut Option<cache::ProofCache>, incr: &mut Option<incremental::Session>, z3: &mut toolchain::Z3, diags: &mut diag::Diags) -> Outcome {
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(pg);
         let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
         let from: usize = diags.items.len();
         let out: Outcome = if ck.untrusted.len() == 0 {
             let none: Option<encode_exec::Trust> = None;
-            pass(ck, &pg, sds.as_slice(), dts.as_slice(), z3, store, opts, &opts.only, &none, diags)
+            pass(ck, pg, sds.as_slice(), dts.as_slice(), z3, store, incr, opts, &opts.only, &none, diags)
         } else {
-            trusting(ck, &pg, sds.as_slice(), dts.as_slice(), z3, store, opts, diags)
+            trusting(ck, pg, sds.as_slice(), dts.as_slice(), z3, store, incr, opts, diags)
         };
         if ck.names.len() > 0 {
             for i in from..diags.items.len()
@@ -636,12 +704,12 @@ mod prove {
         let key: String = key_of(store, types::cat3(base.as_str(), "\n", neg.as_str()).as_str(), who);
         match lookup(store, key.as_str()) {
             None => {},
-            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } return; },
+            Some(hit) => { t.total = t.total.saturating_add(hit.total); if hit.max > t.max { t.max = hit.max; } t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); return; },
         }
         start(slot, z3, at, who, t, diags);
         match std::mem::replace(slot, None) {
             None => { t.failed = t.failed.saturating_add(1); },
-            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide_sub(&mut sol, &e.obls[k], q, base.as_str(), neg.as_str(), path, who, t, diags); if v.proved { remember(store, key.as_str(), t.total.saturating_sub(before), t.total.saturating_sub(before), 0); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide_sub(&mut sol, &e.obls[k], q, base.as_str(), neg.as_str(), path, who, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); remember(store, key.as_str(), t.total.saturating_sub(before), t.total.saturating_sub(before), 0); } else { t.failed = t.failed.saturating_add(1); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
         }
     }
 
@@ -656,7 +724,7 @@ mod prove {
 
     #[summary("The proof gate with trusted facts (stage0 verify_trusting, ADR-0029 §2). The first pass proves every definition without them: no `assume`, no `ensures` of a callee that is not proved (at first the `#[external_body]` ones). A definition that fails there and can reach an escape is proved again with every fact: assumed if that proves it, failed otherwise (its diagnostics are that pass's). The assumed ones join the untrusted callees, and the definitions proved before that can reach an escape are proved again without trusted facts, until the set of untrusted callees no longer grows. The diagnostics are those outside every definition from the first pass, then each definition's in path order")]
     #[effects(alloc, io, nondet)]
-    fn trusting(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, opts: &Opts, diags: &mut diag::Diags) -> Outcome {
+    fn trusting(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, incr: &mut Option<incremental::Session>, opts: &Opts, diags: &mut diag::Diags) -> Outcome {
         let mut spans: table::Table<source::Span> = table::new::<source::Span>();
         for i in 0..pg.defs.len()
             invariant 0 <= i,
@@ -670,7 +738,8 @@ mod prove {
         let mut rest: Vec<diag::Diag> = Vec::new();
         let mut da: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let ta: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: false, untrusted: untrusted.clone() });
-        let a: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &opts.only, &ta, &mut da);
+        let a: Outcome = pass(ck, pg, sds, dts, z3, store, incr, opts, &opts.only, &ta, &mut da);
+        let mut no_incr: Option<incremental::Session> = None;
         let mut result: table::Table<DefResult> = split(&a, da.items.as_slice(), &spans, &mut rest);
         let mut trusted_pass: Vec<String> = Vec::new();
         let mut fuel: usize = pg.defs.len().saturating_mul(2).saturating_add(2);
@@ -693,7 +762,7 @@ mod prove {
                 let mut db: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
                 let tb: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: true, untrusted: untrusted.clone() });
                 let only_b: Option<Vec<String>> = Some(cands.clone());
-                let b: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &only_b, &tb, &mut db);
+                let b: Outcome = pass(ck, pg, sds, dts, z3, store, &mut no_incr, opts, &only_b, &tb, &mut db);
                 let mut dropped: Vec<diag::Diag> = Vec::new();
                 let rb: table::Table<DefResult> = split(&b, db.items.as_slice(), &spans, &mut dropped);
                 for n2 in 0..rb.len()
@@ -745,7 +814,7 @@ mod prove {
                     let mut dc: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
                     let tc: Option<encode_exec::Trust> = Some(encode_exec::Trust { trusted: false, untrusted: untrusted.clone() });
                     let only_c: Option<Vec<String>> = Some(again.clone());
-                    let c: Outcome = pass(ck, pg, sds, dts, z3, store, opts, &only_c, &tc, &mut dc);
+                    let c: Outcome = pass(ck, pg, sds, dts, z3, store, &mut no_incr, opts, &only_c, &tc, &mut dc);
                     let mut dropped2: Vec<diag::Diag> = Vec::new();
                     let rc: table::Table<DefResult> = split(&c, dc.items.as_slice(), &spans, &mut dropped2);
                     for n5 in 0..rc.len()

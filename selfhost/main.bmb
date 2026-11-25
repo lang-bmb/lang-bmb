@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (without the per-definition cache: --cache needs --emit-smt), stability, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, emit-llvm --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -114,12 +114,14 @@ mod main {
             let mut stats: Option<String> = None;
             let mut bounded: bool = false;
             let mut defs: Vec<String> = Vec::new();
+            let mut audit: bool = false;
             let mut at: usize = 2;
             while at < args.len()
                 decreases args.len() - at,
             {
                 let left: usize = args.len() - at;
                 if args[at] == "--audit" && left > 1 {
+                    audit = true;
                     at = at + 1;
                 } else if args[at] == "--bounded-search" && left > 1 {
                     bounded = true;
@@ -140,16 +142,20 @@ mod main {
                     break;
                 }
             }
-            if per_definition(&cache_dir, &emit) {
-                eprint_str("stage1: verify --cache without --emit-smt: the per-definition cache is not ported yet\n");
-                std::process::exit(2);
-            }
             let sources: Vec<lib::Input> = read_files(args.as_slice(), at);
             let only: Vec<String> = body::sorted_set(defs.as_slice());
-            let vr: lib::Proved = lib::verify(sources.as_slice(), &cache_dir, only.as_slice(), bounded);
+            let reuse: bool = match &emit {
+                None => true,
+                Some(e0) => false,
+            };
+            let vr: lib::Proved = lib::verify(sources.as_slice(), &cache_dir, only.as_slice(), bounded, reuse, audit);
             match &vr.cache_error {
                 None => {},
                 Some(cache_why) => { match &cache_dir { None => {}, Some(cd) => { eprint_str("bmb: cannot write proof cache in "); eprint_str(cd.as_str()); eprint_str(": "); eprint_str(cache_why.as_str()); eprint_str("\n"); }, } },
+            }
+            match &vr.incr_error {
+                None => {},
+                Some(incr_why) => { match &cache_dir { None => {}, Some(cd2) => { eprint_str("bmb: cannot write incremental cache in "); eprint_str(cd2.as_str()); eprint_str(": "); eprint_str(incr_why.as_str()); eprint_str("\n"); }, } },
             }
             if vr.missing.len() > 0 {
                 eprint_str("bmb: no definition ");
@@ -163,7 +169,7 @@ mod main {
             }
             match &stats {
                 None => {},
-                Some(sf) => { let mut line: String = String::from("{\"encoded\":[],\"reused\":[],\"lowered\":[],\"ir_reused\":[],\"proof_cache_hits\":"); std::num::push_u64(&mut line, vr.hits as u64); line.push_str(",\"proof_cache_misses\":"); std::num::push_u64(&mut line, vr.misses as u64); line.push_str(",\"audit_mismatches\":[],\"damaged\":0}\n"); write_or_exit(sf.as_str(), line.as_str()); },
+                Some(sf) => { let none: incremental::Stats = incremental::Stats { encoded: Vec::new(), reused: Vec::new(), damaged: 0, mismatches: Vec::new() }; let line: String = match &vr.incr { None => incremental::stats_line(&none, vr.hits, vr.misses), Some(ist) => incremental::stats_line(ist, vr.hits, vr.misses), }; write_or_exit(sf.as_str(), line.as_str()); },
             }
             print_str(vr.output.as_str());
             if !vr.ok {
@@ -280,10 +286,6 @@ mod main {
                     std::process::exit(2);
                 }
             }
-            if !per_definition_lint(&cache_dir, select.as_slice()) {
-                eprint_str("stage1: lint --cache with W0902 or W0905: the per-definition cache is not ported yet\n");
-                std::process::exit(2);
-            }
             let linted: Vec<lib::Input> = read_files(args.as_slice(), at);
             let lr: lint::Linted = lint::run(linted.as_slice(), &cache_dir, select.as_slice());
             print_str(lr.text.as_str());
@@ -303,24 +305,6 @@ mod main {
         }
         eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | emit-llvm --all-checks FILE.. -o OUT.ll\n");
         std::process::exit(2);
-    }
-
-    #[summary("Whether a run of verify would use the per-definition cache (stage0 incremental.rs), which is not ported: with a cache directory and without --emit-smt, which encodes every definition")]
-    #[effects(pure)]
-    fn per_definition(cache_dir: &Option<String>, emit: &Option<String>) -> bool {
-        match cache_dir {
-            None => false,
-            Some(dir) => match emit { None => true, Some(to) => false, },
-        }
-    }
-
-    #[summary("Whether a run of lint can do without the per-definition cache (stage0 incremental.rs), which is not ported: without a cache directory, or with one when no selected check needs the first verification (W0902, W0905), which with a cache directory goes through that cache")]
-    #[effects(alloc)]
-    fn per_definition_lint(cache_dir: &Option<String>, select: &[String]) -> bool {
-        match cache_dir {
-            None => true,
-            Some(dir) => !types::has(select, "W0902") && !types::has(select, "W0905"),
-        }
     }
 
     #[summary("Reads the files of the arguments. If one cannot be read, writes that with the system's reason to standard error and exit code 2")]

@@ -12,8 +12,8 @@ mod lib {
     #[summary("Result of a command: if ok, the text to write to standard output, otherwise JSONL of diagnostics")]
     struct Outcome { ok: bool, text: String }
 
-    #[summary("Result of bmb verify (stage0 VerifyOutput): ok when the program checks and every definition is proved; output is the diagnostics and the status rows; scripts holds per encoded definition (a) its script (b) as written before canonical symbols; hits and misses are the proof cache's lookups; missing names the definitions asked for that got no status; cache_error is why the proof cache could not be written back, if it could not")]
-    struct Proved { ok: bool, output: String, scripts: Vec<encode_terms::Pair>, hits: usize, misses: usize, missing: Vec<String>, cache_error: Option<String> }
+    #[summary("Result of bmb verify (stage0 VerifyOutput): ok when the program checks and every definition is proved; output is the diagnostics and the status rows; scripts holds per encoded definition (a) its script (b) as written before canonical symbols; hits and misses are the proof cache's lookups; missing names the definitions asked for that got no status; cache_error is why the proof cache could not be written back, if it could not; incr is what the per-definition cache did, when the run went through it, and incr_error why its file could not be written back, if it could not")]
+    struct Proved { ok: bool, output: String, scripts: Vec<encode_terms::Pair>, hits: usize, misses: usize, missing: Vec<String>, cache_error: Option<String>, incr: Option<incremental::Stats>, incr_error: Option<String> }
 
     #[summary("bmb check: reads the files as one program and checks it. Diagnostics are JSONL, ok is false if there are errors")]
     #[effects(alloc)]
@@ -784,14 +784,14 @@ mod lib {
         out.push_str("]");
     }
 
-    #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only without the per-definition cache): reads the files as one program, checks it and, when it checks, proves it. cache_dir is the directory of the proof cache when there is one: proofs found before are not asked again and new ones are written back. only names the definitions to prove when it is not empty; the whole program is still checked and each gets its whole-program status. bounded asks each undecided obligation once more with its inputs bounded")]
+    #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only): reads the files as one program, checks it and, when it checks, proves it. cache_dir is the directory of the caches when there is one: proofs found before are not asked again and new ones are written back, and with reuse an unchanged fully proved definition is not encoded again (the per-definition cache; reuse is off for --emit-smt, which needs every script); audit proves such a definition anyway and compares. only names the definitions to prove when it is not empty; the whole program is still checked and each gets its whole-program status, and the per-definition cache is read lazily with the keys of those alone. bounded asks each undecided obligation once more with its inputs bounded")]
     #[effects(alloc, io, nondet)]
-    fn verify(files: &[Input], cache_dir: &Option<String>, only: &[String], bounded: bool) -> Proved {
+    fn verify(files: &[Input], cache_dir: &Option<String>, only: &[String], bounded: bool, reuse: bool, audit: bool) -> Proved {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let fe: Front = frontend(files, &mut sm, &mut diags);
         if diags.has_errors() {
-            return Proved { ok: false, output: diags.to_jsonl(&sm), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None };
+            return Proved { ok: false, output: diags.to_jsonl(&sm), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None, incr: None, incr_error: None };
         }
         let mut store: Option<cache::ProofCache> = match cache_dir {
             None => None,
@@ -804,8 +804,13 @@ mod lib {
             wanted.push(only[i].clone());
         }
         let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        let mut incr: Option<incremental::Session> = match cache_dir {
+            None => None,
+            Some(dir0) => { if reuse { Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, bounded, audit)) } else { None } },
+        };
         let mut z3: toolchain::Z3 = toolchain::new();
-        let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut diags);
+        let out: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut diags);
         let mut hits: usize = 0;
         let mut misses: usize = 0;
         let mut cache_error: Option<String> = None;
@@ -815,6 +820,8 @@ mod lib {
         }
         let mut output: String = diags.to_jsonl(&sm);
         output.push_str(prove::status_lines(out.statuses.as_slice()).as_str());
+        let incr_error: Option<String> = incremental::save_slot(&mut incr);
+        let incr_stats: Option<incremental::Stats> = incremental::stats_of(&incr);
         let mut ok: bool = !diags.has_errors();
         let mut missing: Vec<String> = Vec::new();
         for k in 0..only.len()
@@ -839,6 +846,6 @@ mod lib {
                 ok = false;
             }
         }
-        Proved { ok: ok, output: output, scripts: out.scripts, hits: hits, misses: misses, missing: missing, cache_error: cache_error }
+        Proved { ok: ok, output: output, scripts: out.scripts, hits: hits, misses: misses, missing: missing, cache_error: cache_error, incr: incr_stats, incr_error: incr_error }
     }
 }

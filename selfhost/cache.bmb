@@ -128,15 +128,11 @@ mod cache {
         within(dir, "proofs")
     }
 
-    #[summary("Writes the cache back when something was added (stage0 ProofCache::save): the header, then one line per entry in key order, so the file is deterministic. Written to `proofs.tmp`, a new file in place of whatever was there, and renamed. The error is the system's text")]
+    #[summary("Writes the cache back when something was added (stage0 ProofCache::save): the header, then one line per entry in key order, so the file is deterministic (write_file). The error is the system's text")]
     #[effects(alloc, io)]
     fn save(c: &ProofCache, dir: &str) -> Result<(), String> {
         if c.added == 0 {
             return Ok(());
-        }
-        match std::fs::create_dir_all(dir) {
-            Ok(u) => {},
-            Err(e) => { return Err(e.message); },
         }
         let mut out: String = magic();
         out.push_str("\n");
@@ -148,19 +144,7 @@ mod cache {
                 Some(at) => { out.push_str(c.known.key(n).as_str()); out.push_str(" "); std::num::push_u64(&mut out, c.known.items[at].total); out.push_str(" "); std::num::push_u64(&mut out, c.known.items[at].max); out.push_str(" "); std::num::push_u64(&mut out, c.known.items[at].stages as u64); out.push_str("\n"); },
             }
         }
-        let tmp: String = within(dir, "proofs.tmp");
-        match std::fs::remove_file(tmp.as_str()) {
-            Ok(u) => {},
-            Err(e) => { if e.code != 2 { return Err(e.message); } },
-        }
-        match std::fs::write_new(tmp.as_str(), out.as_bytes()) {
-            Ok(u) => {},
-            Err(e) => { return Err(e.message); },
-        }
-        match std::fs::rename(tmp.as_str(), path(dir).as_str()) {
-            Ok(u) => Ok(()),
-            Err(e) => Err(e.message),
-        }
+        write_file(dir, "proofs", out.as_str())
     }
 
     #[summary("File name in directory dir (Rust's Path::join of a relative name): the name alone for an empty dir, and no second separator after a dir that ends in one")]
@@ -173,5 +157,27 @@ mod cache {
             return types::cat2(dir, name);
         }
         types::cat3(dir, "/", name)
+    }
+
+    #[summary("Writes text as file name of directory dir, made with its parents when missing: to `name.tmp`, a new file in place of whatever was there (stage0 workspace::write_new), then renamed to name, so a reader never sees half a file. The error is the system's text")]
+    #[effects(alloc, io)]
+    fn write_file(dir: &str, name: &str, text: &str) -> Result<(), String> {
+        match std::fs::create_dir_all(dir) {
+            Ok(u) => {},
+            Err(e) => { return Err(e.message); },
+        }
+        let tmp: String = within(dir, types::cat2(name, ".tmp").as_str());
+        match std::fs::remove_file(tmp.as_str()) {
+            Ok(u2) => {},
+            Err(e2) => { if e2.code != 2 { return Err(e2.message); } },
+        }
+        match std::fs::write_new(tmp.as_str(), text.as_bytes()) {
+            Ok(u3) => {},
+            Err(e3) => { return Err(e3.message); },
+        }
+        match std::fs::rename(tmp.as_str(), within(dir, name).as_str()) {
+            Ok(u4) => Ok(()),
+            Err(e4) => Err(e4.message),
+        }
     }
 }

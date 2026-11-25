@@ -279,6 +279,39 @@ mod identity {
             }
         }
 
+        #[summary("The functions that define method name of trait trait_path, as method_read writes them: `impl` and each impl's function in source order, then `default` and the default body when there is one")]
+        #[effects(alloc)]
+        fn method_defs(self: &Ids, pr: &mut fmt::Printer, trait_path: &str, name: &str) -> String {
+            let mut out: String = String::new();
+            let list: Vec<usize> = match self.impls_of_trait.find(trait_path) {
+                None => Vec::new(),
+                Some(l) => self.impls_of_trait.items[l].clone(),
+            };
+            for a in 0..list.len()
+                invariant 0 <= a && a <= list.len(),
+            {
+                let i: usize = list[a];
+                if i < self.impls.len() {
+                    for b in 0..self.impls[i].names.len()
+                        invariant 0 <= b && b <= self.impls[i].names.len(),
+                    {
+                        if b < self.impls[i].paths.len() && self.impls[i].names[b] == name {
+                            out.push_str("impl ");
+                            out.push_str(pr.entity("0", self.impls[i].paths[b].as_str()).as_str());
+                            out.push_str("\n");
+                        }
+                    }
+                }
+            }
+            let default: String = types::cat4("0:", trait_path, "::", name);
+            if self.ents.has(default.as_str()) {
+                out.push_str("default ");
+                out.push_str(pr.entity("0", types::cat3(trait_path, "::", name).as_str()).as_str());
+                out.push_str("\n");
+            }
+            out
+        }
+
         #[summary("Method order of trait path within component comp: per method, the hash of its text with the component erased and of the erased texts of the impl functions that define it. Ties by name")]
         #[effects(alloc)]
         fn method_order(self: &Ids, pr: &mut fmt::Printer, path: &str, comp: &[String]) -> Vec<String> {
@@ -311,6 +344,18 @@ mod identity {
             out
         }
 
+        #[summary("Method name of trait trait_path as an incremental proof key reads it (stage0 Ids::method_read): its position in the trait's declaration and its trait, its declaration's caller surface, and the functions that define it (each impl's, in source order, then the default body). The declaration is printed before the trait is referred to, as stage0 does. None when there is no such trait or method")]
+        #[effects(alloc)]
+        fn method_read(self: &Ids, pr: &mut fmt::Printer, trait_path: &str, name: &str) -> Option<String> {
+            let tk: String = types::cat2("2:", trait_path);
+            let at: usize = self.ents.find(tk.as_str())?;
+            match &self.ents.items[at].kind {
+                EntKind::Def(d, c) => None,
+                EntKind::Type(td) => None,
+                EntKind::Trait(t) => { let k: usize = method_at(t, name)?; if k >= t.fns.len() { return None; } fresh(pr, self.ents.items[at].unit.as_str()); let decl: ast::FnDef = fmt::without_uses(&t.fns[k].f); pr.function(&decl, 0, "_", false, 1000000000); let text: String = pr.out.clone(); let mut out: String = String::from("method "); std::num::push_u64(&mut out, k as u64); out.push_str(" of "); out.push_str(pr.entity("2", trait_path).as_str()); out.push_str("\n"); out.push_str(text.as_str()); out.push_str(self.method_defs(pr, trait_path, name).as_str()); Some(out) },
+            }
+        }
+
         #[summary("Text of key. Methods of a trait in the order of order (names). pr.names determines the reference texts")]
         #[effects(alloc)]
         fn print(self: &Ids, pr: &mut fmt::Printer, key: &str, part: &Part, order: &[String]) -> String {
@@ -323,6 +368,17 @@ mod identity {
                 EntKind::Def(d, c) => { let mut head: String = String::new(); match c { Ctx::Free => {}, Ctx::Impl(h) => { if h.generics.len() > 0 { head.push_str("impl"); head.push_str(pr.generics(h.generics.as_slice()).as_str()); head.push_str(" "); head.push_str(pr.applied_ty(h.name.as_str(), h.args.as_slice()).as_str()); head.push_str("\n"); } }, Ctx::TraitImpl(th) => { head.push_str("impl"); head.push_str(pr.generics(th.generics.as_slice()).as_str()); head.push_str(" "); let full: String = trait_path(&pr.names.traits, self.ents.items[at].unit.as_str(), th.trait_path.as_slice()); head.push_str(pr.method_ref(full.as_str(), d.name.name.as_str()).as_str()); head.push_str(" for "); head.push_str(pr.ty(&th.self_ty).as_str()); head.push_str("\n"); }, Ctx::Default(tr) => { head.push_str("default "); head.push_str(pr.method_ref(tr.as_str(), d.name.name.as_str()).as_str()); head.push_str("\n"); }, } pr.out = head; match part { Part::Body => pr.function(d, 0, "_", true, 1000000000), Part::Iface => pr.function(d, 0, "_", false, 1000000000), Part::Caller => { let g: ast::FnDef = fmt::without_uses(d); pr.function(&g, 0, "_", false, 1000000000); }, } pr.out.clone() },
                 EntKind::Type(td) => { pr.type_def_as(td, 0, "_"); let mut out: String = pr.out.clone(); match self.impls_of_type.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_type.items[l].as_slice()).as_str()), } out },
                 EntKind::Trait(t) => { let mut idx: Vec<usize> = Vec::new(); for i in 0..order.len() invariant 0 <= i && i <= order.len(), { match method_at(t, order[i].as_str()) { None => {}, Some(k) => idx.push(k), } } pr.trait_identity(t, idx.as_slice(), 1000000000); let mut out: String = pr.out.clone(); match self.impls_of_trait.find(path_of(key).as_str()) { None => {}, Some(l) => out.push_str(self.impl_lines(pr, self.impls_of_trait.items[l].as_slice()).as_str()), } out },
+            }
+        }
+
+        #[summary("The nameless text of key as an incremental proof key reads it (stage0 Ids::read_text), references written as pr's mode writes them: a definition's whole text (read 0), the surface a caller reads (1) or its declaration (2), a type's declaration without its impls, a trait as `trait` (a key reaches what it reads of a trait through its methods, method_read). None when the program has no such item")]
+        #[effects(alloc)]
+        fn read_text(self: &Ids, pr: &mut fmt::Printer, key: &str, read: u8) -> Option<String> {
+            let at: usize = self.ents.find(key)?;
+            match &self.ents.items[at].kind {
+                EntKind::Def(d, c) => { let none: Vec<String> = Vec::new(); if read == 0 { Some(self.print(pr, key, &Part::Body, none.as_slice())) } else if read == 1 { Some(self.print(pr, key, &Part::Caller, none.as_slice())) } else { Some(self.print(pr, key, &Part::Iface, none.as_slice())) } },
+                EntKind::Type(td) => { fresh(pr, self.ents.items[at].unit.as_str()); pr.type_def_as(td, 0, "_"); Some(pr.out.clone()) },
+                EntKind::Trait(t) => Some(String::from("trait")),
             }
         }
 

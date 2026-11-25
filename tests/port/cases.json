@@ -2090,6 +2090,179 @@
       }
     },
     {
+      "name": "incr",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/incr/base.txt",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb",
+          "tests/verify/pass/traits.bmb",
+          "tests/verify/pass/trait_contracts.bmb",
+          "tests/verify/pass/invariants.bmb",
+          "tests/verify/pass/recursion.bmb",
+          "tests/verify/pass/rec_structs.bmb",
+          "tests/verify/pass/generics.bmb",
+          "tests/verify/pass/bit_vector.bmb",
+          "tests/verify/pass/closure_context.bmb",
+          "tests/verify/pass/uses_impl_path.bmb",
+          "tests/verify/pass/default_context.bmb",
+          "tests/verify/pass/proofs.bmb",
+          "tests/verify/fail/proofs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "incr-edits",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/edits.sh",
+        "{bmb}",
+        "{root}/tests/port/incr"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/edits.sh",
+        "{build:stage1}",
+        "{root}/tests/port/incr"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "incr-damaged",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/damaged.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/damaged.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/incr/base.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "incr-cross",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/cross.sh",
+        "{bmb}",
+        "{build:stage1}",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/cross.sh",
+        "{build:stage1}",
+        "{bmb}",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/incr/base.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "incr-ends",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "incr-lint",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/incr/lint.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/incr/lint.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "incr-fake",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "timeout unsat unknown unsat unsat",
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "timeout unsat unknown unsat unsat",
+        "sh",
+        "{root}/tests/port/incr/runs.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/series.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/verify/pass/bit_vector.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
       "name": "verify-solver-old",
       "component": "C7",
       "a": [

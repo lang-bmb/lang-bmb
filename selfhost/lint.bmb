@@ -235,7 +235,16 @@ mod lint {
             }
         } else {
             let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false };
-            let base: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut diags);
+            let pg0: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+            let mut incr: Option<incremental::Session> = match cache_dir {
+                None => None,
+                Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg0.pr, &opts.only, false, false)),
+            };
+            let base: prove::Outcome = prove::run_cached(&fe.ck, &pg0, &opts, &mut store, &mut incr, &mut z3, &mut diags);
+            match incremental::save_slot(&mut incr) {
+                None => {},
+                Some(why) => { match cache_dir { None => {}, Some(dir1) => { eprint_str("bmb: cannot write incremental cache in "); eprint_str(dir1.as_str()); eprint_str(": "); eprint_str(why.as_str()); eprint_str("\n"); }, } },
+            }
             statuses = base.statuses;
         }
         let mut out: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };

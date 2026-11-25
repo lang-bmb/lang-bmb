@@ -9,8 +9,8 @@ mod fmt {
     #[summary("Repeat count written as the name of a const: position of the count and that name")]
     struct LenName { file: u32, lo: u32, hi: u32, name: String }
 
-    #[summary("Ways of writing names: as written, qualified (other definitions by full path), identity reference collection (records a key per reference and writes #?), identity (references as the text of table refs)")]
-    enum Mode { Plain, Qualify, Collect, Identity }
+    #[summary("Ways of writing names: as written, qualified (other definitions by full path), identity reference collection (records a key per reference and writes #?), identity (references as the text of table refs), identity numbered as an incremental proof key writes it (each reference `@k`, k counted in order of first reference: stage0 incremental's Numbering; refs holds the numbers given and seen their keys in that order, a trait method under `m:` its trait's path, a space and its name), identity with references erased (`@?`: stage0 incremental's Erased)")]
+    enum Mode { Plain, Qualify, Collect, Identity, Number, Erase }
 
     #[summary("What the printer uses to resolve names. Qualified and identity read the checker's tables (fns, adts, expression types types) and unit, the unit of the definition being printed. Identity additionally holds the full paths of traits traits, the reference texts refs (the key is the kind digit 0 definition·1 type·2 trait, a colon, the full path), the collected keys seen, and the slots of bound names (binders: from name to _k, labels: from label to _k). A binding name is unique within a function (E0303), so one table holds the whole definition")]
     struct Names { mode: Mode, unit: String, fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, traits: Vec<String>, refs: table::Table<RefRow>, seen: Vec<String>, binders: table::Table<String>, labels: table::Table<String>, next: usize, next_label: usize }
@@ -406,6 +406,8 @@ mod fmt {
                 Mode::Qualify => false,
                 Mode::Collect => true,
                 Mode::Identity => false,
+                Mode::Number => false,
+                Mode::Erase => false,
             }
         }
 
@@ -466,6 +468,14 @@ mod fmt {
                     self.names.seen.push(key.clone());
                 }
                 return String::from("#?");
+            }
+            match &self.names.mode {
+                Mode::Plain => {},
+                Mode::Qualify => {},
+                Mode::Collect => {},
+                Mode::Identity => {},
+                Mode::Number => { return self.number(key.as_str()); },
+                Mode::Erase => { return String::from("@?"); },
             }
             match self.names.refs.find(key.as_str()) {
                 None => types::cat3("#?", path, ""),
@@ -895,6 +905,8 @@ mod fmt {
                 Mode::Qualify => false,
                 Mode::Collect => true,
                 Mode::Identity => true,
+                Mode::Number => true,
+                Mode::Erase => true,
             }
         }
 
@@ -906,6 +918,8 @@ mod fmt {
                 Mode::Qualify => false,
                 Mode::Collect => false,
                 Mode::Identity => false,
+                Mode::Number => false,
+                Mode::Erase => false,
             }
         }
 
@@ -1126,6 +1140,14 @@ mod fmt {
         fn method_ref(self: &mut Printer, trait_path: &str, name: &str) -> String {
             if !self.is_id() {
                 return types::cat3(trait_path, "::", name);
+            }
+            match &self.names.mode {
+                Mode::Plain => {},
+                Mode::Qualify => {},
+                Mode::Collect => {},
+                Mode::Identity => {},
+                Mode::Number => { return self.number(types::cat4("m:", trait_path, " ", name).as_str()); },
+                Mode::Erase => { return String::from("@?"); },
             }
             let mut s: String = self.entity("2", trait_path);
             if self.collecting() {
@@ -1380,6 +1402,20 @@ mod fmt {
             }
         }
 
+        #[summary("The reference `@k` of key in the numbered identity text: the number refs gave it, or the next one, recorded with the key at the end of seen")]
+        #[effects(alloc)]
+        fn number(self: &mut Printer, key: &str) -> String {
+            match self.names.refs.find(key) {
+                None => {},
+                Some(at) => { return self.names.refs.items[at].text.clone(); },
+            }
+            let mut text: String = String::from("@");
+            std::num::push_u64(&mut text, self.names.seen.len() as u64);
+            self.names.seen.push(String::from(key));
+            self.names.refs.insert(key, RefRow { text: text.clone(), methods: Vec::new() });
+            text
+        }
+
         #[summary("A multi-line form on one line inside an expression: trims each line and joins with a space")]
         #[effects(alloc)]
         fn one_line(self: &mut Printer, e: &ast::Expr, f: usize) -> String
@@ -1483,6 +1519,8 @@ mod fmt {
                 Mode::Qualify => true,
                 Mode::Collect => false,
                 Mode::Identity => false,
+                Mode::Number => false,
+                Mode::Erase => false,
             };
             if !on || path.len() > 2 {
                 return false;
