@@ -95,7 +95,6 @@ fn cached_output_is_identical_and_warm_runs_skip_proved_obligations() {
             // With an escape (ADR-0029 §2) also those proved only with
             // trusted facts: they fail first, without them, and a failure
             // is not cached. One per `assumed` definition at least.
-            let assumed = plain.output.matches("\"trust\":\"assumed\"").count();
             let failed: usize = plain
                 .output
                 .lines()
@@ -111,12 +110,18 @@ fn cached_output_is_identical_and_warm_runs_skip_proved_obligations() {
                 })
                 .sum();
             assert_eq!(cold.cache.0 + cold.cache.1, warm.cache.0 + warm.cache.1);
-            let without_trust: usize = if assumed > 0 {
-                // Each obligation of an `assumed` definition at most.
+            // A definition with escapes that fails has no `trust` key: it
+            // too was asked without its trusted facts first.
+            let trusted = |l: &str| {
+                l.contains("\"trust\":\"assumed\"")
+                    || (l.contains("\"status\":\"failed\"") && l.contains("\"escapes\":"))
+            };
+            let without_trust: usize = if plain.output.lines().any(trusted) {
+                // Each obligation of such a definition at most.
                 plain
                     .output
                     .lines()
-                    .filter(|l| l.contains("\"trust\":\"assumed\""))
+                    .filter(|l| trusted(l))
                     .map(|l| {
                         let i = l.find("\"obligations\":").unwrap() + 14;
                         l[i..]

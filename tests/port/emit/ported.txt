@@ -416,6 +416,7 @@ tests/tools/fgrep.bmb
 tests/tools/wc.bmb
 tests/verify/fail/arith.bmb
 tests/verify/fail/arith_methods.bmb
+tests/verify/fail/assumed_values.bmb
 tests/verify/fail/bit_vector.bmb
 tests/verify/fail/bits.bmb
 tests/verify/fail/bounds.bmb
@@ -461,6 +462,7 @@ tests/verify/fail/tries.bmb
 tests/verify/fail/utf8_facts.bmb
 tests/verify/fail/vec_recursion.bmb
 tests/verify/fail/vecs.bmb
+tests/verify/fail/verdict_rows.bmb
 tests/verify/fail/weak_witness.bmb
 tests/verify/fail/widths.bmb
 tests/verify/pass/arith.bmb
