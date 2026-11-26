@@ -212,3 +212,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0159](0159-a-package-calls-a-package-through-the-package-manager.md) | A package calls a package through the package manager | Accepted |
 | [0160](0160-a-status-row-carries-escapes-and-termination.md) | A status row of `bmb verify` carries escapes and unproved termination | Accepted |
 | [0161](0161-a-counterexample-shows-what-it-assumes-of-a-hidden-spec-fn.md) | A counterexample shows what it assumes of a spec fn seen only by name | Accepted |
+| [0162](0162-the-values-of-self-proof-after-the-minimal-experiment.md) | The values of self-proof after the minimal experiment | Accepted |
