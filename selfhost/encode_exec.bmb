@@ -458,11 +458,26 @@ mod encode_exec {
                 {
                     if i < argv.len() && i < param_tys.len() {
                         let tf: Vec<String> = encode_spec::type_facts(&argv[i], &param_tys[i], pg, 100000);
+                        let mut goals: Vec<String> = Vec::new();
                         for k in 0..tf.len()
                             invariant 0 <= k && k <= tf.len(),
                         {
-                            if !types::has(self.enc.pc.as_slice(), tf[k].as_str()) {
-                                self.oblige("E0819", args[i].span, types::cat7("argument `", fmt::expr_text(&args[i]).as_str(), "` of `", target, "` may be outside `", types::text(&param_tys[i]).as_str(), "`").as_str(), tf[k].as_str());
+                            if !types::has(self.enc.pc.as_slice(), tf[k].as_str()) && !types::has(goals.as_slice(), tf[k].as_str()) {
+                                goals.push(tf[k].clone());
+                            }
+                        }
+                        if goals.len() > 0 {
+                            self.oblige("E0819", args[i].span, types::cat7("argument `", fmt::expr_text(&args[i]).as_str(), "` of `", target, "` may be outside `", types::text(&param_tys[i]).as_str(), "`").as_str(), encode_terms::and(goals.as_slice()).as_str());
+                            let checking: bool = match &self.enc.term_check {
+                                None => false,
+                                Some(tc) => true,
+                            };
+                            if goals.len() > 1 && !checking {
+                                for k in 0..goals.len()
+                                    invariant 0 <= k && k <= goals.len(),
+                                {
+                                    self.enc.pc.push(goals[k].clone());
+                                }
                             }
                         }
                     }

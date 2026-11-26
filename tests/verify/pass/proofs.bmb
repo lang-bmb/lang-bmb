@@ -244,4 +244,22 @@ mod pg {
         }
         x
     }
+
+    struct Pair { a: u8, b: u8 }
+
+    spec fn bump(p: Pair) -> Pair {
+        Pair { a: p.a + 1, b: p.b + 1 }
+    }
+
+    proof fn takes(p: Pair) {
+    }
+
+    // The leaves of a struct argument are asked together: one obligation
+    // for the argument.
+    #[uses(bump)]
+    proof fn pair_inside(p: Pair)
+        requires p.a < 255, p.b < 255,
+    {
+        takes(bump(p));
+    }
 }

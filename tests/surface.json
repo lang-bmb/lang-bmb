@@ -950,8 +950,8 @@
    "src": "2cbd9b42ff15271d"
   },
   "tests/verify/fail/proofs.bmb": {
-   "out": "988e69a791b7323e",
-   "src": "2465d97a9d138c60"
+   "out": "66f96b831b0a689e",
+   "src": "393b54eb925d4a53"
   },
   "tests/verify/fail/ranges.bmb": {
    "out": "6857b99625fcd886",
@@ -1162,8 +1162,8 @@
    "src": "5508bb2816f8948d"
   },
   "tests/verify/pass/proofs.bmb": {
-   "out": "0c7e42e264f95da8",
-   "src": "618c003288f6b551"
+   "out": "f04e1cb8770ad575",
+   "src": "8d07cb3394d0ab17"
   },
   "tests/verify/pass/range_instances.bmb": {
    "out": "3f776222c69972b2",

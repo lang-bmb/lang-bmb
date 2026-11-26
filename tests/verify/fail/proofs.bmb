@@ -123,4 +123,19 @@ mod pff {
         }
         0
     }
+
+    struct Pair { a: u8, b: u8 }
+
+    spec fn bump(p: Pair) -> Pair {
+        Pair { a: p.a + 1, b: p.b + 1 }
+    }
+
+    proof fn takes(p: Pair) {
+    }
+
+    // The leaves of a struct argument are asked together: one obligation
+    // and one diagnostic for the argument, not one per field.
+    proof fn pair_outside(p: Pair) {
+        takes(bump(p));
+    }
 }

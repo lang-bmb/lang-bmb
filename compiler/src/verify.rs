@@ -7102,21 +7102,33 @@ impl<'p, 'q> Enc<'p, 'q> {
                 .iter()
                 .map(|t| crate::check::subst(t, &csub))
                 .collect();
+            // One obligation per argument: the facts of a struct's leaves
+            // are asked together (each alone sent the whole context again,
+            // nine times for a struct of nine integers).
             for ((v, t), a) in argv.iter().zip(&tys).zip(args) {
+                let mut goals: Vec<String> = Vec::new();
                 for g in self.type_facts(v, t) {
-                    if self.pc.contains(&g) {
-                        continue;
+                    if !self.pc.contains(&g) && !goals.contains(&g) {
+                        goals.push(g);
                     }
-                    self.oblige(
-                        "E0819",
-                        a.span,
-                        format!(
-                            "argument `{}` of `{target}` may be outside `{}`",
-                            crate::fmt::expr_text(a),
-                            crate::check::ty_str(t)
-                        ),
-                        g,
-                    );
+                }
+                if goals.is_empty() {
+                    continue;
+                }
+                self.oblige(
+                    "E0819",
+                    a.span,
+                    format!(
+                        "argument `{}` of `{target}` may be outside `{}`",
+                        crate::fmt::expr_text(a),
+                        crate::check::ty_str(t)
+                    ),
+                    and(&goals),
+                );
+                // Each fact by itself too: a later call with the same
+                // argument finds it.
+                if goals.len() > 1 && self.term_check.is_none() {
+                    self.pc.extend(goals);
                 }
             }
         }

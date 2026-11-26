@@ -5,13 +5,16 @@
 {"code":"E0802","severity":"error","message":"postcondition `big` may not hold in `pff::wrong`; counterexample: x = 1","file":"fail/proofs.bmb","line":101,"col":17,"end_line":101,"end_col":23}
 {"code":"E0810","severity":"error","message":"assertion may not hold in `pff::asserts`; counterexample: x = 1","file":"fail/proofs.bmb","line":109,"col":9,"end_line":109,"end_col":23}
 {"code":"E0801","severity":"error","message":"precondition `within` of `pff::grows` may not hold in `pff::first`; counterexample: a = [] (len 0)","file":"fail/proofs.bmb","line":122,"col":13,"end_line":122,"end_col":27}
+{"code":"E0819","severity":"error","message":"argument `bump(p)` of `pff::takes` may be outside `pff::Pair` in `pff::pair_outside`; counterexample: p = Pair { a: 255, b: 255 }","file":"fail/proofs.bmb","line":139,"col":15,"end_line":139,"end_col":22}
 {"def":"pff::asserts","status":"failed","obligations":1,"failed":1,"rlimit":271,"rlimit_max":271}
 {"def":"pff::below_zero","status":"failed","obligations":2,"failed":1,"rlimit":27877,"rlimit_max":27664}
 {"def":"pff::circular","status":"failed","obligations":3,"failed":1,"rlimit":2271,"rlimit_max":1384}
 {"def":"pff::first","status":"failed","obligations":3,"failed":1,"rlimit":1123,"rlimit_max":832}
 {"def":"pff::grows","status":"verified","obligations":4,"failed":0,"rlimit":8230,"rlimit_max":4345}
 {"def":"pff::natural","status":"verified","obligations":1,"failed":0,"rlimit":412,"rlimit_max":412}
+{"def":"pff::pair_outside","status":"failed","obligations":1,"failed":1,"rlimit":752,"rlimit_max":752}
 {"def":"pff::sum_to","status":"verified","obligations":1,"failed":0,"rlimit":180,"rlimit_max":180}
+{"def":"pff::takes","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}
 {"def":"pff::tri","status":"verified","obligations":1,"failed":0,"rlimit":146,"rlimit_max":146}
 {"def":"pff::tri_le","status":"failed","obligations":3,"failed":1,"rlimit":5002550,"rlimit_max":5000188}
 {"def":"pff::unestablished","status":"failed","obligations":4,"failed":1,"rlimit":4190,"rlimit_max":2568}
