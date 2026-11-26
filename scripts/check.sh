@@ -86,7 +86,7 @@ step "test, surface, port checks, port difftest 1..$port_shards, bootstrap fixed
 python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" "${port_jobs[@]}" \
   --job "test doc=cargo test --doc --quiet" \
   --job "surface=python3 scripts/test_surface.py" \
-  --job "port checks=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb" \
+  --job "port checks=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb && target/debug/bmb fmt --check lib/std/*.bmb" \
   --job "bootstrap fixed point=python3 scripts/bootstrap.py run > /dev/null" \
   --job "gate scripts=python3 scripts/test_gate_scripts.py" \
   --job "gate power rules=python3 scripts/test_gate_power.py" \

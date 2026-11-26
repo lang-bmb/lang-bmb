@@ -33,6 +33,7 @@ The language surface carries its own version, apart from the compiler crate's.
 ### Standard library
 
 - 11 units, all proved: `base64`, `bytes`, `collections`, `crc32`, `intern`, `json`, `num`, `sha256`, `slice`, `str`, `utf8`.
+- The units are in the normal form, and the explanations that were comments are the `#[summary]` of the definitions they explain (ADR-0158). A map, `bmb query` and `bmb dump std` show these summaries for library definitions; `bmb fmt` of a program that holds a library file leaves it as it is. Definitions, identity hashes, proof obligations and their costs are unchanged; positions in the library's units (diagnostics, the offsets in query comments) moved with the text, and the identity digest of the compiler, which covers the embedded text, changed.
 
 ### Repository
 

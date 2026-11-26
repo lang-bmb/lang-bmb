@@ -208,3 +208,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0155](0155-the-anchor-and-the-roads-kept-open.md) | The anchor of the design, and the roads kept open | Accepted |
 | [0156](0156-packages-as-working-material-before-gate-e.md) | Packages are built as working material before gate E | Accepted |
 | [0157](0157-byte-round-trips-in-the-proof-encoder.md) | Byte round trips in the proof encoder | Accepted (autonomous) |
+| [0158](0158-the-standard-library-is-in-the-normal-form.md) | The standard library is in the normal form | Accepted |
