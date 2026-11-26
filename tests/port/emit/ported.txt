@@ -376,6 +376,7 @@ tests/run/numlist.bmb
 tests/run/order.bmb
 tests/run/owned_arrays.bmb
 tests/run/owned_fields.bmb
+tests/run/param_names.bmb
 tests/run/points.bmb
 tests/run/primes.bmb
 tests/run/ranges.bmb
