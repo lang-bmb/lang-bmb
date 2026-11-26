@@ -847,6 +847,10 @@
    "out": "bf5318d29b3af84f",
    "src": "150f6eea322ff5ac"
   },
+  "tests/verify/fail/byte_round_trips.bmb": {
+   "out": "7fd73d3336440fc7",
+   "src": "ed43693092593ae9"
+  },
   "tests/verify/fail/bytes.bmb": {
    "out": "5231618c34ae0139",
    "src": "4ff731de34839fc5"
@@ -1038,6 +1042,10 @@
   "tests/verify/pass/boxes.bmb": {
    "out": "8266910a2544c705",
    "src": "ed33f93cea28d044"
+  },
+  "tests/verify/pass/byte_round_trips.bmb": {
+   "out": "a2ebbc6587bf8396",
+   "src": "d6890f42bdaa917b"
   },
   "tests/verify/pass/bytes.bmb": {
    "out": "e727a36e6c528ab6",

@@ -1,0 +1,25 @@
+#[summary("Round trips of bytes that do not hold (ADR-0157): bytes read back in the other order, or as a type of the other sign, are refuted with a counterexample")]
+mod brtf {
+    #[effects(pure)]
+    fn other_order(x: u64) -> (r: u64)
+        ensures r == x,
+    {
+        u64::from_le_bytes(x.to_be_bytes())
+    }
+
+    proof fn other_order_spec(x: u32)
+        ensures u32::from_be_bytes(x.to_le_bytes()) == x,
+    {}
+
+    proof fn other_sign(x: u8)
+        ensures i8::from_le_bytes(x.to_le_bytes()) == x,
+    {}
+
+    #[effects(pure)]
+    fn shifted_copy(x: u32) -> (r: u32)
+        ensures r == x,
+    {
+        let b: [u8; 4] = x.to_le_bytes();
+        u32::from_le_bytes([b[1], b[2], b[3], b[0]])
+    }
+}

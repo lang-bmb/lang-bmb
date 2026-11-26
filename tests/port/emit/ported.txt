@@ -420,6 +420,7 @@ tests/verify/fail/bit_vector.bmb
 tests/verify/fail/bits.bmb
 tests/verify/fail/bounds.bmb
 tests/verify/fail/boxes.bmb
+tests/verify/fail/byte_round_trips.bmb
 tests/verify/fail/bytes.bmb
 tests/verify/fail/consts_data.bmb
 tests/verify/fail/contracts.bmb
@@ -468,6 +469,7 @@ tests/verify/pass/arm_name_then_loop.bmb
 tests/verify/pass/bit_vector.bmb
 tests/verify/pass/bits.bmb
 tests/verify/pass/boxes.bmb
+tests/verify/pass/byte_round_trips.bmb
 tests/verify/pass/bytes.bmb
 tests/verify/pass/closure_context.bmb
 tests/verify/pass/conditions.bmb

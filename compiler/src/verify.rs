@@ -3287,10 +3287,11 @@ pub fn from_bytes_term(i: IntTy, le: bool, bs: &[String]) -> String {
         .map(|(k, b)| {
             let k = k as u32;
             let s = 8 * if le { k } else { n - 1 - k };
+            let b = byte_image(b);
             if s == 0 {
-                format!("(mod {b} 256)")
+                b
             } else {
-                format!("(* (mod {b} 256) {})", num(1i128 << s))
+                format!("(* {b} {})", num(1i128 << s))
             }
         })
         .collect();
@@ -3302,12 +3303,26 @@ pub fn from_bytes_term(i: IntTy, le: bool, bs: &[String]) -> String {
     if i.signed() { wrap_int(i, &u) } else { u }
 }
 
-/// `to_be_bytes`/`to_le_bytes` of `a`: the byte array value.
-pub fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
+/// The image of `b` in `u8`: `b` itself when it is a byte, so the solver
+/// needs no `mod` there (ADR-0157).
+fn byte_image(b: &str) -> String {
+    format!("(ite (and (<= 0 {b}) (<= {b} 255)) {b} (mod {b} 256))")
+}
+
+/// `to_be_bytes`/`to_le_bytes` of `a`: the byte array value. In a
+/// specification, when `a` is read from the bytes of an array `e` in the
+/// same order and width, byte `k` is the image of `e[k]` (ADR-0157; checked
+/// by `tests/lemmas.rs`); code assumes `from_bytes_fact` instead.
+pub fn bytes_val(i: IntTy, le: bool, a: &str, spec: bool) -> Val {
     let n = i.bits() / 8;
+    let read = unapply(a, |e| from_bytes_term(i, le, &byte_selects(e, n))).filter(|_| spec);
     let mut arr = "((as const (Array Int Int)) 0)".to_string();
     for k in 0..n {
-        arr = format!("(store {arr} {k} {})", byte_term(i, le, a, k));
+        let b = match &read {
+            Some(e) => byte_image(&format!("(select {e} {k})")),
+            None => byte_term(i, le, a, k),
+        };
+        arr = format!("(store {arr} {k} {b})");
     }
     Val::A {
         elems: arr,
@@ -3315,15 +3330,102 @@ pub fn bytes_val(i: IntTy, le: bool, a: &str) -> Val {
     }
 }
 
-/// `from_be_bytes`/`from_le_bytes` of the byte array value `v`.
+/// `from_be_bytes`/`from_le_bytes` of the byte array value `v`. Of the
+/// bytes of a value `a` in the same order and width, the image of `a` in
+/// `i` (ADR-0157; checked by `tests/lemmas.rs`).
 pub fn from_bytes_val(i: IntTy, le: bool, v: &Val) -> Val {
     let Val::A { elems, .. } = v else {
         panic!("bytes of a non-array {v:?}")
     };
-    let bs: Vec<String> = (0..i.bits() / 8)
-        .map(|k| format!("(select {elems} {k})"))
+    match bytes_source(i, le, elems) {
+        Some(a) => Val::S(wrap_int(i, &a)),
+        None => Val::S(from_bytes_term(i, le, &byte_selects(elems, i.bits() / 8))),
+    }
+}
+
+/// The `a` whose `a.to_be_bytes()` (`le` false) or `a.to_le_bytes()` of
+/// `i`'s width is the array `elems`.
+fn bytes_source(i: IntTy, le: bool, elems: &str) -> Option<String> {
+    unapply(elems, |a| match bytes_val(i, le, a, false) {
+        Val::A { elems, .. } => elems,
+        _ => unreachable!(),
+    })
+}
+
+/// What code assumes with `a.to_be_bytes()` (`le` false) or
+/// `a.to_le_bytes()`: for `a` in `i`'s range, the bytes read back in the
+/// same order are `a` (their `bytes_value`). The solver does not find this
+/// from the `div` and `mod` of the byte terms (ADR-0157; checked by
+/// `tests/lemmas.rs`).
+pub fn bytes_fact(i: IntTy, le: bool, a: &str) -> String {
+    let n = i.bits() / 8;
+    let Val::A { elems, .. } = bytes_val(i, le, a, false) else {
+        unreachable!()
+    };
+    let back = bytes_value(i, le, &byte_selects(&elems, n));
+    format!("(=> {} (= {back} {a}))", range_int(i, a))
+}
+
+/// The value of the bytes `bs` (values of `u8`) of `i` in index order,
+/// without `mod`: each at its place, less `2^w` from `2^(w - 1)` on for a
+/// signed type. The images through `mod` made the solver's search far
+/// costlier.
+fn bytes_value(i: IntTy, le: bool, bs: &[String]) -> String {
+    let n = bs.len() as u32;
+    let parts: Vec<String> = (0..n)
+        .map(|k| {
+            let s = 8 * if le { k } else { n - 1 - k };
+            format!("(* {} {})", bs[k as usize], num(1i128 << s))
+        })
         .collect();
-    Val::S(from_bytes_term(i, le, &bs))
+    let u = format!("(+ {})", parts.join(" "));
+    if !i.signed() {
+        return u;
+    }
+    let w = i.bits();
+    let (half, size) = (num(1i128 << (w - 1)), num(1i128 << w));
+    format!("(ite (< {u} {half}) {u} (- {u} {size}))")
+}
+
+/// What code assumes with `T::from_be_bytes(b)` or `T::from_le_bytes(b)`,
+/// `b`'s elements the array `e`: when they are values of `u8`, the result
+/// is their `bytes_value` and its bytes in the same order are `b`
+/// (ADR-0157; checked by `tests/lemmas.rs`). None when `e` is the bytes of
+/// a value, whose image is the result.
+pub fn from_bytes_fact(i: IntTy, le: bool, e: &str) -> Option<String> {
+    if bytes_source(i, le, e).is_some() {
+        return None;
+    }
+    let n = i.bits() / 8;
+    let bs = byte_selects(e, n);
+    let r = from_bytes_term(i, le, &bs);
+    let ranges: Vec<String> = bs.iter().map(|b| range_int(IntTy::U8, b)).collect();
+    let value = std::iter::once(format!("(= {r} {})", bytes_value(i, le, &bs)));
+    let same = (0..n).map(|k| format!("(= {} {})", byte_term(i, le, &r, k), bs[k as usize]));
+    let facts: Vec<String> = value.chain(same).collect();
+    Some(format!(
+        "(=> (and {}) (and {}))",
+        ranges.join(" "),
+        facts.join(" ")
+    ))
+}
+
+/// `(select e 0)` .. `(select e (n - 1))`.
+fn byte_selects(e: &str, n: u32) -> Vec<String> {
+    (0..n).map(|k| format!("(select {e} {k})")).collect()
+}
+
+/// The `a` for which `f(a)` is the text `t`, where `f` writes `a` some
+/// number of times into a text of its own: `a`'s length and place follow
+/// from `f`'s text with `#` for `a`, and the candidate is checked by
+/// writing it again.
+fn unapply(t: &str, f: impl Fn(&str) -> String) -> Option<String> {
+    let probe = f("#");
+    let at = probe.find('#')?;
+    let n = probe.matches('#').count();
+    let len = (t.len() + n).checked_sub(probe.len())? / n;
+    let a = t.get(at..at + len)?;
+    (f(a) == t).then(|| a.to_string())
 }
 
 /// `bit_method`'s term over `xa`, the bit-vector of `a`, and `xn`, the
@@ -4170,7 +4272,7 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                     m @ ("to_be_bytes" | "to_le_bytes") => {
                         let i = self.ty(recv).int().expect("an integer method");
-                        bytes_val(i, m == "to_le_bytes", &rv.s())
+                        bytes_val(i, m == "to_le_bytes", &rv.s(), true)
                     }
                     "is_power_of_two" => {
                         let i = self.ty(recv).int().expect("an integer method");
@@ -4899,7 +5001,9 @@ impl<'p, 'q> Enc<'p, 'q> {
                     }
                     m @ ("to_be_bytes" | "to_le_bytes") => {
                         let i = self.ty(recv).int().expect("an integer method");
-                        bytes_val(i, m == "to_le_bytes", &rv.s())
+                        let le = m == "to_le_bytes";
+                        self.pc.push(bytes_fact(i, le, &rv.s()));
+                        bytes_val(i, le, &rv.s(), false)
                     }
                     "is_power_of_two" => {
                         let i = self.ty(recv).int().expect("an integer method");
@@ -4950,7 +5054,13 @@ impl<'p, 'q> Enc<'p, 'q> {
             ExprKind::Call { path, args, .. } if crate::check::from_bytes_call(path).is_some() => {
                 let (i, le) = crate::check::from_bytes_call(path).expect("a byte conversion");
                 let v = self.eval(&args[0]);
-                from_bytes_val(i, le, &v)
+                let r = from_bytes_val(i, le, &v);
+                if let Val::A { elems, .. } = &v
+                    && let Some(f) = from_bytes_fact(i, le, elems)
+                {
+                    self.pc.push(f);
+                }
+                r
             }
             // `f64::from(x)` (ADR-0061 §4): exact for a source of 32 bits or
             // fewer; a 64-bit source must be within `2^53` (E0815).

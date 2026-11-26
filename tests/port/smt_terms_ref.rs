@@ -454,7 +454,7 @@ pub fn rows() -> String {
                 &format!("{name} {le}"),
                 &q(&from_bytes_term(i, le, &bs)),
             );
-            let bytes = bytes_val(i, le, "a");
+            let bytes = bytes_val(i, le, "a", false);
             term_row(o, "bytes_val", &format!("{name} {le}"), &term_val(&bytes));
             term_row(
                 o,
@@ -462,6 +462,39 @@ pub fn rows() -> String {
                 &format!("{name} {le}"),
                 &term_val(&from_bytes_val(i, le, &bytes)),
             );
+            // Bytes of a value read from bytes (a specification), and bytes
+            // that are an array of no value.
+            let sel: Vec<String> = (0..n).map(|k| format!("(select e {k})")).collect();
+            let read = from_bytes_term(i, le, &sel);
+            term_row(
+                o,
+                "bytes_val_spec",
+                &format!("{name} {le}"),
+                &term_val(&bytes_val(i, le, &read, true)),
+            );
+            let e = Val::A {
+                elems: "e".to_string(),
+                len: n.to_string(),
+            };
+            term_row(
+                o,
+                "from_bytes_val_array",
+                &format!("{name} {le}"),
+                &term_val(&from_bytes_val(i, le, &e)),
+            );
+            term_row(
+                o,
+                "bytes_fact",
+                &format!("{name} {le}"),
+                &q(&bytes_fact(i, le, "a")),
+            );
+            let Val::A { elems, .. } = &bytes else {
+                unreachable!()
+            };
+            for (what, arr) in [("e", "e"), ("bytes", elems.as_str())] {
+                let fact = from_bytes_fact(i, le, arr).map_or("null".to_string(), |f| q(&f));
+                term_row(o, "from_bytes_fact", &format!("{name} {le} {what}"), &fact);
+            }
         }
         for kind in ["wrapping", "saturating", "checked"] {
             for base in ["add", "sub", "mul", "div", "rem"] {

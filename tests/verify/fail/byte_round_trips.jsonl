@@ -1,0 +1,8 @@
+{"code":"E0802","severity":"error","message":"postcondition `r == x` may not hold in `brtf::other_order`; counterexample: x = 16777216","file":"fail/byte_round_trips.bmb","line":5,"col":17,"end_line":5,"end_col":23}
+{"code":"E0802","severity":"error","message":"postcondition `u32::from_be_bytes(x.to_le_bytes()) == x` may not hold in `brtf::other_order_spec`; counterexample: x = 16777215","file":"fail/byte_round_trips.bmb","line":11,"col":17,"end_line":11,"end_col":57}
+{"code":"E0802","severity":"error","message":"postcondition `i8::from_le_bytes(x.to_le_bytes()) == x` may not hold in `brtf::other_sign`; counterexample: x = 128","file":"fail/byte_round_trips.bmb","line":15,"col":17,"end_line":15,"end_col":56}
+{"code":"E0802","severity":"error","message":"postcondition `r == x` may not hold in `brtf::shifted_copy`; counterexample: x = 1","file":"fail/byte_round_trips.bmb","line":20,"col":17,"end_line":20,"end_col":23}
+{"def":"brtf::other_order","status":"failed","obligations":1,"failed":1,"rlimit":4902,"rlimit_max":4902}
+{"def":"brtf::other_order_spec","status":"failed","obligations":1,"failed":1,"rlimit":1124,"rlimit_max":1124}
+{"def":"brtf::other_sign","status":"failed","obligations":1,"failed":1,"rlimit":535,"rlimit_max":535}
+{"def":"brtf::shifted_copy","status":"failed","obligations":5,"failed":1,"rlimit":3528,"rlimit_max":2416}

@@ -57,6 +57,7 @@ If the expected type and the type of the expression differ, it is an E0401 error
 - For a value of a type parameter `T`, executable code needs `T: Eq` to use `==` and `!=`, and `T: Ord` to use ordering comparisons (E0428).
 - The methods of the integer types (`wrapping_add`, `saturating_sub`, `checked_mul`, `rotate_left`, `count_ones` and so on) and the methods of `f64` (`sqrt`, `abs`, `min`, `max`, `is_nan`, `is_finite`) are closed lists. A method that does not exist is E0404, and a wrong number of arguments to a method or function is an E0405 error.
 - Overflow, division by zero and the range of the shift amount are proof obligations (chapter 07).
+- `x.to_be_bytes()` and `x.to_le_bytes()` are the bytes of an integer as `[u8; w / 8]`, and `T::from_be_bytes(b)` and `T::from_le_bytes(b)` the integer of such an array (an array of another length is E0401). The proof decides the round trips in both directions, in the same order and width: `T::from_le_bytes(x.to_le_bytes()) == x` and `T::from_le_bytes(b).to_le_bytes() == b`, also through locals and fields, and in code through bytes copied, pushed or stored one at a time (ADR-0157). Corpus: `tests/verify/pass/byte_round_trips.bmb`, `tests/verify/fail/byte_round_trips.bmb`.
 - Corpus: `tests/run/bits.bmb`, `tests/run/arith_methods.bmb`, `tests/check/err/bits.bmb`, `tests/check/err/floats.bmb`.
 
 ## Conversions

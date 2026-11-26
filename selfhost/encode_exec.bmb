@@ -921,7 +921,7 @@ mod encode_exec {
             }
             match body::from_bytes_int(c.path.as_slice()) {
                 None => {},
-                Some(it) => { if one_arg { let bv: encode_terms::Val = self.eval(&c.args[0], pg, f - 1); return encode_terms::from_bytes_val(it, p1 == "from_le_bytes", &bv); } return encode_terms::Val::Unit; },
+                Some(it) => { if one_arg { let bv: encode_terms::Val = self.eval(&c.args[0], pg, f - 1); let rv: encode_terms::Val = encode_terms::from_bytes_val(it, p1 == "from_le_bytes", &bv); match encode_terms::parts(&bv) { None => {}, Some(bp) => match encode_terms::from_bytes_fact(it, p1 == "from_le_bytes", bp.a.as_str()) { None => {}, Some(fact) => self.enc.pc.push(fact), }, } return rv; } return encode_terms::Val::Unit; },
             }
             if body::is_f64_from(c.path.as_slice()) {
                 if !one_arg {
@@ -1166,7 +1166,8 @@ mod encode_exec {
                 return self.enc.checked(e, types::cat5("(< ", arg.as_str(), " ", encode_terms::dec(body::bits(i) as u64).as_str(), ")").as_str(), sv.as_str(), pg);
             }
             if m == "to_be_bytes" || m == "to_le_bytes" {
-                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str());
+                self.enc.pc.push(encode_terms::bytes_fact(i, m == "to_le_bytes", r.as_str()));
+                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str(), false);
             }
             if m == "is_power_of_two" {
                 let no_amount: Option<String> = None;

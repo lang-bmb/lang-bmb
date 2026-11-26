@@ -177,9 +177,25 @@ mod app {
                 bs.push(types::cat2("b", encode_terms::dec(k as u64).as_str()));
             }
             row(out, "from_bytes_term", nl.as_str(), quoted(encode_terms::from_bytes_term(i, le, bs.as_slice()).as_str()).as_str());
-            let bv: encode_terms::Val = encode_terms::bytes_val(i, le, "a");
+            let bv: encode_terms::Val = encode_terms::bytes_val(i, le, "a", false);
             row(out, "bytes_val", nl.as_str(), val_text(&bv, 100000).as_str());
             row(out, "from_bytes_val", nl.as_str(), val_text(&encode_terms::from_bytes_val(i, le, &bv), 100000).as_str());
+            let sel: Vec<String> = encode_terms::byte_selects("e", bytes);
+            let read: String = encode_terms::from_bytes_term(i, le, sel.as_slice());
+            row(out, "bytes_val_spec", nl.as_str(), val_text(&encode_terms::bytes_val(i, le, read.as_str(), true), 100000).as_str());
+            let ev: encode_terms::Val = encode_terms::Val::A(String::from("e"), encode_terms::dec(bytes as u64));
+            row(out, "from_bytes_val_array", nl.as_str(), val_text(&encode_terms::from_bytes_val(i, le, &ev), 100000).as_str());
+            row(out, "bytes_fact", nl.as_str(), quoted(encode_terms::bytes_fact(i, le, "a").as_str()).as_str());
+            let fe: String = match encode_terms::from_bytes_fact(i, le, "e") {
+                None => String::from("null"),
+                Some(fact) => quoted(fact.as_str()),
+            };
+            row(out, "from_bytes_fact", types::cat2(nl.as_str(), " e").as_str(), fe.as_str());
+            let fb: String = match encode_terms::from_bytes_fact(i, le, encode_terms::elems_of(&bv).as_str()) {
+                None => String::from("null"),
+                Some(fact) => quoted(fact.as_str()),
+            };
+            row(out, "from_bytes_fact", types::cat2(nl.as_str(), " bytes").as_str(), fb.as_str());
         }
         let kinds: Vec<String> = encode_terms::split("wrapping\nsaturating\nchecked", b'\n');
         let bases: Vec<String> = encode_terms::split("add\nsub\nmul\ndiv\nrem", b'\n');

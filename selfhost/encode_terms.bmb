@@ -297,6 +297,26 @@ mod encode_terms {
         a
     }
 
+    #[summary("The image of b in u8: b itself when it is a byte, so the solver needs no mod there (stage0 byte_image, ADR-0157)")]
+    #[effects(alloc)]
+    fn byte_image(b: &str) -> String {
+        let mut s: String = types::cat5("(ite (and (<= 0 ", b, ") (<= ", b, " 255)) ");
+        s.push_str(types::cat4(b, " (mod ", b, " 256))").as_str());
+        s
+    }
+
+    #[summary("(select e 0) .. (select e (n - 1)) (stage0 byte_selects)")]
+    #[effects(alloc)]
+    fn byte_selects(e: &str, n: u32) -> Vec<String> {
+        let mut bs: Vec<String> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n,
+        {
+            bs.push(types::cat5("(select ", e, " ", dec(k as u64).as_str(), ")"));
+        }
+        bs
+    }
+
     #[summary("Byte k (array index) of a.to_be_bytes() (le false) or a.to_le_bytes() of type i (stage0 byte_term): bits s..s + 8 of the two's complement image of a, s counted from the end the order starts at. Linear")]
     #[effects(alloc)]
     fn byte_term(i: ast::IntTy, le: bool, a: &str, k: u32) -> String {
@@ -308,10 +328,37 @@ mod encode_terms {
         types::cat5("(mod (div ", a, " ", pow2(s).as_str(), ") 256)")
     }
 
-    #[summary("to_be_bytes or to_le_bytes of a: the byte array value (stage0 bytes_val)")]
+    #[summary("What code assumes with a.to_be_bytes() (le false) or a.to_le_bytes() (stage0 bytes_fact): for a in the range of i, the bytes read back in the same order are a (their bytes_value). The solver does not find this from the div and mod of the byte terms (ADR-0157)")]
     #[effects(alloc)]
-    fn bytes_val(i: ast::IntTy, le: bool, a: &str) -> Val {
+    fn bytes_fact(i: ast::IntTy, le: bool, a: &str) -> String {
         let n: u32 = width(i) / 8;
+        let elems: String = elems_of(&bytes_val(i, le, a, false));
+        let back: String = bytes_value(i, le, byte_selects(elems.as_str(), n).as_slice());
+        types::cat7("(=> ", range_int(i, a).as_str(), " (= ", back.as_str(), " ", a, "))")
+    }
+
+    #[summary("The a whose a.to_be_bytes() (le false) or a.to_le_bytes() of the width of i is the array elems (stage0 bytes_source)")]
+    #[effects(alloc)]
+    fn bytes_source(i: ast::IntTy, le: bool, elems: &str) -> Option<String> {
+        let probe: String = elems_of(&bytes_val(i, le, "#", false));
+        match unapply_at(elems, probe.as_str()) {
+            None => None,
+            Some(a) => { if elems_of(&bytes_val(i, le, a.as_str(), false)) == elems { return Some(a); } None },
+        }
+    }
+
+    #[summary("to_be_bytes or to_le_bytes of a: the byte array value (stage0 bytes_val). In a specification (in_spec), when a is read from the bytes of an array e in the same order and width, byte k is the image of e[k] (ADR-0157); code assumes from_bytes_fact instead")]
+    #[effects(alloc)]
+    fn bytes_val(i: ast::IntTy, le: bool, a: &str, in_spec: bool) -> Val {
+        let n: u32 = width(i) / 8;
+        let mut read: Option<String> = None;
+        if in_spec {
+            let probe: String = from_bytes_term(i, le, byte_selects("#", n).as_slice());
+            match unapply_at(a, probe.as_str()) {
+                None => {},
+                Some(e) => { if from_bytes_term(i, le, byte_selects(e.as_str(), n).as_slice()) == a { read = Some(e.clone()); } },
+            }
+        }
         let mut arr: String = String::from("((as const (Array Int Int)) 0)");
         for k in 0..n
             invariant 0 <= k && k <= n,
@@ -319,13 +366,39 @@ mod encode_terms {
             let mut s: String = types::cat3("(store ", arr.as_str(), " ");
             std::num::push_u64(&mut s, k as u64);
             s.push_str(" ");
-            s.push_str(byte_term(i, le, a, k).as_str());
+            match &read {
+                None => s.push_str(byte_term(i, le, a, k).as_str()),
+                Some(src) => s.push_str(byte_image(types::cat5("(select ", src.as_str(), " ", dec(k as u64).as_str(), ")").as_str()).as_str()),
+            }
             s.push_str(")");
             arr = s;
         }
         let mut len: String = String::new();
         std::num::push_u64(&mut len, n as u64);
         Val::A(arr, len)
+    }
+
+    #[summary("The value of the bytes bs (values of u8) of i in index order, without mod (stage0 bytes_value): each at its place, less 2^w from 2^(w - 1) on for a signed type. The images through mod made the solver's search far costlier. bs has at most 16 terms")]
+    #[effects(alloc)]
+    fn bytes_value(i: ast::IntTy, le: bool, bs: &[String]) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for k in 0..bs.len()
+            invariant 0 <= k && k <= bs.len(),
+        {
+            if bs.len() <= 16 {
+                let s: u32 = shift_of(bs.len() as u32, le, k as u32);
+                parts.push(types::cat5("(* ", bs[k].as_str(), " ", pow2(s).as_str(), ")"));
+            }
+        }
+        let u: String = types::cat3("(+ ", join(parts.as_slice(), " ").as_str(), ")");
+        if !body::signed(i) {
+            return u;
+        }
+        let w: u32 = width(i);
+        let mut t: String = types::cat5("(ite (< ", u.as_str(), " ", pow2(w - 1).as_str(), ") ");
+        t.push_str(types::cat5(u.as_str(), " (- ", u.as_str(), " ", pow2(w).as_str()).as_str());
+        t.push_str("))");
+        t
     }
 
     #[summary("The element arrays of an array whose every element is v, of type e (stage0 const_elems): one constant array, or one per leaf for an aggregate element")]
@@ -359,6 +432,22 @@ mod encode_terms {
     #[effects(alloc)]
     fn cont(x: &str) -> String {
         types::cat5("(and (<= 128 ", x, ") (< ", x, " 192))")
+    }
+
+    #[summary("The number of # in s")]
+    #[effects(pure)]
+    fn count_hash(s: &str) -> (r: usize)
+        ensures r <= s.len(),
+    {
+        let mut c: usize = 0;
+        for k in 0..s.len()
+            invariant 0 <= k && k <= s.len() && c <= k,
+        {
+            if s.as_bytes()[k] == 35 {
+                c = c + 1;
+            }
+        }
+        c
     }
 
     #[summary("The decimal text of x")]
@@ -541,6 +630,15 @@ mod encode_terms {
         Val::S(next(terms, pos))
     }
 
+    #[summary("The elements of array value v, or the empty text for a value that is no array")]
+    #[effects(alloc)]
+    fn elems_of(v: &Val) -> String {
+        match parts(v) {
+            None => String::new(),
+            Some(p) => p.a,
+        }
+    }
+
     #[summary("a op b on f64 (stage0 f64_binary, ADR-0061 §3, §5): arithmetic and comparisons as the encoder's f64.* symbols. None for an operation f64 does not have")]
     #[effects(alloc)]
     fn f64_binary(op: ast::BinOp, a: &str, b: &str) -> Option<String> {
@@ -676,6 +774,19 @@ mod encode_terms {
     #[effects(alloc)]
     fn fill(s: &str, a: &str, b: &str, r: &str) -> String {
         replace(replace(replace(s, "{a}", a).as_str(), "{b}", b).as_str(), "{r}", r)
+    }
+
+    #[summary("The first position of # in s")]
+    #[effects(pure)]
+    fn find_hash(s: &str) -> Option<usize> {
+        for k in 0..s.len()
+            invariant 0 <= k && k <= s.len(),
+        {
+            if s.as_bytes()[k] == 35 {
+                return Some(k);
+            }
+        }
+        None
     }
 
     #[summary("The first complete term of bytes a..b of s, as the position after it (stage0 first_term): an atom, a |quoted| symbol or a parenthesized list")]
@@ -853,6 +964,34 @@ mod encode_terms {
         types::cat3("(bv2nat ", v, ")")
     }
 
+    #[summary("What code assumes with T::from_be_bytes(b) or T::from_le_bytes(b), the elements of b the array e (stage0 from_bytes_fact): when they are values of u8, the result is their bytes_value and its bytes in the same order are b (ADR-0157). None when e is the bytes of a value, whose image is the result")]
+    #[effects(alloc)]
+    fn from_bytes_fact(i: ast::IntTy, le: bool, e: &str) -> Option<String> {
+        match bytes_source(i, le, e) {
+            None => {},
+            Some(a) => { return None; },
+        }
+        let n: u32 = width(i) / 8;
+        let bs: Vec<String> = byte_selects(e, n);
+        let r: String = from_bytes_term(i, le, bs.as_slice());
+        let mut ranges: Vec<String> = Vec::new();
+        for k in 0..bs.len()
+            invariant 0 <= k && k <= bs.len(),
+        {
+            ranges.push(range_int(ast::IntTy::U8, bs[k].as_str()));
+        }
+        let mut facts: Vec<String> = Vec::new();
+        facts.push(types::cat5("(= ", r.as_str(), " ", bytes_value(i, le, bs.as_slice()).as_str(), ")"));
+        for j in 0..n
+            invariant 0 <= j && j <= n,
+        {
+            if (j as usize) < bs.len() {
+                facts.push(types::cat5("(= ", byte_term(i, le, r.as_str(), j).as_str(), " ", bs[j as usize].as_str(), ")"));
+            }
+        }
+        Some(types::cat5("(=> (and ", join(ranges.as_slice(), " ").as_str(), ") (and ", join(facts.as_slice(), " ").as_str(), "))"))
+    }
+
     #[summary("T::from_be_bytes(b) (le false) or T::from_le_bytes(b) of the byte terms bs in index order (stage0 from_bytes_term): the unsigned sum of each byte's image at its place, read as a value of i. bs has at most 16 terms (the bytes of an integer type are at most 8)")]
     #[effects(alloc)]
     fn from_bytes_term(i: ast::IntTy, le: bool, bs: &[String]) -> String {
@@ -863,9 +1002,9 @@ mod encode_terms {
             if bs.len() <= 16 {
                 let s: u32 = shift_of(bs.len() as u32, le, k as u32);
                 if s == 0 {
-                    parts.push(types::cat3("(mod ", bs[k].as_str(), " 256)"));
+                    parts.push(byte_image(bs[k].as_str()));
                 } else {
-                    parts.push(types::cat5("(* (mod ", bs[k].as_str(), " 256) ", pow2(s).as_str(), ")"));
+                    parts.push(types::cat5("(* ", byte_image(bs[k].as_str()).as_str(), " ", pow2(s).as_str(), ")"));
                 }
             }
         }
@@ -880,21 +1019,19 @@ mod encode_terms {
         u
     }
 
-    #[summary("from_be_bytes or from_le_bytes of the byte array value v (stage0 from_bytes_val). The unit value for a value that is no array, which the checker admits none of")]
+    #[summary("from_be_bytes or from_le_bytes of the byte array value v (stage0 from_bytes_val). Of the bytes of a value a in the same order and width, the image of a in i (ADR-0157). The unit value for a value that is no array, which the checker admits none of")]
     #[effects(alloc)]
     fn from_bytes_val(i: ast::IntTy, le: bool, v: &Val) -> Val {
         let p: Pair = match parts(v) {
             None => { return Val::Unit; },
             Some(found) => found,
         };
-        let n: u32 = width(i) / 8;
-        let mut bs: Vec<String> = Vec::new();
-        for k in 0..n
-            invariant 0 <= k && k <= n,
-        {
-            bs.push(types::cat5("(select ", p.a.as_str(), " ", dec(k as u64).as_str(), ")"));
+        match bytes_source(i, le, p.a.as_str()) {
+            None => {},
+            Some(a) => { return Val::S(wrap_int(i, a.as_str())); },
         }
-        Val::S(from_bytes_term(i, le, bs.as_slice()))
+        let n: u32 = width(i) / 8;
+        Val::S(from_bytes_term(i, le, byte_selects(p.a.as_str(), n).as_slice()))
     }
 
     #[summary("The integer of a constant of the checker")]
@@ -2004,6 +2141,24 @@ mod encode_terms {
             out.push(lexer::cut(s, start, s.len()));
         }
         out
+    }
+
+    #[summary("The candidate a for which the text f(a) is t, where f writes a some number of times into a text of its own and probe is f of the text # (stage0 unapply, without the check that f of the candidate is t, which the caller makes): the length of a and its place follow from probe")]
+    #[effects(alloc)]
+    fn unapply_at(t: &str, probe: &str) -> Option<String> {
+        let at: usize = match find_hash(probe) {
+            None => { return None; },
+            Some(found) => found,
+        };
+        let n: usize = count_hash(probe);
+        if n == 0 || t.len() + n < probe.len() {
+            return None;
+        }
+        let len: usize = (t.len() + n - probe.len()) / n;
+        if at > t.len() || len > t.len() - at {
+            return None;
+        }
+        Some(lexer::cut(t, at, at + len))
     }
 
     #[summary("Facts about `/` and `%` of unsigned operands, where they are SMT div and mod (stage0 UNSIGNED_DIV_LEMMAS)")]

@@ -771,8 +771,8 @@ fn smt_terms_reference_shows_the_term_builders() {
         .filter_map(|l| l.strip_prefix("{\"fn\":\""))
         .filter_map(|l| l.split('"').next())
         .collect();
-    assert_eq!(builders.len(), 84, "{builders:?}");
-    assert_eq!(out.lines().count(), 6591);
+    assert_eq!(builders.len(), 88, "{builders:?}");
+    assert_eq!(out.lines().count(), 6691);
 }
 
 /// `bmb dump runtime`: the code generator's constant IR

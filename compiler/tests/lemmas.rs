@@ -21,9 +21,9 @@ use bmb::ast::{BinOp, IntTy};
 use bmb::smt::{self, Sexp};
 use bmb::subproof::{self, Sort};
 use bmb::verify::{
-    MUL_BOUND_LEMMA, MUL_LEMMAS, PRELUDE, SIGNED_DIV_LEMMAS, UNSIGNED_DIV_LEMMAS, bit_method,
-    bit_op, bv_value, byte_term, from_bytes_term, instantiate, instantiate_mul, linear_bit,
-    not_term,
+    MUL_BOUND_LEMMA, MUL_LEMMAS, PRELUDE, SIGNED_DIV_LEMMAS, UNSIGNED_DIV_LEMMAS, Val, bit_method,
+    bit_op, bv_value, byte_term, bytes_fact, bytes_val, from_bytes_fact, from_bytes_term,
+    from_bytes_val, instantiate, instantiate_mul, linear_bit, not_term,
 };
 
 fn prove_all(header: &str, lemmas: &[&str], q: &str, r: &str) {
@@ -144,6 +144,23 @@ fn image(v: i128, w: u32) -> u128 {
 type Env = BTreeMap<String, V>;
 
 /// The value of the SMT-LIB term `e`, its free symbols `a` and `b`.
+/// Element `k` of the array term `a`: a `store` chain over a constant
+/// array or over an array named `e`, whose element `k` is `e[k]` in `env`.
+fn select_in(a: &Sexp, k: i128, env: &Env) -> V {
+    match a {
+        Sexp::Atom(e) => env[&format!("{e}[{k}]")],
+        Sexp::List(xs) if smt::print(&xs[0]) == "store" => {
+            if int(eval_in(&xs[2], env)) == k {
+                eval_in(&xs[3], env)
+            } else {
+                select_in(&xs[1], k, env)
+            }
+        }
+        // `((as const (Array Int Int)) d)`
+        Sexp::List(xs) => eval_in(&xs[1], env),
+    }
+}
+
 fn eval(e: &Sexp, a: i128, b: i128) -> V {
     let env: Env = [("a".to_string(), V::I(a)), ("b".to_string(), V::I(b))].into();
     eval_in(e, &env)
@@ -203,6 +220,9 @@ fn eval_in(e: &Sexp, env: &Env) -> V {
             let Sexp::Atom(head) = &xs[0] else {
                 unreachable!()
             };
+            if head == "select" {
+                return select_in(&xs[1], int(eval_in(&xs[2], env)), env);
+            }
             let args: Vec<V> = xs[1..].iter().map(|x| eval_in(x, env)).collect();
             // A bit method's function: its body with the parameters bound.
             if let Some((def, _)) = subproof::helper_def(head) {
@@ -736,6 +756,118 @@ fn byte_terms_are_rusts_bytes() {
         int(value(&from_bytes_term(IntTy::U16, true, &bs), 0, 0)),
         i128::from(u16::from_le_bytes([0xfe, 0x7f]))
     );
+}
+
+/// The round trips of bytes (ADR-0157): what code assumes with
+/// `to_*_bytes` (`bytes_fact`) and `from_*_bytes` (`from_bytes_fact`) is
+/// true, and the terms of a direct composition in either direction are
+/// Rust's result: the image of the value, also for an operand outside the
+/// type and read as another type of the width, and the bytes back, also
+/// for bytes outside `u8` (their images).
+#[test]
+fn byte_round_trips_are_rusts() {
+    let elems = |v: Val| match v {
+        Val::A { elems, .. } => elems,
+        v => panic!("not an array {v:?}"),
+    };
+    let scalar = |v: Val| match v {
+        Val::S(t) => t,
+        v => panic!("not a scalar {v:?}"),
+    };
+    for i in IntTy::ALL {
+        let w = i.bits();
+        let n = w / 8;
+        let size = 1i128 << w;
+        let other = IntTy::ALL
+            .into_iter()
+            .find(|j| j.bits() == w && j.signed() != i.signed())
+            .unwrap();
+        // The value of type `t` whose two's complement image is `u`.
+        let read = |t: IntTy, u: u128| {
+            let v = u as i128;
+            if t.signed() && v >= size / 2 {
+                v - size
+            } else {
+                v
+            }
+        };
+        for le in [false, true] {
+            let fact = smt::parse(&bytes_fact(i, le, "a")).unwrap();
+            let back =
+                smt::parse(&scalar(from_bytes_val(i, le, &bytes_val(i, le, "a", true)))).unwrap();
+            let back_other = smt::parse(&scalar(from_bytes_val(
+                other,
+                le,
+                &bytes_val(i, le, "a", true),
+            )))
+            .unwrap();
+            let names: Vec<String> = (0..n).map(|k| format!("(select e {k})")).collect();
+            let bytes_back = smt::parse(&elems(bytes_val(
+                i,
+                le,
+                &from_bytes_term(i, le, &names),
+                true,
+            )))
+            .unwrap();
+            let read_fact = smt::parse(&from_bytes_fact(i, le, "e").unwrap()).unwrap();
+            // A direct composition is rewritten, so no `select` is left of it.
+            assert!(
+                !smt::print(&back).contains("select"),
+                "{}",
+                smt::print(&back)
+            );
+            assert!(
+                !smt::print(&bytes_back).contains("(div"),
+                "{}",
+                smt::print(&bytes_back)
+            );
+            assert!(from_bytes_fact(i, le, &elems(bytes_val(i, le, "a", false))).is_none());
+            for a in values(i) {
+                let env: Env = [("a".to_string(), V::I(a))].into();
+                assert!(
+                    boolean(eval_in(&fact, &env)),
+                    "{a} on {} (le {le})",
+                    i.name()
+                );
+                for x in [a, a + 3 * size, a - size] {
+                    let env: Env = [("a".to_string(), V::I(x))].into();
+                    assert_eq!(int(eval_in(&back, &env)), a, "{x} on {}", i.name());
+                    assert_eq!(
+                        int(eval_in(&back_other, &env)),
+                        read(other, image(a, w)),
+                        "{x} on {} as {}",
+                        i.name(),
+                        other.name()
+                    );
+                }
+                // The bytes of `a` as an array `e`, and once with byte 0
+                // outside `u8`.
+                let u = image(a, w);
+                let want: Vec<i128> = (0..n)
+                    .map(|k| {
+                        let s = 8 * if le { k } else { n - 1 - k };
+                        ((u >> s) & 0xff) as i128
+                    })
+                    .collect();
+                for shift in [0, 256, -512] {
+                    let mut env = Env::new();
+                    for (k, b) in want.iter().enumerate() {
+                        let b = if k == 0 { b + shift } else { *b };
+                        env.insert(format!("e[{k}]"), V::I(b));
+                    }
+                    assert!(boolean(eval_in(&read_fact, &env)), "{a} on {}", i.name());
+                    for (k, b) in want.iter().enumerate() {
+                        assert_eq!(
+                            int(select_in(&bytes_back, k as i128, &env)),
+                            *b,
+                            "byte {k} of {a} on {} (le {le})",
+                            i.name()
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Terms over `a` and `b` of type `i` the encoder makes: bit operations

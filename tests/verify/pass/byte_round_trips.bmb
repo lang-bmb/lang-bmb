@@ -1,0 +1,114 @@
+#[summary("Round trips of integers and their bytes (ADR-0157): a value read back from its own bytes is the value, through a local, a field, an element-wise copy, a Vec and a slice at a variable offset; bytes read as a value and written again are the bytes; the same in specifications")]
+mod brt {
+    struct Packet { tag: u8, body: [u8; 8] }
+
+    #[effects(pure)]
+    #[uses(same8)]
+    fn bytes_back(b: [u8; 8]) -> (r: [u8; 8])
+        ensures same8(r, b),
+    {
+        u64::from_le_bytes(b).to_le_bytes()
+    }
+
+    #[effects(pure)]
+    #[uses(same8)]
+    fn bytes_back_local(b: [u8; 8]) -> (r: [u8; 8])
+        ensures same8(r, b),
+    {
+        let w: i64 = i64::from_be_bytes(b);
+        w.to_be_bytes()
+    }
+
+    #[effects(pure)]
+    fn copied(x: i64) -> (r: i64)
+        ensures r == x,
+    {
+        let b: [u8; 8] = x.to_le_bytes();
+        let c: [u8; 8] = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
+        i64::from_le_bytes(c)
+    }
+
+    #[effects(pure)]
+    fn direct(x: u64) -> (r: u64)
+        ensures r == x,
+    {
+        u64::from_le_bytes(x.to_le_bytes())
+    }
+
+    #[effects(alloc)]
+    fn pushed(x: u64) -> (r: u64)
+        ensures r == x,
+    {
+        let b: [u8; 8] = x.to_le_bytes();
+        let mut v: Vec<u8> = Vec::new();
+        let mut k: usize = 0;
+        while k < 8
+            invariant k <= 8, v.len() == k, forall|j: usize| j < k ==> #[trigger] v[j] == b[j],
+            decreases 8 - k,
+        {
+            v.push(b[k]);
+            k = k + 1;
+        }
+        u64::from_le_bytes([v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]])
+    }
+
+    spec fn same8(r: [u8; 8], b: [u8; 8]) -> bool {
+        r[0] == b[0] && r[1] == b[1] && r[2] == b[2] && r[3] == b[3] && r[4] == b[4] && r[5] == b[5] && r[6] == b[6] && r[7] == b[7]
+    }
+
+    #[uses(same8)]
+    proof fn spec_bytes_back(b: [u8; 8])
+        ensures same8(u64::from_be_bytes(b).to_be_bytes(), b),
+    {}
+
+    proof fn spec_direct(x: u64, y: i16)
+        ensures u64::from_le_bytes(x.to_le_bytes()) == x, i16::from_be_bytes(y.to_be_bytes()) == y,
+    {}
+
+    #[uses(via_local)]
+    proof fn spec_local(x: u32)
+        ensures via_local(x) == x,
+    {}
+
+    proof fn spec_other_type(x: i32)
+        ensures x < 0 ==> u32::from_le_bytes(x.to_le_bytes()) == x + 4294967296, x >= 0 ==> u32::from_le_bytes(x.to_le_bytes()) == x,
+    {}
+
+    #[effects(pure)]
+    fn stored(m: &mut [u8], i: usize, x: i64) -> (r: i64)
+        requires i + 8 <= m.len(),
+        ensures r == x,
+    {
+        let b: [u8; 8] = x.to_be_bytes();
+        m[i] = b[0];
+        m[i + 1] = b[1];
+        m[i + 2] = b[2];
+        m[i + 3] = b[3];
+        m[i + 4] = b[4];
+        m[i + 5] = b[5];
+        m[i + 6] = b[6];
+        m[i + 7] = b[7];
+        i64::from_be_bytes([m[i], m[i + 1], m[i + 2], m[i + 3], m[i + 4], m[i + 5], m[i + 6], m[i + 7]])
+    }
+
+    #[effects(pure)]
+    fn through_field(x: u64) -> (r: u64)
+        ensures r == x,
+    {
+        let p: Packet = Packet { tag: 1, body: x.to_be_bytes() };
+        u64::from_be_bytes(p.body)
+    }
+
+    #[effects(pure)]
+    fn through_local(x: i32) -> (r: i32)
+        ensures r == x,
+    {
+        let b: [u8; 4] = x.to_be_bytes();
+        i32::from_be_bytes(b)
+    }
+
+    spec fn via_local(x: u32) -> u32 {
+        let b: [u8; 4] = x.to_be_bytes();
+        u32::from_be_bytes(b)
+    }
+}

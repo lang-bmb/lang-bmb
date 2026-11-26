@@ -928,7 +928,7 @@ mod encode_spec {
                 return self.checked(e, types::cat5("(< ", arg.as_str(), " ", encode_terms::dec(body::bits(i) as u64).as_str(), ")").as_str(), v.as_str(), pg);
             }
             if m == "to_be_bytes" || m == "to_le_bytes" {
-                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str());
+                return encode_terms::bytes_val(i, m == "to_le_bytes", r.as_str(), true);
             }
             if m == "is_power_of_two" {
                 let no_amount: Option<String> = None;
