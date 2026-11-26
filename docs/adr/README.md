@@ -209,3 +209,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0156](0156-packages-as-working-material-before-gate-e.md) | Packages are built as working material before gate E | Accepted |
 | [0157](0157-byte-round-trips-in-the-proof-encoder.md) | Byte round trips in the proof encoder | Accepted (autonomous) |
 | [0158](0158-the-standard-library-is-in-the-normal-form.md) | The standard library is in the normal form | Accepted |
+| [0159](0159-a-package-calls-a-package-through-the-package-manager.md) | A package calls a package through the package manager | Accepted |
