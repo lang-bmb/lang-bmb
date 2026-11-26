@@ -841,6 +841,10 @@
    "out": "7815c8bef05348ce",
    "src": "57dc44dee37a6b75"
   },
+  "tests/verify/fail/assumed_values.bmb": {
+   "out": "9f8b903c505836ac",
+   "src": "cedfd5676f4199b0"
+  },
   "tests/verify/fail/bit_vector.bmb": {
    "out": "9887492df87313f2",
    "src": "b41ad8a2a6124f45"

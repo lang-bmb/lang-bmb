@@ -770,7 +770,7 @@ pub fn examples(
                 "the contract names {} by name only (not in `#[uses(..)]`)",
                 hidden
                     .iter()
-                    .map(|h| format!("`{h}`"))
+                    .map(|(h, _)| format!("`{h}`"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));

@@ -175,7 +175,7 @@ mod prove {
                 Err(why) => { let exact: String = model::f64_interpreted(answered.as_str()); let mut ps7: Vec<String> = Vec::new(); ps7.push(exact.clone()); let a7: Ans = asked(sol, ps7.as_slice()); if a7.kind == 1 { model::f64_model_check(sol, exact.as_str()) } else if a7.kind == 0 { Err(String::from("it holds with IEEE 754 arithmetic, which only `by (bit_vector)` uses")) } else { Err(why) } },
             };
             match confirmed {
-                Ok(u1) => { let cex: String = model::counterexample(sol, shown.as_slice(), &pg.pr.t, names); if cex.len() > 0 { msg.push_str("; counterexample: "); msg.push_str(cex.as_str()); } if bounded_found { msg.push_str(" (found by the search within |integers| <= 8, lengths <= 4, after the solver could not decide)"); } let hint: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); let d: diag::Diag = with_hint(diag::new(o.code.as_str(), o.span, msg.as_str()), hint.as_slice(), false); let plain: bool = no_fix(&d); if plain && o.code == "E0820" { diags.push(diag::fix(d, "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it", None)); } else if plain && cex.len() == 0 { diags.push(diag::fix(d, model::no_inputs_help(o.code.as_str()).as_str(), None)); } else { diags.push(d); } },
+                Ok(u1) => { let cex: String = model::counterexample(sol, shown.as_slice(), &pg.pr.t, names); let hidden: Vec<encode_terms::Pair> = hidden_pairs(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); if cex.len() > 0 && hidden.len() > 0 { let mut ticked: Vec<String> = Vec::new(); for h in 0..hidden.len() invariant 0 <= h && h <= hidden.len(), { ticked.push(types::cat3("`", hidden[h].a.as_str(), "`")); } msg.push_str(types::cat3("; counterexample with ", encode_terms::join(ticked.as_slice(), ", ").as_str(), " unknown: ").as_str()); msg.push_str(cex.as_str()); let inst: String = match encode_query::retry_script(cx, pg, pl.q.as_str()) { None => String::new(), Some(r9) => r9.inst.clone(), }; let assumed: Vec<String> = model::assumed(sol, answered.as_str(), inst.as_str(), hidden.as_slice(), shown.as_slice()); if assumed.len() > 0 { msg.push_str(", assuming "); msg.push_str(encode_terms::join(assumed.as_slice(), ", ").as_str()); } } else if cex.len() > 0 { msg.push_str("; counterexample: "); msg.push_str(cex.as_str()); } if bounded_found { msg.push_str(" (found by the search within |integers| <= 8, lengths <= 4, after the solver could not decide)"); } let hint: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); let d: diag::Diag = with_hint(diag::new(o.code.as_str(), o.span, msg.as_str()), hint.as_slice(), false); let plain: bool = no_fix(&d); if plain && o.code == "E0820" { diags.push(diag::fix(d, "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it", None)); } else if plain && cex.len() == 0 { diags.push(diag::fix(d, model::no_inputs_help(o.code.as_str()).as_str(), None)); } else { diags.push(d); } },
                 Err(why2) => diags.push(f64_undecided(o, path, why2.as_str())),
             }
             return v;
@@ -372,19 +372,32 @@ mod prove {
         false
     }
 
-    #[summary("Spec fns the obligation mentions by name but whose definition the proof cannot see, as names to add to `#[uses(..)]` (stage0 hidden_predicates): every spec fn that is no instance whose symbol is in text and that the definition does not reveal, by its own name when it is of the definition's unit, by its path otherwise")]
+    #[summary("Spec fns the obligation mentions by name but whose definition the proof cannot see, as names to add to `#[uses(..)]` (stage0 hidden_predicates): every spec fn that is no instance whose symbol is in text and that the definition does not reveal, by its own name when it is of the definition's unit, by its path otherwise, each with its symbol (b)")]
     #[effects(alloc)]
-    fn hidden_predicates(pg: &encode_spec::Prog, revealed: &[encode_terms::Pair], text: &str, unit: &str) -> Vec<String> {
+    fn hidden_pairs(pg: &encode_spec::Prog, revealed: &[encode_terms::Pair], text: &str, unit: &str) -> Vec<encode_terms::Pair> {
         let ix: encode_query::Index = encode_query::index(text);
         let pre: String = types::cat2(unit, "::");
-        let mut out: Vec<String> = Vec::new();
+        let mut out: Vec<encode_terms::Pair> = Vec::new();
         for n in 0..pg.defs.len()
             invariant 0 <= n,
         {
             match pg.defs.nth(n) {
                 None => {},
-                Some(at) => { if body::is_spec(pg.defs.items[at].d.kind) && !pg.defs.items[at].inst { let path: String = pg.defs.key(n); let s: String = encode_decls::sym(path.as_str()); let mut shown: bool = false; for r in 0..revealed.len() invariant 0 <= r && r <= revealed.len(), { if revealed[r].a == s { shown = true; } } if !shown && is_found(&encode_query::first_at(&ix, text, s.as_str())) { let local: bool = encode_terms::starts_at(path.as_str(), 0, pre.as_str()) && !encode_query::has(lexer::cut(path.as_str(), pre.len(), path.len()).as_str(), "::"); if local { out.push(lexer::cut(path.as_str(), pre.len(), path.len())); } else { out.push(path.clone()); } } } },
+                Some(at) => { if body::is_spec(pg.defs.items[at].d.kind) && !pg.defs.items[at].inst { let path: String = pg.defs.key(n); let s: String = encode_decls::sym(path.as_str()); let mut shown: bool = false; for r in 0..revealed.len() invariant 0 <= r && r <= revealed.len(), { if revealed[r].a == s { shown = true; } } if !shown && is_found(&encode_query::first_at(&ix, text, s.as_str())) { let local: bool = encode_terms::starts_at(path.as_str(), 0, pre.as_str()) && !encode_query::has(lexer::cut(path.as_str(), pre.len(), path.len()).as_str(), "::"); if local { out.push(encode_terms::Pair { a: lexer::cut(path.as_str(), pre.len(), path.len()), b: s.clone() }); } else { out.push(encode_terms::Pair { a: path.clone(), b: s.clone() }); } } } },
             }
+        }
+        out
+    }
+
+    #[summary("Spec fns the obligation mentions by name but whose definition the proof cannot see, as names to add to `#[uses(..)]` (stage0 hidden_predicates): every spec fn that is no instance whose symbol is in text and that the definition does not reveal, by its own name when it is of the definition's unit, by its path otherwise")]
+    #[effects(alloc)]
+    fn hidden_predicates(pg: &encode_spec::Prog, revealed: &[encode_terms::Pair], text: &str, unit: &str) -> Vec<String> {
+        let pairs: Vec<encode_terms::Pair> = hidden_pairs(pg, revealed, text, unit);
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..pairs.len()
+            invariant 0 <= i && i <= pairs.len(),
+        {
+            out.push(pairs[i].a.clone());
         }
         out
     }

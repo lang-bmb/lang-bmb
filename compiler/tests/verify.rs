@@ -940,3 +940,50 @@ fn probe_reaches_the_inner_loop() {
     let (ok, out) = probe("2", &["true"]);
     assert!(!ok && out.contains("has 2 loop(s)"), "{out}");
 }
+
+/// A counterexample under a spec fn the proof sees only by name says that
+/// the function is unknown there and shows the values the model gave its
+/// applications (ADR-0161): `off(x, n) = -1` is what made the query
+/// satisfiable, and no `usize` value. The bytes are the same on each run.
+#[test]
+fn a_counterexample_shows_what_it_assumes_of_a_hidden_spec_fn() {
+    let src = r#"#[summary("t")]
+mod c {
+    spec fn off(x: &[u8], n: usize) -> usize
+        decreases n,
+    {
+        if n == 0 || n > x.len() { 0 } else { off(x, n - 1) + (if x[n - 1] == 1 { 3 } else { 1 }) }
+    }
+
+    spec fn nonneg(x: &[u8], n: usize) -> bool { off(x, n) + 1 > 0 }
+
+    spec fn small(n: u64) -> bool { n < 10 }
+
+    spec fn bounded(n: u64) -> bool { small(n) && n > 0 }
+
+    #[uses(nonneg)]
+    proof fn by_name(x: &[u8], n: usize)
+        ensures nonneg(x, n),
+    {
+    }
+
+    #[effects(pure)]
+    fn twice(n: u64) -> (r: u64)
+        requires bounded(n),
+        ensures r < 20,
+    {
+        n + n
+    }
+}
+"#;
+    let files = [("c.bmb".to_string(), src.to_string())];
+    let out = verify_files(&files);
+    assert!(!out.ok);
+    for want in [
+        "postcondition `nonneg` may not hold in `c::by_name`; counterexample with `off` unknown: x = [] (len 0), n = 38, assuming off(x, n) = -1\"",
+        "postcondition `r < 20` may not hold in `c::twice`; counterexample with `small` unknown: n = 10, assuming small(n) = true\"",
+    ] {
+        assert!(out.output.contains(want), "{want}\n{}", out.output);
+    }
+    assert_eq!(verify_files(&files).output, out.output);
+}

@@ -9311,8 +9311,9 @@ fn verify_pass(
             // unrelated context is the main source of solver instability).
             let relevant = relevant_axioms(&axioms, &q);
             let relevant_text = relevant.clone();
-            let hint =
+            let hidden =
                 hidden_predicates(&spec_syms, &axioms, &format!("{q}{relevant}"), &d.mod_path);
+            let hint: Vec<String> = hidden.iter().map(|(n, _)| n.clone()).collect();
             // Only the spec fns the query mentions are declared: an unrelated spec fn does not change the query text.
             let used = needed_decls(&spec_decls, &dts, &format!("{relevant}{decls}\n{q}"));
             let base = format!("{prefix}{used}{relevant}{decls}");
@@ -9681,9 +9682,28 @@ fn verify_pass(
                     };
                     match confirmed {
                         Ok(()) => {
-                            let cex = counterexample(sol, &shown_inputs(&enc.inputs, o), t);
+                            let shown = shown_inputs(&enc.inputs, o);
+                            let cex = counterexample(sol, &shown, t);
                             let mut msg = format!("{} in `{path}`", o.msg);
-                            if !cex.is_empty() {
+                            // A spec fn seen only by name has the values the
+                            // model gives it: the inputs are a counterexample
+                            // under those (ADR-0161). A contract comparison
+                            // says it in its own words.
+                            let refining = REFINE.with(|r| r.borrow().is_some());
+                            if !cex.is_empty() && !hidden.is_empty() && !refining {
+                                let ticked: Vec<String> =
+                                    hint.iter().map(|h| format!("`{h}`")).collect();
+                                msg.push_str(&format!(
+                                    "; counterexample with {} unknown: {cex}",
+                                    ticked.join(", ")
+                                ));
+                                let inst = retry_script(&q).map(|r| r.1).unwrap_or_default();
+                                let assumed =
+                                    assumed_values(sol, &answered, &inst, &hidden, &shown);
+                                if !assumed.is_empty() {
+                                    msg.push_str(&format!(", assuming {}", assumed.join(", ")));
+                                }
+                            } else if !cex.is_empty() {
                                 msg.push_str(&format!("; counterexample: {cex}"));
                             }
                             if bounded_found {
@@ -10345,15 +10365,135 @@ fn hidden_predicates(
     revealed: &[(String, String)],
     text: &str,
     unit: &str,
-) -> Vec<String> {
+) -> Vec<(String, String)> {
     spec_syms
         .iter()
         .filter(|(_, s)| text.contains(s.as_str()) && !revealed.iter().any(|(r, _)| r == s))
-        .map(|(p, _)| match p.strip_prefix(&format!("{unit}::")) {
-            Some(local) if !local.contains("::") => local.to_string(),
-            _ => p.clone(),
+        .map(|(p, s)| match p.strip_prefix(&format!("{unit}::")) {
+            Some(local) if !local.contains("::") => (local.to_string(), s.clone()),
+            _ => (p.clone(), s.clone()),
         })
         .collect()
+}
+
+/// What a model assumed of the spec fns its query sees only by name
+/// (ADR-0161): up to three applications of the symbols `hidden` outside
+/// quantifiers in the asserted facts of `script`, inner ones first, once
+/// each, as `off(x, n) = -1`; then those of the ground instances of the
+/// query's definitions (`instances`, ADR-0023) whose symbols the query
+/// has, where a quantified definition applies them. An argument that is
+/// an input is shown by its name (a slice by its name alone), any other by
+/// its value. Empty when the facts apply none or the model cannot be read.
+fn assumed_values(
+    sol: &mut Solver,
+    script: &str,
+    instances: &str,
+    hidden: &[(String, String)],
+    inputs: &[(String, Val, TypeKind)],
+) -> Vec<String> {
+    use smt::Sexp::{Atom, List};
+    fn apps(e: &smt::Sexp, hidden: &[(String, String)], out: &mut Vec<smt::Sexp>) {
+        let List(xs) = e else { return };
+        match xs.first() {
+            Some(Atom(q)) if q == "forall" || q == "exists" || q == "lambda" || q == "let" => {}
+            Some(Atom(h)) if hidden.iter().any(|(_, s)| s == h) => {
+                xs[1..].iter().for_each(|x| apps(x, hidden, out));
+                if !out.contains(e) {
+                    out.push(e.clone());
+                }
+            }
+            _ => xs.iter().for_each(|x| apps(x, hidden, out)),
+        }
+    }
+    fn known(e: &smt::Sexp, script: &str) -> bool {
+        match e {
+            Atom(a) => !a.starts_with('|') || script.contains(a.as_str()),
+            List(xs) => xs.iter().all(|x| known(x, script)),
+        }
+    }
+    let mut found = Vec::new();
+    for (text, own) in [(script, true), (instances, false)] {
+        let mut more = Vec::new();
+        for cmd in smt::split_commands(text) {
+            if let Some(List(xs)) = smt::parse(&cmd)
+                && matches!(xs.first(), Some(Atom(a)) if a == "assert")
+                && let Some(x) = xs.get(1)
+            {
+                apps(x, hidden, &mut more);
+            }
+        }
+        for a in more {
+            if (own || known(&a, script)) && !found.contains(&a) {
+                found.push(a);
+            }
+        }
+    }
+    found.truncate(3);
+    // An input's term, its name, and whether it is a slice.
+    let mut names: Vec<(String, String, bool)> = Vec::new();
+    let mut lens: Vec<String> = Vec::new();
+    for (n, v, _) in inputs {
+        match v {
+            Val::S(t) => names.push((t.clone(), n.clone(), false)),
+            Val::A { elems, len } => {
+                names.push((elems.clone(), n.clone(), true));
+                lens.push(len.clone());
+            }
+            _ => {}
+        }
+    }
+    let mut terms = Vec::new();
+    for a in &found {
+        let List(xs) = a else { continue };
+        terms.push(smt::print(a));
+        terms.extend(xs[1..].iter().map(smt::print));
+    }
+    let Ok(vals) = sol.get_value_terms(&terms) else {
+        return Vec::new();
+    };
+    let scalar = |v: &smt::Sexp| {
+        let r = smt::render_value(v);
+        let digits = r.strip_prefix('-').unwrap_or(&r);
+        let plain = !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit());
+        if plain || r == "true" || r == "false" {
+            r
+        } else {
+            "..".to_string()
+        }
+    };
+    let mut it = vals.iter();
+    let mut out = Vec::new();
+    for a in &found {
+        let List(xs) = a else { continue };
+        let (Some(Atom(h)), Some(got)) = (xs.first(), it.next()) else {
+            return Vec::new();
+        };
+        let shown = hidden.iter().find(|(_, s)| s == h).map_or("", |(n, _)| n);
+        let mut args = Vec::new();
+        let mut after_elems = false;
+        for x in &xs[1..] {
+            let Some(v) = it.next() else {
+                return Vec::new();
+            };
+            let t = smt::print(x);
+            if after_elems && lens.contains(&t) {
+                after_elems = false;
+                continue;
+            }
+            match names.iter().find(|(s, _, _)| *s == t) {
+                Some((_, n, slice)) => {
+                    after_elems = *slice;
+                    args.push(n.clone());
+                }
+                None => {
+                    after_elems = false;
+                    args.push(scalar(v));
+                }
+            }
+        }
+        out.push(format!("{shown}({}) = {}", args.join(", "), scalar(got)));
+    }
+    out
 }
 
 /// Attaches the deterministic hints that apply to a failed obligation.

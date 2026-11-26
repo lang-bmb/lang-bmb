@@ -1,5 +1,8 @@
 #[summary("Reading a model (port of the counterexample part of stage0 compiler/src/verify.rs): the inputs of a failed obligation with the values the solver's model gives them, in Rust notation, and the check that a model's `f64` values are the ones IEEE 754 arithmetic gives (ADR-0061 §5)")]
 mod model {
+    #[summary("The inputs of a counterexample as assumed values name them: the term of each scalar input and of each slice's elements, its name, whether it is a slice, and the slices' lengths")]
+    struct Inputs { terms: Vec<String>, names: Vec<String>, slices: Vec<bool>, lens: Vec<String> }
+
     #[summary("A name with the value a counterexample shows of it")]
     struct Named { name: String, shown: String }
 
@@ -15,6 +18,82 @@ mod model {
             encode_terms::Sexp::Atom(a) => Ok(()),
             encode_terms::Sexp::List(xs) => { let h: String = encode_query::head_of(xs.as_slice()); if (h.as_str() == "forall" || h.as_str() == "exists") && mentions_f64(e, 100000) { return Err(String::from("an `f64` operation under a quantifier")); } let op: bool = encode_terms::starts_at(h.as_str(), 0, "f64."); let from: usize = if op && xs.len() > 0 { 1 } else { 0 }; for i in from..xs.len() invariant from <= i && i <= xs.len(), { apps(&xs[i], out, f - 1)?; } if op && !holds(out.as_slice(), e) { out.push(e.clone()); } Ok(()) },
         }
+    }
+
+    #[summary("The applications of the symbols of hidden outside quantifiers in the asserted facts of text, inner ones first, once each (hidden_apps over each assertion)")]
+    #[effects(alloc)]
+    fn asserted_apps(text: &str, hidden: &[encode_terms::Pair]) -> Vec<encode_terms::Sexp> {
+        let mut found: Vec<encode_terms::Sexp> = Vec::new();
+        let cmds: Vec<String> = encode_spec::split_commands(text);
+        for i in 0..cmds.len()
+            invariant 0 <= i && i <= cmds.len(),
+        {
+            match encode_terms::parse(cmds[i].as_str()) {
+                None => {},
+                Some(c) => { match &c { encode_terms::Sexp::Atom(a) => {}, encode_terms::Sexp::List(xs) => { if encode_query::head_of(xs.as_slice()).as_str() == "assert" && xs.len() > 1 { hidden_apps(&xs[1], hidden, &mut found, 100000); } }, } },
+            }
+        }
+        found
+    }
+
+    #[summary("What a model assumed of the spec fns its query sees only by name (stage0 assumed_values, ADR-0161): up to three applications of the symbols of hidden (b of each pair) outside quantifiers in the asserted facts of script, inner ones first, once each, as `off(x, n) = -1`; then those of the ground instances of the query's definitions (instances, ADR-0023) whose symbols the query has. An argument that is an input is shown by its name (a slice by its name alone), any other by its value. Empty when the facts apply none or the model cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn assumed(sol: &mut solver::Solver, script: &str, instances: &str, hidden: &[encode_terms::Pair], inputs: &[encode_spec::Shown]) -> Vec<String> {
+        let mut found: Vec<encode_terms::Sexp> = asserted_apps(script, hidden);
+        let more: Vec<encode_terms::Sexp> = asserted_apps(instances, hidden);
+        for i in 0..more.len()
+            invariant 0 <= i && i <= more.len(),
+        {
+            if known(&more[i], script, 100000) && !holds(found.as_slice(), &more[i]) {
+                found.push(more[i].clone());
+            }
+        }
+        let mut kept: Vec<encode_terms::Sexp> = Vec::new();
+        for i in 0..found.len()
+            invariant 0 <= i && i <= found.len(),
+        {
+            if kept.len() < 3 {
+                kept.push(found[i].clone());
+            }
+        }
+        let mut ins: Inputs = Inputs { terms: Vec::new(), names: Vec::new(), slices: Vec::new(), lens: Vec::new() };
+        for i in 0..inputs.len()
+            invariant 0 <= i && i <= inputs.len(),
+        {
+            match &inputs[i].v {
+                encode_terms::Val::S(x) => { ins.terms.push(x.clone()); ins.names.push(inputs[i].name.clone()); ins.slices.push(false); },
+                encode_terms::Val::A(ae, al) => { ins.terms.push(ae.clone()); ins.names.push(inputs[i].name.clone()); ins.slices.push(true); ins.lens.push(al.clone()); },
+                encode_terms::Val::Unit => {},
+                encode_terms::Val::Struct(sf) => {},
+                encode_terms::Val::Arr(re, rl) => {},
+            }
+        }
+        let mut terms: Vec<String> = Vec::new();
+        for i in 0..kept.len()
+            invariant 0 <= i && i <= kept.len(),
+        {
+            terms.push(encode_terms::print(&kept[i], 100000));
+            match &kept[i] {
+                encode_terms::Sexp::Atom(ka) => {},
+                encode_terms::Sexp::List(kx) => { for k in 0..kx.len() invariant 0 <= k && k <= kx.len(), { if k > 0 { terms.push(encode_terms::print(&kx[k], 100000)); } } },
+            }
+        }
+        let none: Vec<String> = Vec::new();
+        let vals: Vec<encode_terms::Sexp> = match solver::get_value_terms(sol, terms.as_slice()) {
+            Ok(given) => given,
+            Err(e) => { return none; },
+        };
+        let mut at: usize = 0;
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..kept.len()
+            invariant 0 <= i && i <= kept.len(),
+        {
+            match &kept[i] {
+                encode_terms::Sexp::Atom(ga) => {},
+                encode_terms::Sexp::List(gx) => { match row_of(gx.as_slice(), vals.as_slice(), at, hidden, &ins) { None => { return none; }, Some(row) => { out.push(row); }, } at = at.saturating_add(gx.len()); },
+            }
+        }
+        out
     }
 
     #[summary("Whether the model value got is the boolean b; an error for a value that is no boolean")]
@@ -306,6 +385,20 @@ mod model {
         }
     }
 
+    #[summary("The applications of the symbols of hidden (b of each pair) in e outside quantifiers appended to out, inner ones first, once each (the walk of stage0 assumed_values)")]
+    #[effects(alloc)]
+    fn hidden_apps(e: &encode_terms::Sexp, hidden: &[encode_terms::Pair], out: &mut Vec<encode_terms::Sexp>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => {},
+            encode_terms::Sexp::List(xs) => { let h: String = encode_query::head_of(xs.as_slice()); if h.as_str() == "forall" || h.as_str() == "exists" || h.as_str() == "lambda" || h.as_str() == "let" { return; } let mut app: bool = false; for j in 0..hidden.len() invariant 0 <= j && j <= hidden.len(), { if hidden[j].b == h { app = true; } } let from: usize = if app && xs.len() > 0 { 1 } else { 0 }; for i in from..xs.len() invariant from <= i && i <= xs.len(), { hidden_apps(&xs[i], hidden, out, f - 1); } if app && !holds(out.as_slice(), e) { out.push(e.clone()); } },
+        }
+    }
+
     #[summary("Whether xs holds the s-expression e")]
     #[effects(pure)]
     fn holds(xs: &[encode_terms::Sexp], e: &encode_terms::Sexp) -> bool {
@@ -358,6 +451,20 @@ mod model {
         match o {
             None => false,
             Some(v) => true,
+        }
+    }
+
+    #[summary("Whether every quoted symbol of e is in script (the known walk of stage0 assumed_values): a term of the ground instances the query can evaluate")]
+    #[effects(pure)]
+    fn known(e: &encode_terms::Sexp, script: &str, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return true;
+        }
+        match e {
+            encode_terms::Sexp::Atom(a) => !encode_terms::starts_at(a.as_str(), 0, "|") || encode_query::has(script, a.as_str()),
+            encode_terms::Sexp::List(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if !known(&xs[i], script, f - 1) { return false; } } true },
         }
     }
 
@@ -512,6 +619,59 @@ mod model {
         String::from("a model value that is not an `f64`")
     }
 
+    #[summary("The index of the first of xs equal to s, xs.len() when there is none")]
+    #[effects(pure)]
+    fn position(xs: &[String], s: &str) -> usize {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].as_str() == s {
+                return i;
+            }
+        }
+        xs.len()
+    }
+
+    #[summary("The row of application xs whose model values start at vals[at] (the value of the application, then of each argument): `f(x, 3) = -1`. None when the model gave fewer values")]
+    #[effects(alloc)]
+    fn row_of(xs: &[encode_terms::Sexp], vals: &[encode_terms::Sexp], at: usize, hidden: &[encode_terms::Pair], ins: &Inputs) -> Option<String> {
+        if xs.len() == 0 || at >= vals.len() || vals.len() - at < xs.len() {
+            return None;
+        }
+        let h: String = encode_query::head_of(xs);
+        let mut shown: String = String::new();
+        for j in 0..hidden.len()
+            invariant 0 <= j && j <= hidden.len(),
+        {
+            if shown.len() == 0 && hidden[j].b == h {
+                shown = hidden[j].a.clone();
+            }
+        }
+        let mut args: Vec<String> = Vec::new();
+        let mut after_elems: bool = false;
+        for k in 1..xs.len()
+            invariant 1 <= k && k <= xs.len() && at + xs.len() <= vals.len(),
+        {
+            let t: String = encode_terms::print(&xs[k], 100000);
+            if after_elems && types::has(ins.lens.as_slice(), t.as_str()) {
+                after_elems = false;
+            } else {
+                let named: usize = position(ins.terms.as_slice(), t.as_str());
+                if named < ins.names.len() && named < ins.slices.len() {
+                    after_elems = ins.slices[named];
+                    args.push(ins.names[named].clone());
+                } else {
+                    after_elems = false;
+                    args.push(scalar_text(&vals[at + k]));
+                }
+            }
+        }
+        let mut row: String = types::cat3(shown.as_str(), "(", encode_terms::join(args.as_slice(), ", ").as_str());
+        row.push_str(") = ");
+        row.push_str(scalar_text(&vals[at]).as_str());
+        Some(row)
+    }
+
     #[summary("Whether two f64 values have the same bits, any NaN the same as any other: equal, and for zeros of the same sign")]
     #[effects(pure)]
     fn same_f64(x: f64, y: f64) -> bool {
@@ -519,6 +679,25 @@ mod model {
             return true;
         }
         x == y && (x != 0.0 || 1.0 / x == 1.0 / y)
+    }
+
+    #[summary("A model value as an assumed value shows it (the scalar of stage0 assumed_values): an integer or a boolean as it is, anything else `..`")]
+    #[effects(alloc)]
+    fn scalar_text(v: &encode_terms::Sexp) -> String {
+        let r: String = encode_terms::render_value(v, 100000);
+        if r.as_str() == "true" || r.as_str() == "false" {
+            return r;
+        }
+        let from: usize = if r.len() > 0 && r.as_bytes()[0] == 45 {
+            1
+        } else {
+            0
+        };
+        let tail: String = lexer::cut(r.as_str(), from, r.len());
+        if tail.len() > 0 && digits(tail.as_str()) {
+            return r;
+        }
+        String::from("..")
     }
 
     #[summary("The value of the ite chain e on variable var at index k (the lambda walk of stage0 model_select): each `(ite (= var n) a b)` is a when n is k and b otherwise, down to a term that is no such ite. None for an ite whose condition is no list")]

@@ -84,14 +84,14 @@ mod m {
 }
 ```
 
-`bounded` is unfolded because a clause of `f` calls it, but `small` is inside that body and so is a name only. `bmb verify` reports E0802 (`counterexample: n = 10`) and an E0803 diagnostic, and the `fix` of the diagnostics points to `#[uses(small)]`. With `#[uses(small)]` written before `f`, it is `verified`. The tools that fill in and remove `#[uses]` are in `compiler/README.md`.
+`bounded` is unfolded because a clause of `f` calls it, but `small` is inside that body and so is a name only. `bmb verify` reports E0802 (`counterexample with `small` unknown: n = 10, assuming small(n) = true`) and an E0803 diagnostic, and the `fix` of the diagnostics points to `#[uses(small)]`. With `#[uses(small)]` written before `f`, it is `verified`. The tools that fill in and remove `#[uses]` are in `compiler/README.md`.
 
 ## Verdicts
 
 The verdict on one obligation is one of three.
 
 - **Proved.** Only when the solver answers `unsat` for the negation.
-- **Failed with a counterexample.** On `sat`, a diagnostic is reported with the code of that obligation (E0801 to E0823), and the input values are written at the end of the message: `counterexample: a = -9223372036854775808, b = -1`. If there is no input to show (the failure comes from the definition's own values or from values a call or a loop leaves open), it is reported without a counterexample. If an opaque `spec fn` is involved, the `fix` names it.
+- **Failed with a counterexample.** On `sat`, a diagnostic is reported with the code of that obligation (E0801 to E0823), and the input values are written at the end of the message: `counterexample: a = -9223372036854775808, b = -1`. If there is no input to show (the failure comes from the definition's own values or from values a call or a loop leaves open), it is reported without a counterexample. If the query sees a `spec fn` only by name, the `fix` names it, and the counterexample holds only under the values the model gave that function, which need not be values its definition gives (nor of its declared type, ADR-0090): the message says `counterexample with `f` unknown: ..` and shows up to three of the function's applications in the query with those values, `assuming f(x, n) = -1` (ADR-0161, `tests/verify/fail/assumed_values.jsonl`).
 - **Undecided.** If the solver answers `unknown` or a resource limit is exceeded (the per-obligation `rlimit`, the memory limit of the solver process: ADR-0123; an answer that has not ended after 1,000,000 lines: ADR-0151), it is reported as not decided (E0811). The diagnostic also carries the code of the original obligation, as in `"obligation":"E0802"`, and gives the solver's reason. If there is a counterexample that was not confirmed, it is written as `unconfirmed counterexample` (`tests/verify/fail/nonlinear.bmb`, `tests/verify/fail/proofs.jsonl`).
 - **The gate could not run.** If the solver is missing, is not the pinned version or ends with an error, that fact is reported (E0812). This code has no case fixed in the corpus (a diagnostic that depends on the environment).
 
