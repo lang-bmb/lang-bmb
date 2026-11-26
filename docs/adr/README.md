@@ -201,5 +201,9 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0148](0148-one-place-for-decision-records.md) | One place for decision records, `docs/adr`; nothing of the process stays in this repository | Accepted |
 | [0149](0149-gate-b-verdict-carried-over.md) | Gate B (economics) cannot be judged yet and is carried over to gate D | Accepted |
 | [0150](0150-compiler-identity-in-the-cache-header-only.md) | The compiler identity guards the incremental cache in its header only | Accepted (autonomous) |
-| [0151](0151-a-line-limit-on-solver-answers.md) | A line limit on the solver's answers | Accepted (autonomous) |
+| [0151](0151-a-line-limit-on-solver-answers.md) | A line limit on the solver's answers | Accepted |
 | [0152](0152-no-units-for-a-query-the-backstop-ended.md) | A query the wall-clock safeguard ended spends no units | Accepted (autonomous) |
+| [0153](0153-what-self-proof-means-and-the-oracle-after-retirement.md) | What self-proof means, and the oracle after the Rust compiler retires | Accepted |
+| [0154](0154-gate-d-outcomes-and-the-north-star-measures.md) | The outcomes registered for gate D, and the measures that judge the economic premise | Accepted |
+| [0155](0155-the-anchor-and-the-roads-kept-open.md) | The anchor of the design, and the roads kept open | Accepted |
+| [0156](0156-packages-as-working-material-before-gate-e.md) | Packages are built as working material before gate E | Accepted |

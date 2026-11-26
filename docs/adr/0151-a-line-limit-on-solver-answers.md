@@ -1,6 +1,6 @@
 # ADR-0151: A line limit on the solver's answers
 
-- Status: Accepted (autonomous)
+- Status: Accepted
 - Date: 2026-11-25
 - Related: ADR-0017 §5 (the solver process), ADR-0094 (loops that run until the input ends), ADR-0123 and ADR-0129 (the memory limit), DESIGN.md §6
 

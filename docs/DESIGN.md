@@ -1,6 +1,6 @@
 # BMB design principles
 
-> Status: settled version v1.3 · 2026-11-16 (ADR-0142 the model of the language, ADR-0143 the standing of the surface succession) · 2026-11-11 (ADR-0114 the proof context of closures, ADR-0117 the summary of a definition) · 2026-11-09 (ADR-0102 the unit of judgement and the scope of principle 4) · 2026-10-26 (ADR-0045 judgement criteria, ADR-0046~0051 revisions of the language surface and the ledger. v1.1: ADR-0040 revision of premises E1~E3 and principle 4)
+> Status: settled version v1.4 · 2026-11-26 (ADR-0155 the anchor and the roads kept open) · 2026-11-16 (ADR-0142 the model of the language, ADR-0143 the standing of the surface succession) · 2026-11-11 (ADR-0114 the proof context of closures, ADR-0117 the summary of a definition) · 2026-11-09 (ADR-0102 the unit of judgement and the scope of principle 4) · 2026-10-26 (ADR-0045 judgement criteria, ADR-0046~0051 revisions of the language surface and the ledger. v1.1: ADR-0040 revision of premises E1~E3 and principle 4)
 > This document holds only the design that is settled now. The reasons for the decisions are in [`adr/`](adr/).
 
 ## 1. Definition
@@ -8,6 +8,7 @@
 **BMB is a language that AI agents write and that is handled with deterministic tools. Its model is the way agents work.**
 
 - **The model is the way agents work (ADR-0142).** As Hangul was modelled on the organs of speech, a form is justified by which property of the way its writer works (a learned distribution, a finite context, probabilistic output, tool calls) it is fitted to.
+- **The anchor (ADR-0155).** The design is held against one picture: many agents work on large systems at once, what they change is proved, changes take effect without stopping, several versions live together, and a coordinating agent operates the whole. Programming, a language and a runtime are still needed there, and they do not follow the conventions built around human authors. The picture guides decisions and licenses no machinery: what is built stands on measurement, in four horizons that open in order (one proved program; change decided by proof; change while running; systems). Only the first is the present roadmap; the others are hypotheses.
 - **The present surface succeeds Rust and Verus (ADR-0143).** It is a means of making up for the fact that language models have not been trained on BMB, and it is not the definition. Where means that do not lean on the learned distribution (reference and examples in the context, tools, diagnostics) are sufficient by measurement, those means come first and the form follows the model.
 - **The semantics are stricter.** BMB gives up even what Rust and Verus kept for human convenience, and in return gains verification, navigation and performance.
 - **The compiler is an independent implementation.** It does not use rustc, and performs everything itself from parsing through the proof gate to LLVM IR generation.
@@ -55,7 +56,7 @@ The decision that revised the premises against external evidence is ADR-0040.
 
 ## 3. Principles
 
-1. **Code is the only source of truth.** Storage is text files, and the tools decide the file layout deterministically. The storage format itself does not matter.
+1. **Code is the only source of truth.** Storage is text files, and the tools decide the file layout deterministically. The storage format itself does not matter. The identity of a contract and the identity of an implementation are kept apart (ADR-0155).
 2. **A map is a derivative that is deterministically derived from the code.**
    - There can be several, one per use (navigation, cache, cost reduction, other concerns).
    - The standard navigation maps L0~L2 are fixed in the specification, and the rest are extension maps.
@@ -83,7 +84,7 @@ The decision that revised the premises against external evidence is ADR-0040.
 
 **Non-goals:** ease of learning for humans, convenience of hand coding, fast prototyping, the editing experience in a text editor, design documents and diagrams themselves (outside the language).
 
-**Outside the guarantee (ADR-0040):** failures outside the code (configuration, deployment, retry storms), the security of agent tools in general (prompt injection, supply chain). BMB's own tool surface, however, has a threat model.
+**Outside the guarantee today (ADR-0040, ADR-0155):** this is the present boundary, not a permanent one. Failures outside the code (configuration, deployment, retry storms), the security of agent tools in general (prompt injection, supply chain). BMB's own tool surface, however, has a threat model.
 
 ## 4. Design method: succeed the surface, make the semantics stricter
 
@@ -271,6 +272,7 @@ Development practices fill in for properties a language does not have. If BMB ha
 - **R2. Form of agent output:** which has the higher success rate, text code fragments or structured edit operations (JSON and so on).
 - **R3. Beyond human paradigms:** structures that do not presuppose OOP and the like. It covers merging of isomorphic functions, meaning-based splitting and whole-program optimization.
 - **R5. The basis of collaboration and deployment (ADR-0145):** a workspace server that accepts concurrent commits, a runtime that replaces the definitions of a running program, a coordinator of competing implementations. What the language fixes is the relations (commutation, refinement), and the machinery is decided separately after the verdict and the upper bound are measured. Replacement per definition conflicts with closed-world optimization (§8.1) and least runtime dependency (§2), so it is kept as one build mode. The read set of a type is its whole declaration, so an edit to a shared type spreads widely.
+- **R6. Roads kept open (ADR-0155):** three things are not fixed without a stated reason: one definition per path as the only answer of the index from names to definitions, cache keys that read a type as its whole declaration, and a list of effects that cannot grow.
 - **R4. Measurement axes:** these are objects of measurement from the start.
   - Accuracy of navigation and modification in a large codebase
   - Token cost per query and slice size
