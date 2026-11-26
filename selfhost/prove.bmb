@@ -516,7 +516,7 @@ mod prove {
         start(slot, z3, at, opts.who, t, diags);
         match std::mem::replace(slot, None) {
             None => { t.failed = t.failed.saturating_add(1); },
-            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let ended: u64 = sol.timeouts; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); if sol.timeouts == ended { remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
         }
     }
 

@@ -458,3 +458,65 @@ mod series {
     );
     let _ = fs::remove_dir_all(&tmp);
 }
+
+/// The units a query spent before the wall-clock backstop ended it are the
+/// clock's: they enter no `rlimit` or `rlimit_max`, and a proof with such
+/// a query is not stored in the proof cache, so the rows are the same with
+/// and without it. The stand-in answers `unknown` to every probe, with the
+/// reason of the backstop or of the rlimit, `unsat` to every other query,
+/// and 7 units to each `(get-info :rlimit)`.
+#[test]
+fn units_of_a_query_the_backstop_ended_are_not_counted() {
+    let tmp = std::env::temp_dir().join(format!("bmb-gate-ended-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let stand_in = |why: &str| {
+        let dir = tmp.join(why);
+        let body = format!(
+            "probe=0\nwhile IFS= read -r line; do\n  case \"$line\" in\n    \"(exit)\") exit 0;;\n    \"(reset)\") probe=0; echo success;;\n    \"{}\") probe=1; echo success;;\n    \"(check-sat)\") if [ $probe = 1 ]; then echo unknown; else echo unsat; fi;;\n    \"(get-info :reason-unknown)\") echo '(:reason-unknown \"{why}\")';;\n    \"(get-info :rlimit)\") echo '(:rlimit 7)';;\n    *) echo success;;\n  esac\ndone\n",
+            probe_limit()
+        );
+        fake_solver(&dir, "/bin/sh", &body).0
+    };
+    let rows = |out: &str| -> Vec<String> {
+        out.lines()
+            .filter(|l| l.starts_with("{\"def\""))
+            .map(str::to_string)
+            .collect()
+    };
+    let cached = |path: &str, cache: &Path| {
+        let out = Command::new(env!("CARGO_BIN_EXE_bmb"))
+            .current_dir(root())
+            .env("PATH", path)
+            .arg("verify")
+            .arg("--cache")
+            .arg(cache)
+            .arg(SEARCH)
+            .output()
+            .unwrap();
+        rows(&String::from_utf8_lossy(&out.stdout))
+    };
+    let canceled = rows(&verify(SEARCH, &[("PATH", &stand_in("canceled"))], None).1);
+    let timeout = stand_in("timeout");
+    let ended = rows(&verify(SEARCH, &[("PATH", &timeout)], None).1);
+    assert_eq!(canceled.len(), ended.len());
+    let num = |row: &str, key: &str| -> u64 {
+        row.split(&format!("\"{key}\":"))
+            .nth(1)
+            .map_or(0, |r| r.split([',', '}']).next().unwrap().parse().unwrap())
+    };
+    assert!(ended.iter().any(|r| num(r, "backstop") > 0), "{ended:?}");
+    for (c, e) in canceled.iter().zip(&ended) {
+        // The same queries were asked; only the ended ones spent nothing.
+        assert_eq!(
+            num(e, "rlimit"),
+            num(c, "rlimit") - 7 * num(e, "backstop"),
+            "{e}"
+        );
+        assert!(num(e, "rlimit_max") <= 7);
+    }
+    let cache = tmp.join("cache");
+    assert_eq!(cached(&timeout, &cache), ended);
+    assert_eq!(cached(&timeout, &cache), ended);
+    let _ = fs::remove_dir_all(&tmp);
+}

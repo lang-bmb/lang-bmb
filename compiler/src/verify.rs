@@ -9309,6 +9309,8 @@ fn verify_pass(
                 continue;
             };
             let total_before = rlimit_total;
+            // A proof the backstop shaped (a query it ended) is not stored.
+            let ended = sol.timeouts();
             // The largest single run of this obligation (`rlimit_max`).
             let mut ob_max = 0;
             // The retries that ran (`cache::EARLY_RETRY`, `cache::LATE_RETRY`).
@@ -9535,7 +9537,9 @@ fn verify_pass(
             if matches!(answer, Ok(Answer::Unsat)) {
                 proved_keys.insert(key);
                 def_proved.push(key);
-                if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key) {
+                if let (Some(c), Some(ck)) = (cache.as_mut(), cache_key)
+                    && sol.timeouts() == ended
+                {
                     c.insert(ck, rlimit_total - total_before, ob_max, stages);
                 }
             } else {

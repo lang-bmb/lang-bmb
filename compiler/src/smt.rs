@@ -41,6 +41,9 @@ pub struct Solver {
     /// Queries since the last `take_timeouts` that the per-query backstop
     /// ended (`reason-unknown` "timeout").
     timeouts: usize,
+    /// The backstop ended a `check-sat` of the query since its `(reset)`:
+    /// the units it spent by then are the clock's, so none are reported.
+    ended: bool,
 }
 
 /// One Z3 process.
@@ -638,6 +641,7 @@ impl Solver {
             alone: false,
             canon: Canon::default(),
             timeouts: 0,
+            ended: false,
         })
     }
 
@@ -688,6 +692,7 @@ impl Solver {
         let reset = sent.trim() == "(reset)";
         if reset {
             self.query.clear();
+            self.ended = false;
             // A process that answered a query alone answers no other.
             if self.proc.as_ref().is_some_and(|p| p.alone) {
                 self.proc = None;
@@ -781,14 +786,23 @@ impl Solver {
         Ok(())
     }
 
-    /// Resource units spent since the last `(reset)` (deterministic for a
-    /// given solver version and query).
     /// Queries the backstop ended since the last call (see `timeouts`).
     pub fn take_timeouts(&mut self) -> usize {
         std::mem::take(&mut self.timeouts)
     }
 
+    /// Queries the backstop ended since the last `take_timeouts`.
+    pub fn timeouts(&self) -> usize {
+        self.timeouts
+    }
+
+    /// Resource units spent since the last `(reset)` (deterministic for a
+    /// given solver version and query); 0, unasked, once the backstop
+    /// ended a `check-sat` of the query (`ended`).
     pub fn rlimit_used(&mut self) -> Result<u64, String> {
+        if self.ended {
+            return Ok(0);
+        }
         let r = self.ask("(get-info :rlimit)")?;
         r.trim_matches(|c| c == '(' || c == ')')
             .split_whitespace()
@@ -806,6 +820,7 @@ impl Solver {
                 let why = self.ask("(get-info :reason-unknown)")?;
                 if reason_text(&why) == "timeout" {
                     self.timeouts += 1;
+                    self.ended = true;
                 }
                 Ok(Answer::Unknown(self.canon.back(&reason_text(&why))))
             }

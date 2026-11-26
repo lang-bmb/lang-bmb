@@ -1975,6 +1975,34 @@
       }
     },
     {
+      "name": "verify-backstop",
+      "component": "C6",
+      "a": [
+        "env",
+        "BMB_Z3_BACKSTOP_MS=200",
+        "{bmb}",
+        "verify",
+        "--def",
+        "pff::tri_le",
+        "{inputs}"
+      ],
+      "b": [
+        "env",
+        "BMB_Z3_BACKSTOP_MS=200",
+        "{build:stage1}",
+        "verify",
+        "--def",
+        "pff::tri_le",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/fail/proofs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
       "name": "verify-cache",
       "component": "C9",
       "a": [

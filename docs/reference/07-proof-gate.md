@@ -110,6 +110,7 @@ The output of `bmb verify` is E0803 (`` `/` may overflow `i64` in `m::div`; coun
 ## Determinism
 
 - The solver is Z3 at a pinned version, and the resource limit `rlimit` is the same for every obligation. Both values are in `scripts/toolchain.env` and are built into the compiler. The random seed is fixed at 0. A verdict is cut off by `rlimit`, not by time.
+- A wall-clock safeguard (300 seconds per query) stops a query whose units tick slowly. A query it ends is undecided with a reason that says the verdict depends on the machine, and the status line counts such queries (`"backstop":n`). The units such a query had spent are the clock's, so they count 0 in `rlimit` and `rlimit_max`, and a proof with such a query is not cached (ADR-0152).
 - For each obligation the solver state is reset and the whole base, options included, is sent again. So the verdict on one definition does not depend on whether another definition was proved first.
 - Diagnostics are sorted by position and duplicates are removed. The same input gives the same bytes. The `rlimit` values of the status lines are also fixed in the failure corpus (`tests/verify/fail/arith.jsonl` and others).
 - The symbols of a query are canonical names in order of first appearance, so the query text of a program that only renames definitions or locals is the same (ADR-0063).

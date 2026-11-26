@@ -202,3 +202,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0149](0149-gate-b-verdict-carried-over.md) | Gate B (economics) cannot be judged yet and is carried over to gate D | Accepted |
 | [0150](0150-compiler-identity-in-the-cache-header-only.md) | The compiler identity guards the incremental cache in its header only | Accepted (autonomous) |
 | [0151](0151-a-line-limit-on-solver-answers.md) | A line limit on the solver's answers | Accepted (autonomous) |
+| [0152](0152-no-units-for-a-query-the-backstop-ended.md) | A query the wall-clock safeguard ended spends no units | Accepted (autonomous) |

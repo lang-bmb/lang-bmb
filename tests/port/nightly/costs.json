@@ -12,7 +12,7 @@
     "verify-limits-files": 211.0,
     "verify-cache-files": 302.1,
     "verify-cache-damaged-files": 507.8,
-    "incr-files": 1434.2,
+    "incr-files": 4482.2,
     "lint-fail": 23.6,
     "lint-fake-unknown-pass": 3.0,
     "lint-fake-retry-pass": 2.4,

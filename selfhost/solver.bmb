@@ -10,9 +10,9 @@ mod solver {
     #[invariant(settled)]
     struct Proc { child: Option<std::process::Child>, status: Option<i32>, started: u64, aged: u64, memory: u64, queries: u64, alone: bool }
 
-    #[summary("proc is the process that answers; None after a query ended at the memory limit in a process of its own, and after close, until the next `(reset)`. limit is the memory limit in megabytes that decides (query_memory_mb when the solver started): only a query that reaches it as the first query of its process is undecided for memory (ADR-0129). query is the commands of the query since its `(reset)`, as sent: what a new process is asked when the query's process ends at its memory limit. down is why there is no process. alone: the query before ended at a memory limit, so the next one is asked alone at once. canon is the canonical symbols of the query since the last `(reset)` (ADR-0063). timeouts counts the queries since the last take_timeouts that the per-query backstop ended. starts counts the processes this solver tried to start, successful or not")]
+    #[summary("proc is the process that answers; None after a query ended at the memory limit in a process of its own, and after close, until the next `(reset)`. limit is the memory limit in megabytes that decides (query_memory_mb when the solver started): only a query that reaches it as the first query of its process is undecided for memory (ADR-0129). query is the commands of the query since its `(reset)`, as sent: what a new process is asked when the query's process ends at its memory limit. down is why there is no process. alone: the query before ended at a memory limit, so the next one is asked alone at once. canon is the canonical symbols of the query since the last `(reset)` (ADR-0063). timeouts counts the queries since the last take_timeouts that the per-query backstop ended. ended: the backstop ended a check-sat of the query since its `(reset)`, so the units it spent by then are the clock's and none are reported (rlimit_used). starts counts the processes this solver tried to start, successful or not")]
     #[invariant(fits)]
-    struct Solver { proc: Option<Proc>, limit: u64, query: Vec<String>, down: String, alone: bool, canon: encode_query::Canon, timeouts: u64, starts: u64 }
+    struct Solver { proc: Option<Proc>, limit: u64, query: Vec<String>, down: String, alone: bool, canon: encode_query::Canon, timeouts: u64, ended: bool, starts: u64 }
 
     #[summary("The pinned memory limit in megabytes of an advisory query (stage0 advisory_memory_mb). Never above memory_mb, so what lowers that lowers this")]
     #[effects(alloc, io, nondet)]
@@ -59,6 +59,7 @@ mod solver {
         let reset: bool = fmt::trim(sent) == "(reset)";
         if reset {
             s.query = Vec::new();
+            s.ended = false;
             if holds_alone(&s.proc) {
                 retire(&mut s.proc);
                 s.alone = false;
@@ -131,7 +132,7 @@ mod solver {
         lowered("BMB_Z3_BACKSTOP_MS", 300000)
     }
 
-    #[summary("The solver's verdict on the assertions sent (stage0 check_sat). For unknown the solver is asked its reason, named back in the program's symbols; a reason `timeout` is counted (take_timeouts)")]
+    #[summary("The solver's verdict on the assertions sent (stage0 check_sat). For unknown the solver is asked its reason, named back in the program's symbols; a reason `timeout` is counted (take_timeouts) and ends the units of the query (ended)")]
     #[effects(alloc, io, nondet)]
     #[uses(fits, settled)]
     fn check_sat(s: &mut Solver) -> (r: Result<Answer, String>) {
@@ -147,6 +148,7 @@ mod solver {
             let text: String = reason_text(why.as_str());
             if text == "timeout" {
                 s.timeouts = s.timeouts.saturating_add(1);
+                s.ended = true;
             }
             return Ok(Answer::Unknown(encode_query::back(&s.canon, text.as_str())));
         }
@@ -598,10 +600,13 @@ mod solver {
         None
     }
 
-    #[summary("Resource units spent since the last `(reset)` (stage0 rlimit_used; deterministic for a given solver version and query): the second word of the answer `(:rlimit N)`")]
+    #[summary("Resource units spent since the last `(reset)` (stage0 rlimit_used; deterministic for a given solver version and query): the second word of the answer `(:rlimit N)`; 0, unasked, once the backstop ended a check-sat of the query (ended)")]
     #[effects(alloc, io, nondet)]
     #[uses(fits, settled)]
     fn rlimit_used(s: &mut Solver) -> (r: Result<u64, String>) {
+        if s.ended {
+            return Ok(0);
+        }
         let got: String = ask(s, "(get-info :rlimit)")?;
         match rlimit_of(got.as_str()) {
             None => Err(types::cat2("unexpected rlimit answer: ", got.as_str())),
@@ -641,7 +646,7 @@ mod solver {
         let checked: String = toolchain::check_z3(z3)?;
         let limit: u64 = query_memory_mb(who);
         let p: Proc = start_proc(working_memory_mb(limit))?;
-        Ok(Solver { proc: Some(p), limit: limit, query: Vec::new(), down: String::new(), alone: false, canon: encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() }, timeouts: 0, starts: 1 })
+        Ok(Solver { proc: Some(p), limit: limit, query: Vec::new(), down: String::new(), alone: false, canon: encode_query::Canon { fwd: table::new::<String>(), names: Vec::new() }, timeouts: 0, ended: false, starts: 1 })
     }
 
     #[summary("Starts the pinned Z3 with memory limit memory in megabytes (stage0 Proc::start): `z3 -in -smt2 -t:BACKSTOP -T:HARD -memory:MEMORY` with its standard error discarded, then `(set-option :print-success true)`, so that every command answers and an error is seen at the command that caused it. A process that does not answer `success` to that is closed")]
