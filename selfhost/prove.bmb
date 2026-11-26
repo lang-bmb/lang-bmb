@@ -330,6 +330,23 @@ mod prove {
         s
     }
 
+    #[summary("The escapes of the definition at path (stage0 escape::of(..).count()): its `assume` statements, and one more for `#[external_body]`")]
+    #[effects(pure)]
+    fn escapes_of(ck: &body::Checked, path: &str) -> u64 {
+        let mut n: u64 = 0;
+        for i in 0..ck.b.assumes.len()
+            invariant 0 <= i && i <= ck.b.assumes.len(),
+        {
+            if ck.b.assumes[i].as_str() == path {
+                n = n.saturating_add(1);
+            }
+        }
+        if types::has(ck.b.external.as_slice(), path) {
+            n = n.saturating_add(1);
+        }
+        n
+    }
+
     #[summary("E0811 for an obligation whose `f64` counterexample IEEE 754 arithmetic does not confirm (stage0 f64_undecided): undecided, no counterexample")]
     #[effects(alloc)]
     fn f64_undecided(o: &encode_spec::Obl, path: &str, why: &str) -> diag::Diag {
@@ -499,6 +516,30 @@ mod prove {
             encode_terms::Sexp::Atom(a) => false,
             encode_terms::Sexp::List(xs) => { if xs.len() > 0 && encode_query::atom_is(&xs[0], "*") { let mut n: usize = 0; for i in 1..xs.len() invariant 1 <= i && i <= xs.len() && n <= i, { if !is_constant(&xs[i], 100000) { n = n + 1; } } if n >= 2 { return true; } } for k in 0..xs.len() invariant 0 <= k && k <= xs.len(), { if nonlinear(&xs[k], f - 1) { return true; } } false },
         }
+    }
+
+    #[summary("The executable definitions whose termination is not proved (stage0 map::nonterminating, ADR-0094): those with a `loop` without `decreases`, and every definition that calls one, over the checker's call graph")]
+    #[effects(alloc)]
+    fn nonterminating(ck: &body::Checked) -> Vec<String> {
+        let mut out: Vec<String> = ck.b.unmeasured.clone();
+        let callers: usize = ck.b.calls.len();
+        let mut grew: bool = out.len() > 0;
+        let mut fuel: usize = 1000000000;
+        while grew && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            grew = false;
+            for n in 0..callers
+                invariant 0 <= n && n <= callers,
+            {
+                match ck.b.calls.nth(n) {
+                    None => {},
+                    Some(at) => { let caller: String = ck.b.calls.key(n); if !types::has(out.as_slice(), caller.as_str()) && body::any_in(ck.b.calls.items[at].as_slice(), out.as_slice()) { out.push(caller.clone()); grew = true; } },
+                }
+            }
+        }
+        out
     }
 
     #[summary("Obligation k of an encoded definition that is no sub-proof (one obligation of stage0 verify_pass): its script; a proof the cache holds counts with the units and the retries of the run that stored it, and is not asked; otherwise a solver is started when there is none (a start that fails is E0812 at the definition's name, once per definition) and decides it (decide), and a proof is stored. Without a solver the obligation fails")]
@@ -708,9 +749,10 @@ mod prove {
         }
     }
 
-    #[summary("The status rows `bmb verify` prints (stage0 status_lines): per definition its verdict, obligations, failures and resource units. A proof with trusted facts says so (ADR-0029 §5), and a definition whose queries the backstop ended says how many")]
+    #[summary("The status rows `bmb verify` prints (stage0 status_lines): per definition its verdict, obligations, failures and resource units. A proof with trusted facts says so (ADR-0029 §5); a definition with escapes says how many, and one whose termination is not proved says so, whether or not the proof needed them (ADR-0160); and a definition whose queries the backstop ended says how many")]
     #[effects(alloc)]
-    fn status_lines(statuses: &[Status]) -> String {
+    fn status_lines(statuses: &[Status], ck: &body::Checked) -> String {
+        let unproved: Vec<String> = nonterminating(ck);
         let mut out: String = String::new();
         for i in 0..statuses.len()
             invariant 0 <= i && i <= statuses.len(),
@@ -734,6 +776,14 @@ mod prove {
             }
             if statuses[i].failed == 0 && statuses[i].trust == 2 {
                 out.push_str(",\"trust\":\"external\"");
+            }
+            let escapes: u64 = escapes_of(ck, statuses[i].path.as_str());
+            if escapes > 0 {
+                out.push_str(",\"escapes\":");
+                std::num::push_u64(&mut out, escapes);
+            }
+            if types::has(unproved.as_slice(), statuses[i].path.as_str()) {
+                out.push_str(",\"termination\":\"unproved\"");
             }
             if statuses[i].backstop > 0 {
                 out.push_str(",\"backstop\":");

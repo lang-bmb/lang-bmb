@@ -286,7 +286,7 @@ mod lib {
         let m2: codegen::Module = codegen::emit(&fe.ck, &low, &codegen::proofs(usable.as_slice()), &mut incr);
         let incr_error: Option<String> = incremental::save_slot(&mut incr);
         let mut output: String = diags.to_jsonl(&sm);
-        output.push_str(prove::status_lines(out.statuses.as_slice()).as_str());
+        output.push_str(prove::status_lines(out.statuses.as_slice(), &fe.ck).as_str());
         let mut ok: bool = !diags.has_errors();
         for j in 0..out.statuses.len()
             invariant 0 <= j && j <= out.statuses.len(),
@@ -1131,7 +1131,7 @@ mod lib {
             Some(c) => { hits = c.hits; misses = c.misses; match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
         }
         let mut output: String = diags.to_jsonl(&sm);
-        output.push_str(prove::status_lines(out.statuses.as_slice()).as_str());
+        output.push_str(prove::status_lines(out.statuses.as_slice(), &fe.ck).as_str());
         let incr_error: Option<String> = incremental::save_slot(&mut incr);
         let incr_stats: Option<incremental::Stats> = incremental::stats_of(&incr);
         let mut ok: bool = !diags.has_errors();

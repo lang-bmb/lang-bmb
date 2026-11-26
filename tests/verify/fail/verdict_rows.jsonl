@@ -1,0 +1,8 @@
+{"code":"E0802","severity":"error","message":"postcondition `r < 100` may not hold in `rows::fails`; counterexample: x = 99","file":"fail/verdict_rows.bmb","line":40,"col":17,"end_line":40,"end_col":24}
+{"def":"rows::count","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0,"termination":"unproved"}
+{"def":"rows::fails","status":"failed","obligations":2,"failed":1,"rlimit":1048,"rlimit_max":535,"escapes":2}
+{"def":"rows::lines","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0,"termination":"unproved"}
+{"def":"rows::needed","status":"verified","obligations":2,"failed":0,"rlimit":742,"rlimit_max":478,"trust":"assumed","escapes":1}
+{"def":"rows::needless","status":"verified","obligations":1,"failed":0,"rlimit":113,"rlimit_max":113,"escapes":1}
+{"def":"rows::outside","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0,"trust":"external","escapes":1}
+{"def":"rows::plain","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}

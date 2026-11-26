@@ -1125,7 +1125,7 @@ impl Index {
             incoming.entry(e.to.clone()).or_default().push(e.clone());
         }
         let effects = def_effects(t, &edges);
-        let nonterminating = nonterminating(p, t, &edges);
+        let nonterminating = nonterminating(p, t);
         Index {
             units,
             defs,
@@ -1141,8 +1141,9 @@ impl Index {
 
 /// `Index::nonterminating`: the executable definitions with a `loop`
 /// without `decreases` (ADR-0094), and every definition that calls one,
-/// transitively over the `calls` edges.
-fn nonterminating(p: &Program, t: &Tables, edges: &BTreeSet<Edge>) -> BTreeSet<String> {
+/// transitively over the checker's call graph. The rows of `bmb verify`
+/// carry the same mark (ADR-0160).
+pub fn nonterminating(p: &Program, t: &Tables) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = BTreeSet::new();
     for (path, _, f) in crate::check::defs_of(p, &t.fns) {
         if f.kind != FnKind::Exec {
@@ -1167,10 +1168,11 @@ fn nonterminating(p: &Program, t: &Tables, edges: &BTreeSet<Edge>) -> BTreeSet<S
         }
     }
     loop {
-        let add: Vec<String> = edges
+        let add: Vec<String> = t
+            .calls
             .iter()
-            .filter(|e| e.kind == "calls" && out.contains(&e.to) && !out.contains(&e.from))
-            .map(|e| e.from.clone())
+            .filter(|(from, to)| !out.contains(*from) && to.iter().any(|c| out.contains(c)))
+            .map(|(from, _)| from.clone())
             .collect();
         if add.is_empty() {
             return out;

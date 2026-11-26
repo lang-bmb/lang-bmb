@@ -1,0 +1,81 @@
+#[summary("What a status row of `bmb verify` says beyond its verdict (ADR-0160): the escapes of a definition, needed or not, and termination left unproved")]
+mod rows {
+    spec fn small(x: i64) -> bool {
+        0 <= x && x < 100
+    }
+
+    // The proof does not need the `assume`: `proved`, and the row says
+    // that the definition has an escape.
+    #[effects(panic)]
+    fn needless(x: i64) -> (r: i64)
+        ensures r == x,
+    {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x
+    }
+
+    // The proof needs it: `assumed`.
+    #[effects(panic)]
+    fn needed(x: i64) -> (r: i64)
+        ensures r < 101,
+    {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    #[effects(panic)]
+    #[external_body]
+    #[rationale(kind = boundary, "a stand-in for a function the prover does not read")]
+    fn outside(x: i64) -> (r: i64)
+        ensures small(r),
+    {
+        0
+    }
+
+    // A failed definition keeps its escapes on its row.
+    #[effects(panic)]
+    fn fails(x: i64) -> (r: i64)
+        ensures r < 100,
+    {
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        #[rationale(kind = boundary, "callers pass small values")]
+        assume(small(x));
+        x + 1
+    }
+
+    // A loop that runs until the input ends (ADR-0094): proved without its
+    // termination, as is its caller.
+    #[effects(alloc, io, nondet)]
+    fn lines() -> u64 {
+        let mut s: String = String::new();
+        let mut n: u64 = 0;
+        loop {
+            match std::io::read_line(&mut s) {
+                Ok(k) => {
+                    if k == 0 {
+                        break;
+                    }
+                    n = n.saturating_add(1);
+                },
+                Err(e) => {
+                    break;
+                },
+            }
+        }
+        n
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn count() -> () {
+        let n: u64 = lines();
+    }
+
+    // No obligations: `verified`, with `obligations` 0.
+    #[effects(pure)]
+    fn plain(x: i64) -> i64 {
+        x
+    }
+}

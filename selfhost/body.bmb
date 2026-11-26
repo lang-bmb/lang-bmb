@@ -3,8 +3,8 @@ mod body {
     #[summary("Type chosen by settle_lets: the one at the earliest position")]
     struct Best { found: bool, lo: u32, ty: ast::TypeKind }
 
-    #[summary("Table of the body check. c is the declarations collected by pass 1. types is the type of each expression (the key is span_key), locals is the types of names per definition, needs is, per executable definition, the effects of its own operations and the effects its body requires")]
-    struct Body { c: decls::Checker, recursive: table::Table<usize>, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool }
+    #[summary("Table of the body check. c is the declarations collected by pass 1. types is the type of each expression (the key is span_key), locals is the types of names per definition, needs is, per executable definition, the effects of its own operations and the effects its body requires; assumes holds the path of the definition of each `assume` checked, and unmeasured the executable definitions with a `loop` without `decreases` (ADR-0094)")]
+    struct Body { c: decls::Checker, recursive: table::Table<usize>, gcalls: Vec<GCall>, targs: table::Table<Vec<ast::TypeKind>>, aliases: Vec<diag::Diag>, consts: table::Table<consts::Const>, calls: table::Table<Vec<String>>, needs: table::Table<Needs>, external: Vec<String>, types: table::Table<ast::TypeKind>, open_lets: Vec<OpenLet>, typed_uses: Vec<TypedUse>, spec_at: Vec<source::Span>, locals: table::Table<table::Table<ast::TypeKind>>, const_reads: table::Table<Vec<String>>, const_uses: table::Table<ConstUse>, methods: table::Table<MethodTarget>, spec_widen: bool, assumes: Vec<String>, unmeasured: Vec<String> }
 
     impl Body {
         #[summary("Records that caller calls callee")]
@@ -355,6 +355,7 @@ mod body {
             if exec_mode(mode) {
                 need_own(cx, panic_effect(), "`assume`");
             }
+            self.assumes.push(cx.path.clone());
         }
 
         #[summary("Conversions T::try_from(x) with neither unwrap nor ok (ADR-0028 §1, E0412) and T::from(x) (E0212). u32::from(c) is the scalar value of a char (ADR-0050 §2)")]
@@ -3065,7 +3066,7 @@ mod body {
                 self.expect_ty(&t, &ast::TypeKind::Bool, invariants[i].span);
             }
             match measure {
-                None => { if kw == "loop" && cx.effect.nondet { return; } let msg: String = types::cat3("`", kw, "` has no `decreases` clause"); if kw == "loop" { self.c.help("E0506", missing, msg.as_str(), "add `decreases <expr>,` before the loop body; a loop that runs until outside input ends goes in a `nondet` function, where it may have none (its termination is then unproved, ADR-0094)"); } else { self.c.help("E0506", missing, msg.as_str(), "add `decreases <expr>,` before the loop body"); } },
+                None => { if kw == "loop" && cx.effect.nondet { if !types::has(self.unmeasured.as_slice(), cx.path.as_str()) { self.unmeasured.push(cx.path.clone()); } return; } let msg: String = types::cat3("`", kw, "` has no `decreases` clause"); if kw == "loop" { self.c.help("E0506", missing, msg.as_str(), "add `decreases <expr>,` before the loop body; a loop that runs until outside input ends goes in a `nondet` function, where it may have none (its termination is then unproved, ADR-0094)"); } else { self.c.help("E0506", missing, msg.as_str(), "add `decreases <expr>,` before the loop body"); } },
                 Some(d) => { let no: Option<ast::TypeKind> = None; let dt: ast::TypeKind = self.expr(cx, d, &no, Mode::Spec(false), f - 1); if !types::is_int(&dt) && !types::is_error(&dt) { self.c.err("E0401", d.span, types::cat3("`decreases` must be an integer, found `", types::text(&dt).as_str(), "`").as_str()); } },
             }
         }
@@ -9168,7 +9169,9 @@ mod body {
         let spec_at: Vec<source::Span> = Vec::new();
         let aliases: Vec<diag::Diag> = Vec::new();
         let gcalls: Vec<GCall> = Vec::new();
-        Body { c: c, recursive: table::new::<usize>(), gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false }
+        let assumes: Vec<String> = Vec::new();
+        let unmeasured: Vec<String> = Vec::new();
+        Body { c: c, recursive: table::new::<usize>(), gcalls: gcalls, targs: table::new::<Vec<ast::TypeKind>>(), aliases: aliases, consts: consts, calls: table::new::<Vec<String>>(), needs: table::new::<Needs>(), external: external, types: table::new::<ast::TypeKind>(), open_lets: open_lets, typed_uses: typed_uses, spec_at: spec_at, locals: table::new::<table::Table<ast::TypeKind>>(), const_reads: table::new::<Vec<String>>(), const_uses: table::new::<ConstUse>(), methods: table::new::<MethodTarget>(), spec_widen: false, assumes: assumes, unmeasured: unmeasured }
     }
 
     #[summary("Empty context of one function: one scope")]

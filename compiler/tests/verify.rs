@@ -210,6 +210,72 @@ fn fail_corpus_matches_expected() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// A status row says what a verdict needs in one run (ADR-0160): an
+/// escape the proof did not need still counts on its row, and so does
+/// termination left unproved, on the definition with the loop and on its
+/// caller. A row with neither is as before.
+#[test]
+fn status_rows_carry_escapes_and_termination() {
+    let src = r#"#[summary("rows")]
+mod m {
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    #[effects(panic)]
+    fn needless(x: i64) -> (r: i64)
+        ensures r == x,
+    {
+        #[rationale(kind = boundary, "small")]
+        assume(small(x));
+        x
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn lines() -> () {
+        let mut s: String = String::new();
+        loop {
+            match std::io::read_line(&mut s) {
+                Ok(k) => { if k == 0 { break; } },
+                Err(e) => { break; },
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn caller() -> () {
+        lines();
+    }
+
+    #[effects(pure)]
+    fn plain(x: i64) -> i64 { x }
+}
+"#;
+    let out = verify_files(&[("m.bmb".to_string(), src.to_string())]);
+    assert!(out.ok, "{}", out.output);
+    let row = |d: &str| {
+        out.output
+            .lines()
+            .find(|l| l.contains(&format!("\"def\":\"m::{d}\"")))
+            .unwrap_or_default()
+            .to_string()
+    };
+    assert_eq!(
+        row("needless"),
+        r#"{"def":"m::needless","status":"verified","obligations":1,"failed":0,"rlimit":113,"rlimit_max":113,"escapes":1}"#
+    );
+    for d in ["lines", "caller"] {
+        assert!(
+            row(d).ends_with(r#","termination":"unproved"}"#),
+            "{}",
+            row(d)
+        );
+        assert!(!row(d).contains("escapes"), "{}", row(d));
+    }
+    assert_eq!(
+        row("plain"),
+        r#"{"def":"m::plain","status":"verified","obligations":0,"failed":0,"rlimit":0,"rlimit_max":0}"#
+    );
+}
+
 /// An obligation that reveals a scalar leaf `spec fn` is first probed with
 /// the definition as a macro under 1% of the solver limit, then, undecided,
 /// solved with the quantified definition (ADR-0067). The

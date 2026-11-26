@@ -604,7 +604,7 @@ fn verify_frontend_defs(
     });
     let (outcome, cache) = prove_defs(fe, &mut diags, cache_dir, incr.as_mut(), only);
     let mut output = diags.to_jsonl(&fe.sm);
-    output.push_str(&status_lines(&outcome));
+    output.push_str(&status_lines(fe, &outcome));
     if let Some(s) = &mut incr {
         s.save();
     }
@@ -759,7 +759,7 @@ fn emit_llvm_frontend(
         s.save();
     }
     let mut output = diags.to_jsonl(&fe.sm);
-    output.push_str(&status_lines(&outcome));
+    output.push_str(&status_lines(fe, &outcome));
     LlvmOutput {
         verify: VerifyOutput {
             ok: !diags.has_errors() && outcome.statuses.iter().all(|s| s.failed == 0),
@@ -873,25 +873,38 @@ fn prove_defs(
     (outcome, cache.map(|c| (c.hits, c.misses)).unwrap_or((0, 0)))
 }
 
-fn status_lines(outcome: &verify::Outcome) -> String {
+fn status_lines(fe: &Frontend, outcome: &verify::Outcome) -> String {
+    let defs: BTreeMap<String, &ast::FnDef> = check::defs_of(&fe.program, &fe.tables.fns)
+        .into_iter()
+        .map(|(path, _, f)| (path, f))
+        .collect();
+    let nonterminating = map::nonterminating(&fe.program, &fe.tables);
     let mut out = String::new();
     for s in &outcome.statuses {
         let status = if s.failed == 0 { "verified" } else { "failed" };
         // A proof with trusted facts says so (ADR-0029 §5); a `proved` line
         // is as before.
-        let trust = match s.trust {
+        let mut keys = match s.trust {
             verify::Trust::Proved => String::new(),
             t if s.failed == 0 => format!(",\"trust\":\"{}\"", t.name()),
             _ => String::new(),
         };
+        // What else a verdict needs, only where it is not the default
+        // (ADR-0160): the escapes the definition has, needed or not, and
+        // termination left unproved (ADR-0094).
+        let escapes = defs.get(&s.path).map_or(0, |f| escape::of(f).count());
+        if escapes > 0 {
+            keys.push_str(&format!(",\"escapes\":{escapes}"));
+        }
+        if nonterminating.contains(&s.path) {
+            keys.push_str(",\"termination\":\"unproved\"");
+        }
         // Only when the backstop ended a query.
-        let trust = if s.backstop > 0 {
-            format!("{trust},\"backstop\":{}", s.backstop)
-        } else {
-            trust
-        };
+        if s.backstop > 0 {
+            keys.push_str(&format!(",\"backstop\":{}", s.backstop));
+        }
         out.push_str(&format!(
-            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}{trust}}}\n",
+            "{{\"def\":{},\"status\":\"{status}\",\"obligations\":{},\"failed\":{},\"rlimit\":{},\"rlimit_max\":{}{keys}}}\n",
             diag::json_str(&s.path),
             s.obligations,
             s.failed,
