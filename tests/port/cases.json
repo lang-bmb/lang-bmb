@@ -731,6 +731,23 @@
       }
     },
     {
+      "name": "fmt-check-files",
+      "component": "C3",
+      "a": [
+        "sh",
+        "{root}/tests/port/fmt/order.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/fmt/order.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
       "name": "texts",
       "component": "C3",
       "a": [

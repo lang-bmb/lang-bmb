@@ -10,6 +10,7 @@ cargo run -- build a.bmb -o app  # produces an executable only when every obliga
 cargo run -- emit-llvm a.bmb -o a.ll  # IR. Unproved obligations remain as runtime checks (trap)
 cargo run -- emit-llvm --all-checks a.bmb -o a.ll  # IR without proof. Every obligation remains as a runtime check (contracts are not trusted, so mutants that cannot be proved also run honestly)
 cargo run -- codes               # list of diagnostic codes (JSONL)
+cargo run -- fmt a.bmb b.bmb     # the normal form (ADR-0019): the program's units in name order, one blank line between. --check prints nothing and fails unless each file is the normal form of the units it declares, in name order, whatever the other files are and their order
 cargo run -- fix a.bmb           # applies mechanical fixes (replacement) and rechecks, repeatedly. By default it only reports (JSONL), --write fixes in place, --print prints the fixed text
 cargo run -- verify --cache .bmb-cache a.bmb  # proof cache: a proved obligation with the same solver input is not solved again. Unchanged definitions also skip encoding and IR generation
 cargo run -- verify --def u::f --def u::g a.bmb  # proves only the named definitions (the whole program is checked). The status lines are byte-identical to a full proof, the exit code follows only those definitions. An unknown name gives exit code 2 (the overlapping reads of two edits are re-proved at merge, ADR-0065 decision 4)

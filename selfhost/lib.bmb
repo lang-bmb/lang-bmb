@@ -6,6 +6,9 @@ mod lib {
     #[summary("Result of emit-llvm and build (stage0 LlvmOutput): built is whether the program checks, so that there is a module; ok whether it checks and every definition is proved; output the diagnostics and the status rows; ir the text of the module; todo the reasons for syntax not yet ported (if not empty, ir is not used); checks the runtime checks the module keeps because their obligation is not proved, outside the definitions compiled with every check (ADR-0029 §4); has_main whether the program has an entry point; hits and misses the proof cache's lookups; incr what the per-definition cache did, when the run went through it; cache_error and incr_error why the proof cache or the per-definition cache could not be written back, if it could not")]
     struct Emitted { built: bool, ok: bool, output: String, ir: String, todo: Vec<String>, checks: u32, has_main: bool, hits: usize, misses: usize, incr: Option<incremental::Stats>, cache_error: Option<String>, incr_error: Option<String> }
 
+    #[summary("Result of bmb fmt: the Outcome of format, and for each given file the texts of the units it declares in name order, joined by one line (what fmt --check holds that file to, whatever the other files are; empty when not ok)")]
+    struct Formatted { ok: bool, text: String, files: Vec<String> }
+
     #[summary("Result of the front end: the program as written (with library units attached) and its checked form")]
     struct Front { source: ast::Program, ck: body::Checked }
 
@@ -314,21 +317,27 @@ mod lib {
         }
     }
 
-    #[summary("bmb fmt: normal form of the program (ADR-0019 §1), in unit name order with one line in between. Method calls written as paths become method syntax (ADR-0051). Library units are not text of the program (ADR-0092 §1). If there are errors, emits only diagnostics and ok is false")]
+    #[summary("bmb fmt: normal form of the program (ADR-0019 §1), in unit name order with one line in between, and the same of each given file's units (Formatted). Method calls written as paths become method syntax (ADR-0051). Library units are not text of the program (ADR-0092 §1). If there are errors, emits only diagnostics and ok is false")]
     #[effects(alloc)]
-    fn format(files: &[Input]) -> Outcome {
+    fn format(files: &[Input]) -> Formatted {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let fe: Front = frontend(files, &mut sm, &mut diags);
         if diags.has_errors() {
-            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+            return Formatted { ok: false, text: diags.to_jsonl(&sm), files: Vec::new() };
         }
         let normal: ast::Program = methodize::methodize(&fe.source, &fe.ck.program, &fe.ck.b.c.fns, &fe.ck.b.c.adts, &fe.ck.b.types);
         let units: Vec<fmt::Unit> = fmt::format_units(&normal);
+        let mut each: Vec<String> = Vec::new();
+        for k in 0..files.len()
+            invariant each.len() == k,
+        {
+            each.push(String::new());
+        }
         let mut out: String = String::new();
         let mut n: usize = 0;
         for i in 0..units.len()
-            invariant 0 <= i && i <= units.len(),
+            invariant 0 <= i && i <= units.len() && each.len() == files.len(),
         {
             if units[i].name != "std" {
                 if n > 0 {
@@ -336,9 +345,13 @@ mod lib {
                 }
                 out.push_str(units[i].text.as_str());
                 n = n.saturating_add(1);
+                match unit_file(&normal, units[i].name.as_str()) {
+                    None => {},
+                    Some(f) => { if f < each.len() { if each[f].len() > 0 { each[f].push_str("\n"); } each[f].push_str(units[i].text.as_str()); } },
+                }
             }
         }
-        Outcome { ok: true, text: out }
+        Formatted { ok: true, text: out, files: each }
     }
 
     #[summary("Normal form of the program as only read (not checked) from the files: the output the parser's differential test compares. Unit texts in name order with one blank line in between")]
@@ -968,6 +981,19 @@ mod lib {
             out.push_str("]");
         }
         out.push_str("]");
+    }
+
+    #[summary("Index of the given file that declares the top-level unit of this name (its span's file), if a unit has the name")]
+    #[effects(pure)]
+    fn unit_file(p: &ast::Program, name: &str) -> Option<usize> {
+        for m in 0..p.mods.len()
+            invariant 0 <= m && m <= p.mods.len(),
+        {
+            if p.mods[m].name.name == name {
+                return Some(p.mods[m].span.file as usize);
+            }
+        }
+        None
     }
 
     #[summary("The proved obligations whose runtime checks may be dropped (stage0 usable_proofs). A proof assumes the function's `requires` (established by its callers), its callees' `ensures` (proved by them, under their own callees), and earlier facts in the same function, so a proof is usable only when every definition connected to its own by calls, in either direction, is fully proved: the calls of executable code to functions that are no lemmas (stage0's `calls` edges of the map, a trait call with a known `Self` naming its impl's function) join defs into components, and every obligation inside the text of a definition whose component holds a definition with a failure keeps its check")]

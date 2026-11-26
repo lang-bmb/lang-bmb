@@ -53,7 +53,8 @@ const USAGE: &str = "usage:
   bmb build [--cache DIR] [--stats FILE] [--audit] <file.bmb>... -o OUT
                             check, prove (all obligations) and build an executable
   bmb fmt [--check] <file.bmb>...
-                            print the normal form (ADR-0019); --check fails if a file differs
+                            print the normal form (ADR-0019); --check fails unless each file
+                            is the normal form of the units it declares
   bmb fix [--write|--print] [--confirm] [--induction] <file.bmb>...
                             apply mechanical fixes (diagnostic replacements, and on a program
                             that checks the canonical `for` of counting `while` loops, W0907,
@@ -533,23 +534,18 @@ fn run() -> ExitCode {
                 Ok(f) => f,
                 Err(code) => return code,
             };
-            match bmb::format_sources(&files) {
+            match bmb::format_files(&files) {
                 Err(diags) => {
                     print!("{diags}");
                     ExitCode::from(1)
                 }
-                Ok(units) => {
-                    let text = units.values().cloned().collect::<Vec<_>>().join("\n");
+                Ok((units, each)) => {
                     if !check {
-                        print!("{text}");
+                        print!("{}", units.into_values().collect::<Vec<_>>().join("\n"));
                         return ExitCode::SUCCESS;
                     }
-                    let given = files
-                        .iter()
-                        .map(|(_, t)| t.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if given == text {
+                    // Each file by the units it declares (none by another file).
+                    if files.iter().zip(&each).all(|((_, t), n)| t == n) {
                         ExitCode::SUCCESS
                     } else {
                         eprintln!("bmb: not in normal form");

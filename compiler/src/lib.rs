@@ -905,6 +905,15 @@ fn status_lines(outcome: &verify::Outcome) -> String {
 /// Normal form of a program (ADR-0019): top-level unit name -> its text.
 /// `Err` carries diagnostics when the program does not check.
 pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, String>, String> {
+    Ok(format_files(files)?.0)
+}
+
+/// `format_sources`, and for each given file the texts of the units it
+/// declares in name order, joined by one line: what `bmb fmt --check`
+/// holds that file to, whatever the other files are.
+pub fn format_files(
+    files: &[(String, String)],
+) -> Result<(BTreeMap<String, String>, Vec<String>), String> {
     let fe = frontend(files);
     if fe.diags.has_errors() {
         return Err(fe.diags.to_jsonl(&fe.sm));
@@ -914,7 +923,15 @@ pub fn format_sources(files: &[(String, String)]) -> Result<BTreeMap<String, Str
     // The program's units: the library is not its text (ADR-0092 §1).
     let mut units = fmt::format_units(&normal);
     units.remove(stdlib::UNIT);
-    Ok(units)
+    let mut each = vec![Vec::new(); files.len()];
+    for (name, text) in &units {
+        let m = normal.mods.iter().find(|m| &m.name.name == name);
+        if let Some(e) = m.and_then(|m| each.get_mut(m.span.file as usize)) {
+            e.push(text.as_str());
+        }
+    }
+    let each = each.iter().map(|e| e.join("\n")).collect();
+    Ok((units, each))
 }
 
 /// Normal form of parsed sources without checking them (the

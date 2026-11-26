@@ -55,7 +55,7 @@ mod main {
                 2
             };
             let given: Vec<lib::Input> = read_files(args.as_slice(), from);
-            let fr: lib::Outcome = lib::format(given.as_slice());
+            let fr: lib::Formatted = lib::format(given.as_slice());
             if !fr.ok {
                 print_str(fr.text.as_str());
                 std::process::exit(1);
@@ -64,18 +64,15 @@ mod main {
                 print_str(fr.text.as_str());
                 return;
             }
-            let mut written: String = String::new();
-            let mut g: usize = 0;
-            while g < given.len()
-                decreases given.len() - g,
+            let mut normal: bool = fr.files.len() == given.len();
+            for g in 0..given.len()
+                invariant 0 <= g && g <= given.len(),
             {
-                if g > 0 {
-                    written.push_str("\n");
+                if g < fr.files.len() && given[g].text != fr.files[g] {
+                    normal = false;
                 }
-                written.push_str(given[g].text.as_str());
-                g = g + 1;
             }
-            if written != fr.text {
+            if !normal {
                 eprint_str("bmb: not in normal form\n");
                 std::process::exit(1);
             }

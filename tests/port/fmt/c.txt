@@ -1,0 +1,9 @@
+#[summary("c")]
+mod c {
+    #[summary("f")]
+    #[effects(pure)]
+    fn h() -> i64 {
+
+        b::f()
+    }
+}

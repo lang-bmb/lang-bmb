@@ -1,0 +1,17 @@
+#[summary("a")]
+mod a {
+    #[summary("f")]
+    #[effects(pure)]
+    fn g() -> i64 {
+        b::f()
+    }
+}
+
+#[summary("b")]
+mod b {
+    #[summary("f")]
+    #[effects(pure)]
+    fn f() -> i64 {
+        1
+    }
+}

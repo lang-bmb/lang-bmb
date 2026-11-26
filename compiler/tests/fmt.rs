@@ -53,6 +53,35 @@ fn formatting_is_idempotent() {
     }
 }
 
+const CALLER: &str = "#[summary(\"a\")]\nmod a {\n    #[summary(\"f\")]\n    #[effects(pure)]\n    fn g() -> i64 {\n        b::f()\n    }\n}\n";
+const CALLEE: &str = "#[summary(\"b\")]\nmod b {\n    #[summary(\"f\")]\n    #[effects(pure)]\n    fn f() -> i64 {\n        1\n    }\n}\n";
+
+/// `fmt --check` holds each file to the units it declares, in name order,
+/// whatever the other files are and in whatever order they come.
+#[test]
+fn check_holds_each_file_to_its_own_units() {
+    let file = |n: &str, t: &str| (n.to_string(), t.to_string());
+    let check = |files: &[(String, String)]| bmb(&["fmt", "--check"], files).0;
+    let (a, b) = (file("a.bmb", CALLER), file("b.bmb", CALLEE));
+    assert!(check(&[a.clone(), b.clone()]));
+    assert!(check(&[b.clone(), a.clone()]));
+    assert!(check(&[
+        file("e.bmb", ""),
+        file("ab.bmb", &format!("{CALLER}\n{CALLEE}"))
+    ]));
+    assert!(!check(&[file("ba.bmb", &format!("{CALLEE}\n{CALLER}"))]));
+    let loose = file(
+        "c.bmb",
+        &CALLER.replace("mod a", "mod c").replace("{\n", "{\n\n"),
+    );
+    assert!(!check(&[b.clone(), a.clone(), loose.clone()]));
+    assert!(!check(&[loose, a.clone(), b.clone()]));
+    assert_eq!(
+        bmb(&["fmt"], &[a.clone(), b.clone()]),
+        bmb(&["fmt"], &[b, a])
+    );
+}
+
 #[test]
 fn formatting_preserves_proof_results() {
     for p in corpus() {
