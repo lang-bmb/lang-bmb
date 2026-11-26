@@ -32,7 +32,7 @@
           "The sort is a hand-written insertion sort over indices, and the range of the indices is checked at run time (`diag::placed`·`to_jsonl`). `std::slice::sort_indices` has a single `Ord` key, so a four-level order would need four passes: left as is",
           "The normal form drops comments. The explanations were moved into the `#[summary]` of the items: left as is",
           "There are no tuples, so `line_col` returns the struct `Pos`: left as is",
-          "The ratio of this row is against `diag`·`source` (852 lines of stage0), which have port files. `sha256`·`json` are replaced by `lib/std` (467·945 lines against 82·311 lines) and are not counted in the port lines. The driver `selfhost/main.bmb` grows with every phase, so it enters the port list of C13 at P11",
+          "The ratio of this row is against `diag`·`source` (852 lines of stage0), which have port files. `sha256`·`json` are replaced by `lib/std` (687·861 lines against 82·311 lines) and are not counted in the port lines. The driver `selfhost/main.bmb` grows with every phase, so it enters the port list of C13 at P11",
           "`sha256` (`selfhost/sha256.bmb`): 107 lines of stage0 became 174 lines, 6 definitions. The state and the word schedule are `Vec<u32>` with the length written in the contract (`h.len() == 8`), and the constant `K` is `k(i)`, which reads an array literal inside the function by index (premise `i < 64`). `rotate_right`·`wrapping_add`·bit operations of `u32` are built in and stay as they are. 1 failure on the first run of `bmb verify`: appending a hexadecimal digit as the piece `&s[a..a + 1]` of the text `\"0123456789abcdef\"` (character boundary E0820, not true for an arbitrary `&str`) was changed to `char::from_u32`"
         ]
       }

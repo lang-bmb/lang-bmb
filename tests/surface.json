@@ -208,8 +208,8 @@
  ],
  "programs": {
   "lib/std": {
-   "out": "8bada38689c12ba2",
-   "src": "08479b24a83abbc4"
+   "out": "e51ea37c68706ae7",
+   "src": "c7b9bfada99c377c"
   },
   "tests/check/err/arith_methods.bmb": {
    "out": "0316b2e9f7cbdc81",

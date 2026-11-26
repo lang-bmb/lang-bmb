@@ -1,88 +1,56 @@
 #[summary("Intern table (same meaning as rustc's `Symbol` table): one number per text, the next number from 0 on first arrival, and the number refers to that text. Built on the map of sorted text keys (std::collections) (ADR-0092 §2)")]
 mod intern {
-    // Interned texts: `names[i]` is the text of number `i`, and `ids` maps
-    // each text to its number.
+    #[summary("Interned texts: `names[i]` is the text of number `i`, and `ids` maps each text to its number")]
     #[invariant(sound)]
     struct Interner { ids: std::collections::BTreeMap<String, usize>, names: Vec<String> }
 
-    // `m` maps each key to the number whose name it is.
-    spec fn consistent<K: Ord>(m: &std::collections::BTreeMap<K, usize>, names: &[K]) -> bool {
-        m.keys.len() == names.len() && m.vals.len() == names.len()
-            && forall |i: usize| i < m.keys.len() ==> #[trigger] m.vals[i] < names.len() && names[m.vals[i]] == m.keys[i]
-    }
-
-    spec fn sound(t: &Interner) -> bool {
-        consistent::<String>(&t.ids, t.names.as_slice())
-    }
-
-    // `names` is `before` with `k` after it.
-    spec fn appended<K: Ord>(names: &[K], before: &[K], k: &K) -> bool {
-        names.len() == before.len() + 1 && names[before.len()] == *k
-            && forall |j: usize| j < before.len() ==> #[trigger] names[j] == before[j]
-    }
-
-    spec fn insert_pre<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K) -> bool {
-        (exists |p: usize| #[trigger] std::collections::inserted_at::<K>(m.keys.as_slice(), n.keys.as_slice(), p, k)
-            && std::collections::inserted_at::<usize>(m.vals.as_slice(), n.vals.as_slice(), p, &before.len()))
-            && consistent::<K>(n, before) && appended::<K>(names, before, k)
-    }
-
-    // A new key mapped to the next number, its name added at that number,
-    // keeps the map and the names consistent. Over any `Ord` keys: the
-    // instance for `String` is the same statement.
-    #[uses(appended, std::collections::inserted_at, std::collections::shifted)]
-    proof fn insert_keeps<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K)
-        requires insert_pre::<K>(m, n, names, before, k),
-        ensures consistent::<K>(m, names),
-    {
-    }
-
-    // Number `r` names `s`.
-    spec fn named(t: &Interner, r: usize, s: &str) -> bool {
-        r < t.names.len() && t.names[r] == s
-    }
-
-    // `get`'s result: the number that names `s`, or none when no number
-    // does.
-    spec fn found(r: Option<usize>, t: &Interner, s: &str) -> bool {
-        match r {
-            None => forall |i: usize| i < t.ids.keys.len() ==> #[trigger] t.ids.keys[i] != s,
-            Some(j) => named(t, j, s),
-        }
-    }
-
-    spec fn id_pos(t: &Interner, i: usize) -> bool {
-        i < t.names.len()
-    }
-
-    spec fn room(t: &Interner) -> bool {
-        t.names.len() + 1 < 1152921504606846975
-    }
-
-    // At most one text more (what a caller needs to intern again).
-    spec fn grew(t: &Interner, u: &Interner) -> bool {
-        u.names.len() <= t.names.len() && t.names.len() <= u.names.len() + 1
-    }
-
-    spec fn empty(t: &Interner) -> bool {
-        t.names.len() == 0
-    }
-
-    spec fn size(r: usize, t: &Interner) -> bool {
-        r == t.names.len()
-    }
-
-    // `out` is `before` with the name of `i` after it.
-    spec fn pushed_name(out: &str, before: &str, t: &Interner, i: usize) -> bool {
-        i < t.names.len() && out.len() == before.len() + t.names[i].len()
-    }
-
-    spec fn name_room(out: &str, t: &Interner, i: usize) -> bool {
-        i < t.names.len() && out.len() + t.names[i].len() <= 9223372036854775807
-    }
-
     impl Interner {
-        // An empty table.
+        #[summary("The number of `s` if it came before (rustc's interner's `get`)")]
+        #[effects(alloc)]
+        #[uses(consistent, named, sound, std::collections::has_key, std::collections::maps)]
+        fn get(self: &Interner, s: &str) -> (r: Option<usize>)
+            ensures found(r, self, s),
+        {
+            self.ids.get(&String::from(s))
+        }
+
+        #[summary("The number of `s`: its own if it came before, else the next one (rustc's `Symbol::intern`)")]
+        #[effects(alloc)]
+        #[uses(appended, sound, std::collections::has_key, std::collections::maps)]
+        fn intern(self: &mut Interner, s: &str) -> (r: usize)
+            ensures named(self, r, s), grew(self, old(self)),
+        {
+            let known: Option<usize> = self.ids.get(&String::from(s));
+            match known {
+                None => { let fresh: usize = self.names.len(); let key: String = String::from(s); self.ids.insert(key.clone(), fresh); self.names.push(key); proof { insert_keeps::<String>(&self.ids, &old(self).ids, self.names.as_slice(), old(self).names.as_slice(), &self.names[fresh]); } fresh },
+                Some(id) => id,
+            }
+        }
+
+        #[summary("The names in the order of their numbers")]
+        #[effects(pure)]
+        #[uses(sound)]
+        fn into_names(self: Interner) -> Vec<String> {
+            self.names
+        }
+
+        #[summary("How many texts the table has")]
+        #[effects(pure)]
+        fn len(self: &Interner) -> (r: usize)
+            ensures size(r, self),
+        {
+            self.names.len()
+        }
+
+        #[summary("Whether number `i` names `s`")]
+        #[effects(pure)]
+        fn name_is(self: &Interner, i: usize, s: &str) -> bool
+            requires id_pos(self, i),
+        {
+            self.names[i] == s
+        }
+
+        #[summary("An empty table")]
         #[effects(alloc)]
         #[uses(consistent, sound, std::collections::map_sound)]
         fn new() -> (r: Interner)
@@ -93,56 +61,7 @@ mod intern {
             Interner { ids: m, names: v }
         }
 
-        // How many texts the table has.
-        #[effects(pure)]
-        fn len(self: &Interner) -> (r: usize)
-            ensures size(r, self),
-        {
-            self.names.len()
-        }
-
-        // The number of `s`: its own if it came before, else the next one
-        // (rustc's `Symbol::intern`).
-        #[effects(alloc)]
-        #[uses(appended, sound, std::collections::has_key, std::collections::maps)]
-        fn intern(self: &mut Interner, s: &str) -> (r: usize)
-            ensures named(self, r, s), grew(self, old(self)),
-        {
-            let known: Option<usize> = self.ids.get(&String::from(s));
-            match known {
-                None => {
-                    let fresh: usize = self.names.len();
-                    let key: String = String::from(s);
-                    self.ids.insert(key.clone(), fresh);
-                    self.names.push(key);
-                    proof {
-                        insert_keeps::<String>(&self.ids, &old(self).ids, self.names.as_slice(), old(self).names.as_slice(), &self.names[fresh]);
-                    }
-                    fresh
-                }
-                Some(id) => id,
-            }
-        }
-
-        // The number of `s` if it came before (rustc's interner's `get`).
-        #[effects(alloc)]
-        #[uses(consistent, named, sound, std::collections::has_key, std::collections::maps)]
-        fn get(self: &Interner, s: &str) -> (r: Option<usize>)
-            ensures found(r, self, s),
-        {
-            self.ids.get(&String::from(s))
-        }
-
-        // Whether number `i` names `s`.
-        #[effects(pure)]
-        fn name_is(self: &Interner, i: usize, s: &str) -> bool
-            requires id_pos(self, i),
-        {
-            self.names[i] == s
-        }
-
-        // Adds the name of number `i` to `out` (rustc's `Symbol::as_str`,
-        // which borrows it).
+        #[summary("Adds the name of number `i` to `out` (rustc's `Symbol::as_str`, which borrows it)")]
         #[effects(alloc)]
         fn push_name(self: &Interner, i: usize, out: &mut String) -> ()
             requires id_pos(self, i),
@@ -150,12 +69,73 @@ mod intern {
         {
             out.push_str(self.names[i].as_str());
         }
+    }
 
-        // The names in the order of their numbers.
-        #[effects(pure)]
-        #[uses(sound)]
-        fn into_names(self: Interner) -> Vec<String> {
-            self.names
+    #[summary("`names` is `before` with `k` after it")]
+    spec fn appended<K: Ord>(names: &[K], before: &[K], k: &K) -> bool {
+        names.len() == before.len() + 1 && names[before.len()] == *k && (forall|j: usize| j < before.len() ==> #[trigger] names[j] == before[j])
+    }
+
+    #[summary("`m` maps each key to the number whose name it is")]
+    spec fn consistent<K: Ord>(m: &std::collections::BTreeMap<K, usize>, names: &[K]) -> bool {
+        m.keys.len() == names.len() && m.vals.len() == names.len() && (forall|i: usize| i < m.keys.len() ==> #[trigger] m.vals[i] < names.len() && names[m.vals[i]] == m.keys[i])
+    }
+
+    spec fn empty(t: &Interner) -> bool {
+        t.names.len() == 0
+    }
+
+    #[summary("`get`'s result: the number that names `s`, or none when no number does")]
+    spec fn found(r: Option<usize>, t: &Interner, s: &str) -> bool {
+        match r {
+            None => forall|i: usize| i < t.ids.keys.len() ==> #[trigger] t.ids.keys[i] != s,
+            Some(j) => named(t, j, s),
         }
+    }
+
+    #[summary("At most one text more (what a caller needs to intern again)")]
+    spec fn grew(t: &Interner, u: &Interner) -> bool {
+        u.names.len() <= t.names.len() && t.names.len() <= u.names.len() + 1
+    }
+
+    spec fn id_pos(t: &Interner, i: usize) -> bool {
+        i < t.names.len()
+    }
+
+    #[summary("A new key mapped to the next number, its name added at that number, keeps the map and the names consistent. Over any `Ord` keys: the instance for `String` is the same statement")]
+    #[uses(appended, std::collections::inserted_at, std::collections::shifted)]
+    proof fn insert_keeps<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K)
+        requires insert_pre::<K>(m, n, names, before, k),
+        ensures consistent::<K>(m, names),
+    {}
+
+    spec fn insert_pre<K: Ord>(m: &std::collections::BTreeMap<K, usize>, n: &std::collections::BTreeMap<K, usize>, names: &[K], before: &[K], k: &K) -> bool {
+        (exists|p: usize| #[trigger] std::collections::inserted_at::<K>(m.keys.as_slice(), n.keys.as_slice(), p, k) && std::collections::inserted_at::<usize>(m.vals.as_slice(), n.vals.as_slice(), p, &before.len())) && consistent::<K>(n, before) && appended::<K>(names, before, k)
+    }
+
+    spec fn name_room(out: &str, t: &Interner, i: usize) -> bool {
+        i < t.names.len() && out.len() + t.names[i].len() <= 9223372036854775807
+    }
+
+    #[summary("Number `r` names `s`")]
+    spec fn named(t: &Interner, r: usize, s: &str) -> bool {
+        r < t.names.len() && t.names[r] == s
+    }
+
+    #[summary("`out` is `before` with the name of `i` after it")]
+    spec fn pushed_name(out: &str, before: &str, t: &Interner, i: usize) -> bool {
+        i < t.names.len() && out.len() == before.len() + t.names[i].len()
+    }
+
+    spec fn room(t: &Interner) -> bool {
+        t.names.len() + 1 < 1152921504606846975
+    }
+
+    spec fn size(r: usize, t: &Interner) -> bool {
+        r == t.names.len()
+    }
+
+    spec fn sound(t: &Interner) -> bool {
+        consistent::<String>(&t.ids, t.names.as_slice())
     }
 }

@@ -1,57 +1,45 @@
 #[summary("CRC-32: the reflected CRC-32 of ISO-HDLC/zlib (polynomial 0xedb88320, initial value and final xor 0xffffffff). The result is proven the same as the bitwise definition reg. Same values as Rust crc32fast and Python zlib.crc32")]
 mod crc32 {
-    // One bit of the register: shift right, and xor the reflected polynomial
-    // when the bit shifted out is set.
+    #[summary("One bit of the register: shift right, and xor the reflected polynomial when the bit shifted out is set")]
     spec fn bit(c: u32) -> u32 {
-        if c & 1 == 1 { (c >> 1) ^ 0xedb88320 } else { c >> 1 }
+        if c & 1 == 1 {
+            c >> 1 ^ 0xedb88320
+        } else {
+            c >> 1
+        }
     }
 
-    // One byte: xor it into the low bits, then eight bit steps.
-    spec fn byte(c: u32, b: u8) -> u32 {
-        bit(bit(bit(bit(bit(bit(bit(bit(c ^ b))))))))
+    spec fn bit_result(c: u32, r: u32) -> bool {
+        r == bit(c)
     }
-
-    // The register after feeding `s[0..n]` to the register `c`.
-    spec fn run(c: u32, s: &[u8], n: usize) -> u32
-        decreases n,
-    {
-        if n == 0 || n > s.len() { c } else { byte(run(c, s, n - 1), s[n - 1]) }
-    }
-
-    spec fn bit_result(c: u32, r: u32) -> bool { r == bit(c) }
-
-    spec fn byte_result(c: u32, b: u8, r: u32) -> bool { r == byte(c, b) }
-
-    spec fn ran(c: u32, s: &[u8], n: usize, r: u32) -> bool { n <= s.len() && r == run(c, s, n) }
-
-    // zlib's `crc32(crc, s)`: the checksum `crc` of some bytes continued
-    // with `s`. The register holds the complement of the checksum.
-    spec fn continued(crc: u32, s: &[u8], r: u32) -> bool { r == !run(!crc, s, s.len()) }
-
-    spec fn checksum_of(s: &[u8], r: u32) -> bool { r == !run(0xffffffff, s, s.len()) }
-
-    // zlib's table: entry `k` is the register after the byte `k` from 0.
-    spec fn tabulated(t: &[u32]) -> bool {
-        t.len() == 256 && forall|k: usize| k < 256 ==> #[trigger] t[k] == byte(k, 0)
-    }
-
-    spec fn filled(t: &[u32], n: usize) -> bool {
-        t.len() == 256 && n <= 256 && forall|k: usize| k < n ==> #[trigger] t[k] == byte(k, 0)
-    }
-
-    // One byte by the table: the low byte of `c ^ b` picks the entry, and
-    // the rest of the register moves down a byte.
-    spec fn by_table(c: u32, b: u8) -> bool { byte(c, b) == byte((c ^ b) & 0xff, 0) ^ (c >> 8) }
 
     #[effects(pure)]
     #[uses(bit)]
     fn bit_step(c: u32) -> (r: u32)
         ensures bit_result(c, r),
     {
-        if c & 1 == 1 { (c >> 1) ^ 0xedb88320 } else { c >> 1 }
+        if c & 1 == 1 {
+            c >> 1 ^ 0xedb88320
+        } else {
+            c >> 1
+        }
     }
 
-    // The register after one byte, bit by bit (it fills the table).
+    #[summary("One byte by the table: the low byte of `c ^ b` picks the entry, and the rest of the register moves down a byte")]
+    spec fn by_table(c: u32, b: u8) -> bool {
+        byte(c, b) == byte((c ^ b) & 0xff, 0) ^ c >> 8
+    }
+
+    #[summary("One byte: xor it into the low bits, then eight bit steps")]
+    spec fn byte(c: u32, b: u8) -> u32 {
+        bit(bit(bit(bit(bit(bit(bit(bit(c ^ b))))))))
+    }
+
+    spec fn byte_result(c: u32, b: u8, r: u32) -> bool {
+        r == byte(c, b)
+    }
+
+    #[summary("The register after one byte, bit by bit (it fills the table)")]
     #[effects(pure)]
     #[uses(byte)]
     fn byte_step(c: u32, b: u8) -> (r: u32)
@@ -68,17 +56,43 @@ mod crc32 {
         bit_step(x7)
     }
 
-    // The table step is the bitwise one: a fact of the bits of `c` and `b`
-    // alone, proved over bit-vectors (the mixed encoding did
-    // not decide it within rlimit 5,000,000).
-    #[uses(bit)]
-    proof fn table_lemma(c: u32, b: u8)
-        ensures by_table(c, b),
+    #[summary("The CRC-32 of `s` (`\"123456789\"` gives `0xcbf43926`)")]
+    #[effects(pure)]
+    fn checksum(s: &[u8]) -> (r: u32)
+        ensures checksum_of(s, r),
     {
-        assert(byte(c, b) == byte((c ^ b) & 0xff, 0) ^ (c >> 8)) by (bit_vector);
+        update(0, s)
     }
 
-    // zlib's 256-entry table.
+    spec fn checksum_of(s: &[u8], r: u32) -> bool {
+        r == !run(0xffffffff, s, s.len())
+    }
+
+    #[summary("zlib's `crc32(crc, s)`: the checksum `crc` of some bytes continued with `s`. The register holds the complement of the checksum")]
+    spec fn continued(crc: u32, s: &[u8], r: u32) -> bool {
+        r == !run(!crc, s, s.len())
+    }
+
+    spec fn filled(t: &[u32], n: usize) -> bool {
+        t.len() == 256 && n <= 256 && (forall|k: usize| k < n ==> #[trigger] t[k] == byte(k, 0))
+    }
+
+    spec fn ran(c: u32, s: &[u8], n: usize, r: u32) -> bool {
+        n <= s.len() && r == run(c, s, n)
+    }
+
+    #[summary("The register after feeding `s[0..n]` to the register `c`")]
+    spec fn run(c: u32, s: &[u8], n: usize) -> u32
+        decreases n,
+    {
+        if n == 0 || n > s.len() {
+            c
+        } else {
+            byte(run(c, s, n - 1), s[n - 1])
+        }
+    }
+
+    #[summary("zlib's 256-entry table")]
     #[effects(pure)]
     fn table() -> (t: [u32; 256])
         ensures tabulated(&t),
@@ -92,7 +106,15 @@ mod crc32 {
         e
     }
 
-    // The register after one byte by the table.
+    #[summary("The table step is the bitwise one: a fact of the bits of `c` and `b` alone, proved over bit-vectors (the mixed encoding did not decide it within rlimit 5,000,000)")]
+    #[uses(bit)]
+    proof fn table_lemma(c: u32, b: u8)
+        ensures by_table(c, b),
+    {
+        assert(byte(c, b) == byte((c ^ b) & 0xff, 0) ^ c >> 8) by (bit_vector);
+    }
+
+    #[summary("The register after one byte by the table")]
     #[effects(pure)]
     fn table_step(t: &[u32], c: u32, b: u8) -> (r: u32)
         requires tabulated(t),
@@ -101,11 +123,24 @@ mod crc32 {
         proof {
             table_lemma(c, b);
         }
-        t[((c ^ b as u32) & 0xff) as usize] ^ (c >> 8)
+        t[((c ^ b as u32) & 0xff) as usize] ^ c >> 8
     }
 
-    // The checksum `crc` of some bytes, continued with `s`, by the table `t`
-    // (from `table()`: one table serves any number of checksums).
+    #[summary("zlib's table: entry `k` is the register after the byte `k` from 0")]
+    spec fn tabulated(t: &[u32]) -> bool {
+        t.len() == 256 && (forall|k: usize| k < 256 ==> #[trigger] t[k] == byte(k, 0))
+    }
+
+    #[summary("The checksum `crc` of some bytes, continued with `s` (zlib `crc32(crc, s)`; `update(0, s)` is the checksum of `s`)")]
+    #[effects(pure)]
+    fn update(crc: u32, s: &[u8]) -> (r: u32)
+        ensures continued(crc, s, r),
+    {
+        let t: [u32; 256] = table();
+        update_with(&t, crc, s)
+    }
+
+    #[summary("The checksum `crc` of some bytes, continued with `s`, by the table `t` (from `table()`: one table serves any number of checksums)")]
     #[effects(pure)]
     #[uses(run)]
     fn update_with(t: &[u32], crc: u32, s: &[u8]) -> (r: u32)
@@ -119,23 +154,5 @@ mod crc32 {
             c = table_step(t, c, s[i]);
         }
         !c
-    }
-
-    // The checksum `crc` of some bytes, continued with `s` (zlib
-    // `crc32(crc, s)`; `update(0, s)` is the checksum of `s`).
-    #[effects(pure)]
-    fn update(crc: u32, s: &[u8]) -> (r: u32)
-        ensures continued(crc, s, r),
-    {
-        let t: [u32; 256] = table();
-        update_with(&t, crc, s)
-    }
-
-    // The CRC-32 of `s` (`"123456789"` gives `0xcbf43926`).
-    #[effects(pure)]
-    fn checksum(s: &[u8]) -> (r: u32)
-        ensures checksum_of(s, r),
-    {
-        update(0, s)
     }
 }

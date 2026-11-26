@@ -1,22 +1,39 @@
 #[summary("Byte string library: comparison, prefix, search, appending, decimal formatting and parsing (ADR-0044 §4). A program that uses it passes this file along")]
 mod bytes {
-    // ---------- comparison ----------
-
-    spec fn same_upto(a: &[u8], b: &[u8], n: usize) -> bool {
-        n <= a.len() && n <= b.len() && forall|k: usize| k < n ==> #[trigger] a[k] == b[k]
+    spec fn appended(v: &[u8], w: &[u8], s: &[u8]) -> bool {
+        v.len() == w.len() + s.len() && kept(v, w) && copied(v, w.len(), s, s.len())
     }
 
-    spec fn same(a: &[u8], b: &[u8]) -> bool { a.len() == b.len() && same_upto(a, b, a.len()) }
-
-    spec fn eq_result(r: bool, a: &[u8], b: &[u8]) -> bool { (r && same(a, b)) || (!r && !same(a, b)) }
-
-    spec fn scan(ok: bool, a: &[u8], b: &[u8], i: usize) -> bool {
-        (ok && same_upto(a, b, i)) || (!ok && 0 < i && i <= a.len() && i <= b.len() && a[i - 1] != b[i - 1])
+    spec fn at(s: &[u8], p: &[u8], i: usize, n: usize) -> bool {
+        i + p.len() <= s.len() && n <= p.len() && (forall|k: usize| k < n ==> #[trigger] p[k] == s[i + k])
     }
 
-    // `a == b` byte for byte.
+    spec fn copied(v: &[u8], at: usize, s: &[u8], n: usize) -> bool {
+        n <= s.len() && at + n <= v.len() && (forall|k: usize| k < n ==> #[trigger] s[k] == v[at + k])
+    }
+
+    #[summary("The value of the first `n` bytes of `s` read as decimal digits")]
+    spec fn dec(s: &[u8], n: usize) -> i64
+        decreases n,
+    {
+        if n == 0 {
+            0
+        } else {
+            dec(s, n - 1) * 10 + (s[n - 1] - 48)
+        }
+    }
+
+    spec fn digit(c: u8) -> bool {
+        48 <= c && c <= 57
+    }
+
+    spec fn digits(s: &[u8], n: usize) -> bool {
+        n <= s.len() && (forall|k: usize| k < n ==> digit(#[trigger] s[k]))
+    }
+
+    #[summary("`a == b` byte for byte")]
     #[effects(pure)]
-    #[uses(same_upto, same)]
+    #[uses(same, same_upto)]
     fn eq(a: &[u8], b: &[u8]) -> (r: bool)
         ensures eq_result(r, a, b),
     {
@@ -38,51 +55,11 @@ mod bytes {
         }
     }
 
-    spec fn prefix(p: &[u8], s: &[u8]) -> bool { p.len() <= s.len() && same_upto(s, p, p.len()) }
-
-    spec fn prefix_result(r: bool, s: &[u8], p: &[u8]) -> bool { (r && prefix(p, s)) || (!r && !prefix(p, s)) }
-
-    // Whether `s` starts with `p`.
-    #[effects(pure)]
-    #[uses(same_upto, prefix)]
-    fn starts_with(s: &[u8], p: &[u8]) -> (r: bool)
-        ensures prefix_result(r, s, p),
-    {
-        if p.len() > s.len() {
-            false
-        } else {
-            let mut ok: bool = true;
-            let mut i: usize = 0;
-            while i < p.len() && ok
-                invariant i <= p.len(), p.len() <= s.len(), scan(ok, s, p, i),
-                decreases p.len() - i,
-            {
-                if s[i] != p[i] {
-                    ok = false;
-                }
-                i = i + 1;
-            }
-            ok
-        }
+    spec fn eq_result(r: bool, a: &[u8], b: &[u8]) -> bool {
+        r && same(a, b) || !r && !same(a, b)
     }
 
-    // ---------- building ----------
-
-    spec fn kept(v: &[u8], w: &[u8]) -> bool {
-        w.len() <= v.len() && forall|k: usize| k < w.len() ==> #[trigger] v[k] == w[k]
-    }
-
-    spec fn copied(v: &[u8], at: usize, s: &[u8], n: usize) -> bool {
-        n <= s.len() && at + n <= v.len() && forall|k: usize| k < n ==> #[trigger] s[k] == v[at + k]
-    }
-
-    spec fn fits(v: &[u8], s: &[u8]) -> bool { v.len() + s.len() <= 9223372036854775807 }
-
-    spec fn appended(v: &[u8], w: &[u8], s: &[u8]) -> bool {
-        v.len() == w.len() + s.len() && kept(v, w) && copied(v, w.len(), s, s.len())
-    }
-
-    // Appends `s` (Rust `extend_from_slice`).
+    #[summary("Appends `s` (Rust `extend_from_slice`)")]
     #[effects(alloc)]
     fn extend(v: &mut Vec<u8>, s: &[u8]) -> ()
         requires fits(v.as_slice(), s),
@@ -95,33 +72,7 @@ mod bytes {
         }
     }
 
-    // ---------- search ----------
-
-    spec fn at(s: &[u8], p: &[u8], i: usize, n: usize) -> bool {
-        i + p.len() <= s.len() && n <= p.len() && forall|k: usize| k < n ==> #[trigger] p[k] == s[i + k]
-    }
-
-    // No occurrence of `p` starts before `i`.
-    spec fn none_before(s: &[u8], p: &[u8], i: usize) -> bool {
-        forall|k: usize| k < i ==> !#[trigger] at(s, p, k, p.len())
-    }
-
-    // `p` occurs nowhere in `s`.
-    spec fn nowhere(s: &[u8], p: &[u8]) -> bool {
-        p.len() > s.len() || none_before(s, p, s.len() - p.len() + 1)
-    }
-
-    // `r` is the first position of `p` in `s`, or none when there is none
-    // (Rust's `find`).
-    spec fn found(r: Option<usize>, s: &[u8], p: &[u8]) -> bool {
-        match r {
-            None => nowhere(s, p),
-            Some(i) => at(s, p, i, p.len()) && none_before(s, p, i),
-        }
-    }
-
-    // The first position of `p` in `s`, scanning from the start: exactly
-    // Rust's `find` (an empty `p` is at 0).
+    #[summary("The first position of `p` in `s`, scanning from the start: exactly Rust's `find` (an empty `p` is at 0)")]
     #[effects(pure)]
     #[uses(nowhere)]
     fn find(s: &[u8], p: &[u8]) -> (r: Option<usize>)
@@ -134,16 +85,13 @@ mod bytes {
             let mut i: usize = 0;
             let mut hit: bool = false;
             while i <= last && !hit
-                invariant i <= last + 1, last + p.len() == s.len(),
-                    hit ==> (0 < i && at(s, p, i - 1, p.len()) && none_before(s, p, i - 1)),
-                    !hit ==> none_before(s, p, i),
+                invariant i <= last + 1, last + p.len() == s.len(), hit ==> 0 < i && at(s, p, i - 1, p.len()) && none_before(s, p, i - 1), !hit ==> none_before(s, p, i),
                 decreases last + 1 - i,
             {
                 let mut j: usize = 0;
                 let mut ok: bool = true;
                 while j < p.len() && ok
-                    invariant j <= p.len(), i <= last, last + p.len() == s.len(), ok ==> at(s, p, i, j),
-                        !ok ==> !at(s, p, i, p.len()),
+                    invariant j <= p.len(), i <= last, last + p.len() == s.len(), ok ==> at(s, p, i, j), !ok ==> !at(s, p, i, p.len()),
                     decreases p.len() - j,
                 {
                     if s[i + j] != p[j] {
@@ -156,17 +104,110 @@ mod bytes {
                 }
                 i = i + 1;
             }
-            if hit { Some(i - 1) } else { None }
+            if hit {
+                Some(i - 1)
+            } else {
+                None
+            }
         }
     }
 
-    // ---------- decimal ----------
+    spec fn fits(v: &[u8], s: &[u8]) -> bool {
+        v.len() + s.len() <= 9223372036854775807
+    }
 
-    spec fn room(v: &[u8], m: usize) -> bool { v.len() + m <= 9223372036854775807 }
+    #[summary("`r` is the first position of `p` in `s`, or none when there is none (Rust's `find`)")]
+    spec fn found(r: Option<usize>, s: &[u8], p: &[u8]) -> bool {
+        match r {
+            None => nowhere(s, p),
+            Some(i) => at(s, p, i, p.len()) && none_before(s, p, i),
+        }
+    }
 
-    spec fn grew_by(v: &[u8], w: &[u8], m: usize) -> bool { w.len() < v.len() && v.len() <= w.len() + m && kept(v, w) }
+    spec fn grew_by(v: &[u8], w: &[u8], m: usize) -> bool {
+        w.len() < v.len() && v.len() <= w.len() + m && kept(v, w)
+    }
 
-    // Appends `x` in decimal (at most 20 bytes).
+    spec fn kept(v: &[u8], w: &[u8]) -> bool {
+        w.len() <= v.len() && (forall|k: usize| k < w.len() ==> #[trigger] v[k] == w[k])
+    }
+
+    #[summary("No occurrence of `p` starts before `i`")]
+    spec fn none_before(s: &[u8], p: &[u8], i: usize) -> bool {
+        forall|k: usize| k < i ==> !#[trigger] at(s, p, k, p.len())
+    }
+
+    #[summary("`p` occurs nowhere in `s`")]
+    spec fn nowhere(s: &[u8], p: &[u8]) -> bool {
+        p.len() > s.len() || none_before(s, p, s.len() - p.len() + 1)
+    }
+
+    #[summary("`s` read as a decimal `u64`: `None` when it is empty, holds a byte that is not a digit, or does not fit. `Some(v)` is proved to be the value of the digits")]
+    #[effects(pure)]
+    #[uses(digit)]
+    fn parse_u64(s: &[u8]) -> (r: Option<u64>)
+        ensures parsed(r, s),
+    {
+        if s.len() == 0 {
+            None
+        } else {
+            let mut acc: u64 = 0;
+            let mut ok: bool = true;
+            let mut i: usize = 0;
+            while i < s.len() && ok
+                invariant i <= s.len(), ok ==> digits(s, i) && acc == dec(s, i),
+                decreases s.len() - i,
+            {
+                let c: u8 = s[i];
+                if c < b'0' || c > b'9' {
+                    ok = false;
+                } else {
+                    let d: u64 = (c - b'0') as u64;
+                    match acc.checked_mul(10) {
+                        None => { ok = false; },
+                        Some(m) => match m.checked_add(d) { None => { ok = false; }, Some(t) => { acc = t; }, },
+                    }
+                }
+                i = i + 1;
+            }
+            if ok {
+                Some(acc)
+            } else {
+                None
+            }
+        }
+    }
+
+    spec fn parsed(r: Option<u64>, s: &[u8]) -> bool {
+        match r {
+            None => true,
+            Some(v) => s.len() > 0 && digits(s, s.len()) && v == dec(s, s.len()),
+        }
+    }
+
+    spec fn prefix(p: &[u8], s: &[u8]) -> bool {
+        p.len() <= s.len() && same_upto(s, p, p.len())
+    }
+
+    spec fn prefix_result(r: bool, s: &[u8], p: &[u8]) -> bool {
+        r && prefix(p, s) || !r && !prefix(p, s)
+    }
+
+    #[summary("Appends `x` in decimal, with `-` when negative (at most 21 bytes). The magnitude of a negative `x` is written as `-(x + 1) + 1`: `-x` overflows at `i64::MIN`, `-(x + 1)` does not")]
+    #[effects(alloc)]
+    #[uses(kept)]
+    fn push_i64(v: &mut Vec<u8>, x: i64) -> ()
+        ensures grew_by(v.as_slice(), old(v).as_slice(), 21),
+    {
+        if x < 0 {
+            v.push(b'-');
+            push_u64(v, -(x + 1) as u64 + 1);
+        } else {
+            push_u64(v, x as u64);
+        }
+    }
+
+    #[summary("Appends `x` in decimal (at most 20 bytes)")]
     #[effects(alloc)]
     fn push_u64(v: &mut Vec<u8>, x: u64) -> ()
         ensures grew_by(v.as_slice(), old(v).as_slice(), 20),
@@ -196,79 +237,43 @@ mod bytes {
         }
     }
 
-    // Appends `x` in decimal, with `-` when negative (at most 21 bytes).
-    #[effects(alloc)]
-    #[uses(kept)]
-    fn push_i64(v: &mut Vec<u8>, x: i64) -> ()
-        ensures grew_by(v.as_slice(), old(v).as_slice(), 21),
-    {
-        if x < 0 {
-            v.push(b'-');
-            // `-x` overflows at `i64::MIN`; `-(x + 1)` does not.
-            push_u64(v, -(x + 1) as u64 + 1);
-        } else {
-            push_u64(v, x as u64);
-        }
+    spec fn room(v: &[u8], m: usize) -> bool {
+        v.len() + m <= 9223372036854775807
     }
 
-    spec fn digit(c: u8) -> bool { 48 <= c && c <= 57 }
-
-    spec fn digits(s: &[u8], n: usize) -> bool { n <= s.len() && forall|k: usize| k < n ==> digit(#[trigger] s[k]) }
-
-    // The value of the first `n` bytes of `s` read as decimal digits.
-    spec fn dec(s: &[u8], n: usize) -> i64
-        decreases n,
-    {
-        if n == 0 { 0 } else { dec(s, n - 1) * 10 + (s[n - 1] - 48) }
+    spec fn same(a: &[u8], b: &[u8]) -> bool {
+        a.len() == b.len() && same_upto(a, b, a.len())
     }
 
-    spec fn parsed(r: Option<u64>, s: &[u8]) -> bool {
-        match r {
-            None => true,
-            Some(v) => s.len() > 0 && digits(s, s.len()) && v == dec(s, s.len()),
-        }
+    spec fn same_upto(a: &[u8], b: &[u8], n: usize) -> bool {
+        n <= a.len() && n <= b.len() && (forall|k: usize| k < n ==> #[trigger] a[k] == b[k])
     }
 
-    // `s` read as a decimal `u64`: `None` when it is empty, holds a byte
-    // that is not a digit, or does not fit. `Some(v)` is proved to be the
-    // value of the digits.
+    spec fn scan(ok: bool, a: &[u8], b: &[u8], i: usize) -> bool {
+        ok && same_upto(a, b, i) || !ok && 0 < i && i <= a.len() && i <= b.len() && a[i - 1] != b[i - 1]
+    }
+
+    #[summary("Whether `s` starts with `p`")]
     #[effects(pure)]
-    #[uses(digit)]
-    fn parse_u64(s: &[u8]) -> (r: Option<u64>)
-        ensures parsed(r, s),
+    #[uses(prefix, same_upto)]
+    fn starts_with(s: &[u8], p: &[u8]) -> (r: bool)
+        ensures prefix_result(r, s, p),
     {
-        if s.len() == 0 {
-            None
+        if p.len() > s.len() {
+            false
         } else {
-            let mut acc: u64 = 0;
             let mut ok: bool = true;
             let mut i: usize = 0;
-            while i < s.len() && ok
-                invariant i <= s.len(), ok ==> (digits(s, i) && acc == dec(s, i)),
-                decreases s.len() - i,
+            while i < p.len() && ok
+                invariant i <= p.len(), p.len() <= s.len(), scan(ok, s, p, i),
+                decreases p.len() - i,
             {
-                let c: u8 = s[i];
-                if c < b'0' || c > b'9' {
+                if s[i] != p[i] {
                     ok = false;
-                } else {
-                    let d: u64 = (c - b'0') as u64;
-                    match acc.checked_mul(10) {
-                        None => {
-                            ok = false;
-                        }
-                        Some(m) => match m.checked_add(d) {
-                            None => {
-                                ok = false;
-                            }
-                            Some(t) => {
-                                acc = t;
-                            }
-                        },
-                    }
                 }
                 i = i + 1;
             }
-            if ok { Some(acc) } else { None }
+            ok
         }
     }
 }
