@@ -27,6 +27,7 @@ The language surface carries its own version, apart from the compiler crate's.
 - The keys of the incremental cache no longer hold the compiler's identity, which the file's header names: a cache file of another build is still not read at all, and the key `bmb reads` prints of a definition no longer changes with each build of the compiler.
 - A query the wall-clock safeguard ends spends no resource units in the output: its units enter no `rlimit` or `rlimit_max` of a `bmb verify` status line, no cost of `lint` or `examples` and no row of `stability`, and a proof with such a query is not stored in the proof cache. The units it had spent by then depend on the clock, so the line differed from run to run (`"backstop"` still counts these queries).
 - `bmb fmt --check` holds each file to the units it declares: a file passes when its text is the normal form of those units in name order, with one blank line between, and the check passes when every file does. It compared the files joined in the order given with all the units joined in name order, so two files in normal form passed in one order and failed in the other, and an empty file among the files made the check fail. `bmb fmt` without `--check` prints the same text as before.
+- A parameter may have the name of one of the code generator's own labels or temporaries (`entry`, `t1`, `then1`): such a program passed the proof and then failed to build ("multiple definition of local value"). Parameter registers now carry a suffix no source name can have.
 
 ### Standard library
 

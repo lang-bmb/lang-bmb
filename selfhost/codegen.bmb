@@ -5160,7 +5160,7 @@ mod codegen {
                     g.slots.insert(n.as_str(), Slot::Arr(ArrSlot { ptr: ap, len: array_len_text(&ps[i]), elem: elem_kind(&aety), ety: aety }));
                 } else if !decls::is_unit(&ps[i]) {
                     let lt: String = llty(&ps[i]);
-                    let reg: String = types::cat3("%\"", n.as_str(), "\"");
+                    let reg: String = types::cat3("%\"", n.as_str(), ".in\"");
                     params.push(types::cat3(lt.as_str(), " ", reg.as_str()));
                     let ptr: String = g.alloca(lt.as_str());
                     g.emit(types::cat7("store ", lt.as_str(), " ", reg.as_str(), ", ptr ", ptr.as_str(), "").as_str());

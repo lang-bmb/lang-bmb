@@ -4249,9 +4249,11 @@ pub fn emit_with(
                 TypeKind::Unit => {}
                 ty => {
                     let lt = llty(ty);
-                    params.push(format!("{lt} %\"{n}\""));
+                    // `.in`: no source name has a dot, so a parameter named
+                    // `entry` or `t1` cannot meet a label or a temporary.
+                    params.push(format!("{lt} %\"{n}.in\""));
                     let ptr = g.alloca(lt);
-                    g.emit(format!("store {lt} %\"{n}\", ptr {ptr}"));
+                    g.emit(format!("store {lt} %\"{n}.in\", ptr {ptr}"));
                     g.slots.insert(n.clone(), Slot::Scalar { ptr, ty: lt });
                 }
             }

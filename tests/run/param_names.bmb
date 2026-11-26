@@ -1,0 +1,28 @@
+#[summary("Parameters named like the code generator's own labels and temporaries: entry, t1, then1, endif3, ret")]
+mod names {
+    #[effects(pure)]
+    fn pick(entry: i64, t1: i64, t2: i64) -> i64 {
+        if t1 > t2 { entry } else { t2 }
+    }
+
+    #[effects(pure)]
+    fn larger(then1: i64, else2: i64, endif3: i64) -> i64 {
+        if then1 > else2 { then1 } else { if else2 > endif3 { else2 } else { endif3 } }
+    }
+
+    #[effects(pure)]
+    fn flag(ret: bool, t3: bool) -> i64 {
+        if ret && t3 { 1 } else { 0 }
+    }
+}
+
+#[summary("Entry point")]
+mod app {
+    #[effects(io)]
+    fn main() -> () {
+        print_i64(names::pick(7, 2, 1));
+        print_i64(names::pick(7, 1, 2));
+        print_i64(names::larger(1, 2, 3));
+        print_i64(names::flag(true, true));
+    }
+}
