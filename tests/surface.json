@@ -679,6 +679,10 @@
    "out": "03697d4b7979964c",
    "src": "5ecc78aa0db6b79c"
   },
+  "tests/run/param_names.bmb": {
+   "out": "1a2e09133dcdc644",
+   "src": "4c18541f793d46ee"
+  },
   "tests/run/points.bmb": {
    "out": "2bd1b1acba132bc3",
    "src": "c5f4be5c22624aea"
