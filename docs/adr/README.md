@@ -202,13 +202,13 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0149](0149-gate-b-verdict-carried-over.md) | Gate B (economics) cannot be judged yet and is carried over to gate D | Accepted |
 | [0150](0150-compiler-identity-in-the-cache-header-only.md) | The compiler identity guards the incremental cache in its header only | Accepted (autonomous) |
 | [0151](0151-a-line-limit-on-solver-answers.md) | A line limit on the solver's answers | Accepted |
-| [0152](0152-no-units-for-a-query-the-backstop-ended.md) | A query the wall-clock safeguard ended spends no units | Accepted (autonomous) |
+| [0152](0152-no-units-for-a-query-the-backstop-ended.md) | A query the wall-clock safeguard ended spends no units | Accepted |
 | [0153](0153-what-self-proof-means-and-the-oracle-after-retirement.md) | What self-proof means, and the oracle after the Rust compiler retires | Accepted |
 | [0154](0154-gate-d-outcomes-and-the-north-star-measures.md) | The outcomes registered for gate D, and the measures that judge the economic premise | Accepted |
 | [0155](0155-the-anchor-and-the-roads-kept-open.md) | The anchor of the design, and the roads kept open | Accepted |
 | [0156](0156-packages-as-working-material-before-gate-e.md) | Packages are built as working material before gate E | Accepted |
-| [0157](0157-byte-round-trips-in-the-proof-encoder.md) | Byte round trips in the proof encoder | Accepted (autonomous) |
+| [0157](0157-byte-round-trips-in-the-proof-encoder.md) | Byte round trips in the proof encoder | Accepted |
 | [0158](0158-the-standard-library-is-in-the-normal-form.md) | The standard library is in the normal form | Accepted |
 | [0159](0159-a-package-calls-a-package-through-the-package-manager.md) | A package calls a package through the package manager | Accepted |
-| [0160](0160-a-status-row-carries-escapes-and-termination.md) | A status row of `bmb verify` carries escapes and unproved termination | Accepted (autonomous) |
-| [0161](0161-a-counterexample-shows-what-it-assumes-of-a-hidden-spec-fn.md) | A counterexample shows what it assumes of a spec fn seen only by name | Accepted (autonomous) |
+| [0160](0160-a-status-row-carries-escapes-and-termination.md) | A status row of `bmb verify` carries escapes and unproved termination | Accepted |
+| [0161](0161-a-counterexample-shows-what-it-assumes-of-a-hidden-spec-fn.md) | A counterexample shows what it assumes of a spec fn seen only by name | Accepted |

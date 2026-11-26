@@ -1,6 +1,6 @@
 # ADR-0161: A counterexample shows what it assumes of a spec fn seen only by name
 
-- Status: Accepted (autonomous)
+- Status: Accepted
 - Date: 2026-11-26
 - Related: ADR-0017 (counterexamples from the model), ADR-0023 (ground instances), ADR-0090 (spec values are not held to their declared types), ADR-0095 (the default proof context), ADR-0108 (bounded search)
 

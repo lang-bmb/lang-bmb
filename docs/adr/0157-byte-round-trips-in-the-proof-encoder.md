@@ -1,6 +1,6 @@
 # ADR-0157: Byte round trips in the proof encoder
 
-- Status: Accepted (autonomous)
+- Status: Accepted
 - Date: 2026-11-26
 - Related: ADR-0048 (integer types and bit operations), ADR-0090 (spec values outside their type), ADR-0017 §3 (facts are theorems of the definitions), DESIGN.md §6
 

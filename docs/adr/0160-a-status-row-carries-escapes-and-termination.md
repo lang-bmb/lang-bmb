@@ -1,6 +1,6 @@
 # ADR-0160: A status row of `bmb verify` carries escapes and unproved termination
 
-- Status: Accepted (autonomous)
+- Status: Accepted
 - Date: 2026-11-26
 - Related: ADR-0020 §1, §3 (keys added only where they apply; `status` of the map), ADR-0029 §2, §5 (trust levels, the escape keys), ADR-0094 §3 (the mark of unproved termination), ADR-0156 (packages as working material)
 

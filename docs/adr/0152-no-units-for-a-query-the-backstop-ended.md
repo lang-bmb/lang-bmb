@@ -1,6 +1,6 @@
 # ADR-0152: A query the wall-clock safeguard ended spends no units
 
-- Status: Accepted (autonomous)
+- Status: Accepted
 - Date: 2026-11-26
 - Related: ADR-0018 (a fresh state per obligation), ADR-0032 (the incremental cache), ADR-0129 (limits decided per query), DESIGN.md §6
 
