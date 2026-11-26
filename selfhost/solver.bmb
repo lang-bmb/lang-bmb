@@ -137,11 +137,9 @@ mod solver {
     #[uses(fits, settled)]
     fn check_sat(s: &mut Solver) -> (r: Result<Answer, String>) {
         let got: String = ask(s, "(check-sat)")?;
-        if got == "unsat" {
-            return Ok(Answer::Unsat);
-        }
-        if got == "sat" {
-            return Ok(Answer::Sat);
+        match verdict_word(got.as_str()) {
+            None => {},
+            Some(a) => { return Ok(a); },
         }
         if got == "unknown" {
             let why: String = ask(s, "(get-info :reason-unknown)")?;
@@ -727,6 +725,14 @@ mod solver {
         }
     }
 
+    #[summary("Whether r is the verdict unsat")]
+    spec fn unsat_word(r: &Option<Answer>) -> bool {
+        match r {
+            None => false,
+            Some(a) => match a { Answer::Unsat => true, Answer::Sat => false, Answer::Unknown(why) => false, },
+        }
+    }
+
     #[summary("The value of a pair `(term value)` of a model; a member that is no pair is its own value (stage0 get_values)")]
     #[effects(alloc)]
     fn value_of(p: &encode_terms::Sexp) -> encode_terms::Sexp {
@@ -734,6 +740,21 @@ mod solver {
             encode_terms::Sexp::Atom(a) => p.clone(),
             encode_terms::Sexp::List(kv) => { if kv.len() == 2 { kv[1].clone() } else { p.clone() } },
         }
+    }
+
+    #[summary("The verdict the solver's answer to check-sat states by itself: unsat for the word `unsat` and for nothing else (ADR-0153, P1: the one place an unsat verdict is made), sat for `sat`, None for any other answer")]
+    #[effects(pure)]
+    #[uses(unsat_word)]
+    fn verdict_word(got: &str) -> (r: Option<Answer>)
+        ensures unsat_word(&r) == (got == "unsat"),
+    {
+        if got == "unsat" {
+            return Some(Answer::Unsat);
+        }
+        if got == "sat" {
+            return Some(Answer::Sat);
+        }
+        None
     }
 
     #[summary("The working limit of a process for the deciding limit limit")]

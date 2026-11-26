@@ -33,8 +33,8 @@ mod codegen {
     #[summary("Loop that break or continue can leave (stage0 GLoop): label (empty text if none), where continue goes, where break goes, the slot where break e of a loop puts its value and its type, the length of pending when the loop starts (temporaries after that belong to the region inside the loop)")]
     struct GLoop { label: String, head: String, end: String, slot: Option<String>, ty: ast::TypeKind, mark: usize }
 
-    #[summary("State of lowering one function (stage0 Gen). out is the text of the body, allocas are the slots of entry, tmp and label are the numbers of %tN and labels, slots are the places of local names, todo holds the reasons for constructs met that are not yet ported (if not empty, no module is emitted), print_f64 is whether print_f64 was called (that runtime fragment is attached to the module), loops are the loops enclosing the code being lowered (innermost last), globals are this function's constants and consts is their line count, pending are the temporaries that own heap memory (released when the region ends), clones are the texts of the types whose clone code was called, proven holds the obligations whose runtime checks are dropped (proof_key of each)")]
-    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind>, proven: table::Table<bool> }
+    #[summary("State of lowering one function (stage0 Gen). out is the text of the body, allocas are the slots of entry, tmp and label are the numbers of %tN and labels, slots are the places of local names, todo holds the reasons for constructs met that are not yet ported (if not empty, no module is emitted), print_f64 is whether print_f64 was called (that runtime fragment is attached to the module), loops are the loops enclosing the code being lowered (innermost last), globals are this function's constants and consts is their line count, pending are the temporaries that own heap memory (released when the region ends), clones are the texts of the types whose clone code was called, proven holds the obligations whose runtime checks are dropped (proof_key of each), held the same obligations as Proofs, where a dropped check has its witness (ADR-0153, P2)")]
+    struct Gen { path: String, base: String, unit: String, out: String, allocas: String, tmp: u32, label: u32, slots: table::Table<Slot>, checks: u32, globals: String, consts: u32, ret: ast::TypeKind, todo: Vec<String>, loops: Vec<GLoop>, pending: Vec<Pend>, clones: Vec<String>, tsub: types::Subst, wants: Vec<Want>, used: table::Table<ast::TypeKind>, proven: table::Table<bool>, held: Proofs }
 
     impl Gen {
         #[summary("Puts one slot of ty in entry and gives its name")]
@@ -2384,10 +2384,16 @@ mod codegen {
             }
         }
 
-        #[summary("Whether the obligation of code at e is proved and its runtime check dropped (stage0 proved)")]
+        #[summary("Whether the obligation of code at e is proved and its runtime check dropped (stage0 proved). Every dropped check asks here; a yes has its witness among the usable proofs (ADR-0153, P2)")]
         #[effects(alloc)]
-        fn proved(self: &Gen, code: &str, e: &ast::Expr) -> bool {
-            self.proven.has(proof_key(code, e.span).as_str())
+        #[uses(held)]
+        fn proved(self: &Gen, code: &str, e: &ast::Expr) -> (r: bool)
+            ensures r ==> held(self.held.obls.as_slice(), code, e.span),
+        {
+            if !self.proven.has(proof_key(code, e.span).as_str()) {
+                return false;
+            }
+            witness(&self.held, code, e.span)
         }
 
         #[summary("Writes value v to memory ptr (stage0 put): a scalar in memory form (bool is one byte, narrow integers their own width), arrays and memory values are copied")]
@@ -4083,6 +4089,7 @@ mod codegen {
         let mut used: table::Table<ast::TypeKind> = table::new::<ast::TypeKind>();
         let mut checks_by: table::Table<u32> = table::new::<u32>();
         let mut proven: table::Table<bool> = proven_table(proofs.obls.as_slice());
+        let mut held: Proofs = Proofs { keys: proofs.keys.clone(), obls: proofs.obls.clone() };
         let mut qi: usize = 0;
         let mut fuel: usize = 100000000;
         while fuel > 0 && qi < queue.len()
@@ -4096,7 +4103,7 @@ mod codegen {
             if di < defs.len() {
                 match tb.fns.find(defs[di].path.as_str()) {
                     None => {},
-                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let usable: Vec<encode_spec::Trivial> = match incr { None => Vec::new(), Some(s0) => usable_in(proofs, defs[di].d.span), }; let targs: Vec<ast::TypeKind> = inst_args(&tb.fns.items[at], &qsub); let inst: Option<String> = if qsub.names.len() > 0 { Some(qpath.clone()) } else { None }; let hit: Option<incremental::IrHit> = match incr { None => None, Some(s1) => incremental::ir_lookup(s1, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice()), }; let auditing: bool = match incr { None => false, Some(s2) => incremental::audit(s2), }; let mut reused: bool = false; match &hit { None => {}, Some(h) => { if !auditing { reused = true; count_checks(&mut checks_by, defs[di].path.as_str(), h.checks); ir.push_str(h.ir.as_str()); match incr { None => {}, Some(s3) => s3.stats.ir_reused.push(qpath.clone()), } clone_calls(h.ir.as_str(), &mut clones); for u0 in 0..h.deps.used.len() invariant 0 <= u0 && u0 <= h.deps.used.len(), { used.insert(types::text(&h.deps.used[u0]).as_str(), h.deps.used[u0].clone()); } enqueue(h.deps.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } }, } if !reused { let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], proven, ck, tb); proven = std::mem::replace(&mut g.proven, table::new::<bool>()); count_checks(&mut checks_by, defs[di].path.as_str(), g.checks); ir.push_str(g.out.as_str()); for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } let mut deps: incremental::IrDeps = incremental::IrDeps { wants: g.wants.clone(), used: Vec::new() }; for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => { used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()); deps.used.push(g.used.items[ua].clone()); }, } } let differs: bool = match &hit { None => false, Some(h2) => h2.ir != g.out || h2.checks != g.checks || incremental::deps_text(&h2.deps) != incremental::deps_text(&deps), }; match incr { None => {}, Some(s4) => { s4.stats.lowered.push(qpath.clone()); if differs { s4.stats.mismatches.push(qpath.clone()); } if g.todo.len() == 0 { incremental::ir_record(s4, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice(), g.out.as_str(), g.checks, &deps); } }, } enqueue(g.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } },
+                    Some(at) => { if defs[di].d.name.name == "main" && qpath == types::cat2(defs[di].unit.as_str(), "::main") { main = Some(qpath.clone()); } let usable: Vec<encode_spec::Trivial> = match incr { None => Vec::new(), Some(s0) => usable_in(proofs, defs[di].d.span), }; let targs: Vec<ast::TypeKind> = inst_args(&tb.fns.items[at], &qsub); let inst: Option<String> = if qsub.names.len() > 0 { Some(qpath.clone()) } else { None }; let hit: Option<incremental::IrHit> = match incr { None => None, Some(s1) => incremental::ir_lookup(s1, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice()), }; let auditing: bool = match incr { None => false, Some(s2) => incremental::audit(s2), }; let mut reused: bool = false; match &hit { None => {}, Some(h) => { if !auditing { reused = true; count_checks(&mut checks_by, defs[di].path.as_str(), h.checks); ir.push_str(h.ir.as_str()); match incr { None => {}, Some(s3) => s3.stats.ir_reused.push(qpath.clone()), } clone_calls(h.ir.as_str(), &mut clones); for u0 in 0..h.deps.used.len() invariant 0 <= u0 && u0 <= h.deps.used.len(), { used.insert(types::text(&h.deps.used[u0]).as_str(), h.deps.used[u0].clone()); } enqueue(h.deps.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } }, } if !reused { let mut g: Gen = lower_fn(&defs[di], qpath.as_str(), qsub.clone(), &tb.fns.items[at], proven, held, ck, tb); proven = std::mem::replace(&mut g.proven, table::new::<bool>()); held = std::mem::replace(&mut g.held, Proofs { keys: Vec::new(), obls: Vec::new() }); count_checks(&mut checks_by, defs[di].path.as_str(), g.checks); ir.push_str(g.out.as_str()); for q in 0..g.clones.len() invariant 0 <= q && q <= g.clones.len(), { clones.push(g.clones[q].clone()); } for k in 0..g.todo.len() invariant 0 <= k && k <= g.todo.len(), { todo.push(g.todo[k].clone()); } let mut deps: incremental::IrDeps = incremental::IrDeps { wants: g.wants.clone(), used: Vec::new() }; for u in 0..g.used.len() invariant 0 <= u, { match g.used.nth(u) { None => {}, Some(ua) => { used.insert(types::text(&g.used.items[ua]).as_str(), g.used.items[ua].clone()); deps.used.push(g.used.items[ua].clone()); }, } } let differs: bool = match &hit { None => false, Some(h2) => h2.ir != g.out || h2.checks != g.checks || incremental::deps_text(&h2.deps) != incremental::deps_text(&deps), }; match incr { None => {}, Some(s4) => { s4.stats.lowered.push(qpath.clone()); if differs { s4.stats.mismatches.push(qpath.clone()); } if g.todo.len() == 0 { incremental::ir_record(s4, defs[di].path.as_str(), &inst, targs.as_slice(), defs[di].d.span, usable.as_slice(), g.out.as_str(), g.checks, &deps); } }, } enqueue(g.wants.as_slice(), &mut lowered, &by_path, &mut queue, &mut todo); } },
                 }
             }
         }
@@ -4463,6 +4470,11 @@ mod codegen {
             None => false,
             Some(ht_t) => true,
         }
+    }
+
+    #[summary("Whether obls has the obligation of code at position s: the condition of dropping its runtime check (ADR-0153, P2)")]
+    spec fn held(obls: &[encode_spec::Trivial], code: &str, s: source::Span) -> bool {
+        exists|i: usize| i < obls.len() && #[trigger] obls[i].span == s && obls[i].code == code
     }
 
     #[summary("Whether the value holds a Vec anywhere (stage0 holds_vec): through references, fields, payloads, Box, arrays, type arguments")]
@@ -5108,8 +5120,8 @@ mod codegen {
 
     #[summary("Lowers one definition (one round of stage0 emit_with): parameter places, body, return. g.out is the whole text of that definition")]
     #[effects(alloc)]
-    fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, proven: table::Table<bool>, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
-        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>(), proven: proven };
+    fn lower_fn(def: &Def, path: &str, tsub: types::Subst, sig: &types::FnSig, proven: table::Table<bool>, held: Proofs, ck: &body::Checked, tb: &lowered::Tables) -> Gen {
+        let mut g: Gen = Gen { path: String::from(path), base: def.path.clone(), unit: def.unit.clone(), out: String::new(), allocas: String::new(), tmp: 0, label: 0, slots: table::new::<Slot>(), checks: 0, globals: String::new(), consts: 0, ret: sig.ret.clone(), todo: Vec::new(), loops: Vec::new(), pending: Vec::new(), clones: Vec::new(), tsub: tsub, wants: Vec::new(), used: table::new::<ast::TypeKind>(), proven: proven, held: held };
         let mut ps: Vec<ast::TypeKind> = Vec::new();
         for pi in 0..sig.params.len()
             invariant 0 <= pi && pi <= sig.params.len(),
@@ -5753,6 +5765,32 @@ mod codegen {
             None => {},
             Some(vs) => { let words: u64 = layout(t, tb).size.wrapping_sub(8) / 8; out.push_str(data_ty(t).as_str()); out.push_str(" = type { i64, ["); std::num::push_u64(out, words); out.push_str(" x i64] }\n"); for i in 0..vs.len() invariant 0 <= i && i <= vs.len(), { if vs[i].tys.len() > 0 { out.push_str(view_ty(t, vs[i].name.as_str()).as_str()); out.push_str(" = type { i64"); for k in 0..vs[i].tys.len() invariant 0 <= k && k <= vs[i].tys.len(), { out.push_str(", "); out.push_str(mem_ty(&vs[i].tys[k]).as_str()); } out.push_str(" }\n"); } for p in 0..vs[i].tys.len() invariant 0 <= p && p <= vs[i].tys.len(), { visit(&vs[i].tys[p], tb, seen, out, f - 1); } } },
         }
+    }
+
+    #[summary("Whether ps has the obligation of code at position s, found by its key (a binary search, as usable_in) and then read: the answer yes names an element that is that obligation")]
+    #[effects(alloc)]
+    #[uses(held)]
+    fn witness(ps: &Proofs, code: &str, s: source::Span) -> (r: bool)
+        ensures r ==> held(ps.obls.as_slice(), code, s),
+    {
+        let key: String = types::cat2(body::span_key(s).as_str(), code);
+        let mut a: usize = 0;
+        let mut b: usize = ps.keys.len();
+        while a < b
+            invariant a <= b && b <= ps.keys.len(),
+            decreases b - a,
+        {
+            let mid: usize = a + (b - a) / 2;
+            if ps.keys[mid] < key {
+                a = mid + 1;
+            } else {
+                b = mid;
+            }
+        }
+        if a < ps.obls.len() && ps.obls[a].span.file == s.file && ps.obls[a].span.lo == s.lo && ps.obls[a].span.hi == s.hi && ps.obls[a].code.as_str() == code {
+            return true;
+        }
+        false
     }
 
     #[summary("Whether it is a byte used in names: letters, digits, underscore")]

@@ -18,15 +18,29 @@ mod prove {
     #[summary("The count of one definition while its obligations are decided: how many failed, the resource units, the script, whether the solver is down for the rest of the definition (it could not start, or could not be read), the obligations proved (stage0 def_proved: those that hold by their own text, then each one proved or found in the proof cache), which the per-definition cache stores, and the obligations that failed with an answer or with no translation (stage0 failed_keys: one that fails for want of a solver is not among them)")]
     struct Tally { failed: usize, total: u64, max: u64, script: String, down: bool, proved: Vec<encode_spec::Trivial>, lost: Vec<encode_spec::Trivial> }
 
-    #[summary("What the solver decided of one obligation: whether it is proved, the largest single run among its queries, the retries that ran (cache stage bits), and whether the solver can no longer be read")]
-    struct Verdict { proved: bool, ob_max: u64, stages: u8, broken: bool }
+    #[summary("What the solver decided of one obligation: whether it is proved, the kind of the answer that decided it (by: an Ans kind, 9 while there is none; proved only by 0, unsat: ADR-0153, P1), the largest single run among its queries, the retries that ran (cache stage bits), and whether the solver can no longer be read")]
+    #[invariant(unsat_only)]
+    struct Verdict { proved: bool, by: u8, ob_max: u64, stages: u8, broken: bool }
 
     #[summary("Adds a query's resource units to the definition's total, and to its largest run and the obligation's when the query counts there")]
     #[effects(pure)]
+    #[uses(unsat_only)]
     fn add(t: &mut Tally, v: &mut Verdict, used: Option<u64>, peak: bool) -> () {
         match used {
             None => {},
             Some(u) => { t.total = t.total.saturating_add(u); if peak { if u > t.max { t.max = u; } if u > v.ob_max { v.ob_max = u; } } },
+        }
+    }
+
+    #[summary("The solver's verdict r as an Ans: kind 0 for unsat and for nothing else (ADR-0153, P1)")]
+    #[effects(alloc)]
+    #[uses(is_unsat)]
+    fn ans_of(r: Result<solver::Answer, String>) -> (a: Ans)
+        ensures (a.kind == 0) == is_unsat(&r),
+    {
+        match r {
+            Ok(got) => match got { solver::Answer::Unsat => Ans { kind: 0, text: String::new() }, solver::Answer::Sat => Ans { kind: 1, text: String::new() }, solver::Answer::Unknown(why) => Ans { kind: 2, text: why }, },
+            Err(e3) => Ans { kind: 3, text: e3 },
         }
     }
 
@@ -45,10 +59,7 @@ mod prove {
                 Err(e2) => { return Ans { kind: 3, text: e2 }; },
             }
         }
-        match solver::check_sat(sol) {
-            Ok(a) => match a { solver::Answer::Unsat => Ans { kind: 0, text: String::new() }, solver::Answer::Sat => Ans { kind: 1, text: String::new() }, solver::Answer::Unknown(why) => Ans { kind: 2, text: why }, },
-            Err(e3) => Ans { kind: 3, text: e3 },
-        }
+        ans_of(solver::check_sat(sol))
     }
 
     #[summary("The definitions of from and every definition they call, directly or not, through calls (the downward closure of stage0 verify_trusting), as a sorted set")]
@@ -89,8 +100,9 @@ mod prove {
 
     #[summary("Decides obligation o, number k of definition path, with the solver (the solving part of stage0 verify_pass for an obligation that is no sub-proof). In order: the query with bit operations abstracted, when there is one, whose unsat proves; the probe, whose unsat proves and whose sat is a model; with the probe undecided and revealed quantified definitions, their ground instances at the probe's share (unsat proves, sat refutes when the instances are complete); the full query; undecided with quantified definitions, the ground instances again under the full limit; still undecided and asked for, the search within small bounds, and when it finds nothing the query of its domain. A model is shown as a counterexample when its `f64` values are IEEE's (else one is searched for with IEEE arithmetic); an undecided obligation says why, with the solver's candidate model as unconfirmed. The texts of the queries asked after the first answer are appended to the script")]
     #[effects(alloc, io, nondet)]
+    #[uses(unsat_only)]
     fn decide(sol: &mut solver::Solver, cx: &encode_query::Ctx, pg: &encode_spec::Prog, o: &encode_spec::Obl, k: usize, pl: &encode_query::Plan, inputs: &[encode_spec::Shown], path: &str, unit: &str, names: &table::Table<String>, opts: &Opts, t: &mut Tally, diags: &mut diag::Diags) -> Verdict {
-        let mut v: Verdict = Verdict { proved: false, ob_max: 0, stages: 0, broken: false };
+        let mut v: Verdict = Verdict { proved: false, by: 9, ob_max: 0, stages: 0, broken: false };
         let num: String = encode_terms::dec(k as u64);
         let mut answer: Option<Ans> = None;
         let mut answered: String = types::cat3(pl.base.as_str(), "\n", pl.q.as_str());
@@ -165,6 +177,7 @@ mod prove {
             }
         }
         if last.kind == 0 {
+            v.by = last.kind;
             v.proved = true;
             return v;
         }
@@ -209,14 +222,16 @@ mod prove {
 
     #[summary("Decides the sub-proof q of obligation o with the solver (the solving part of stage0 verify_pass for `by (bit_vector)`): its own query over the options alone. A model is a counterexample over the assertion's variables when its `f64` values are IEEE's; `min` and `max` of zeros of both signs are not defined there")]
     #[effects(alloc, io, nondet)]
+    #[uses(unsat_only)]
     fn decide_sub(sol: &mut solver::Solver, o: &encode_spec::Obl, q: &encode_sub::Query, base: &str, neg: &str, path: &str, who: solver::Asker, t: &mut Tally, diags: &mut diag::Diags) -> Verdict {
-        let mut v: Verdict = Verdict { proved: false, ob_max: 0, stages: 0, broken: false };
+        let mut v: Verdict = Verdict { proved: false, by: 9, ob_max: 0, stages: 0, broken: false };
         let mut ps: Vec<String> = Vec::new();
         ps.push(String::from(base));
         ps.push(String::from(neg));
         let a: Ans = asked(sol, ps.as_slice());
         add(t, &mut v, spent(sol, &a), true);
         if a.kind == 0 {
+            v.by = a.kind;
             v.proved = true;
             return v;
         }
@@ -469,6 +484,14 @@ mod prove {
         match a {
             None => true,
             Some(x) => false,
+        }
+    }
+
+    #[summary("Whether the solver's verdict r is unsat")]
+    spec fn is_unsat(r: &Result<solver::Answer, String>) -> bool {
+        match r {
+            Ok(got) => match got { solver::Answer::Unsat => true, solver::Answer::Sat => false, solver::Answer::Unknown(why) => false, },
+            Err(e) => false,
         }
     }
 
@@ -981,6 +1004,11 @@ mod prove {
             None => false,
             Some(why) => true,
         }
+    }
+
+    #[summary("The discipline of the verdict (ADR-0153, P1): an obligation is proved only by an answer of kind 0, unsat")]
+    spec fn unsat_only(v: &Verdict) -> bool {
+        v.proved ==> v.by == 0
     }
 
     #[summary("Attaches the deterministic hints that apply to a failed obligation (stage0 with_hint): the spec fns it sees only by name, and nonlinear arithmetic")]
