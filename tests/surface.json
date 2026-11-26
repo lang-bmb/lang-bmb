@@ -134,6 +134,7 @@
   "E0514",
   "E0515",
   "E0516",
+  "E0517",
   "E0601",
   "E0602",
   "E0603",
@@ -204,6 +205,11 @@
    "kind": "result changed",
    "name": "tests/check/err/consts.bmb",
    "reason": "The fix text of E0261 names a section of DESIGN.md by its title. The document is in English now (ADR-0147 decision 7), so the title reads \"Effects\". No program is accepted or rejected differently."
+  },
+  {
+   "kind": "code added",
+   "name": "E0517",
+   "reason": "A bug fix: `#[trigger]` on a bound variable alone passed the check, and the solver then rejected the query (E0812 \"invalid function application\"). No program that proved before is rejected: such a quantifier ended in a solver error at its first use."
   }
  ],
  "programs": {
@@ -446,6 +452,10 @@
   "tests/check/err/tries.bmb": {
    "out": "5e3ec1bc3a9a7741",
    "src": "0d7f4572efe74170"
+  },
+  "tests/check/err/triggers.bmb": {
+   "out": "c98f6f1006d24fab",
+   "src": "e255d71d07d5f48f"
   },
   "tests/check/err/types.bmb": {
    "out": "c529e56926d47267",

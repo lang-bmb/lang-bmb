@@ -366,6 +366,10 @@ pub const CODES: &[(&str, &str)] = &[
         "E0512",
         "the triggers of a `forall` or `exists` must together mention every bound variable",
     ),
+    (
+        "E0517",
+        "a `#[trigger]` is a term that applies a function or an index to a bound variable, not the variable alone",
+    ),
     // E06xx: effects and attributes
     ("E0601", "function requires an `#[effects(..)]` attribute"),
     ("E0602", "unknown effect"),

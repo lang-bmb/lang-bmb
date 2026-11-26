@@ -203,6 +203,7 @@ mod diag {
         v.push(Code { code: String::from("E0510"), text: String::from("`#[trigger]` is only allowed inside `forall` or `exists`") });
         v.push(Code { code: String::from("E0511"), text: String::from("`forall` and `exists` require at least one `#[trigger]`") });
         v.push(Code { code: String::from("E0512"), text: String::from("the triggers of a `forall` or `exists` must together mention every bound variable") });
+        v.push(Code { code: String::from("E0517"), text: String::from("a `#[trigger]` is a term that applies a function or an index to a bound variable, not the variable alone") });
         v.push(Code { code: String::from("E0601"), text: String::from("function requires an `#[effects(..)]` attribute") });
         v.push(Code { code: String::from("E0602"), text: String::from("unknown effect") });
         v.push(Code { code: String::from("E0603"), text: String::from("`pure` function calls a function with effect `io`") });

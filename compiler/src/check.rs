@@ -8541,6 +8541,28 @@ impl<'a> Checker<'a> {
                     };
                     self.diags.push(d);
                 }
+                // A bound variable alone is no pattern: the solver rejects
+                // the query.
+                for t in &triggers {
+                    if let ExprKind::Var(v) = &t.kind
+                        && binders.iter().any(|b| b.name.name == v.name)
+                    {
+                        self.diags.push(
+                            Diag::new(
+                                "E0517",
+                                t.span,
+                                format!("`#[trigger]` marks the bound variable `{}` alone", v.name),
+                            )
+                            .fix(
+                                format!(
+                                    "mark a term that applies a function or an index to `{}`, e.g. `#[trigger] p({})` or `#[trigger] a[{}]`",
+                                    v.name, v.name, v.name
+                                ),
+                                None,
+                            ),
+                        );
+                    }
+                }
                 // All triggers of one quantifier form a single multi-pattern.
                 if !triggers.is_empty() {
                     for b in binders {

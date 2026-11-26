@@ -1,0 +1,27 @@
+#[summary("A trigger is a term that applies a function or an index to a bound variable, not the variable alone (E0517)")]
+mod trig {
+    spec fn p(i: usize) -> bool {
+        i < 100
+    }
+
+    spec fn q(i: usize, j: usize) -> bool {
+        i < j
+    }
+
+    spec fn argument(n: usize) -> bool {
+        forall|i: usize| i < n ==> p(#[trigger] i)
+    }
+
+    // `#[trigger]` takes the operand after it: here `i`, not `i < n`.
+    spec fn operand(n: usize) -> bool {
+        forall|i: usize| #[trigger] i < n ==> p(i)
+    }
+
+    spec fn one_of_two(n: usize) -> bool {
+        forall|i: usize, j: usize| i < j && j < n ==> #[trigger] p(i) && q(i, #[trigger] j)
+    }
+
+    spec fn nested(n: usize) -> bool {
+        exists|i: usize| i < n && #[trigger] p(i) && (forall|j: usize| j < i ==> q(#[trigger] j, i))
+    }
+}

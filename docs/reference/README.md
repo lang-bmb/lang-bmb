@@ -168,6 +168,7 @@ The text of the chapters was carried over from the rule tables of `compiler/READ
 | E0514 | `==` is not defined for `Vec` | [03](03-types-and-values.md), [06](06-contracts-and-specs.md) |
 | E0515 | `assert(..) by (bit_vector)` takes integer, `f64` and `bool` terms only (no quantifier, `old` or data value; an element, field or length that names a `let` of the assertion) | [06](06-contracts-and-specs.md) |
 | E0516 | unknown prover in `assert(..) by (..)` (the one prover is `bit_vector`) | [04](04-expressions-and-control.md), [06](06-contracts-and-specs.md) |
+| E0517 | a `#[trigger]` is a term that applies a function or an index to a bound variable, not the variable alone | [06](06-contracts-and-specs.md) |
 | E0601 | function requires an `#[effects(..)]` attribute | [02](02-units-items-names.md), [08](08-effects-and-escape-hatches.md) |
 | E0602 | unknown effect | [08](08-effects-and-escape-hatches.md) |
 | E0603 | `pure` function calls a function with effect `io` | [08](08-effects-and-escape-hatches.md) |

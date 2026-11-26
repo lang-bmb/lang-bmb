@@ -17,8 +17,8 @@
         "selfhost/sha256.bmb"
       ],
       "pin": {
-        "stage0": "89f695b82f2b0e9192a635f18eabad9778524ba839e0cbd94782e09cc16ef79d",
-        "port": "36643bb6fbadc0ff73f37213d2ab68cb9496a67b0d84835fb3f1a8fc3e56c50a"
+        "stage0": "9e00338551231684ea1b0d00a0cdba031b0e622d261591d301a5bfbb1efb18c2",
+        "port": "89c3fd2948decaac283ff8622d088e0ec0273ffb894d0761277189902f92d098"
       },
       "ledger": {
         "session_tokens": null,

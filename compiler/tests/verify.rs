@@ -276,6 +276,38 @@ mod m {
     );
 }
 
+/// A bound variable alone under `#[trigger]` is rejected by the checker
+/// (E0517); it passed the check, and the solver rejected the query of the
+/// first obligation that revealed it (E0812).
+#[test]
+fn a_bound_variable_alone_is_no_trigger() {
+    let src = r#"#[summary("t")]
+mod m {
+    spec fn p(i: usize) -> bool { i < 100 }
+
+    spec fn all(n: usize) -> bool { forall|i: usize| i < n ==> p(#[trigger] i) }
+
+    spec fn some(n: usize) -> bool { 0 < n }
+
+    #[uses(all, p)]
+    proof fn f(n: usize)
+        requires all(n), some(n),
+        ensures p(0),
+    {
+    }
+}
+"#;
+    let out = verify_files(&[("m.bmb".to_string(), src.to_string())]);
+    assert!(!out.ok);
+    let codes: Vec<String> = out
+        .output
+        .lines()
+        .filter_map(|l| json::parse(l).ok())
+        .filter_map(|v| v.get("code").and_then(|c| c.as_str()).map(String::from))
+        .collect();
+    assert_eq!(codes, ["E0517"], "{}", out.output);
+}
+
 /// An obligation that reveals a scalar leaf `spec fn` is first probed with
 /// the definition as a macro under 1% of the solver limit, then, undecided,
 /// solved with the quantified definition (ADR-0067). The

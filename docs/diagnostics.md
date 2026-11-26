@@ -156,6 +156,7 @@
 | E0510 | `#[trigger]` is only allowed inside `forall` or `exists` |
 | E0511 | `forall` and `exists` require at least one `#[trigger]` |
 | E0512 | the triggers of a `forall` or `exists` must together mention every bound variable |
+| E0517 | a `#[trigger]` is a term that applies a function or an index to a bound variable, not the variable alone |
 
 ## E06xx Effects and attributes
 

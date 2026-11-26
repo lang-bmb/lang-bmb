@@ -35,7 +35,7 @@ What comes in a specification expression is literals, names, arithmetic, compari
 
 - The forms are `forall|i: T, j: U| expr` and `exists|i: T| expr`. The rules of the two quantifiers are the same (ADR-0079, `tests/verify/pass/exists.bmb`).
 - The type of a bound variable is an integer. Any other type is an error (E0402).
-- The body of a quantifier must have at least one term marked with `#[trigger]`. Without one it is an error (E0511). The triggers of one quantifier form a single multi-pattern, and every bound variable must appear in some trigger. A missing variable is an error (E0512, `triggers` in `tests/check/err/specs.bmb`, `tests/check/err/exists.bmb`).
+- The body of a quantifier must have at least one term marked with `#[trigger]`. Without one it is an error (E0511). The triggers of one quantifier form a single multi-pattern, and every bound variable must appear in some trigger. A missing variable is an error (E0512, `triggers` in `tests/check/err/specs.bmb`, `tests/check/err/exists.bmb`). A trigger is a term that applies a function or an index to a bound variable (`#[trigger] p(i)`, `#[trigger] a[i]`): a bound variable alone is no pattern for the solver, and marking one is an error (E0517, `tests/check/err/triggers.bmb`). `#[trigger]` takes the operand after it, so `#[trigger] i < n` marks `i`.
 - A `#[trigger]` in a specification expression outside a quantifier is an error (E0510, `bare_trigger` in `tests/check/err/specs.bmb`).
 - Quantifiers come in the body of a `spec fn`, in invariants and in `assert`. In a contract clause they come only as a call of a predicate that holds them (E0501).
 

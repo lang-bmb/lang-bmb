@@ -3959,7 +3959,7 @@ mod body {
             self.expect_ty(&t, &ast::TypeKind::Unit, p.body.span);
         }
 
-        #[summary("forall and exists (ADR-0079): only in specifications, the bound variables are integers, the body is bool. A trigger is required (E0511) and the triggers must mention every bound variable (E0512)")]
+        #[summary("forall and exists (ADR-0079): only in specifications, the bound variables are integers, the body is bool. A trigger is required (E0511), a bound variable alone is no trigger (E0517) and the triggers must mention every bound variable (E0512)")]
         #[effects(alloc)]
         fn quant_expr(self: &mut Body, cx: &mut FnCtx, e: &ast::Expr, q: &ast::Quant, mode: Mode, f: usize) -> ast::TypeKind
             decreases f * 3,
@@ -3984,6 +3984,14 @@ mod body {
             }
             let mut triggers: Vec<ast::Expr> = Vec::new();
             collect_triggers(&*q.body, &mut triggers, 1000000000);
+            for k in 0..triggers.len()
+                invariant 0 <= k && k <= triggers.len(),
+            {
+                match ast::var_name(&triggers[k]) {
+                    None => {},
+                    Some(v) => { if binds(q.binders.as_slice(), v.as_str()) { let mut hint: String = types::cat5("mark a term that applies a function or an index to `", v.as_str(), "`, e.g. `#[trigger] p(", v.as_str(), ")` or `#[trigger] a["); hint.push_str(v.as_str()); hint.push_str("]`"); self.c.help("E0517", triggers[k].span, types::cat3("`#[trigger]` marks the bound variable `", v.as_str(), "` alone").as_str(), hint.as_str()); } },
+                }
+            }
             if triggers.len() == 0 {
                 let first: Option<source::Span> = if q.binders.len() == 1 {
                     first_index_on(&*q.body, q.binders[0].name.name.as_str())
@@ -6315,6 +6323,19 @@ mod body {
         } else {
             ast::TypeKind::Bool
         }
+    }
+
+    #[summary("Whether one of the binders bs is named name")]
+    #[effects(pure)]
+    fn binds(bs: &[ast::Param], name: &str) -> bool {
+        for i in 0..bs.len()
+            invariant 0 <= i && i <= bs.len(),
+        {
+            if bs[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
     }
 
     #[summary("Whether bit method m is a counting one (u32 in 0..=w)")]
