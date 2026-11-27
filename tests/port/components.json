@@ -171,7 +171,10 @@
         "selfhost/methodize.bmb",
         "selfhost/escape.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "794c098508eb47da69ece565e4eabdeca20bd7881e47430e3c12380a146235f0",
+        "port": "ae67e6bd104a93a48f326074a60f9f1c58794c1e1fd9e143f73f534498d480ec"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": 15,
@@ -232,7 +235,10 @@
         "selfhost/query.bmb",
         "selfhost/view.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "c5a4888f3f42278ff693b8375b932bc690dce0df64cb61b6bb82255beda29e9f",
+        "port": "0955a244a8a802f9af1eeb557f122c827bd7c32dd9c42101eefbc2a17343dc02"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
@@ -283,7 +289,10 @@
         "selfhost/sat.bmb",
         "selfhost/examples.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "2a88ff54b69dd42999e1abaa866864f7bdc3aa6540e5402ae33d46eb24c99468",
+        "port": "40fcce56c3e9be0858e7317fcd5cad804f703271c13f97d0f444073cd75a643e"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": 14,
@@ -351,7 +360,10 @@
         "selfhost/solver.bmb",
         "selfhost/toolchain.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "2de59251308e76b8ca6d4b18e95d9391e103a818a24342cbe759e63ef6dece46",
+        "port": "0ea164854ce8407e19c8af38fce815dc1735c3f4a539cc0e9b441286281fff87"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": 3,
@@ -384,7 +396,10 @@
         "selfhost/codegen.bmb",
         "selfhost/codegen_text.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "23e468e702f3782d41d6577fc34c13b04ba90b52b48eed3d36bdf59cc1da8f99",
+        "port": "ae8c8e6846cc883df764ad17003ff3142e35025e6d817fa73d67f7ad108f5468"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": 8,
@@ -414,7 +429,10 @@
         "selfhost/cache.bmb",
         "selfhost/incremental.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "f6ce33c2d43f7cb2311ef45ce6b3936e6afaf512606a9fe3e5caac14abd42525",
+        "port": "12cf2e08b0dd20675cf1e6ba9dbf69c9133b4b081e436c3f7da4687a8eaad5ed"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
@@ -454,7 +472,10 @@
         "selfhost/weaken.bmb",
         "selfhost/lib.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "802cfe67762cde98c15ea8e7459d638cafc6a5faedb92d25fda4fd42fa38186b",
+        "port": "873b3e19d922c6d5cf266ccf9dd62000247b24a5eb8269c39102b67c6e4d0fca"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": 3,
@@ -551,7 +572,10 @@
       "port": [
         "selfhost/main.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "3bcc66dfee33c4cfcd2c9302d359631f24999a4ec089a9476f7281283178057e",
+        "port": "5a3cd186bbdf78ee617f8527497ad981f33aa171cd4a35343b75516097b967c2"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
