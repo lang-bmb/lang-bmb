@@ -511,7 +511,10 @@
       "port": [
         "selfhost/mcp.bmb"
       ],
-      "pin": null,
+      "pin": {
+        "stage0": "1a77aad668dd869c5b27854f06c9b46e0c2a98e6371102357cd2976e3f44a06f",
+        "port": "5328baef55ad47cda8e07e7225ea9afb918311477f4a1d5e52ffb38efc4c4773"
+      },
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,

@@ -21,9 +21,7 @@ session.py (in this directory, whose head describes the lines):
     in windows; for the first three functions with a loop, candidates for
     their first loop and for one that is not there; the first function
     renamed with the identity it has;
-  - `--undecided-info` on `a`: `verify` with the #[uses] search. A program
-    that names a library unit ends this server (exit code 101, the script
-    for session.py says why), so its standard error is not shown.
+  - `--undecided-info` on `a`: `verify` with the #[uses] search.
 """
 import json
 import os
@@ -96,10 +94,9 @@ def main():
         call("write", {"expect": [{"def": fns[0][0], "id": "@id{%s}" % fns[0][0]}],
                        "rename": [{"def": fns[0][0], "to": "renamed_by_the_test"}]})
     lines.append("stop")
-    lines.append("# A definition of a library unit with a proof status ends the search in a panic (exit code 101).")
     lines.append("start a --undecided-info")
     call("verify", {})
-    lines.append("end")
+    lines.append("stop")
     lines.append("tree")
     with open("each.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

@@ -5,9 +5,8 @@
 # without the flag, for a workspace that proves, and for failures without a hint; the workspace is not changed. The
 # other tools under the flag (the bounded search reaches the proofs of `query`, `map` and `build`). The ends of the
 # search no corpus program reaches, on two small programs written in the session: the budget of four verifications,
-# and attributes that are not in normal form. A workspace that names a library unit: the Rust compiler ends in a
-# panic there, exit code 101, and the port ends with the same code and words of its own, which the script does not
-# show.
+# and attributes that are not in normal form. A workspace that names a library unit: the
+# library's definitions have a proof status and no row.
 sh "$bmb0" import contracts "$root/tests/verify/fail/contracts.bmb"
 start contracts --undecided-info
 > {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
@@ -120,5 +119,5 @@ start withstd --undecided-info
 > {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["contracts"]}}}
 > {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
 > {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
-end
+stop
 tree

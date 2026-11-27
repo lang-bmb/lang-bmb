@@ -396,6 +396,18 @@ fn qualified_predicates_from_other_units() {
     assert!(verify(&out.files).0);
 }
 
+/// The first verification gives a status to the library's definitions too;
+/// the search skips them (it ended in a panic there).
+#[test]
+fn a_program_that_names_a_library_unit_is_searched() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let text = std::fs::read_to_string(root.join("tests/run/std_num.bmb")).unwrap();
+    let out = fill_uses(&one(&text)).unwrap();
+    assert!(!out.rows.is_empty());
+    assert!(out.rows.iter().all(|r| !r.def.starts_with("std::")));
+    assert!(out.rows.iter().all(|r| r.status == UsesStatus::Unchanged));
+}
+
 #[test]
 fn program_that_does_not_check_is_an_error() {
     let err = fill_uses(&one("mod m {}\n")).err().unwrap();

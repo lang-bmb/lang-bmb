@@ -421,7 +421,10 @@ pub fn fill_uses_limited(
     let mut states: BTreeMap<String, State> = BTreeMap::new();
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for (path, s) in &first {
-        let t = &targets[path];
+        // A definition of the library has a status too, and is not a target.
+        let Some(t) = targets.get(path) else {
+            continue;
+        };
         let st = if s.proved {
             State::Done(UsesStatus::Unchanged, t.original.clone())
         } else if t.kind == FnKind::Spec {

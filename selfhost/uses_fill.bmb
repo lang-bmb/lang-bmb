@@ -161,7 +161,7 @@ mod uses_fill {
         {
             match first.nth(a) {
                 None => {},
-                Some(fa) => { let path: String = first.key(a); match targets.find(path.as_str()) { None => { eprint_str("bmb: uses search: no entry found for a definition of the library\n"); std::process::exit(101); }, Some(ta) => { let orig: Vec<String> = targets.items[ta].original.clone(); let cand: Vec<String> = joined_set(orig.as_slice(), first.items[fa].hints.as_slice()); if first.items[fa].proved { states.insert(path.as_str(), settled(1, orig)); } else if targets.items[ta].is_spec || workspace::same(cand.as_slice(), orig.as_slice()) { states.insert(path.as_str(), settled(2, orig)); } else { states.insert(path.as_str(), State { phase: 0, set: cand, steps: 1, order: Vec::new(), idx: 0, status: 2 }); } counts.insert(path.as_str(), 0); }, } },
+                Some(fa) => { let path: String = first.key(a); match targets.find(path.as_str()) { None => {}, Some(ta) => { let orig: Vec<String> = targets.items[ta].original.clone(); let cand: Vec<String> = joined_set(orig.as_slice(), first.items[fa].hints.as_slice()); if first.items[fa].proved { states.insert(path.as_str(), settled(1, orig)); } else if targets.items[ta].is_spec || workspace::same(cand.as_slice(), orig.as_slice()) { states.insert(path.as_str(), settled(2, orig)); } else { states.insert(path.as_str(), State { phase: 0, set: cand, steps: 1, order: Vec::new(), idx: 0, status: 2 }); } counts.insert(path.as_str(), 0); }, } },
             }
         }
         let mut round: usize = 0;
