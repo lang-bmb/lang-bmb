@@ -1,0 +1,17 @@
+#[summary("subslice")]
+mod m {
+    #[effects(pure)]
+    fn len(b: &[u8]) -> (r: usize)
+        ensures r == b.len(),
+    {
+        b.len()
+    }
+
+    #[effects(pure)]
+    fn part(b: &[u8], lo: usize) -> (r: usize)
+        requires lo + 2 <= b.len(),
+        ensures r <= b.len(),
+    {
+        len(&b[lo..lo + 2])
+    }
+}

@@ -1,0 +1,32 @@
+#[summary("effects")]
+mod w {
+    #[effects(alloc, io)]
+    fn wide(x: i64) -> i64 { x }
+
+    #[effects(alloc)]
+    fn grows() -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        v.push(1);
+        v.len()
+    }
+
+    #[effects(alloc, io)]
+    fn calls() -> usize {
+        grows()
+    }
+
+    trait Shape {
+        #[effects(io)]
+        fn show(self: &Self) -> ();
+    }
+
+    struct Sq { s: i64 }
+
+    impl Shape for Sq {
+        #[effects(io)]
+        fn show(self: &Sq) -> () {}
+    }
+
+    #[effects(alloc, io)]
+    fn main() -> () {}
+}

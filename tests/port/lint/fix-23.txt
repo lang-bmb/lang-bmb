@@ -1,0 +1,32 @@
+#[summary("u")]
+mod u {
+    #[effects(pure)]
+    #[uses(double, small)]
+    fn make(n: u64) -> (r: u64)
+        requires small(n),
+        ensures double(n, r),
+    {
+        n + n
+    }
+
+    #[effects(pure)]
+    #[uses(double, extra)]
+    fn user(n: u64) -> u64
+        requires n < 10,
+    {
+        let d: u64 = make(n);
+        d + 1
+    }
+
+    spec fn double(n: u64, r: u64) -> bool {
+        r == n * 2
+    }
+
+    spec fn extra(n: u64) -> bool {
+        n < 5
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+}

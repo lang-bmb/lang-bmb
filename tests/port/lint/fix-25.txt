@@ -1,0 +1,10 @@
+#[summary("w")]
+mod w {
+    spec fn byte_at(msg: &[u8], i: usize) -> u64 {
+        if i < msg.len() { msg[i] as u64 } else { 256 }
+    }
+
+    spec fn twice(x: u8) -> u32 {
+        (x + 1) as u32 * 2
+    }
+}

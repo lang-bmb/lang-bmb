@@ -1,0 +1,10 @@
+#[summary("add")]
+mod m {
+    #[effects(pure)]
+    fn add1(x: u64) -> (r: u64)
+        requires x < 100, x < 1000,
+        ensures r == x + 1,
+    {
+        x + 1
+    }
+}

@@ -1,0 +1,39 @@
+#[summary("aliases")]
+mod a {
+    #[effects(pure)]
+    fn f(n: u64) -> u64
+        requires small(n),
+        requires tiny(n),
+    {
+        let mut i: u64 = 0;
+        let mut h: u64 = 0;
+        while i < n {
+            invariant i <= n,
+            invariant h <= i,
+            decreases n - i,
+            i += 1;
+            h += 1;
+        }
+        let mut s: u64 = 0;
+        loop
+            invariant s <= n,
+            invariant tiny(n),
+            decreases n - s,
+        {
+            if s >= n {
+                break;
+            }
+            s += 1 + 0;
+        }
+        h ^= 1;
+        h
+    }
+
+    spec fn small(n: u64) -> bool {
+        n < 1000
+    }
+
+    spec fn tiny(n: u64) -> bool {
+        n < 100
+    }
+}

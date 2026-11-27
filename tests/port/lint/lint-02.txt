@@ -1,0 +1,21 @@
+#[summary("clean contracts")]
+mod c {
+    spec fn small(x: i64) -> bool { x < 100 }
+
+    spec fn is_succ(x: i64, r: i64) -> bool { r == x + 1 }
+
+    #[effects(pure)]
+    fn inc(x: i64) -> (r: i64)
+        requires small(x),
+        ensures is_succ(x, r),
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn add2(x: i64) -> i64
+        requires small(x),
+    {
+        inc(x) + 1
+    }
+}

@@ -3215,6 +3215,304 @@
       }
     },
     {
+      "name": "lint-syntax",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0906,W0907,W0909,W0910,W0911,W0912,W0913,W0914,W0915,W0916,W0917,W1001",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0906,W0907,W0909,W0910,W0911,W0912,W0913,W0914,W0915,W0916,W0917,W1001",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/*.bmb",
+          "lib/std/*.bmb",
+          "tests/port/lint/*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/emit/*.txt",
+          "tests/port/lower/*.txt",
+          "tests/port/smt/*.txt",
+          "tests/port/incr/*.txt",
+          "tests/port/fmt/*.txt",
+          "tests/port/decls/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-syntax-together",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0906,W0907,W0909,W0910,W0911,W0912,W0913,W0914,W0915,W0916,W0917,W1001",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0906,W0907,W0909,W0910,W0911,W0912,W0913,W0914,W0915,W0916,W0917,W1001",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 100
+      }
+    },
+    {
+      "name": "lint-all",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lint/*.txt",
+          "tests/port/sat/*.bmb",
+          "tests/lint/*.bmb",
+          "tests/duplicates/*.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/verify/pass/loops.bmb",
+          "tests/verify/pass/traits.bmb",
+          "tests/verify/pass/closure_context.bmb",
+          "tests/verify/pass/vecs.bmb",
+          "tests/verify/fail/contracts.bmb",
+          "tests/verify/fail/loops.bmb",
+          "tests/run/escapes.bmb",
+          "tests/run/consts.bmb",
+          "tests/run/fn_values.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-callers",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0903",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0903",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lint/lint-01.txt",
+          "tests/port/sat/lint.bmb",
+          "tests/verify/pass/traits.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-mutants",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W0904",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W0904",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lint/lint-05.txt",
+          "tests/port/lint/lint-08.txt",
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-assumes",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "lint",
+        "--select",
+        "W1002",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "lint",
+        "--select",
+        "W1002",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/run/escapes.bmb",
+          "tests/verify/fail/assumed_values.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-all-fake-retry",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{bmb}",
+        "lint",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "{build:stage1}",
+        "lint",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/lint/lint-01.txt",
+          "tests/port/lint/lint-05.txt",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-all-fake-models",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unsat unknown sat",
+        "{bmb}",
+        "lint",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unsat unsat unknown sat",
+        "{build:stage1}",
+        "lint",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/lint/lint-01.txt",
+          "tests/port/lint/lint-05.txt",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-all-cache",
+      "component": "C9",
+      "a": [
+        "sh",
+        "{root}/tests/port/lint/cache.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/lint/cache.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/sat/lint.bmb",
+          "tests/port/lint/lint-01.txt",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "lint-all-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/lint/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/lint/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "mutate",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/lint/mutate.py",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/lint/mutate.py",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lint/*.txt",
+          "tests/port/sat/*.bmb",
+          "tests/run/consts.bmb",
+          "tests/run/fn_values.bmb",
+          "tests/run/escapes.bmb",
+          "tests/verify/pass/loops.bmb",
+          "tests/verify/pass/traits.bmb",
+          "lib/std/num.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
       "name": "sat-ends",
       "component": "C10",
       "a": [

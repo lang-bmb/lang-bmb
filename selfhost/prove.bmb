@@ -350,7 +350,7 @@ mod prove {
     fn escapes_of(pg: &encode_spec::Prog, path: &str) -> u64 {
         match pg.defs.find(path) {
             None => 0,
-            Some(at) => { let es: escape::DefEscapes = escape::of(&pg.defs.items[at].d); let n: u64 = es.assumes as u64; if es.external { n.saturating_add(1) } else { n } },
+            Some(at) => { let es: escape::DefEscapes = escape::of(&pg.defs.items[at].d); let n: u64 = es.assumes.len() as u64; if es.external { n.saturating_add(1) } else { n } },
         }
     }
 

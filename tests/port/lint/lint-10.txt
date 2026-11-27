@@ -1,0 +1,24 @@
+#[summary("t")]
+mod m {
+    spec fn count(n: u64) -> u64
+        decreases n,
+    {
+        if n == 0 { 0 } else { count(n - 1) + 1 }
+    }
+
+    #[effects(pure)]
+    fn reach(n: u64) -> (r: u64)
+        requires count(n) == 3,
+        ensures r == n,
+    {
+        n
+    }
+
+    #[effects(pure)]
+    fn never(n: u64) -> (r: u64)
+        requires n == 2, count(n) == 5,
+        ensures r == n,
+    {
+        n
+    }
+}

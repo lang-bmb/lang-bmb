@@ -386,7 +386,7 @@ mod map {
             String::from("proved")
         };
         let es: escape::DefEscapes = escape::of(d);
-        let mut count: usize = es.assumes;
+        let mut count: usize = es.assumes.len();
         if es.external {
             count = count.saturating_add(1);
         }

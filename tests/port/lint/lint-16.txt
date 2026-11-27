@@ -1,0 +1,38 @@
+#[summary("t")]
+mod d {
+    spec fn big(r: i64) -> bool { huge(r) }
+
+    spec fn huge(r: i64) -> bool { r > 10 }
+
+    #[effects(pure)]
+    fn twice(x: i64) -> (r: i64)
+        requires x < 1000 && x > -1000,
+        ensures r == 2 * x,
+    {
+        2 * x
+    }
+
+    #[effects(pure)]
+    fn above(x: i64) -> (r: i64)
+        requires x < 1000,
+        ensures r >= x,
+    {
+        x + 1
+    }
+
+    #[effects(pure)]
+    fn opaque() -> (r: i64)
+        ensures big(r),
+    {
+        11
+    }
+
+    #[effects(pure)]
+    fn bump(a: &mut i64) -> (r: i64)
+        requires *a < 1000,
+        ensures r >= 0,
+    {
+        *a = *a + 1;
+        0
+    }
+}

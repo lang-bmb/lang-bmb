@@ -6,6 +6,9 @@ mod methodize {
     #[summary("One rewritten call: the position (key) of its definition and the full path of its function")]
     struct Conv { def: String, path: String }
 
+    #[summary("The normal form of a program's method calls and the positions of the calls that were rewritten (the result of stage0 methodize_spans)")]
+    struct Methodized { program: ast::Program, spans: Vec<String> }
+
     #[summary("The rewriting visitor. keep_calls and keep_defs are the calls and definitions kept as paths (position keys), mp is the unit being walked, fk is the position of the name of the definition being walked (the position of body::DefRow), conv is the rewritten calls (by call position)")]
     struct Rewrite { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, keep_calls: table::Table<bool>, keep_defs: table::Table<bool>, mp: String, fk: String, conv: table::Table<Conv> }
 
@@ -254,6 +257,13 @@ mod methodize {
     #[summary("Puts the method calls of program src into normal form. fns, adts, tys are the tables from checking src and resolved is src as resolved by the checker (body::check_resolved)")]
     #[effects(alloc)]
     fn methodize(src: &ast::Program, resolved: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> ast::Program {
+        let m: Methodized = methodize_spans(src, resolved, fns, adts, tys);
+        m.program
+    }
+
+    #[summary("methodize and the positions of the calls it rewrote, as keys (body::span_key) in key order (stage0 methodize_spans)")]
+    #[effects(alloc)]
+    fn methodize_spans(src: &ast::Program, resolved: &ast::Program, fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, tys: &table::Table<ast::TypeKind>) -> Methodized {
         let want: table::Table<String> = body_hashes(resolved, fns, adts, tys);
         let mut keep_calls: table::Table<bool> = table::new::<bool>();
         let mut keep_defs: table::Table<bool> = table::new::<bool>();
@@ -273,7 +283,7 @@ mod methodize {
             }
             let convs: usize = v.conv.len();
             if convs == 0 {
-                return p;
+                return Methodized { program: p, spans: Vec::new() };
             }
             let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
             let ck: body::Checked = body::check_resolved(p.clone(), &mut d);
@@ -336,10 +346,16 @@ mod methodize {
                 }
             }
             if keep_calls.len() == calls_before && keep_defs.len() == defs_before {
-                return p;
+                let mut spans: Vec<String> = Vec::new();
+                for n in 0..convs
+                    invariant 0 <= n && n <= convs,
+                {
+                    spans.push(v.conv.key(n as usize));
+                }
+                return Methodized { program: p, spans: spans };
             }
         }
-        p
+        Methodized { program: p, spans: Vec::new() }
     }
 
     #[summary("Whether type k is the owner of the method: Self for a trait method, that type for an inherent function")]

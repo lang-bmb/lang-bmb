@@ -1,0 +1,2392 @@
+#[summary("The checks of the contract lint that read the program and the checker's tables alone, with no proof (port of the syntactic part of stage0 compiler/src/lint.rs). W0906: a quantifier whose only trigger term and another term of its body read the same array or call the same function at other arguments that mention the bound variables (a matching loop). W0907: a counting `while` whose canonical form is a range `for`. W0909: a declared effect the body does not need. W0910: a loop of an `io` function that prints and updates its state with pure expressions only. W0911: a call by path whose normal form is a method call. W0915: an integer conversion written `T::try_from(x).unwrap()`. W0916: a `#[uses]` entry the default context reveals already. W1001: a rationale whose hash is not the one it is bound to. The texts of the messages and of the replacements are cut from the source by the positions of the nodes, as stage0 cuts them; where stage0 would stop on a range that is not in the text, the check records it (bad) and the lint ends with exit code 101")]
+mod lint_syntax {
+    #[summary("Visitor of the blocks of a body (stage0 blocks_in gives them as a list)")]
+    trait BlockFn {
+        #[effects(alloc)]
+        fn block(self: &mut Self, b: &ast::Block) -> ();
+    }
+
+    #[summary("Visitor of the expressions of a walk in the order of stage0 each_expr: a node, then its subexpressions, specification parts included. The result tells whether the walk enters the node")]
+    trait See {
+        #[effects(alloc)]
+        fn see(self: &mut Self, e: &ast::Expr) -> bool;
+    }
+
+    #[summary("One assignment to a plain local in a loop body: the local and the value")]
+    struct Assigned { name: String, value: ast::Expr }
+
+    #[summary("Visitor that tells whether a block holds an assignment to a place rooted at one of names (the assignments of stage0 writes)")]
+    struct Assigns { names: Vec<String>, found: bool }
+
+    impl BlockFn for Assigns {
+        #[effects(alloc)]
+        fn block(self: &mut Assigns, b: &ast::Block) -> () {
+            for i in 0..b.stmts.len()
+                invariant 0 <= i && i <= b.stmts.len(),
+            {
+                match &b.stmts[i] {
+                    ast::Stmt::Let(_) => {},
+                    ast::Stmt::Assign(sa) => { match place_root(&sa.target, 1000000000) { None => {}, Some(root) => { if types::has(self.names.as_slice(), root.as_str()) { self.found = true; } }, } },
+                    ast::Stmt::While(_) => {},
+                    ast::Stmt::For(_) => {},
+                    ast::Stmt::Assert(_) => {},
+                    ast::Stmt::Assume(_) => {},
+                    ast::Stmt::Proof(_) => {},
+                    ast::Stmt::LetFields(_) => {},
+                    ast::Stmt::Expr(_) => {},
+                }
+            }
+        }
+    }
+
+    #[summary("Visitor that collects the blocks of a body, nested ones included, in the order of stage0 blocks_in")]
+    struct Blocks { out: Vec<ast::Block> }
+
+    impl BlockFn for Blocks {
+        #[effects(alloc)]
+        fn block(self: &mut Blocks, b: &ast::Block) -> () {
+            self.out.push(b.clone());
+        }
+    }
+
+    #[summary("Visitor that collects the path of every call")]
+    struct Called { paths: Vec<Vec<ast::Ident>> }
+
+    impl See for Called {
+        #[effects(alloc)]
+        fn see(self: &mut Called, e: &ast::Expr) -> bool {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(ca) => { self.paths.push(ca.path.clone()); },
+                ast::ExprKind::Method(_) => {},
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+            true
+        }
+    }
+
+    #[summary("Visitor of W0915's second pass: reports each integer conversion written `T::try_from(x).unwrap()` in a file of the program. tight holds the positions that bind tighter than a cast")]
+    struct Casts { files: Vec<lib::Input>, tight: table::Table<bool>, out: Vec<diag::Diag> }
+
+    impl ast::ExprFn for Casts {
+        #[effects(alloc)]
+        fn expr(self: &mut Casts, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(me) => { if fmt::is_cast(me) { match &me.recv.kind { ast::ExprKind::Int(_, _) => {}, ast::ExprKind::Float(_) => {}, ast::ExprKind::ByteLit(_) => {}, ast::ExprKind::ByteStr(_) => {}, ast::ExprKind::StrLit(_) => {}, ast::ExprKind::CharLit(_) => {}, ast::ExprKind::Bool(_) => {}, ast::ExprKind::Unit => {}, ast::ExprKind::Var(_) => {}, ast::ExprKind::Call(ca) => { if ca.args.len() == 1 && ca.path.len() == 2 && (e.span.file as usize) < self.files.len() { let text: String = self.files[e.span.file as usize].text.clone(); let t: String = ca.path[0].name.clone(); let whole: String = lexer::cut(text.as_str(), e.span.lo as usize, e.span.hi as usize); if std::str::starts_with(whole.as_str(), types::cat2(t.as_str(), "::try_from").as_str()) { let mut xs: String = lexer::cut(text.as_str(), ca.args[0].span.lo as usize, ca.args[0].span.hi as usize); if fmt::prec(&ca.args[0]) < fmt::prec(e) && !enclosed(xs.as_str()) { xs = types::cat3("(", xs.as_str(), ")"); } let cast: String = types::cat3(xs.as_str(), " as ", t.as_str()); let fixed: String = if self.tight.has(body::span_key(e.span).as_str()) { types::cat3("(", cast.as_str(), ")") } else { cast }; self.out.push(diag::fix(diag::new("W0915", e.span, types::cat3("an integer conversion: its canonical form is `x as ", t.as_str(), "`").as_str()), types::cat3("write `", fixed.as_str(), "`").as_str(), Some(fixed.clone()))); } } }, ast::ExprKind::Method(_) => {}, ast::ExprKind::Index(_, _) => {}, ast::ExprKind::Unary(_, _) => {}, ast::ExprKind::Binary(_, _, _) => {}, ast::ExprKind::Ref(_, _) => {}, ast::ExprKind::If(_) => {}, ast::ExprKind::Block(_) => {}, ast::ExprKind::Array(_) => {}, ast::ExprKind::Repeat(_) => {}, ast::ExprKind::Old(_) => {}, ast::ExprKind::Quant(_) => {}, ast::ExprKind::Trigger(_) => {}, ast::ExprKind::Closure(_) => {}, ast::ExprKind::StructLit(_) => {}, ast::ExprKind::Path(_) => {}, ast::ExprKind::Deref(_) => {}, ast::ExprKind::Field(_, _) => {}, ast::ExprKind::Match(_) => {}, ast::ExprKind::Return(_) => {}, ast::ExprKind::Try(_) => {}, ast::ExprKind::Loop(_) => {}, ast::ExprKind::Break(_) => {}, ast::ExprKind::Continue(_) => {}, ast::ExprKind::Range(_) => {}, ast::ExprKind::Error => {}, } } },
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("One branch of a loop body: its condition (the scrutinee of a `match`) and the locals the branch assigns")]
+    struct Cond { cond: ast::Expr, names: Vec<String> }
+
+    #[summary("What the calls of an `io` function are resolved with: the lowered tables, the signatures and the unit of the function")]
+    struct Io { fns: table::Table<types::FnSig>, low: lowered::Tables, mod_path: String }
+
+    #[summary("One `let` of a loop body: name, initializer, `mut`")]
+    struct LetRow { name: String, init: ast::Expr, mutable: bool }
+
+    #[summary("What whole_lines found: ok when only blanks surround the range on its lines, start the start of its first line and end the end of its last line past the line feed")]
+    struct Lines { ok: bool, start: usize, end: usize }
+
+    #[summary("What a loop body declares, assigns to a plain local, the conditions of its branches with the locals each branch assigns, and whether it calls something that needs `io`; nested blocks and loops included (stage0 LoopParts)")]
+    struct LoopParts { declared: Vec<String>, lets: Vec<LetRow>, assigns: Vec<Assigned>, conds: Vec<Cond>, prints: bool }
+
+    #[summary("An outermost loop of a body (stage0 LoopRef): its span, its body, the variable of a `for` and the condition of a `while`")]
+    struct LoopRef { span: source::Span, body: ast::Block, var: Option<String>, cond: Option<ast::Expr> }
+
+    #[summary("Visitor of W0911: reports each method call the normal form made of a call by path (its position is in spans), in a file of the program")]
+    struct Methods { files: Vec<lib::Input>, spans: table::Table<bool>, out: Vec<diag::Diag> }
+
+    impl ast::ExprFn for Methods {
+        #[effects(alloc)]
+        fn expr(self: &mut Methods, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(me) => { if self.spans.has(body::span_key(e.span).as_str()) && (e.span.file as usize) < self.files.len() { let text: String = self.files[e.span.file as usize].text.clone(); let mut r: String = lexer::cut(text.as_str(), me.recv.span.lo as usize, me.recv.span.hi as usize); let k: u8 = ast::tag(&me.recv.kind); let postfix: bool = k == 8 || k == 26 || k == 11 || k == 9 || k == 10 || k == 24 || k == 23; if !(postfix || enclosed(r.as_str())) { r = types::cat3("(", r.as_str(), ")"); } let mut rest: String = String::new(); if me.args.len() > 0 { let last: source::Span = me.args[me.args.len() - 1].span; let from: usize = match comma_after(text.as_str(), me.recv.span.hi as usize) { None => last.lo as usize, Some(c) => c, }; let raw: String = lexer::cut(text.as_str(), from, last.hi as usize); let trimmed: String = fmt::trim_start(raw.as_str()); rest = if std::str::starts_with(trimmed.as_str(), "//") { raw } else { trimmed }; } let mut fixed: String = types::cat4(r.as_str(), ".", me.name.name.as_str(), "("); fixed.push_str(rest.as_str()); fixed.push_str(")"); self.out.push(diag::fix(diag::new("W0911", e.span, types::cat3("`", me.name.name.as_str(), "` is a method: its normal form is a method call").as_str()), types::cat3("write `", fixed.as_str(), "`").as_str(), Some(fixed.clone()))); } },
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("Visitor that collects every quantifier, nested ones included (stage0 foralls)")]
+    struct Quants { out: Vec<ast::Expr> }
+
+    impl See for Quants {
+        #[effects(alloc)]
+        fn see(self: &mut Quants, e: &ast::Expr) -> bool {
+            if ast::tag(&e.kind) == 20 {
+                self.out.push(e.clone());
+            }
+            true
+        }
+    }
+
+    #[summary("Visitor that collects the terms of a quantifier's body outside nested quantifiers (stage0 body_terms): the trigger terms themselves (in_trigger), or every node outside `#[trigger]`")]
+    struct Terms { in_trigger: bool, out: Vec<ast::Expr> }
+
+    impl See for Terms {
+        #[effects(alloc)]
+        fn see(self: &mut Terms, e: &ast::Expr) -> bool {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Float(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::ByteLit(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::ByteStr(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::StrLit(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::CharLit(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Bool(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Unit => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Var(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Call(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Method(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Index(_, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Unary(_, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Binary(_, _, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Ref(_, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::If(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Block(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Array(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Repeat(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Old(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Quant(qu) => false,
+                ast::ExprKind::Trigger(tx) => { if self.in_trigger { self.out.push((**tx).clone()); } false },
+                ast::ExprKind::Closure(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::StructLit(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Path(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Deref(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Field(_, _) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Match(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Return(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Try(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Loop(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Break(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Continue(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Range(_) => { if !self.in_trigger { self.out.push(e.clone()); } true },
+                ast::ExprKind::Error => { if !self.in_trigger { self.out.push(e.clone()); } true },
+            }
+        }
+    }
+
+    #[summary("Visitor of W0915's first pass: the positions whose place binds tighter than a cast (the receiver of a method, the base of a field or an index, the operand of `?`, of a prefix operator or of `#[trigger]`, and the left of `<` or `<<`)")]
+    struct Tight { keys: table::Table<bool> }
+
+    impl ast::ExprFn for Tight {
+        #[effects(alloc)]
+        fn expr(self: &mut Tight, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(me) => self.keys.insert(body::span_key(me.recv.span).as_str(), true),
+                ast::ExprKind::Index(ib, ii) => self.keys.insert(body::span_key(ib.span).as_str(), true),
+                ast::ExprKind::Unary(uo, ux) => self.keys.insert(body::span_key(ux.span).as_str(), true),
+                ast::ExprKind::Binary(bop, bl, br) => { if is_lt_or_shl(bop) { self.keys.insert(body::span_key(bl.span).as_str(), true); } },
+                ast::ExprKind::Ref(rm, rx) => self.keys.insert(body::span_key(rx.span).as_str(), true),
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(tx) => self.keys.insert(body::span_key(tx.span).as_str(), true),
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(dx) => self.keys.insert(body::span_key(dx.span).as_str(), true),
+                ast::ExprKind::Field(fx, fnm) => self.keys.insert(body::span_key(fx.span).as_str(), true),
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(tr) => self.keys.insert(body::span_key(tr.span).as_str(), true),
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("Visitor that collects the name of every variable read, in visiting order")]
+    struct Vars { names: Vec<String> }
+
+    impl See for Vars {
+        #[effects(alloc)]
+        fn see(self: &mut Vars, e: &ast::Expr) -> bool {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => { self.names.push(id.name.clone()); },
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(_) => {},
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+            true
+        }
+    }
+
+    #[summary("Visitor that tells whether an expression may change a variable of names other than by assignment (the in_expr of stage0 writes): a `&mut` borrow of a place rooted there, or a method other than a read called on one")]
+    struct Writes { names: Vec<String>, found: bool }
+
+    impl See for Writes {
+        #[effects(alloc)]
+        fn see(self: &mut Writes, e: &ast::Expr) -> bool {
+            match &e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(me) => { if !(me.name.name == "len" || me.name.name == "as_slice") { match place_root(&*me.recv, 1000000000) { None => {}, Some(root) => { if types::has(self.names.as_slice(), root.as_str()) { self.found = true; } }, } } },
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(rm, rx) => { if *rm { match place_root(&**rx, 1000000000) { None => {}, Some(root2) => { if types::has(self.names.as_slice(), root2.as_str()) { self.found = true; } }, } } },
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+            true
+        }
+    }
+
+    #[summary("Whether a state update is a step, not a computation (stage0 simple_update's atom): a literal or a local")]
+    #[effects(pure)]
+    fn atom(e: &ast::Expr) -> bool {
+        let k: u8 = ast::tag(&e.kind);
+        k == 0 || k == 6 || k == 8 || k == 1
+    }
+
+    #[summary("The blocks of b, nested ones included, to the visitor (stage0 blocks_in): the conditions and bodies of loops, the initializers, the sides of assignments and the expression statements are entered; `assert`, `assume`, `proof` blocks and the clauses of loops are not")]
+    #[effects(alloc)]
+    fn blocks_in<V: BlockFn>(b: &ast::Block, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        v.block(b);
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => expr_blocks::<V>(&sl.init, v, f - 1),
+                ast::Stmt::Assign(sa) => { expr_blocks::<V>(&sa.target, v, f - 1); expr_blocks::<V>(&sa.value, v, f - 1); },
+                ast::Stmt::While(sw) => { expr_blocks::<V>(&sw.cond, v, f - 1); blocks_in::<V>(&sw.body, v, f - 1); },
+                ast::Stmt::For(sf) => { expr_blocks::<V>(&sf.lo, v, f - 1); expr_blocks::<V>(&sf.hi, v, f - 1); blocks_in::<V>(&sf.body, v, f - 1); },
+                ast::Stmt::Assert(st) => {},
+                ast::Stmt::Assume(su) => {},
+                ast::Stmt::Proof(sp) => {},
+                ast::Stmt::LetFields(lf) => expr_blocks::<V>(&lf.init, v, f - 1),
+                ast::Stmt::Expr(se) => expr_blocks::<V>(se, v, f - 1),
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => expr_blocks::<V>(&**t, v, f - 1),
+        }
+    }
+
+    #[summary("W0907 for every function of the program (stage0 canonical_loops), methods and default bodies included, in source order. A function in a file the compiler made has no text and is passed over")]
+    #[effects(alloc)]
+    fn canonical_loops(p: &ast::Program, files: &[lib::Input], bad: &mut bool) -> Vec<diag::Diag> {
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            if !stdlib::is_std(&p.mods[i]) {
+                loops_of_mod(&p.mods[i], files, &mut out, bad, 1000000);
+            }
+        }
+        sorted(out.as_slice())
+    }
+
+    #[summary("The position just after the first `,` at or after at, past white space and `//` comments (stage0 comma_after)")]
+    #[effects(pure)]
+    fn comma_after(text: &str, at: usize) -> Option<usize> {
+        let mut i: usize = at;
+        while i < text.len()
+            decreases text.len() - i,
+        {
+            let c: u8 = text.as_bytes()[i];
+            if c == 44 {
+                return Some(i + 1);
+            }
+            if c == 47 && i + 1 < text.len() && text.as_bytes()[i + 1] == 47 {
+                let mut j: usize = i + 1;
+                while j < text.len() && text.as_bytes()[j] != 10
+                    invariant i < j,
+                    decreases text.len() - j,
+                {
+                    j = j + 1;
+                }
+                i = j;
+            } else if c == 32 || c == 9 || c == 10 || c == 12 || c == 13 {
+                i = i + 1;
+            } else {
+                return None;
+            }
+        }
+        None
+    }
+
+    #[summary("Whether a `continue` in block b goes to the loop labeled label around it (stage0 continues_to's in_block): an unlabeled one outside any inner loop does. inner tells that the block is inside an inner loop")]
+    #[effects(alloc)]
+    fn cont_block(b: &ast::Block, label: &Option<String>, inner: bool, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            let here: bool = match &b.stmts[i] {
+                ast::Stmt::Let(sl) => cont_expr(&sl.init, label, inner, f - 1),
+                ast::Stmt::Assign(sa) => cont_expr(&sa.target, label, inner, f - 1) || cont_expr(&sa.value, label, inner, f - 1),
+                ast::Stmt::While(sw) => cont_expr(&sw.cond, label, inner, f - 1) || cont_block(&sw.body, label, true, f - 1),
+                ast::Stmt::For(sf) => cont_expr(&sf.lo, label, inner, f - 1) || cont_expr(&sf.hi, label, inner, f - 1) || cont_block(&sf.body, label, true, f - 1),
+                ast::Stmt::Assert(st) => false,
+                ast::Stmt::Assume(su) => false,
+                ast::Stmt::Proof(sp) => false,
+                ast::Stmt::LetFields(lf) => cont_expr(&lf.init, label, inner, f - 1),
+                ast::Stmt::Expr(se) => cont_expr(se, label, inner, f - 1),
+            };
+            if here {
+                return true;
+            }
+        }
+        match &b.tail {
+            None => false,
+            Some(t) => cont_expr(&**t, label, inner, f - 1),
+        }
+    }
+
+    #[summary("cont_block for one expression (stage0 continues_to's in_expr): a `loop` makes its body inner, an `if` and a block keep the level, and every other node is searched through its subexpressions")]
+    #[effects(alloc)]
+    fn cont_expr(e: &ast::Expr, label: &Option<String>, inner: bool, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => false,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(_) => false,
+            ast::ExprKind::Call(ca) => cont_exprs(ca.args.as_slice(), label, inner, f - 1),
+            ast::ExprKind::Method(me) => cont_expr(&*me.recv, label, inner, f - 1) || cont_exprs(me.args.as_slice(), label, inner, f - 1),
+            ast::ExprKind::Index(ib, ii) => cont_expr(&**ib, label, inner, f - 1) || cont_expr(&**ii, label, inner, f - 1),
+            ast::ExprKind::Unary(uo, ux) => cont_expr(&**ux, label, inner, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => cont_expr(&**bl, label, inner, f - 1) || cont_expr(&**br, label, inner, f - 1),
+            ast::ExprKind::Ref(rm, rx) => cont_expr(&**rx, label, inner, f - 1),
+            ast::ExprKind::If(ife) => cont_expr(&*ife.cond, label, inner, f - 1) || cont_block(&ife.then, label, inner, f - 1) || cont_opt(&ife.els, label, inner, f - 1),
+            ast::ExprKind::Block(blk) => cont_block(blk, label, inner, f - 1),
+            ast::ExprKind::Array(ar) => cont_exprs(ar.as_slice(), label, inner, f - 1),
+            ast::ExprKind::Repeat(rp) => cont_expr(&*rp.value, label, inner, f - 1),
+            ast::ExprKind::Old(ox) => cont_expr(&**ox, label, inner, f - 1),
+            ast::ExprKind::Quant(qu) => cont_expr(&*qu.body, label, inner, f - 1),
+            ast::ExprKind::Trigger(tx) => cont_expr(&**tx, label, inner, f - 1),
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { if cont_expr(&sl.fields[i].value, label, inner, f - 1) { return true; } } cont_opt(&sl.rest, label, inner, f - 1) },
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(dx) => cont_expr(&**dx, label, inner, f - 1),
+            ast::ExprKind::Field(fx, fnm) => cont_expr(&**fx, label, inner, f - 1),
+            ast::ExprKind::Match(ma) => { if cont_expr(&*ma.scrut, label, inner, f - 1) { return true; } for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { if cont_expr(&ma.arms[j].body, label, inner, f - 1) { return true; } } false },
+            ast::ExprKind::Return(rv) => cont_opt(rv, label, inner, f - 1),
+            ast::ExprKind::Try(tr) => cont_expr(&**tr, label, inner, f - 1),
+            ast::ExprKind::Loop(lp) => cont_block(&lp.body, label, true, f - 1),
+            ast::ExprKind::Break(bk) => cont_opt(&bk.value, label, inner, f - 1),
+            ast::ExprKind::Continue(co) => match co { None => !inner, Some(l) => match label { None => false, Some(want) => want.as_str() == l.name.as_str(), }, },
+            ast::ExprKind::Range(rg) => cont_expr(&*rg.lo, label, inner, f - 1) || cont_expr(&*rg.hi, label, inner, f - 1),
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("cont_expr over each expression of xs")]
+    #[effects(alloc)]
+    fn cont_exprs(xs: &[ast::Expr], label: &Option<String>, inner: bool, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if cont_expr(&xs[i], label, inner, f - 1) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("cont_expr over the expression, if there is one")]
+    #[effects(alloc)]
+    fn cont_opt(o: &Option<Box<ast::Expr>>, label: &Option<String>, inner: bool, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match o {
+            None => false,
+            Some(x) => cont_expr(&**x, label, inner, f - 1),
+        }
+    }
+
+    #[summary("W0915 for each integer conversion written `T::try_from(x).unwrap()`, whose canonical form is `x as T` (stage0 conversions): the fix splices the operand's own text and parenthesizes the cast where its place binds tighter. p is the program as parsed")]
+    #[effects(alloc)]
+    fn conversions(p: &ast::Program, files: &[lib::Input]) -> Vec<diag::Diag> {
+        let mut q: ast::Program = p.clone();
+        let mut first: Tight = Tight { keys: table::new::<bool>() };
+        ast::exprs_mut::<Tight>(&mut q, &mut first);
+        let mut second: Casts = Casts { files: copy_files(files), tight: first.keys, out: Vec::new() };
+        ast::exprs_mut::<Casts>(&mut q, &mut second);
+        sorted(second.out.as_slice())
+    }
+
+    #[summary("Whether the `while` sw right after the `let` sl, statement k of block b, is a counting loop with a canonical `for` (the conditions of stage0 counting_whiles)")]
+    #[effects(alloc)]
+    fn convertible(sl: &ast::Let, sw: &ast::While, b: &ast::Block, k: usize) -> bool {
+        let i: String = sl.name.name.clone();
+        let hi: ast::Expr = match &sw.cond.kind {
+            ast::ExprKind::Int(_, _) => { return false; },
+            ast::ExprKind::Float(_) => { return false; },
+            ast::ExprKind::ByteLit(_) => { return false; },
+            ast::ExprKind::ByteStr(_) => { return false; },
+            ast::ExprKind::StrLit(_) => { return false; },
+            ast::ExprKind::CharLit(_) => { return false; },
+            ast::ExprKind::Bool(_) => { return false; },
+            ast::ExprKind::Unit => { return false; },
+            ast::ExprKind::Var(_) => { return false; },
+            ast::ExprKind::Call(_) => { return false; },
+            ast::ExprKind::Method(_) => { return false; },
+            ast::ExprKind::Index(_, _) => { return false; },
+            ast::ExprKind::Unary(_, _) => { return false; },
+            ast::ExprKind::Binary(bop, bl, br) => { if !(is_lt(bop) && is_var(&**bl, i.as_str())) { return false; } (**br).clone() },
+            ast::ExprKind::Ref(_, _) => { return false; },
+            ast::ExprKind::If(_) => { return false; },
+            ast::ExprKind::Block(_) => { return false; },
+            ast::ExprKind::Array(_) => { return false; },
+            ast::ExprKind::Repeat(_) => { return false; },
+            ast::ExprKind::Old(_) => { return false; },
+            ast::ExprKind::Quant(_) => { return false; },
+            ast::ExprKind::Trigger(_) => { return false; },
+            ast::ExprKind::Closure(_) => { return false; },
+            ast::ExprKind::StructLit(_) => { return false; },
+            ast::ExprKind::Path(_) => { return false; },
+            ast::ExprKind::Deref(_) => { return false; },
+            ast::ExprKind::Field(_, _) => { return false; },
+            ast::ExprKind::Match(_) => { return false; },
+            ast::ExprKind::Return(_) => { return false; },
+            ast::ExprKind::Try(_) => { return false; },
+            ast::ExprKind::Loop(_) => { return false; },
+            ast::ExprKind::Break(_) => { return false; },
+            ast::ExprKind::Continue(_) => { return false; },
+            ast::ExprKind::Range(_) => { return false; },
+            ast::ExprKind::Error => { return false; },
+        };
+        let typed: bool = match &sl.ty.kind {
+            ast::TypeKind::Int(it) => match it { ast::IntTy::I8 => false, ast::IntTy::I16 => false, ast::IntTy::I32 => false, ast::IntTy::I64 => true, ast::IntTy::Isize => false, ast::IntTy::U8 => true, ast::IntTy::U16 => false, ast::IntTy::U32 => false, ast::IntTy::U64 => true, ast::IntTy::Usize => true, },
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(_, _) => false,
+            ast::TypeKind::ArrayN(_, _) => false,
+            ast::TypeKind::Slice(_) => false,
+            ast::TypeKind::Ref(_, _) => false,
+            ast::TypeKind::Named(_, _) => false,
+            ast::TypeKind::Vec(_) => false,
+            ast::TypeKind::Box(_) => false,
+            ast::TypeKind::Param(_) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        };
+        let is_i64: bool = match &sl.ty.kind {
+            ast::TypeKind::Int(it2) => match it2 { ast::IntTy::I8 => false, ast::IntTy::I16 => false, ast::IntTy::I32 => false, ast::IntTy::I64 => true, ast::IntTy::Isize => false, ast::IntTy::U8 => false, ast::IntTy::U16 => false, ast::IntTy::U32 => false, ast::IntTy::U64 => false, ast::IntTy::Usize => false, },
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(_, _) => false,
+            ast::TypeKind::ArrayN(_, _) => false,
+            ast::TypeKind::Slice(_) => false,
+            ast::TypeKind::Ref(_, _) => false,
+            ast::TypeKind::Named(_, _) => false,
+            ast::TypeKind::Vec(_) => false,
+            ast::TypeKind::Box(_) => false,
+            ast::TypeKind::Param(_) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        };
+        if !typed || int_literal(&sl.init, 1000000000) && int_literal(&hi, 1000000000) && !is_i64 {
+            return false;
+        }
+        let steps: usize = sw.body.stmts.len();
+        if is_some_box(&sw.body.tail) || steps == 0 {
+            return false;
+        }
+        let step_ok: bool = match &sw.body.stmts[steps - 1] {
+            ast::Stmt::Let(_) => false,
+            ast::Stmt::Assign(sa) => is_var(&sa.target, i.as_str()) && (match &sa.value.kind { ast::ExprKind::Int(_, _) => false, ast::ExprKind::Float(_) => false, ast::ExprKind::ByteLit(_) => false, ast::ExprKind::ByteStr(_) => false, ast::ExprKind::StrLit(_) => false, ast::ExprKind::CharLit(_) => false, ast::ExprKind::Bool(_) => false, ast::ExprKind::Unit => false, ast::ExprKind::Var(_) => false, ast::ExprKind::Call(_) => false, ast::ExprKind::Method(_) => false, ast::ExprKind::Index(_, _) => false, ast::ExprKind::Unary(_, _) => false, ast::ExprKind::Binary(aop, al, ar) => is_add(aop) && is_var(&**al, i.as_str()) && is_one(&**ar), ast::ExprKind::Ref(_, _) => false, ast::ExprKind::If(_) => false, ast::ExprKind::Block(_) => false, ast::ExprKind::Array(_) => false, ast::ExprKind::Repeat(_) => false, ast::ExprKind::Old(_) => false, ast::ExprKind::Quant(_) => false, ast::ExprKind::Trigger(_) => false, ast::ExprKind::Closure(_) => false, ast::ExprKind::StructLit(_) => false, ast::ExprKind::Path(_) => false, ast::ExprKind::Deref(_) => false, ast::ExprKind::Field(_, _) => false, ast::ExprKind::Match(_) => false, ast::ExprKind::Return(_) => false, ast::ExprKind::Try(_) => false, ast::ExprKind::Loop(_) => false, ast::ExprKind::Break(_) => false, ast::ExprKind::Continue(_) => false, ast::ExprKind::Range(_) => false, ast::ExprKind::Error => false, }),
+            ast::Stmt::While(_) => false,
+            ast::Stmt::For(_) => false,
+            ast::Stmt::Assert(_) => false,
+            ast::Stmt::Assume(_) => false,
+            ast::Stmt::Proof(_) => false,
+            ast::Stmt::LetFields(_) => false,
+            ast::Stmt::Expr(_) => false,
+        };
+        if !step_ok || !plain_bound(&hi, 1000000000) {
+            return false;
+        }
+        let mut hv: Vars = Vars { names: Vec::new() };
+        each::<Vars>(&hi, &mut hv, 1000000000);
+        if types::has(hv.names.as_slice(), i.as_str()) {
+            return false;
+        }
+        let mut only_i: Vec<String> = Vec::new();
+        only_i.push(i.clone());
+        let no_tail: Option<Box<ast::Expr>> = None;
+        if writes(sw.body.stmts.as_slice(), steps - 1, &no_tail, only_i.as_slice()) {
+            return false;
+        }
+        if writes(sw.body.stmts.as_slice(), steps, &sw.body.tail, hv.names.as_slice()) {
+            return false;
+        }
+        let label: Option<String> = match &sw.label {
+            None => None,
+            Some(l) => Some(l.name.clone()),
+        };
+        if cont_block(&sw.body, &label, false, 1000000000) {
+            return false;
+        }
+        let mut after: Vars = Vars { names: Vec::new() };
+        for s in 0..b.stmts.len()
+            invariant 0 <= s && s <= b.stmts.len(),
+        {
+            if s >= 2 && s - 2 >= k {
+                each_stmt::<Vars>(&b.stmts[s], &mut after, 1000000000);
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => each::<Vars>(&**t, &mut after, 1000000000),
+        }
+        !types::has(after.names.as_slice(), i.as_str())
+    }
+
+    #[summary("A copy of the input files")]
+    #[effects(alloc)]
+    fn copy_files(files: &[lib::Input]) -> Vec<lib::Input> {
+        let mut out: Vec<lib::Input> = Vec::new();
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            out.push(files[i].clone());
+        }
+        out
+    }
+
+    #[summary("W0907 for each counting `while` of d (stage0 counting_whiles, ADR-0049 §2, ADR-0057): `let mut i: T = lo;` right before `while i < hi .. { ..; i = i + 1; }`, where only that last statement changes `i`, nothing in the body changes what `hi` reads, no `continue` goes to the loop and nothing after it names `i`. The fix splices the source, so comments stay")]
+    #[effects(alloc)]
+    fn counting_whiles(d: &ast::FnDef, text: &str, out: &mut Vec<diag::Diag>, bad: &mut bool) -> () {
+        let mut blocks: Blocks = Blocks { out: Vec::new() };
+        blocks_in::<Blocks>(&d.body, &mut blocks, 1000000000);
+        for n in 0..blocks.out.len()
+            invariant 0 <= n && n <= blocks.out.len(),
+        {
+            let total: usize = blocks.out[n].stmts.len();
+            for k in 0..total
+                invariant 0 <= k && k <= total,
+            {
+                if k + 1 < total && total == blocks.out[n].stmts.len() {
+                    match &blocks.out[n].stmts[k] {
+                        ast::Stmt::Let(sl) => { match &blocks.out[n].stmts[k + 1] { ast::Stmt::Let(_) => {}, ast::Stmt::Assign(_) => {}, ast::Stmt::While(sw) => { if sl.mutable { match &sw.measure { None => {}, Some(dec) => { if convertible(sl, sw, &blocks.out[n], k) { match w0907(text, sl, sw, dec, bad) { None => {}, Some(found) => out.push(found), } } }, } } }, ast::Stmt::For(_) => {}, ast::Stmt::Assert(_) => {}, ast::Stmt::Assume(_) => {}, ast::Stmt::Proof(_) => {}, ast::Stmt::LetFields(_) => {}, ast::Stmt::Expr(_) => {}, } },
+                        ast::Stmt::Assign(_) => {},
+                        ast::Stmt::While(_) => {},
+                        ast::Stmt::For(_) => {},
+                        ast::Stmt::Assert(_) => {},
+                        ast::Stmt::Assume(_) => {},
+                        ast::Stmt::Proof(_) => {},
+                        ast::Stmt::LetFields(_) => {},
+                        ast::Stmt::Expr(_) => {},
+                    }
+                }
+            }
+        }
+    }
+
+    #[summary("W0916 for each `#[uses(..)]` entry that names a spec fn the definition's default context reveals already (stage0 default_uses, ADR-0095 A1). The fix writes the attribute without those entries, or the empty text when none is left. defs are the definitions with a body in walk order, context the default contexts")]
+    #[effects(alloc)]
+    fn default_uses(defs: &[codegen::Def], context: &table::Table<Vec<String>>, fns: &table::Table<types::FnSig>, files: &[lib::Input], bad: &mut bool) -> Vec<diag::Diag> {
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if !stdlib::in_std(defs[i].path.as_str()) {
+                match context.find(defs[i].path.as_str()) {
+                    None => {},
+                    Some(c) => { for a in 0..defs[i].d.attrs.len() invariant 0 <= a && a <= defs[i].d.attrs.len(), { if defs[i].d.attrs[a].name.name == "uses" && (defs[i].d.attrs[a].span.file as usize) < files.len() { match uses_attr(&defs[i].d.attrs[a], defs[i].unit.as_str(), context.items[c].as_slice(), fns, files[defs[i].d.attrs[a].span.file as usize].text.as_str(), bad) { None => {}, Some(found) => out.push(found), } } } },
+                }
+            }
+        }
+        sorted(out.as_slice())
+    }
+
+    #[summary("The expressions of e in the order of stage0 each_expr, to the visitor: e, then, when the visitor enters it, its subexpressions, specification parts included (stage0 children). A closure is not entered")]
+    #[effects(alloc)]
+    fn each<V: See>(e: &ast::Expr, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        if !v.see(e) {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => {},
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(_) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(ca) => each_all::<V>(ca.args.as_slice(), v, f - 1),
+            ast::ExprKind::Method(me) => { each::<V>(&*me.recv, v, f - 1); each_all::<V>(me.args.as_slice(), v, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { each::<V>(&**ib, v, f - 1); each::<V>(&**ii, v, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => each::<V>(&**ux, v, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => { each::<V>(&**bl, v, f - 1); each::<V>(&**br, v, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => each::<V>(&**rx, v, f - 1),
+            ast::ExprKind::If(ife) => { each::<V>(&*ife.cond, v, f - 1); each_block::<V>(&ife.then, v, f - 1); each_opt::<V>(&ife.els, v, f - 1); },
+            ast::ExprKind::Block(blk) => each_block::<V>(blk, v, f - 1),
+            ast::ExprKind::Array(ar) => each_all::<V>(ar.as_slice(), v, f - 1),
+            ast::ExprKind::Repeat(rp) => each::<V>(&*rp.value, v, f - 1),
+            ast::ExprKind::Old(ox) => each::<V>(&**ox, v, f - 1),
+            ast::ExprKind::Quant(qu) => each::<V>(&*qu.body, v, f - 1),
+            ast::ExprKind::Trigger(tx) => each::<V>(&**tx, v, f - 1),
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { each::<V>(&sl.fields[i].value, v, f - 1); } each_opt::<V>(&sl.rest, v, f - 1); },
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(dx) => each::<V>(&**dx, v, f - 1),
+            ast::ExprKind::Field(fx, fnm) => each::<V>(&**fx, v, f - 1),
+            ast::ExprKind::Match(ma) => { each::<V>(&*ma.scrut, v, f - 1); for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { each::<V>(&ma.arms[j].body, v, f - 1); } },
+            ast::ExprKind::Return(rv) => each_opt::<V>(rv, v, f - 1),
+            ast::ExprKind::Try(tr) => each::<V>(&**tr, v, f - 1),
+            ast::ExprKind::Loop(lp) => { each_all::<V>(lp.invariants.as_slice(), v, f - 1); each_opt::<V>(&lp.measure, v, f - 1); each_block::<V>(&lp.body, v, f - 1); },
+            ast::ExprKind::Break(bk) => each_opt::<V>(&bk.value, v, f - 1),
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(rg) => { each::<V>(&*rg.lo, v, f - 1); each::<V>(&*rg.hi, v, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("each over the expressions of xs, in order")]
+    #[effects(alloc)]
+    fn each_all<V: See>(xs: &[ast::Expr], v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            each::<V>(&xs[i], v, f - 1);
+        }
+    }
+
+    #[summary("each over the expressions of block b (stage0 block_exprs): loop invariants, measures and the conditions of `assert` and `assume` included")]
+    #[effects(alloc)]
+    fn each_block<V: See>(b: &ast::Block, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            each_stmt::<V>(&b.stmts[i], v, f - 1);
+        }
+        each_opt::<V>(&b.tail, v, f - 1);
+    }
+
+    #[summary("each over the expression, if there is one")]
+    #[effects(alloc)]
+    fn each_opt<V: See>(o: &Option<Box<ast::Expr>>, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => each::<V>(&**x, v, f - 1),
+        }
+    }
+
+    #[summary("each over the expressions of one statement, in the order of stage0 block_exprs")]
+    #[effects(alloc)]
+    fn each_stmt<V: See>(s: &ast::Stmt, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match s {
+            ast::Stmt::Let(sl) => each::<V>(&sl.init, v, f - 1),
+            ast::Stmt::Assign(sa) => { each::<V>(&sa.target, v, f - 1); each::<V>(&sa.value, v, f - 1); },
+            ast::Stmt::While(sw) => { each::<V>(&sw.cond, v, f - 1); each_all::<V>(sw.invariants.as_slice(), v, f - 1); match &sw.measure { None => {}, Some(m) => each::<V>(m, v, f - 1), } each_block::<V>(&sw.body, v, f - 1); },
+            ast::Stmt::For(sf) => { each::<V>(&sf.lo, v, f - 1); each::<V>(&sf.hi, v, f - 1); each_all::<V>(sf.invariants.as_slice(), v, f - 1); each_block::<V>(&sf.body, v, f - 1); },
+            ast::Stmt::Assert(st) => each::<V>(&st.cond, v, f - 1),
+            ast::Stmt::Assume(su) => each::<V>(&su.cond, v, f - 1),
+            ast::Stmt::Proof(sp) => each_block::<V>(&sp.body, v, f - 1),
+            ast::Stmt::LetFields(lf) => each::<V>(&lf.init, v, f - 1),
+            ast::Stmt::Expr(se) => each::<V>(se, v, f - 1),
+        }
+    }
+
+    #[summary("Whether t is one parenthesized expression (stage0 enclosed): `(..)` whose first `(` closes at the end")]
+    #[effects(pure)]
+    fn enclosed(t: &str) -> bool {
+        let n: usize = t.len();
+        if n == 0 || t.as_bytes()[0] != 40 || t.as_bytes()[n - 1] != 41 {
+            return false;
+        }
+        let mut depth: usize = 0;
+        for i in 0..n
+            invariant 0 <= i && i <= n,
+        {
+            let c: u8 = t.as_bytes()[i];
+            if c == 40 {
+                depth = depth.saturating_add(1);
+            } else if c == 41 {
+                if depth == 1 && i + 1 < n {
+                    return false;
+                }
+                if depth > 0 {
+                    depth = depth - 1;
+                }
+            }
+        }
+        true
+    }
+
+    #[summary("The blocks in expression e to the visitor (stage0 expr_blocks): the block of an `if`, a block and the body of a `loop`; every other node is searched through its subexpressions")]
+    #[effects(alloc)]
+    fn expr_blocks<V: BlockFn>(e: &ast::Expr, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => {},
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(_) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(ca) => exprs_blocks::<V>(ca.args.as_slice(), v, f - 1),
+            ast::ExprKind::Method(me) => { expr_blocks::<V>(&*me.recv, v, f - 1); exprs_blocks::<V>(me.args.as_slice(), v, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { expr_blocks::<V>(&**ib, v, f - 1); expr_blocks::<V>(&**ii, v, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => expr_blocks::<V>(&**ux, v, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => { expr_blocks::<V>(&**bl, v, f - 1); expr_blocks::<V>(&**br, v, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => expr_blocks::<V>(&**rx, v, f - 1),
+            ast::ExprKind::If(ife) => { expr_blocks::<V>(&*ife.cond, v, f - 1); blocks_in::<V>(&ife.then, v, f - 1); opt_blocks::<V>(&ife.els, v, f - 1); },
+            ast::ExprKind::Block(blk) => blocks_in::<V>(blk, v, f - 1),
+            ast::ExprKind::Array(ar) => exprs_blocks::<V>(ar.as_slice(), v, f - 1),
+            ast::ExprKind::Repeat(rp) => expr_blocks::<V>(&*rp.value, v, f - 1),
+            ast::ExprKind::Old(ox) => expr_blocks::<V>(&**ox, v, f - 1),
+            ast::ExprKind::Quant(qu) => expr_blocks::<V>(&*qu.body, v, f - 1),
+            ast::ExprKind::Trigger(tx) => expr_blocks::<V>(&**tx, v, f - 1),
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { expr_blocks::<V>(&sl.fields[i].value, v, f - 1); } opt_blocks::<V>(&sl.rest, v, f - 1); },
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(dx) => expr_blocks::<V>(&**dx, v, f - 1),
+            ast::ExprKind::Field(fx, fnm) => expr_blocks::<V>(&**fx, v, f - 1),
+            ast::ExprKind::Match(ma) => { expr_blocks::<V>(&*ma.scrut, v, f - 1); for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { expr_blocks::<V>(&ma.arms[j].body, v, f - 1); } },
+            ast::ExprKind::Return(rv) => opt_blocks::<V>(rv, v, f - 1),
+            ast::ExprKind::Try(tr) => expr_blocks::<V>(&**tr, v, f - 1),
+            ast::ExprKind::Loop(lp) => blocks_in::<V>(&lp.body, v, f - 1),
+            ast::ExprKind::Break(bk) => opt_blocks::<V>(&bk.value, v, f - 1),
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(rg) => { expr_blocks::<V>(&*rg.lo, v, f - 1); expr_blocks::<V>(&*rg.hi, v, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("The outermost loops in expression e (stage0 expr_loops): those of the blocks of an `if`, of a block and of the arms of a `match`")]
+    #[effects(alloc)]
+    fn expr_loops(e: &ast::Expr, out: &mut Vec<LoopRef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => {},
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(_) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(_) => {},
+            ast::ExprKind::Method(_) => {},
+            ast::ExprKind::Index(_, _) => {},
+            ast::ExprKind::Unary(_, _) => {},
+            ast::ExprKind::Binary(_, _, _) => {},
+            ast::ExprKind::Ref(_, _) => {},
+            ast::ExprKind::If(ife) => { outer_loops(&ife.then, out, f - 1); match &ife.els { None => {}, Some(x) => expr_loops(&**x, out, f - 1), } },
+            ast::ExprKind::Block(blk) => outer_loops(blk, out, f - 1),
+            ast::ExprKind::Array(_) => {},
+            ast::ExprKind::Repeat(_) => {},
+            ast::ExprKind::Old(_) => {},
+            ast::ExprKind::Quant(_) => {},
+            ast::ExprKind::Trigger(_) => {},
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(_) => {},
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(_) => {},
+            ast::ExprKind::Field(_, _) => {},
+            ast::ExprKind::Match(ma) => { for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { expr_loops(&ma.arms[j].body, out, f - 1); } },
+            ast::ExprKind::Return(_) => {},
+            ast::ExprKind::Try(_) => {},
+            ast::ExprKind::Loop(_) => {},
+            ast::ExprKind::Break(_) => {},
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(_) => {},
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("What expression e adds to the parts of a loop body (stage0 expr_parts): the parts of the blocks of an `if`, a block, a `loop` and the arms of a `match`; an `if` and a `match` are a branch, with its condition or scrutinee and the locals assigned in it")]
+    #[effects(alloc)]
+    fn expr_parts(e: &ast::Expr, lp: &mut LoopParts, cx: &Io, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let before: usize = lp.assigns.len();
+        let cond: Option<ast::Expr> = match &e.kind {
+            ast::ExprKind::Int(_, _) => None,
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(_) => None,
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(_) => None,
+            ast::ExprKind::Bool(_) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(_) => None,
+            ast::ExprKind::Call(_) => None,
+            ast::ExprKind::Method(_) => None,
+            ast::ExprKind::Index(_, _) => None,
+            ast::ExprKind::Unary(_, _) => None,
+            ast::ExprKind::Binary(_, _, _) => None,
+            ast::ExprKind::Ref(_, _) => None,
+            ast::ExprKind::If(ife) => { loop_parts(&ife.then, lp, cx, f - 1); match &ife.els { None => {}, Some(x) => expr_parts(&**x, lp, cx, f - 1), } Some((*ife.cond).clone()) },
+            ast::ExprKind::Block(blk) => { loop_parts(blk, lp, cx, f - 1); None },
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(_) => None,
+            ast::ExprKind::Trigger(_) => None,
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(_) => None,
+            ast::ExprKind::Deref(_) => None,
+            ast::ExprKind::Field(_, _) => None,
+            ast::ExprKind::Match(ma) => { for j in 0..ma.arms.len() invariant 0 <= j && j <= ma.arms.len(), { expr_parts(&ma.arms[j].body, lp, cx, f - 1); } Some((*ma.scrut).clone()) },
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(lo) => { loop_parts(&lo.body, lp, cx, f - 1); None },
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        };
+        match cond {
+            None => {},
+            Some(c) => { let mut names: Vec<String> = Vec::new(); for i in 0..lp.assigns.len() invariant 0 <= i && i <= lp.assigns.len(), { if i >= before { names.push(lp.assigns[i].name.clone()); } } lp.conds.push(Cond { cond: c, names: names }); },
+        }
+    }
+
+    #[summary("expr_blocks over each expression of xs")]
+    #[effects(alloc)]
+    fn exprs_blocks<V: BlockFn>(xs: &[ast::Expr], v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            expr_blocks::<V>(&xs[i], v, f - 1);
+        }
+    }
+
+    #[summary("Whether a branch condition is a decision of its own (stage0 inline_logic): not a call, a local, a literal, the negation of one, or the test of one value against a literal")]
+    #[effects(pure)]
+    fn inline_logic(c: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return true;
+        }
+        match &c.kind {
+            ast::ExprKind::Int(_, _) => true,
+            ast::ExprKind::Float(_) => true,
+            ast::ExprKind::ByteLit(_) => true,
+            ast::ExprKind::ByteStr(_) => true,
+            ast::ExprKind::StrLit(_) => true,
+            ast::ExprKind::CharLit(_) => true,
+            ast::ExprKind::Bool(bo) => false,
+            ast::ExprKind::Unit => true,
+            ast::ExprKind::Var(id) => false,
+            ast::ExprKind::Call(ca) => false,
+            ast::ExprKind::Method(_) => true,
+            ast::ExprKind::Index(_, _) => true,
+            ast::ExprKind::Unary(uo, ux) => match uo { ast::UnOp::Neg => true, ast::UnOp::Not => inline_logic(&**ux, f - 1), },
+            ast::ExprKind::Binary(bop, bl, br) => { if is_cmp(bop) { !(is_read(&**bl) && is_lit(&**br) || is_lit(&**bl) && is_read(&**br)) } else { true } },
+            ast::ExprKind::Ref(_, _) => true,
+            ast::ExprKind::If(_) => true,
+            ast::ExprKind::Block(_) => true,
+            ast::ExprKind::Array(_) => true,
+            ast::ExprKind::Repeat(_) => true,
+            ast::ExprKind::Old(_) => true,
+            ast::ExprKind::Quant(_) => true,
+            ast::ExprKind::Trigger(_) => true,
+            ast::ExprKind::Closure(_) => true,
+            ast::ExprKind::StructLit(_) => true,
+            ast::ExprKind::Path(_) => true,
+            ast::ExprKind::Deref(_) => true,
+            ast::ExprKind::Field(_, _) => true,
+            ast::ExprKind::Match(_) => true,
+            ast::ExprKind::Return(_) => true,
+            ast::ExprKind::Try(_) => true,
+            ast::ExprKind::Loop(_) => true,
+            ast::ExprKind::Break(_) => true,
+            ast::ExprKind::Continue(_) => true,
+            ast::ExprKind::Range(_) => true,
+            ast::ExprKind::Error => true,
+        }
+    }
+
+    #[summary("Whether e is an integer literal, negated or not (stage0 int_literal)")]
+    #[effects(pure)]
+    fn int_literal(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => true,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(_) => false,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(_) => false,
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(uo, ux) => match uo { ast::UnOp::Neg => int_literal(&**ux, f - 1), ast::UnOp::Not => false, },
+            ast::ExprKind::Binary(_, _, _) => false,
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(_) => false,
+            ast::ExprKind::Block(_) => false,
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(_) => false,
+            ast::ExprKind::Field(_, _) => false,
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("W0910 for each outermost `while` or `for` of an `io` function whose body calls a function that needs `io` and assigns locals declared before the loop, every such assignment's value calling nothing that needs `io` (stage0 io_loop_cores). The suggested signature takes the variables the updates read and returns the state. defs are the program's definitions by path")]
+    #[effects(alloc)]
+    fn io_loop_cores(ck: &body::Checked, defs: &table::Table<ast::FnDef>) -> Vec<diag::Diag> {
+        let mut out: Vec<diag::Diag> = Vec::new();
+        let mut cx: Io = Io { fns: ck.b.c.fns.clone(), low: lowered::tables(ck), mod_path: String::new() };
+        for n in 0..defs.len()
+            invariant 0 <= n,
+        {
+            match defs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = defs.key(n); let io: bool = match ck.b.c.fns.find(path.as_str()) { None => false, Some(s) => ck.b.c.fns.items[s].effect.io, }; if io && !std::str::starts_with(path.as_str(), "<") { cx.mod_path = match rfind(path.as_str(), "::") { None => String::new(), Some(cut) => lexer::cut(path.as_str(), 0, cut), }; let mut loops: Vec<LoopRef> = Vec::new(); outer_loops(&defs.items[at].body, &mut loops, 1000000000); for l in 0..loops.len() invariant 0 <= l && l <= loops.len(), { match loop_core(ck, &cx, path.as_str(), defs.items[at].name.name.as_str(), &loops[l]) { None => {}, Some(found) => out.push(found), } } } },
+            }
+        }
+        out
+    }
+
+    #[summary("Whether op is `+`")]
+    #[effects(pure)]
+    fn is_add(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => true,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("Whether op is an arithmetic operator (stage0 BinOp::is_arith)")]
+    #[effects(pure)]
+    fn is_arith(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => true,
+            ast::BinOp::Sub => true,
+            ast::BinOp::Mul => true,
+            ast::BinOp::Div => true,
+            ast::BinOp::Rem => true,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => false,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("Whether op is a comparison (stage0 BinOp::is_cmp)")]
+    #[effects(pure)]
+    fn is_cmp(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => true,
+            ast::BinOp::Ne => true,
+            ast::BinOp::Lt => true,
+            ast::BinOp::Le => true,
+            ast::BinOp::Gt => true,
+            ast::BinOp::Ge => true,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("Whether e is a literal a result is tested against (the lit of stage0 inline_logic): an integer, `bool` or float literal, or a negated number")]
+    #[effects(pure)]
+    fn is_lit(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => true,
+            ast::ExprKind::Float(fb) => true,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(bo) => true,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(_) => false,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(_) => false,
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(uo, ux) => match uo { ast::UnOp::Neg => ast::tag(&ux.kind) == 0 || ast::tag(&ux.kind) == 1, ast::UnOp::Not => false, },
+            ast::ExprKind::Binary(_, _, _) => false,
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(_) => false,
+            ast::ExprKind::Block(_) => false,
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(_) => false,
+            ast::ExprKind::Field(_, _) => false,
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("Whether op is `<`")]
+    #[effects(pure)]
+    fn is_lt(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => true,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => false,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("Whether op is `<` or `<<`, on whose left a cast would read the type's arguments")]
+    #[effects(pure)]
+    fn is_lt_or_shl(op: &ast::BinOp) -> bool {
+        match op {
+            ast::BinOp::Add => false,
+            ast::BinOp::Sub => false,
+            ast::BinOp::Mul => false,
+            ast::BinOp::Div => false,
+            ast::BinOp::Rem => false,
+            ast::BinOp::Eq => false,
+            ast::BinOp::Ne => false,
+            ast::BinOp::Lt => true,
+            ast::BinOp::Le => false,
+            ast::BinOp::Gt => false,
+            ast::BinOp::Ge => false,
+            ast::BinOp::And => false,
+            ast::BinOp::Or => false,
+            ast::BinOp::Implies => false,
+            ast::BinOp::BitAnd => false,
+            ast::BinOp::BitOr => false,
+            ast::BinOp::BitXor => false,
+            ast::BinOp::Shl => true,
+            ast::BinOp::Shr => false,
+        }
+    }
+
+    #[summary("Whether e is the integer literal 1")]
+    #[effects(pure)]
+    fn is_one(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => iv.hi == 0 && iv.lo == 1,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(_) => false,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(_) => false,
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(_, _) => false,
+            ast::ExprKind::Binary(_, _, _) => false,
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(_) => false,
+            ast::ExprKind::Block(_) => false,
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(_) => false,
+            ast::ExprKind::Field(_, _) => false,
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("Whether e reads one value (the read of stage0 inline_logic): a local, an element, a field or a call")]
+    #[effects(pure)]
+    fn is_read(e: &ast::Expr) -> bool {
+        let k: u8 = ast::tag(&e.kind);
+        k == 8 || k == 11 || k == 26 || k == 9
+    }
+
+    #[summary("Whether there is an expression")]
+    #[effects(pure)]
+    fn is_some_box(o: &Option<Box<ast::Expr>>) -> bool {
+        match o {
+            None => false,
+            Some(x) => true,
+        }
+    }
+
+    #[summary("Whether e is the variable name")]
+    #[effects(pure)]
+    fn is_var(e: &ast::Expr, name: &str) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => false,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => id.name.as_str() == name,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(_) => false,
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(_, _) => false,
+            ast::ExprKind::Binary(_, _, _) => false,
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(_) => false,
+            ast::ExprKind::Block(_) => false,
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(_) => false,
+            ast::ExprKind::Field(_, _) => false,
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("The type of local name of the definition at path as written (stage0 check::ty_str of Tables::locals)")]
+    #[effects(alloc)]
+    fn local_type(ck: &body::Checked, path: &str, name: &str) -> Option<String> {
+        match ck.b.locals.find(path) {
+            None => None,
+            Some(l) => match ck.b.locals.items[l].find(name) { None => None, Some(t) => Some(types::text(&ck.b.locals.items[l].items[t])), },
+        }
+    }
+
+    #[summary("W0910 for one outermost loop of the `io` function at path, named name, if it is a state machine with its output (the body of the loop of stage0 io_loop_cores)")]
+    #[effects(alloc)]
+    fn loop_core(ck: &body::Checked, cx: &Io, path: &str, name: &str, l: &LoopRef) -> Option<diag::Diag> {
+        let mut lp: LoopParts = LoopParts { declared: Vec::new(), lets: Vec::new(), assigns: Vec::new(), conds: Vec::new(), prints: false };
+        loop_parts(&l.body, &mut lp, cx, 1000000000);
+        let mut in_cond: Vars = Vars { names: Vec::new() };
+        match &l.cond {
+            None => {},
+            Some(c) => each::<Vars>(c, &mut in_cond, 1000000000),
+        }
+        let mut complex: Vec<String> = Vec::new();
+        for i in 0..lp.assigns.len()
+            invariant 0 <= i && i <= lp.assigns.len(),
+        {
+            if !(simple_update(&lp.assigns[i].value) && ast::tag(&lp.assigns[i].value.kind) != 9) {
+                complex.push(lp.assigns[i].name.clone());
+            }
+        }
+        let mut state: Vec<String> = Vec::new();
+        for i in 0..lp.assigns.len()
+            invariant 0 <= i && i <= lp.assigns.len(),
+        {
+            let n: String = lp.assigns[i].name.clone();
+            if !types::has(lp.declared.as_slice(), n.as_str()) && !types::has(state.as_slice(), n.as_str()) && !(types::has(in_cond.names.as_slice(), n.as_str()) && !types::has(complex.as_slice(), n.as_str())) {
+                state.push(n.clone());
+            }
+        }
+        if !lp.prints || state.len() == 0 {
+            return None;
+        }
+        let mut simple: bool = true;
+        for i in 0..lp.assigns.len()
+            invariant 0 <= i && i <= lp.assigns.len(),
+        {
+            if types::has(state.as_slice(), lp.assigns[i].name.as_str()) {
+                if needs_io(&lp.assigns[i].value, cx) {
+                    return None;
+                }
+                if !simple_update(&lp.assigns[i].value) {
+                    simple = false;
+                }
+            }
+        }
+        let mut decides: bool = false;
+        for i in 0..lp.conds.len()
+            invariant 0 <= i && i <= lp.conds.len(),
+        {
+            if !decides && inline_logic(&lp.conds[i].cond, 1000000000) && shares(lp.conds[i].names.as_slice(), state.as_slice()) && !needs_io(&lp.conds[i].cond, cx) {
+                decides = true;
+            }
+        }
+        if !decides && simple {
+            return None;
+        }
+        let mut inputs: Vec<String> = Vec::new();
+        let mut results: Vec<String> = Vec::new();
+        for i in 0..lp.lets.len()
+            invariant 0 <= i && i <= lp.lets.len(),
+        {
+            if lp.lets[i].mutable {
+                let mut decided: bool = false;
+                for j in 0..lp.conds.len()
+                    invariant 0 <= j && j <= lp.conds.len(),
+                {
+                    if inline_logic(&lp.conds[j].cond, 1000000000) && types::has(lp.conds[j].names.as_slice(), lp.lets[i].name.as_str()) {
+                        decided = true;
+                    }
+                }
+                if decided {
+                    results.push(lp.lets[i].name.clone());
+                }
+            } else {
+                let mut seen: Vars = Vars { names: Vec::new() };
+                each::<Vars>(&lp.lets[i].init, &mut seen, 1000000000);
+                if !shares(seen.names.as_slice(), state.as_slice()) {
+                    inputs.push(lp.lets[i].name.clone());
+                }
+            }
+        }
+        let mut read: Vars = Vars { names: Vec::new() };
+        for i in 0..lp.conds.len()
+            invariant 0 <= i && i <= lp.conds.len(),
+        {
+            if shares(lp.conds[i].names.as_slice(), state.as_slice()) || shares(lp.conds[i].names.as_slice(), results.as_slice()) {
+                each::<Vars>(&lp.conds[i].cond, &mut read, 1000000000);
+            }
+        }
+        for i in 0..lp.assigns.len()
+            invariant 0 <= i && i <= lp.assigns.len(),
+        {
+            if types::has(state.as_slice(), lp.assigns[i].name.as_str()) || types::has(results.as_slice(), lp.assigns[i].name.as_str()) {
+                each::<Vars>(&lp.assigns[i].value, &mut read, 1000000000);
+            }
+        }
+        let mut reads: Vec<String> = Vec::new();
+        for i in 0..state.len()
+            invariant 0 <= i && i <= state.len(),
+        {
+            reads.push(state[i].clone());
+        }
+        for i in 0..read.names.len()
+            invariant 0 <= i && i <= read.names.len(),
+        {
+            let v: String = read.names[i].clone();
+            let is_loop_var: bool = match &l.var {
+                None => false,
+                Some(lv) => lv.as_str() == v.as_str(),
+            };
+            if !types::has(reads.as_slice(), v.as_str()) && (!types::has(lp.declared.as_slice(), v.as_str()) || types::has(inputs.as_slice(), v.as_str())) && !(types::has(in_cond.names.as_slice(), v.as_str()) && !types::has(complex.as_slice(), v.as_str())) && !is_loop_var {
+                reads.push(v.clone());
+            }
+        }
+        let mut typed: Vec<String> = Vec::new();
+        for i in 0..reads.len()
+            invariant 0 <= i && i <= reads.len(),
+        {
+            match local_type(ck, path, reads[i].as_str()) {
+                None => typed.push(reads[i].clone()),
+                Some(ty) => typed.push(types::cat3(reads[i].as_str(), ": ", ty.as_str())),
+            }
+        }
+        let mut outs: Vec<String> = Vec::new();
+        for i in 0..state.len()
+            invariant 0 <= i && i <= state.len(),
+        {
+            outs.push(type_or_name(ck, path, state[i].as_str()));
+        }
+        for i in 0..results.len()
+            invariant 0 <= i && i <= results.len(),
+        {
+            outs.push(type_or_name(ck, path, results[i].as_str()));
+        }
+        let ret: String = if outs.len() == 1 {
+            outs[0].clone()
+        } else {
+            types::cat3("(", types::join(outs.as_slice(), ", ").as_str(), ")")
+        };
+        let mut msg: String = types::cat5("this loop of `", path, "` prints and updates its state `", types::join(state.as_slice(), "`, `").as_str(), "` with pure expressions only: the update can be a pure function, proved by its contract, so that only the printing needs a test");
+        let mut hint: String = types::cat5("move the update into `fn ", name, "_step(", types::join(typed.as_slice(), ", ").as_str(), ") -> ");
+        hint.push_str(ret.as_str());
+        hint.push_str("` with `#[effects(pure)]` and a contract, and assign its result here");
+        Some(diag::fix(diag::new("W0910", l.span, msg.as_str()), hint.as_str(), None))
+    }
+
+    #[summary("The parts of loop body b (stage0 loop_parts), nested blocks and loops included")]
+    #[effects(alloc)]
+    fn loop_parts(b: &ast::Block, lp: &mut LoopParts, cx: &Io, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => { types::add(&mut lp.declared, sl.name.name.as_str()); lp.lets.push(LetRow { name: sl.name.name.clone(), init: sl.init.clone(), mutable: sl.mutable }); if needs_io(&sl.init, cx) { lp.prints = true; } expr_parts(&sl.init, lp, cx, f - 1); },
+                ast::Stmt::Assign(sa) => { match &sa.target.kind { ast::ExprKind::Int(_, _) => {}, ast::ExprKind::Float(_) => {}, ast::ExprKind::ByteLit(_) => {}, ast::ExprKind::ByteStr(_) => {}, ast::ExprKind::StrLit(_) => {}, ast::ExprKind::CharLit(_) => {}, ast::ExprKind::Bool(_) => {}, ast::ExprKind::Unit => {}, ast::ExprKind::Var(id) => lp.assigns.push(Assigned { name: id.name.clone(), value: sa.value.clone() }), ast::ExprKind::Call(_) => {}, ast::ExprKind::Method(_) => {}, ast::ExprKind::Index(_, _) => {}, ast::ExprKind::Unary(_, _) => {}, ast::ExprKind::Binary(_, _, _) => {}, ast::ExprKind::Ref(_, _) => {}, ast::ExprKind::If(_) => {}, ast::ExprKind::Block(_) => {}, ast::ExprKind::Array(_) => {}, ast::ExprKind::Repeat(_) => {}, ast::ExprKind::Old(_) => {}, ast::ExprKind::Quant(_) => {}, ast::ExprKind::Trigger(_) => {}, ast::ExprKind::Closure(_) => {}, ast::ExprKind::StructLit(_) => {}, ast::ExprKind::Path(_) => {}, ast::ExprKind::Deref(_) => {}, ast::ExprKind::Field(_, _) => {}, ast::ExprKind::Match(_) => {}, ast::ExprKind::Return(_) => {}, ast::ExprKind::Try(_) => {}, ast::ExprKind::Loop(_) => {}, ast::ExprKind::Break(_) => {}, ast::ExprKind::Continue(_) => {}, ast::ExprKind::Range(_) => {}, ast::ExprKind::Error => {}, } if needs_io(&sa.value, cx) { lp.prints = true; } expr_parts(&sa.value, lp, cx, f - 1); },
+                ast::Stmt::While(sw) => { if needs_io(&sw.cond, cx) { lp.prints = true; } loop_parts(&sw.body, lp, cx, f - 1); },
+                ast::Stmt::For(sf) => { types::add(&mut lp.declared, sf.var.name.as_str()); loop_parts(&sf.body, lp, cx, f - 1); },
+                ast::Stmt::Assert(_) => {},
+                ast::Stmt::Assume(_) => {},
+                ast::Stmt::Proof(_) => {},
+                ast::Stmt::LetFields(_) => {},
+                ast::Stmt::Expr(se) => { if needs_io(se, cx) { lp.prints = true; } expr_parts(se, lp, cx, f - 1); },
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => { if needs_io(&**t, cx) { lp.prints = true; } expr_parts(&**t, lp, cx, f - 1); },
+        }
+    }
+
+    #[summary("W0907 over the functions of unit m and its inner units: its functions, those of its `impl` blocks and trait impls and the default bodies of its traits, then the inner units")]
+    #[effects(alloc)]
+    fn loops_of_mod(m: &ast::Mod, files: &[lib::Input], out: &mut Vec<diag::Diag>, bad: &mut bool, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            if (m.fns[i].span.file as usize) < files.len() {
+                counting_whiles(&m.fns[i], files[m.fns[i].span.file as usize].text.as_str(), out, bad);
+            }
+        }
+        for i in 0..m.impls.len()
+            invariant 0 <= i && i <= m.impls.len(),
+        {
+            for j in 0..m.impls[i].fns.len()
+                invariant 0 <= j && j <= m.impls[i].fns.len(),
+            {
+                if (m.impls[i].fns[j].span.file as usize) < files.len() {
+                    counting_whiles(&m.impls[i].fns[j], files[m.impls[i].fns[j].span.file as usize].text.as_str(), out, bad);
+                }
+            }
+        }
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            for j in 0..m.trait_impls[i].fns.len()
+                invariant 0 <= j && j <= m.trait_impls[i].fns.len(),
+            {
+                if (m.trait_impls[i].fns[j].span.file as usize) < files.len() {
+                    counting_whiles(&m.trait_impls[i].fns[j], files[m.trait_impls[i].fns[j].span.file as usize].text.as_str(), out, bad);
+                }
+            }
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            for j in 0..m.traits[i].fns.len()
+                invariant 0 <= j && j <= m.traits[i].fns.len(),
+            {
+                if m.traits[i].fns[j].has_body && (m.traits[i].fns[j].f.span.file as usize) < files.len() {
+                    counting_whiles(&m.traits[i].fns[j].f, files[m.traits[i].fns[j].f.span.file as usize].text.as_str(), out, bad);
+                }
+            }
+        }
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            loops_of_mod(&m.mods[i], files, out, bad, f - 1);
+        }
+    }
+
+    #[summary("W0911 for each call by path of a method that the normal form writes as a method call (stage0 method_calls, ADR-0051). The fix splices the receiver's and the arguments' own text, so their comments stay. source is the program as parsed")]
+    #[effects(alloc)]
+    fn method_calls(source: &ast::Program, ck: &body::Checked, files: &[lib::Input]) -> Vec<diag::Diag> {
+        let m: methodize::Methodized = methodize::methodize_spans(source, &ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+        let mut spans: table::Table<bool> = table::new::<bool>();
+        for i in 0..m.spans.len()
+            invariant 0 <= i && i <= m.spans.len(),
+        {
+            spans.insert(m.spans[i].as_str(), true);
+        }
+        let mut p: ast::Program = m.program;
+        let mut v: Methods = Methods { files: copy_files(files), spans: spans, out: Vec::new() };
+        ast::exprs_mut::<Methods>(&mut p, &mut v);
+        sorted(v.out.as_slice())
+    }
+
+    #[summary("Whether expression e calls a function that needs `io` (the needs_io of stage0 io_loop_cores): a call by path that the unit resolves to a function declared with it")]
+    #[effects(alloc)]
+    fn needs_io(e: &ast::Expr, cx: &Io) -> bool {
+        let mut calls: Called = Called { paths: Vec::new() };
+        each::<Called>(e, &mut calls, 1000000000);
+        for i in 0..calls.paths.len()
+            invariant 0 <= i && i <= calls.paths.len(),
+        {
+            let callee: String = encode_decls::resolve_in(&cx.low, calls.paths[i].as_slice(), cx.mod_path.as_str());
+            match cx.fns.find(callee.as_str()) {
+                None => {},
+                Some(s) => { if cx.fns.items[s].effect.io { return true; } },
+            }
+        }
+        false
+    }
+
+    #[summary("expr_blocks over the expression, if there is one")]
+    #[effects(alloc)]
+    fn opt_blocks<V: BlockFn>(o: &Option<Box<ast::Expr>>, v: &mut V, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => expr_blocks::<V>(&**x, v, f - 1),
+        }
+    }
+
+    #[summary("The outermost `while` and `for` loops of block b, not inside another (stage0 outer_loops)")]
+    #[effects(alloc)]
+    fn outer_loops(b: &ast::Block, out: &mut Vec<LoopRef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(sl) => expr_loops(&sl.init, out, f - 1),
+                ast::Stmt::Assign(sa) => expr_loops(&sa.value, out, f - 1),
+                ast::Stmt::While(sw) => out.push(LoopRef { span: sw.span, body: sw.body.clone(), var: None, cond: Some(sw.cond.clone()) }),
+                ast::Stmt::For(sf) => out.push(LoopRef { span: sf.span, body: sf.body.clone(), var: Some(sf.var.name.clone()), cond: None }),
+                ast::Stmt::Assert(_) => {},
+                ast::Stmt::Assume(_) => {},
+                ast::Stmt::Proof(_) => {},
+                ast::Stmt::LetFields(_) => {},
+                ast::Stmt::Expr(se) => expr_loops(se, out, f - 1),
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => expr_loops(&**t, out, f - 1),
+        }
+    }
+
+    #[summary("text[a..b] as Rust slices it; where Rust would stop sets bad and gives the empty text")]
+    #[effects(alloc)]
+    fn part(text: &str, a: usize, b: usize, bad: &mut bool) -> String {
+        if a <= b && b <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(b) {
+            String::from(&text[a..b])
+        } else {
+            *bad = true;
+            String::new()
+        }
+    }
+
+    #[summary("The variable a place expression is rooted at (stage0 place_root)")]
+    #[effects(alloc)]
+    fn place_root(e: &ast::Expr, f: usize) -> Option<String>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => None,
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(_) => None,
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(_) => None,
+            ast::ExprKind::Bool(_) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => Some(id.name.clone()),
+            ast::ExprKind::Call(_) => None,
+            ast::ExprKind::Method(me) => place_root(&*me.recv, f - 1),
+            ast::ExprKind::Index(ib, ii) => place_root(&**ib, f - 1),
+            ast::ExprKind::Unary(_, _) => None,
+            ast::ExprKind::Binary(_, _, _) => None,
+            ast::ExprKind::Ref(rm, rx) => place_root(&**rx, f - 1),
+            ast::ExprKind::If(_) => None,
+            ast::ExprKind::Block(_) => None,
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(_) => None,
+            ast::ExprKind::Trigger(_) => None,
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(_) => None,
+            ast::ExprKind::Deref(dx) => place_root(&**dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => place_root(&**fx, f - 1),
+            ast::ExprKind::Match(_) => None,
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(_) => None,
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("Whether a bound names the same value at every head (stage0 plain_bound): variables, constants, fields, arithmetic and `len()`")]
+    #[effects(pure)]
+    fn plain_bound(e: &ast::Expr, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => true,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(id) => true,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(me) => me.name.name == "len" && me.args.len() == 0 && plain_bound(&*me.recv, f - 1),
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(uo, ux) => plain_bound(&**ux, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => is_arith(bop) && plain_bound(&**bl, f - 1) && plain_bound(&**br, f - 1),
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(_) => false,
+            ast::ExprKind::Block(_) => false,
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(pa) => true,
+            ast::ExprKind::Deref(dx) => plain_bound(&**dx, f - 1),
+            ast::ExprKind::Field(fx, fnm) => plain_bound(&**fx, f - 1),
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("W0906 for one quantifier at q of a definition (the body of the loop of stage0 self_matching)")]
+    #[effects(alloc)]
+    fn quant_terms(qu: &ast::Quant, text: &str, out: &mut Vec<diag::Diag>, bad: &mut bool) -> () {
+        let mut trig: Terms = Terms { in_trigger: true, out: Vec::new() };
+        each::<Terms>(&*qu.body, &mut trig, 1000000000);
+        if trig.out.len() != 1 {
+            return;
+        }
+        let key: encode_terms::Pair = match term_key(&trig.out[0], text, bad) {
+            None => { return; },
+            Some(k) => k,
+        };
+        let mut bound: Vec<String> = Vec::new();
+        for i in 0..qu.binders.len()
+            invariant 0 <= i && i <= qu.binders.len(),
+        {
+            bound.push(qu.binders[i].name.name.clone());
+        }
+        let mut terms: Terms = Terms { in_trigger: false, out: Vec::new() };
+        each::<Terms>(&*qu.body, &mut terms, 1000000000);
+        let word: String = match qu.q {
+            ast::Quantifier::Forall => String::from("forall"),
+            ast::Quantifier::Exists => String::from("exists"),
+        };
+        for i in 0..terms.out.len()
+            invariant 0 <= i && i <= terms.out.len(),
+        {
+            match term_key(&terms.out[i], text, bad) {
+                None => {},
+                Some(k2) => { if k2.a == key.a && k2.b != key.b { let mut seen: Vars = Vars { names: Vec::new() }; each::<Vars>(&terms.out[i], &mut seen, 1000000000); if shares(seen.names.as_slice(), bound.as_slice()) { let at: source::Span = terms.out[i].span; let raw: String = part(text, at.lo as usize, at.hi as usize, bad); let ts: source::Span = trig.out[0].span; let mut msg: String = types::cat5("`", squash(raw.as_str()).as_str(), "` matches the same pattern as this `", word.as_str(), "`'s only trigger `"); msg.push_str(squash(part(text, ts.lo as usize, ts.hi as usize, bad).as_str()).as_str()); msg.push_str("` at other arguments: each instance yields a term the trigger matches again (a matching loop), which can run the solver to its limit"); out.push(diag::fix(diag::new("W0906", at, msg.as_str()), "mark it as a trigger too: the two terms then form one multi-pattern, which an instance does not feed", Some(types::cat2("#[trigger] ", raw.as_str())))); } } },
+            }
+        }
+    }
+
+    #[summary("Last position in s where pat starts (Rust's rfind)")]
+    #[effects(pure)]
+    fn rfind(s: &str, pat: &str) -> Option<usize> {
+        if pat.len() > s.len() {
+            return None;
+        }
+        let room: usize = s.len() - pat.len();
+        for k in 0..s.len()
+            invariant 0 <= k && k <= s.len(),
+        {
+            if k > room {
+                return None;
+            }
+            if encode_terms::starts_at(s, room - k, pat) {
+                return Some(room - k);
+            }
+        }
+        if room >= s.len() && encode_terms::starts_at(s, room - s.len(), pat) {
+            return Some(room - s.len());
+        }
+        None
+    }
+
+    #[summary("W0906 for every quantifier of d: contracts, measure, body, invariants and `assert` (stage0 self_matching)")]
+    #[effects(alloc)]
+    fn self_matching(d: &ast::FnDef, text: &str, out: &mut Vec<diag::Diag>, bad: &mut bool) -> () {
+        let mut qs: Quants = Quants { out: Vec::new() };
+        each_all::<Quants>(d.pre.as_slice(), &mut qs, 1000000000);
+        each_all::<Quants>(d.post.as_slice(), &mut qs, 1000000000);
+        match &d.measure {
+            None => {},
+            Some(m) => each::<Quants>(m, &mut qs, 1000000000),
+        }
+        each_block::<Quants>(&d.body, &mut qs, 1000000000);
+        for i in 0..qs.out.len()
+            invariant 0 <= i && i <= qs.out.len(),
+        {
+            match &qs.out[i].kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(_) => {},
+                ast::ExprKind::Method(_) => {},
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(qu) => quant_terms(qu, text, out, bad),
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("Whether a name of xs is in ys")]
+    #[effects(pure)]
+    fn shares(xs: &[String], ys: &[String]) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if types::has(ys, xs[i].as_str()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether a state update is a step, not a computation (stage0 simple_update): a literal, a local, an element or field read, a call, or `v + k` and `v - k` with a literal")]
+    #[effects(pure)]
+    fn simple_update(e: &ast::Expr) -> bool {
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => atom(e),
+            ast::ExprKind::Float(_) => atom(e),
+            ast::ExprKind::ByteLit(_) => atom(e),
+            ast::ExprKind::ByteStr(_) => atom(e),
+            ast::ExprKind::StrLit(_) => atom(e),
+            ast::ExprKind::CharLit(_) => atom(e),
+            ast::ExprKind::Bool(_) => atom(e),
+            ast::ExprKind::Unit => atom(e),
+            ast::ExprKind::Var(_) => atom(e),
+            ast::ExprKind::Call(ca) => true,
+            ast::ExprKind::Method(_) => atom(e),
+            ast::ExprKind::Index(ib, ii) => true,
+            ast::ExprKind::Unary(_, _) => atom(e),
+            ast::ExprKind::Binary(bop, bl, br) => (match bop { ast::BinOp::Add => true, ast::BinOp::Sub => true, ast::BinOp::Mul => false, ast::BinOp::Div => false, ast::BinOp::Rem => false, ast::BinOp::Eq => false, ast::BinOp::Ne => false, ast::BinOp::Lt => false, ast::BinOp::Le => false, ast::BinOp::Gt => false, ast::BinOp::Ge => false, ast::BinOp::And => false, ast::BinOp::Or => false, ast::BinOp::Implies => false, ast::BinOp::BitAnd => false, ast::BinOp::BitOr => false, ast::BinOp::BitXor => false, ast::BinOp::Shl => false, ast::BinOp::Shr => false, }) && atom(&**bl) && ast::tag(&br.kind) == 0,
+            ast::ExprKind::Ref(_, _) => atom(e),
+            ast::ExprKind::If(_) => atom(e),
+            ast::ExprKind::Block(_) => atom(e),
+            ast::ExprKind::Array(_) => atom(e),
+            ast::ExprKind::Repeat(_) => atom(e),
+            ast::ExprKind::Old(_) => atom(e),
+            ast::ExprKind::Quant(_) => atom(e),
+            ast::ExprKind::Trigger(_) => atom(e),
+            ast::ExprKind::Closure(_) => atom(e),
+            ast::ExprKind::StructLit(_) => atom(e),
+            ast::ExprKind::Path(_) => atom(e),
+            ast::ExprKind::Deref(_) => atom(e),
+            ast::ExprKind::Field(fx, fnm) => true,
+            ast::ExprKind::Match(_) => atom(e),
+            ast::ExprKind::Return(_) => atom(e),
+            ast::ExprKind::Try(_) => atom(e),
+            ast::ExprKind::Loop(_) => atom(e),
+            ast::ExprKind::Break(_) => atom(e),
+            ast::ExprKind::Continue(_) => atom(e),
+            ast::ExprKind::Range(_) => atom(e),
+            ast::ExprKind::Error => atom(e),
+        }
+    }
+
+    #[summary("The diagnostics in order of file and start, those of one place in the order given (the stable sort of stage0)")]
+    #[effects(alloc)]
+    fn sorted(ds: &[diag::Diag]) -> Vec<diag::Diag> {
+        let mut ord: Vec<usize> = Vec::new();
+        for i in 0..ds.len()
+            invariant 0 <= i && i <= ds.len(),
+        {
+            let mut placed: Vec<usize> = Vec::new();
+            let mut done: bool = false;
+            for j in 0..ord.len()
+                invariant 0 <= j && j <= ord.len(),
+            {
+                if !done && ord[j] < ds.len() && (ds[i].span.file < ds[ord[j]].span.file || ds[i].span.file == ds[ord[j]].span.file && ds[i].span.lo < ds[ord[j]].span.lo) {
+                    placed.push(i);
+                    done = true;
+                }
+                placed.push(ord[j]);
+            }
+            if !done {
+                placed.push(i);
+            }
+            ord = placed;
+        }
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for k in 0..ord.len()
+            invariant 0 <= k && k <= ord.len(),
+        {
+            if ord[k] < ds.len() {
+                out.push(ds[ord[k]].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Text with each run of white space as one space and none at its ends (stage0 squash)")]
+    #[effects(alloc)]
+    fn squash(s: &str) -> String {
+        types::join(toolchain::words(s).as_slice(), " ")
+    }
+
+    #[summary("What a trigger term matches on, and its arguments as text (stage0 term_key): for an index `a[i]` the array, for a call `f(x, y)` the function")]
+    #[effects(alloc)]
+    fn term_key(e: &ast::Expr, text: &str, bad: &mut bool) -> Option<encode_terms::Pair> {
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => None,
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(_) => None,
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(_) => None,
+            ast::ExprKind::Bool(_) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(_) => None,
+            ast::ExprKind::Call(ca) => { let mut names: Vec<String> = Vec::new(); for i in 0..ca.path.len() invariant 0 <= i && i <= ca.path.len(), { names.push(ca.path[i].name.clone()); } let mut args: Vec<String> = Vec::new(); for j in 0..ca.args.len() invariant 0 <= j && j <= ca.args.len(), { args.push(squash(part(text, ca.args[j].span.lo as usize, ca.args[j].span.hi as usize, bad).as_str())); } Some(encode_terms::Pair { a: types::cat2(types::join(names.as_slice(), "::").as_str(), "()"), b: types::join(args.as_slice(), ", ") }) },
+            ast::ExprKind::Method(_) => None,
+            ast::ExprKind::Index(ib, ii) => Some(encode_terms::Pair { a: types::cat2(squash(part(text, ib.span.lo as usize, ib.span.hi as usize, bad).as_str()).as_str(), "[]"), b: squash(part(text, ii.span.lo as usize, ii.span.hi as usize, bad).as_str()) }),
+            ast::ExprKind::Unary(_, _) => None,
+            ast::ExprKind::Binary(_, _, _) => None,
+            ast::ExprKind::Ref(_, _) => None,
+            ast::ExprKind::If(_) => None,
+            ast::ExprKind::Block(_) => None,
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(_) => None,
+            ast::ExprKind::Trigger(_) => None,
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(_) => None,
+            ast::ExprKind::Deref(_) => None,
+            ast::ExprKind::Field(_, _) => None,
+            ast::ExprKind::Match(_) => None,
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(_) => None,
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("The type of local name of the definition at path, or the name when the tables do not have it")]
+    #[effects(alloc)]
+    fn type_or_name(ck: &body::Checked, path: &str, name: &str) -> String {
+        match local_type(ck, path, name) {
+            None => String::from(name),
+            Some(t) => t,
+        }
+    }
+
+    #[summary("W1001 for each `#[rationale(..)]` of the program whose hash is not the one it is bound to (stage0 unconfirmed_rationales with all, ADR-0029 §3): what it speaks for changed since it was confirmed, or it never was. The fix writes the current hash. defs are the definitions with a body in walk order")]
+    #[effects(alloc)]
+    fn unconfirmed_rationales(defs: &[codegen::Def], fns: &table::Table<types::FnSig>) -> Vec<diag::Diag> {
+        let hashes: escape::Hashes = escape::hashes(defs, fns);
+        let mut qp: fmt::Printer = fmt::qualifying(fns.clone(), "");
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if !stdlib::in_std(defs[i].path.as_str()) {
+                let es: escape::DefEscapes = escape::of(&defs[i].d);
+                if es.rationales.len() > 0 {
+                    match escape::hash_of(&hashes, &mut qp, fns, defs[i].path.as_str()) {
+                        None => {},
+                        Some(h) => { for r in 0..es.rationales.len() invariant 0 <= r && r <= es.rationales.len(), { let why: Option<String> = match &es.rationales[r].hash { None => Some(String::from("it carries no hash yet")), Some(had) => { if had.as_str() == h.as_str() { None } else { Some(types::cat3("`", defs[i].path.as_str(), "` or a predicate it names changed since it was confirmed")) } }, }; match why { None => {}, Some(w) => out.push(diag::fix(diag::new("W1001", es.rationales[r].span, types::cat2("unconfirmed rationale: ", w.as_str()).as_str()), "if the reason still holds, confirm it: `bmb fix --confirm` writes the current hash", Some(escape::with_hash(&es.rationales[r].attr, h.as_str())))), } } },
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("W0909 for each executable function that declares an effect its body does not need (stage0 unneeded_effects, ADR-0030 §3): its own operations and its callees' declared effects need none of it. Not reported for a trait's method or a function of a trait impl (the trait's declaration is the interface) or for the `io` of `main` (required). defs are the program's definitions by path")]
+    #[effects(alloc)]
+    fn unneeded_effects(ck: &body::Checked, defs: &table::Table<ast::FnDef>) -> Vec<diag::Diag> {
+        let mut out: Vec<diag::Diag> = Vec::new();
+        for n in 0..ck.b.needs.len()
+            invariant 0 <= n,
+        {
+            match ck.b.needs.nth(n) {
+                None => {},
+                Some(at) => { let path: String = ck.b.needs.key(n); match ck.b.c.fns.find(path.as_str()) { None => {}, Some(s) => { let in_trait: bool = match &ck.b.c.fns.items[s].trait_of { None => false, Some(tr) => true, }; if !(in_trait || ck.b.c.fns.items[s].default || std::str::starts_with(path.as_str(), "<")) { match defs.find(path.as_str()) { None => {}, Some(d) => { let needed: types::Effects = ck.b.needs.items[at].body; let keep: types::Effects = if defs.items[d].name.name == "main" && !workspace::contains(path.as_str(), "::main::") { types::e_union(needed, types::Effects { alloc: false, io: true, nondet: false, panic: false }) } else { needed }; let extra: types::Effects = types::e_minus(ck.b.c.fns.items[s].effect, keep); if !types::is_pure(extra) { let mut found: bool = false; for a in 0..defs.items[d].attrs.len() invariant 0 <= a && a <= defs.items[d].attrs.len(), { if !found && defs.items[d].attrs[a].name.name == "effects" { found = true; let kept: String = types::e_text(keep); out.push(diag::fix(diag::new("W0909", defs.items[d].attrs[a].span, types::cat5("`", path.as_str(), "` declares effects its body does not need: `", types::e_text(extra).as_str(), "`").as_str()), types::cat3("declare `#[effects(", kept.as_str(), ")]`, unless the wider interface is meant (callers must declare it too)").as_str(), Some(types::cat3("#[effects(", kept.as_str(), ")]")))); } } } }, } } }, } },
+            }
+        }
+        out
+    }
+
+    #[summary("W0916 for one `#[uses(..)]` attribute a of a definition of unit, if it names what the context ctx reveals already")]
+    #[effects(alloc)]
+    fn uses_attr(a: &ast::Attr, unit: &str, ctx: &[String], fns: &table::Table<types::FnSig>, text: &str, bad: &mut bool) -> Option<diag::Diag> {
+        let mut kept: Vec<String> = Vec::new();
+        let mut gone: Vec<String> = Vec::new();
+        for i in 0..a.args.len()
+            invariant 0 <= i && i <= a.args.len(),
+        {
+            match &a.args[i] {
+                ast::AttrArg::Ident(id) => { let revealed: bool = match decls::uses_target(id.name.as_str(), unit, fns) { None => false, Some(full) => types::has(ctx, full.as_str()), }; if revealed { gone.push(id.name.clone()); } else { kept.push(part(text, id.span.lo as usize, id.span.hi as usize, bad)); } },
+                ast::AttrArg::Str(s, sp) => {},
+                ast::AttrArg::Pair(k, v) => {},
+            }
+        }
+        if gone.len() == 0 {
+            return None;
+        }
+        let r: String = if kept.len() == 0 {
+            String::new()
+        } else {
+            types::cat3("#[uses(", types::join(kept.as_slice(), ", ").as_str(), ")]")
+        };
+        Some(diag::fix(diag::new("W0916", a.span, types::cat2("`#[uses]` names what the default context reveals already: ", types::join(gone.as_slice(), ", ").as_str()).as_str()), "leave out what the context holds (ADR-0095 A1)", Some(r)))
+    }
+
+    #[summary("W0907 for the counting `while` sw after the `let` sl, with measure dec (stage0 w0907): the replacement is the source with the `let` gone, the head written as a range `for`, the measure's clause cut and the step's line cut. None where stage0 would stop")]
+    #[effects(alloc)]
+    fn w0907(text: &str, sl: &ast::Let, sw: &ast::While, dec: &ast::Expr, bad: &mut bool) -> Option<diag::Diag> {
+        let steps: usize = sw.body.stmts.len();
+        if steps == 0 {
+            return None;
+        }
+        let step_span: source::Span = match &sw.body.stmts[steps - 1] {
+            ast::Stmt::Let(_) => { return None; },
+            ast::Stmt::Assign(sa) => sa.span,
+            ast::Stmt::While(_) => { return None; },
+            ast::Stmt::For(_) => { return None; },
+            ast::Stmt::Assert(_) => { return None; },
+            ast::Stmt::Assume(_) => { return None; },
+            ast::Stmt::Proof(_) => { return None; },
+            ast::Stmt::LetFields(_) => { return None; },
+            ast::Stmt::Expr(_) => { return None; },
+        };
+        let hi: source::Span = match &sw.cond.kind {
+            ast::ExprKind::Int(_, _) => { return None; },
+            ast::ExprKind::Float(_) => { return None; },
+            ast::ExprKind::ByteLit(_) => { return None; },
+            ast::ExprKind::ByteStr(_) => { return None; },
+            ast::ExprKind::StrLit(_) => { return None; },
+            ast::ExprKind::CharLit(_) => { return None; },
+            ast::ExprKind::Bool(_) => { return None; },
+            ast::ExprKind::Unit => { return None; },
+            ast::ExprKind::Var(_) => { return None; },
+            ast::ExprKind::Call(_) => { return None; },
+            ast::ExprKind::Method(_) => { return None; },
+            ast::ExprKind::Index(_, _) => { return None; },
+            ast::ExprKind::Unary(_, _) => { return None; },
+            ast::ExprKind::Binary(bop, bl, br) => br.span,
+            ast::ExprKind::Ref(_, _) => { return None; },
+            ast::ExprKind::If(_) => { return None; },
+            ast::ExprKind::Block(_) => { return None; },
+            ast::ExprKind::Array(_) => { return None; },
+            ast::ExprKind::Repeat(_) => { return None; },
+            ast::ExprKind::Old(_) => { return None; },
+            ast::ExprKind::Quant(_) => { return None; },
+            ast::ExprKind::Trigger(_) => { return None; },
+            ast::ExprKind::Closure(_) => { return None; },
+            ast::ExprKind::StructLit(_) => { return None; },
+            ast::ExprKind::Path(_) => { return None; },
+            ast::ExprKind::Deref(_) => { return None; },
+            ast::ExprKind::Field(_, _) => { return None; },
+            ast::ExprKind::Match(_) => { return None; },
+            ast::ExprKind::Return(_) => { return None; },
+            ast::ExprKind::Try(_) => { return None; },
+            ast::ExprKind::Loop(_) => { return None; },
+            ast::ExprKind::Break(_) => { return None; },
+            ast::ExprKind::Continue(_) => { return None; },
+            ast::ExprKind::Range(_) => { return None; },
+            ast::ExprKind::Error => { return None; },
+        };
+        let lo: source::Span = sl.init.span;
+        let i: String = sl.name.name.clone();
+        let mut stop: bool = false;
+        let head_at: usize = match &sw.label {
+            None => sw.span.lo as usize,
+            Some(l) => l.span.lo as usize,
+        };
+        let between: String = fmt::trim_start(part(text, sl.span.hi as usize, head_at, &mut stop).as_str());
+        let label_text: String = part(text, head_at, sw.span.lo as usize, &mut stop);
+        let cond_end: usize = hi.hi as usize;
+        let before_dec: String = part(text, 0, dec.span.lo as usize, &mut stop);
+        let dec_kw: usize = match rfind(before_dec.as_str(), "decreases") {
+            None => { *bad = true; return None; },
+            Some(k) => k,
+        };
+        let mut dec_end: usize = dec.span.hi as usize;
+        let after_dec: String = part(text, dec_end, text.len(), &mut stop);
+        if after_dec.len() > 0 && after_dec.as_bytes()[0] == 44 && dec_end < text.len() {
+            dec_end = dec_end + 1;
+        }
+        let whole: Lines = whole_lines(text, dec_kw, dec_end, &mut stop);
+        let mut cut_lo: usize = whole.start;
+        let mut cut_hi: usize = whole.end;
+        if !whole.ok {
+            let rest: String = part(text, dec_end, text.len(), &mut stop);
+            let mut n: usize = 0;
+            while n < rest.len() && rest.as_bytes()[n] == 32
+                decreases rest.len() - n,
+            {
+                n = n + 1;
+            }
+            cut_lo = dec_kw;
+            cut_hi = dec_end.saturating_add(n);
+        }
+        let mut clauses: String = types::cat2(part(text, cond_end, cut_lo, &mut stop).as_str(), part(text, cut_hi, sw.body.span.lo as usize, &mut stop).as_str());
+        if fmt::trim(clauses.as_str()).len() == 0 {
+            clauses = String::from(" ");
+        }
+        let step_lines: Lines = whole_lines(text, step_span.lo as usize, step_span.hi as usize, &mut stop);
+        let mut s_lo: usize = step_span.lo as usize;
+        let mut s_hi: usize = step_span.hi as usize;
+        if step_lines.ok {
+            s_lo = step_lines.start;
+            s_hi = step_lines.end;
+        }
+        let body_text: String = types::cat2(part(text, sw.body.span.lo as usize, s_lo, &mut stop).as_str(), part(text, s_hi, sw.body.span.hi as usize, &mut stop).as_str());
+        let lo_text: String = part(text, lo.lo as usize, lo.hi as usize, &mut stop);
+        let hi_text: String = part(text, hi.lo as usize, hi.hi as usize, &mut stop);
+        if stop {
+            *bad = true;
+            return None;
+        }
+        let mut replacement: String = types::cat5(between.as_str(), label_text.as_str(), "for ", i.as_str(), " in ");
+        replacement.push_str(lo_text.as_str());
+        replacement.push_str("..");
+        replacement.push_str(hi_text.as_str());
+        replacement.push_str(clauses.as_str());
+        replacement.push_str(body_text.as_str());
+        let from: String = squash(lo_text.as_str());
+        let to: String = squash(hi_text.as_str());
+        let mut msg: String = types::cat7("`", i.as_str(), "` counts from `", from.as_str(), "` up to `", to.as_str(), "` by one: the canonical form is `for ");
+        msg.push_str(types::cat5(i.as_str(), " in ", from.as_str(), "..", to.as_str()).as_str());
+        msg.push_str("`");
+        Some(diag::fix(diag::new("W0907", source::Span { file: sl.span.file, lo: sl.span.lo, hi: sw.span.hi }, msg.as_str()), "write the range `for` (the invariants stay; its measure is automatic)", Some(replacement)))
+    }
+
+    #[summary("The start of the line of byte at, and the end of the line of byte to past its line feed, when only blanks surround at..to there (stage0 whole_lines)")]
+    #[effects(alloc)]
+    fn whole_lines(text: &str, at: usize, to: usize, bad: &mut bool) -> Lines {
+        let head: String = part(text, 0, at, bad);
+        let tail: String = part(text, to, text.len(), bad);
+        let start: usize = match rfind(head.as_str(), "\n") {
+            None => 0,
+            Some(n) => n.saturating_add(1),
+        };
+        let end: usize = match std::str::find(tail.as_str(), "\n") {
+            None => text.len(),
+            Some(n2) => to.saturating_add(n2).saturating_add(1),
+        };
+        let left: String = part(text, start, at, bad);
+        let right: String = part(text, to, end, bad);
+        Lines { ok: fmt::trim(left.as_str()).len() == 0 && fmt::trim(right.as_str()).len() == 0, start: start, end: end }
+    }
+
+    #[summary("Whether the first n statements of stmts and the tail may change a variable of names (stage0 writes over the block they form): an assignment to a place rooted there in the block or a block nested in it, a `&mut` borrow of one, or a method other than a read called on one")]
+    #[effects(alloc)]
+    fn writes(stmts: &[ast::Stmt], n: usize, tail: &Option<Box<ast::Expr>>, names: &[String]) -> bool {
+        let mut kept: Vec<ast::Stmt> = Vec::new();
+        for i in 0..stmts.len()
+            invariant 0 <= i && i <= stmts.len(),
+        {
+            if i < n {
+                kept.push(stmts[i].clone());
+            }
+        }
+        let b: ast::Block = ast::Block { stmts: kept, tail: tail.clone(), span: source::Span { file: 0, lo: 0, hi: 0 } };
+        let mut own: Vec<String> = Vec::new();
+        for j in 0..names.len()
+            invariant 0 <= j && j <= names.len(),
+        {
+            own.push(names[j].clone());
+        }
+        let mut a: Assigns = Assigns { names: own.clone(), found: false };
+        blocks_in::<Assigns>(&b, &mut a, 1000000000);
+        if a.found {
+            return true;
+        }
+        let mut w: Writes = Writes { names: own, found: false };
+        each_block::<Writes>(&b, &mut w, 1000000000);
+        w.found
+    }
+}

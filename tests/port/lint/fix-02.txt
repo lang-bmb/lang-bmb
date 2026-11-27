@@ -1,0 +1,20 @@
+#[summary("Rust habits")]
+mod m {
+    #[effects(pure)]
+    fn add(x: i64, y: i64) -> i64 {
+        let z: i64 = x + 1;
+        z + y
+    }
+
+    #[effects(pure)]
+    fn first(a: &[i64]) -> i64 {
+        let v: [i64; 2] = [1, 2];
+        v[0]
+    }
+
+    #[effects(io)]
+    fn main() -> () {
+        let n: i64 = 3;
+        print_i64(add(n, 2));
+    }
+}

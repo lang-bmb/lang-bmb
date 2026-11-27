@@ -1,0 +1,65 @@
+#[summary("counting loops")]
+mod c {
+    spec fn small(a: &[u64]) -> bool {
+        a.len() < 100 && (forall|k: usize| k < a.len() ==> #[trigger] a[k] < 100)
+    }
+
+    #[effects(pure)]
+    fn sum(a: &[u64]) -> u64
+        requires small(a),
+    {
+        let mut s: u64 = 0;
+        // scan
+        let mut i: usize = 0;
+        'all: while i < a.len()
+            invariant i <= a.len(), s <= 100 * i,
+            decreases a.len() - i,
+        {
+            s = s + a[i];
+            i = i + 1;
+        }
+        s
+    }
+
+    // `i` is read after the loop, `j` steps before the end, `k` meets a
+    // `continue`, `m` runs to a bound the body assigns: none is a `for`.
+    #[effects(pure)]
+    fn others(n: u64) -> u64 {
+        let mut i: u64 = 0;
+        while i < n
+            invariant i <= n,
+            decreases n - i,
+        {
+            i = i + 1;
+        }
+        let mut j: u64 = 0;
+        while j < n
+            invariant j <= n,
+            decreases n - j,
+        {
+            j = j + 1;
+            let x: u64 = j;
+        }
+        let mut k: u64 = 0;
+        while k < n
+            invariant k <= n,
+            decreases n - k,
+        {
+            if k == 3 {
+                k = k + 1;
+                continue;
+            }
+            k = k + 1;
+        }
+        let mut hi: u64 = n;
+        let mut m: u64 = 0;
+        while m < hi
+            invariant m <= hi && hi == n,
+            decreases hi - m,
+        {
+            hi = n;
+            m = m + 1;
+        }
+        i
+    }
+}

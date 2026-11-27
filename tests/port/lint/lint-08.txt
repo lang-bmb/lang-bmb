@@ -1,0 +1,20 @@
+#[summary("triggers")]
+mod t {
+    spec fn up(a: &[i64]) -> bool { forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] <= a[k + 1] }
+
+    spec fn down(a: &[i64]) -> bool { forall|k: usize| 0 < k && k < a.len() ==> #[trigger] a[k] == a[k - 1] }
+
+    spec fn both(a: &[i64]) -> bool { forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] <= #[trigger] a[k + 1] }
+
+    spec fn ground(a: &[i64]) -> bool { a.len() > 0 && (forall|k: usize| k < a.len() ==> #[trigger] a[k] >= a[0]) }
+
+    spec fn other(a: &[i64], b: &[i64]) -> bool { a.len() == b.len() && (forall|k: usize| k + 1 < a.len() ==> #[trigger] a[k] == b[k + 1]) }
+
+    spec fn sq(i: u64) -> u64 { i * i }
+
+    spec fn grows(n: u64) -> bool { forall|k: u64| k < n ==> #[trigger] sq(k) <= sq(k + 1) }
+
+    spec fn inner(a: &[i64], b: &[i64]) -> bool {
+        forall|i: usize| i < a.len() ==> #[trigger] a[i] >= 0 && (forall|j: usize| j < i ==> #[trigger] b[j] <= b[j + 1])
+    }
+}

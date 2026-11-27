@@ -1,13 +1,13 @@
-#[summary("Escapes and their rationales in a checked program (port of stage0 compiler/src/escape.rs, ADR-0029 §1, §3): where they are, the hash a rationale is bound to, and whether the hash it carries is still that one. The rewriting of a rationale with another hash (stage0 with_hash) is not ported yet")]
+#[summary("Escapes and their rationales in a checked program (port of stage0 compiler/src/escape.rs, ADR-0029 §1, §3): where they are, the hash a rationale is bound to, and whether the hash it carries is still that one. with_hash writes a rationale with another hash")]
 mod escape {
-    #[summary("The escapes of one definition (stage0 DefEscapes): the number of its `assume` statements, whether it is #[external_body], and its rationales")]
-    struct DefEscapes { assumes: usize, external: bool, rationales: Vec<Rationale> }
+    #[summary("The escapes of one definition (stage0 DefEscapes): the positions of its `assume` statements, rationale included, whether it is #[external_body], and its rationales")]
+    struct DefEscapes { assumes: Vec<source::Span>, external: bool, rationales: Vec<Rationale> }
 
     #[summary("What the hashes of rationales read (stage0 Hashes): the definitions with a body, at maps a path to its definition, and heads are the impl heads of the qualified text")]
     struct Hashes { defs: Vec<codegen::Def>, at: table::Table<usize>, heads: table::Table<String> }
 
-    #[summary("One #[rationale(..)] (stage0 Rationale): where it is, its kind, and the hash it carries")]
-    struct Rationale { span: source::Span, kind: Option<String>, hash: Option<String> }
+    #[summary("One #[rationale(..)] (stage0 Rationale): where it is, its kind, the hash it carries, and the attribute, to write it again with another hash")]
+    struct Rationale { span: source::Span, kind: Option<String>, hash: Option<String>, attr: ast::Attr }
 
     #[summary("The escapes in block b (block of stage0 of): an `assume` with its rationale, and every expression of every statement is entered in the order written")]
     #[effects(alloc)]
@@ -26,7 +26,7 @@ mod escape {
                 ast::Stmt::While(w) => { expr(&w.cond, out, f - 1); exprs(w.invariants.as_slice(), out, f - 1); match &w.measure { None => {}, Some(wm) => expr(wm, out, f - 1), } block(&w.body, out, f - 1); },
                 ast::Stmt::For(x) => { expr(&x.lo, out, f - 1); expr(&x.hi, out, f - 1); exprs(x.invariants.as_slice(), out, f - 1); block(&x.body, out, f - 1); },
                 ast::Stmt::Assert(at) => expr(&at.cond, out, f - 1),
-                ast::Stmt::Assume(am) => { out.assumes = out.assumes.saturating_add(1); match &am.rationale { None => {}, Some(r) => out.rationales.push(rationale(r)), } expr(&am.cond, out, f - 1); },
+                ast::Stmt::Assume(am) => { out.assumes.push(am.span); match &am.rationale { None => {}, Some(r) => out.rationales.push(rationale(r)), } expr(&am.cond, out, f - 1); },
                 ast::Stmt::Proof(p) => block(&p.body, out, f - 1),
                 ast::Stmt::LetFields(lf) => expr(&lf.init, out, f - 1),
                 ast::Stmt::Expr(e) => expr(e, out, f - 1),
@@ -162,7 +162,7 @@ mod escape {
     #[summary("The escapes of definition d (stage0 of): its `assume` statements with their rationales, #[external_body], and its own #[rationale(..)], which comes first")]
     #[effects(alloc)]
     fn of(d: &ast::FnDef) -> DefEscapes {
-        let mut out: DefEscapes = DefEscapes { assumes: 0, external: false, rationales: Vec::new() };
+        let mut out: DefEscapes = DefEscapes { assumes: Vec::new(), external: false, rationales: Vec::new() };
         let mut own: bool = false;
         for i in 0..d.attrs.len()
             invariant 0 <= i && i <= d.attrs.len(),
@@ -193,7 +193,35 @@ mod escape {
                 ast::AttrArg::Pair(k, v) => { match &**v { ast::AttrArg::Ident(vi) => { if k.name == "kind" { kind = Some(vi.name.clone()); } }, ast::AttrArg::Str(vs, vsp) => { if k.name == "hash" { hash = Some(vs.clone()); } }, ast::AttrArg::Pair(vk, vv) => {}, } },
             }
         }
-        Rationale { span: a.span, kind: kind, hash: hash }
+        Rationale { span: a.span, kind: kind, hash: hash, attr: a.clone() }
+    }
+
+    #[summary("The rationale attribute a carrying hash, as the normal form writes it (stage0 with_hash): `#[rationale(kind = K, hash = \"..\", \"why\")]`")]
+    #[effects(alloc)]
+    fn with_hash(a: &ast::Attr, hash: &str) -> String {
+        let mut kind: Option<String> = None;
+        let mut rest: Vec<String> = Vec::new();
+        for i in 0..a.args.len()
+            invariant 0 <= i && i <= a.args.len(),
+        {
+            match &a.args[i] {
+                ast::AttrArg::Ident(id) => {},
+                ast::AttrArg::Str(s, sp) => rest.push(types::cat3("\"", fmt::escape(s.as_str()).as_str(), "\"")),
+                ast::AttrArg::Pair(k, v) => { if k.name == "kind" { match &**v { ast::AttrArg::Ident(vi) => { kind = Some(vi.name.clone()); }, ast::AttrArg::Str(vs, vsp) => {}, ast::AttrArg::Pair(vk, vv) => {}, } } },
+            }
+        }
+        let mut parts: Vec<String> = Vec::new();
+        match &kind {
+            None => {},
+            Some(k2) => parts.push(types::cat2("kind = ", k2.as_str())),
+        }
+        parts.push(types::cat3("hash = \"", hash, "\""));
+        for j in 0..rest.len()
+            invariant 0 <= j && j <= rest.len(),
+        {
+            parts.push(rest[j].clone());
+        }
+        types::cat3("#[rationale(", types::join(parts.as_slice(), ", ").as_str(), ")]")
     }
 
     #[summary("The words of text: the longest runs of letters and digits (Unicode), `_` and `:` (the split of stage0 Hashes::of)")]

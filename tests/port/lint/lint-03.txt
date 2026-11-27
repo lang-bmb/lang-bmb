@@ -1,0 +1,16 @@
+#[summary("ext")]
+mod x {
+    spec fn small(n: i64) -> bool { 1 <= n && n <= 10 }
+
+    spec fn low(r: i64) -> bool { 0 <= r && r <= 5 }
+
+    #[rationale(kind = boundary, hash = "0000000000000000", "outside")]
+    #[external_body]
+    #[effects(panic)]
+    fn f(n: i64) -> (r: i64)
+        requires small(n),
+        ensures low(r),
+    {
+        n + 1
+    }
+}

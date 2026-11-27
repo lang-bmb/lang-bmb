@@ -1,0 +1,26 @@
+#[summary("t")]
+mod u {
+    spec fn any_below(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || any_below(a, n - 1, r) }
+    }
+
+    spec fn all_below(a: &[i64], n: usize, r: i64) -> bool {
+        forall|i: usize| i < n ==> #[trigger] a[i] == r
+    }
+
+    spec fn kept(a: &[i64], n: usize, r: i64) -> bool { n <= a.len() && any_below(a, n, r) }
+
+    spec fn wanted(a: &[i64], r: i64) -> bool { all_below(a, a.len(), r) }
+
+    #[effects(pure)]
+    fn first(a: &[i64]) -> (r: i64)
+        requires a.len() > 0,
+        ensures wanted(a, r),
+    {
+        let m: i64 = a[0];
+        assert(kept(a, 1, m));
+        m
+    }
+}

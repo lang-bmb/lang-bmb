@@ -1,0 +1,12 @@
+#[summary("casts")]
+mod c {
+    #[effects(pure)]
+    fn f(x: u32, y: i64, a: &[i64], k: u8) -> bool
+        requires a.len() > 300,
+    {
+        let n: i64 = -i64::try_from(x).unwrap();
+        let s: i64 = i64::try_from(x + 1).unwrap() * 2;
+        let t: i64 = a[usize::try_from(k).unwrap()];
+        i64::try_from(x).unwrap() < y && n < s + t
+    }
+}

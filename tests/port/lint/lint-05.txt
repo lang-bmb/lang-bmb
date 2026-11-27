@@ -1,0 +1,27 @@
+#[summary("weak and exact specifications")]
+mod w {
+    spec fn above_min(x: i64) -> bool { x > 0 - 9223372036854775807 }
+
+    spec fn nonneg(r: i64) -> bool { r >= 0 }
+
+    // Weak: says only that the result is not negative.
+    #[effects(pure)]
+    fn abs(x: i64) -> (r: i64)
+        requires above_min(x),
+        ensures nonneg(r),
+    {
+        if x < 0 { 0 - x } else { x }
+    }
+
+    spec fn is_sign(x: i64, r: i64) -> bool {
+        (x > 0 ==> r == 1) && (x == 0 ==> r == 0) && (x < 0 ==> r == 0 - 1)
+    }
+
+    // Exact, and no change below is equivalent: none survives.
+    #[effects(pure)]
+    fn sign(x: i64) -> (r: i64)
+        ensures is_sign(x, r),
+    {
+        if x > 0 { 1 } else { if x == 0 { 0 } else { 0 - 1 } }
+    }
+}

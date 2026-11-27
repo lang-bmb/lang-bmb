@@ -1,0 +1,517 @@
+#[summary("Body mutations (port of the mutation part of stage0 compiler/src/lint.rs): the sites of W0904 and `bmb mutate`. A site is one single-node change to the executable code of a body: an operator swapped (`+`/`-`, `<`/`<=`, `>`/`>=`, `==`/`!=`, `/`/`%`, `&&`/`||`, `&`/`|`, `<<`/`>>`; `*` and `^` become `+` and `|`), an integer literal `c` replaced by `c + 1`, a `bool` literal flipped, an `if` condition negated, an index `a[i]` replaced by `a[i + 1]` and by `a[i - 1]`. Loop invariants, measures, `assert`, `old` and quantifiers are not mutated. The texts a site shows are cut from the source by the positions of the nodes, as stage0 cuts them: where stage0 would stop on a range that is not in the text, the walk records it (bad) and the commands end with exit code 101")]
+mod mutate {
+    #[summary("One W0904 change applied to one function, as program text (stage0 Mutant): the changed function, the site number within it in visiting order, the position of the changed node in its file (from 1), the text shown before and after the change, the top-level unit that holds the function and that unit's normal form with the change applied")]
+    struct Mutant { def: String, site: usize, line: u32, col: u32, before: String, after: String, unit: String, text: String }
+
+    #[summary("Result of bmb mutate (stage0 mutate_sources): ok is false when the program does not check or a path names no executable function, and text is then what to print; otherwise rows are the mutants. trap is set where stage0 stops on a text range outside its file")]
+    struct Mutants { ok: bool, text: String, rows: Vec<Mutant>, trap: bool }
+
+    #[summary("One single-node change to an executable body (stage0 Site): the changed node, and the text shown before and after the change")]
+    struct Site { span: source::Span, before: String, after: String }
+
+    #[summary("State of one walk over a body. Collecting (apply false), sites gets every site in visiting order. Applying, the k-th site is made in the tree and done is set. i counts the sites passed, bad is set where stage0 would stop")]
+    struct Walk { sites: Vec<Site>, apply: bool, k: usize, i: usize, done: bool, bad: bool }
+
+    #[summary("Applies the k-th site of the body of d, numbered as sites numbers them (stage0 apply_site). False where stage0 would stop")]
+    #[effects(alloc)]
+    fn apply_site(d: &mut ast::FnDef, text: &str, k: usize) -> bool {
+        let mut w: Walk = Walk { sites: Vec::new(), apply: true, k: k, i: 0, done: false, bad: false };
+        walk_block(&mut d.body, text, &mut w, 1000000000);
+        !w.bad
+    }
+
+    #[summary("The definitions of unit m and its inner units by path (stage0 lint's collect): the inner units first, and of two definitions of one path the first")]
+    #[effects(alloc)]
+    fn collect(m: &ast::Mod, prefix: &str, out: &mut table::Table<ast::FnDef>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let inner: String = types::cat2(mp.as_str(), "::");
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            collect(&m.mods[i], inner.as_str(), out, f - 1);
+        }
+        for j in 0..m.fns.len()
+            invariant 0 <= j && j <= m.fns.len(),
+        {
+            let path: String = types::cat2(inner.as_str(), m.fns[j].name.name.as_str());
+            if !out.has(path.as_str()) {
+                out.insert(path.as_str(), m.fns[j].clone());
+            }
+        }
+    }
+
+    #[summary("Changes the first definition at path in program p (stage0 find_mut and the change made through it): what 0 removes its precondition i, 1 its postcondition i, 2 applies its mutation site i against the file text. False when no definition is there or stage0 would stop")]
+    #[effects(alloc)]
+    fn edit(p: &mut ast::Program, path: &str, what: u8, i: usize, text: &str) -> bool {
+        let units: usize = p.mods.len();
+        let mut state: u8 = 0;
+        for m in 0..units
+            invariant 0 <= m && m <= units,
+        {
+            if state == 0 && m < p.mods.len() {
+                state = edit_in(&mut p.mods[m], "", path, what, i, text, 1000000);
+            }
+        }
+        state == 1
+    }
+
+    #[summary("edit within unit m and its inner units: 0 when no definition is there, 1 when the change is made, 2 where stage0 would stop")]
+    #[effects(alloc)]
+    fn edit_in(m: &mut ast::Mod, prefix: &str, path: &str, what: u8, i: usize, text: &str, f: usize) -> u8
+        decreases f,
+    {
+        if f == 0 {
+            return 0;
+        }
+        let mp: String = types::cat3(prefix, m.name.name.as_str(), "::");
+        if !encode_terms::starts_at(path, 0, mp.as_str()) {
+            return 0;
+        }
+        let rest: String = lexer::cut(path, mp.len(), path.len());
+        let defs: usize = m.fns.len();
+        for j in 0..defs
+            invariant 0 <= j && j <= defs,
+        {
+            if j < m.fns.len() && m.fns[j].name.name == rest {
+                if what == 2 {
+                    if apply_site(&mut m.fns[j], text, i) {
+                        return 1;
+                    }
+                    return 2;
+                }
+                let mut kept: Vec<ast::Expr> = Vec::new();
+                if what == 0 {
+                    for k in 0..m.fns[j].pre.len()
+                        invariant 0 <= k && k <= m.fns[j].pre.len(),
+                    {
+                        if k != i {
+                            kept.push(m.fns[j].pre[k].clone());
+                        }
+                    }
+                    m.fns[j].pre = kept;
+                } else {
+                    for k in 0..m.fns[j].post.len()
+                        invariant 0 <= k && k <= m.fns[j].post.len(),
+                    {
+                        if k != i {
+                            kept.push(m.fns[j].post[k].clone());
+                        }
+                    }
+                    m.fns[j].post = kept;
+                }
+                return 1;
+            }
+        }
+        let inner: usize = m.mods.len();
+        for s in 0..inner
+            invariant 0 <= s && s <= inner,
+        {
+            if s < m.mods.len() {
+                let got: u8 = edit_in(&mut m.mods[s], mp.as_str(), path, what, i, text, f - 1);
+                if got != 0 {
+                    return got;
+                }
+            }
+        }
+        0
+    }
+
+    #[summary("Whether the definition is an executable function")]
+    #[effects(pure)]
+    fn is_exec(d: &ast::FnDef) -> bool {
+        match d.kind {
+            ast::FnKind::Exec => true,
+            ast::FnKind::Spec => false,
+            ast::FnKind::Proof => false,
+        }
+    }
+
+    #[summary("Makes the variant-th change sites_of describes at node e (stage0 mutate): the index of an index node becomes `i + 1` or `i - 1`, the new nodes at the position of `i`, so that the type tables give them its type; an operator is swapped, a literal counted up or flipped, a condition negated")]
+    #[effects(alloc)]
+    fn mutate(e: &mut ast::Expr, variant: usize) -> () {
+        let changed: Option<ast::ExprKind> = match &e.kind {
+            ast::ExprKind::Int(c, radix) => match wide::add(*c, wide::U128 { hi: 0, lo: 1 }) { None => None, Some(more) => Some(ast::ExprKind::Int(more, *radix)), },
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(_) => None,
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(_) => None,
+            ast::ExprKind::Bool(b) => Some(ast::ExprKind::Bool(!*b)),
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(_) => None,
+            ast::ExprKind::Call(_) => None,
+            ast::ExprKind::Method(_) => None,
+            ast::ExprKind::Index(base, index) => { let at: source::Span = index.span; let one: ast::Expr = ast::Expr { kind: ast::ExprKind::Int(wide::U128 { hi: 0, lo: 1 }, ast::Radix::Dec), span: at }; let op: ast::BinOp = if variant == 0 { ast::BinOp::Add } else { ast::BinOp::Sub }; let shifted: ast::Expr = ast::Expr { kind: ast::ExprKind::Binary(op, index.clone(), Box::new(one)), span: at }; Some(ast::ExprKind::Index(base.clone(), Box::new(shifted))) },
+            ast::ExprKind::Unary(_, _) => None,
+            ast::ExprKind::Binary(bop, l, r) => match swap_op(bop) { None => None, Some(new) => Some(ast::ExprKind::Binary(new, l.clone(), r.clone())), },
+            ast::ExprKind::Ref(_, _) => None,
+            ast::ExprKind::If(ife) => { let at: source::Span = ife.cond.span; let not: ast::Expr = ast::Expr { kind: ast::ExprKind::Unary(ast::UnOp::Not, ife.cond.clone()), span: at }; Some(ast::ExprKind::If(ast::If { cond: Box::new(not), then: ife.then.clone(), els: ife.els.clone() })) },
+            ast::ExprKind::Block(_) => None,
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(_) => None,
+            ast::ExprKind::Trigger(_) => None,
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(_) => None,
+            ast::ExprKind::Deref(_) => None,
+            ast::ExprKind::Field(_, _) => None,
+            ast::ExprKind::Match(_) => None,
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(_) => None,
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        };
+        match changed {
+            None => {},
+            Some(kind) => { e.kind = kind; },
+        }
+    }
+
+    #[summary("text[a..b] as Rust slices it; where Rust would stop (a range outside the text or inside a character) sets bad and gives the empty text")]
+    #[effects(alloc)]
+    fn part(text: &str, a: usize, b: usize, bad: &mut bool) -> String {
+        if a <= b && b <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(b) {
+            String::from(&text[a..b])
+        } else {
+            *bad = true;
+            String::new()
+        }
+    }
+
+    #[summary("One JSONL row of a mutant (stage0 Mutant::row)")]
+    #[effects(alloc)]
+    fn row(m: &Mutant) -> String {
+        let mut out: String = String::from("{\"def\":");
+        std::json::push_string(&mut out, m.def.as_str());
+        out.push_str(",\"site\":");
+        std::num::push_u64(&mut out, m.site as u64);
+        out.push_str(",\"line\":");
+        std::num::push_u64(&mut out, m.line as u64);
+        out.push_str(",\"col\":");
+        std::num::push_u64(&mut out, m.col as u64);
+        out.push_str(",\"before\":");
+        std::json::push_string(&mut out, m.before.as_str());
+        out.push_str(",\"after\":");
+        std::json::push_string(&mut out, m.after.as_str());
+        out.push_str(",\"unit\":");
+        std::json::push_string(&mut out, m.unit.as_str());
+        out.push_str(",\"text\":");
+        std::json::push_string(&mut out, m.text.as_str());
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The mutation sites of the body of d, in visiting order (stage0 sites). bad is set where stage0 would stop")]
+    #[effects(alloc)]
+    fn sites(d: &ast::FnDef, text: &str, bad: &mut bool) -> Vec<Site> {
+        let mut body: ast::Block = d.body.clone();
+        let mut w: Walk = Walk { sites: Vec::new(), apply: false, k: 0, i: 0, done: false, bad: false };
+        walk_block(&mut body, text, &mut w, 1000000000);
+        if w.bad {
+            *bad = true;
+        }
+        w.sites
+    }
+
+    #[summary("The sites at node e, described against the text of its file, in the order mutate numbers them (stage0 sites_of and site_of). parent is the position of the enclosing operator node when e is an operand, shown as context for a changed literal. An index node has two, `a[i + 1]` then `a[i - 1]`, unless it is a subslice `a[lo..hi]` or its index lies outside it; a literal past the largest that can be counted up in every integer type (i64::MAX - 1) has none")]
+    #[effects(alloc)]
+    fn sites_of(e: &ast::Expr, has_parent: bool, parent: source::Span, text: &str, bad: &mut bool) -> Vec<Site> {
+        let mut out: Vec<Site> = Vec::new();
+        match &e.kind {
+            ast::ExprKind::Int(c, radix) => { if c.hi == 0 && c.lo <= 9223372036854775806 { let ctx: source::Span = if has_parent && parent.lo <= e.span.lo && e.span.hi <= parent.hi { parent } else { e.span }; let more: String = ast::radix_text(*radix, wide::U128 { hi: 0, lo: c.lo + 1 }); out.push(splice(text, ctx, e.span.lo, e.span.hi, more.as_str(), e.span, bad)); } },
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(flag) => { if *flag { out.push(Site { span: e.span, before: String::from("true"), after: String::from("false") }); } else { out.push(Site { span: e.span, before: String::from("false"), after: String::from("true") }); } },
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(_) => {},
+            ast::ExprKind::Method(_) => {},
+            ast::ExprKind::Index(base, index) => { if !(ast::tag(&index.kind) == 33 || index.span.lo < e.span.lo || e.span.hi < index.span.hi) { let src: String = part(text, e.span.lo as usize, e.span.hi as usize, bad); if index.span.hi < e.span.lo { *bad = true; } else { let a: usize = (index.span.lo - e.span.lo) as usize; let b: usize = (index.span.hi - e.span.lo) as usize; let i: String = part(src.as_str(), a, b, bad); let head: String = part(src.as_str(), 0, a, bad); let tail: String = part(src.as_str(), b, src.len(), bad); out.push(Site { span: e.span, before: squash(src.as_str()), after: squash(types::cat4(head.as_str(), i.as_str(), " + 1", tail.as_str()).as_str()) }); out.push(Site { span: e.span, before: squash(src.as_str()), after: squash(types::cat4(head.as_str(), i.as_str(), " - 1", tail.as_str()).as_str()) }); } } },
+            ast::ExprKind::Unary(_, _) => {},
+            ast::ExprKind::Binary(op, l, r) => { match swap_op(op) { None => {}, Some(new) => { let sym: String = symbol(op); let new_sym: String = symbol(&new); let mut at: Option<usize> = None; if l.span.hi <= r.span.lo { let between: String = part(text, l.span.hi as usize, r.span.lo as usize, bad); at = std::str::find(between.as_str(), sym.as_str()); } let inside: bool = e.span.lo <= l.span.hi && r.span.hi <= e.span.hi; match at { None => out.push(Site { span: e.span, before: sym, after: new_sym }), Some(k) => { if inside && k < 4294967295 - l.span.hi as usize && sym.len() < 8 { let lo: u32 = l.span.hi + k as u32; if lo < 4294967295 - 8 { out.push(splice(text, e.span, lo, lo + sym.len() as u32, new_sym.as_str(), e.span, bad)); } else { *bad = true; } } else if inside { *bad = true; } else { out.push(Site { span: e.span, before: sym, after: new_sym }); } }, } }, } },
+            ast::ExprKind::Ref(_, _) => {},
+            ast::ExprKind::If(ife) => { let shown: String = squash(part(text, ife.cond.span.lo as usize, ife.cond.span.hi as usize, bad).as_str()); out.push(Site { span: e.span, before: shown.clone(), after: types::cat3("!(", shown.as_str(), ")") }); },
+            ast::ExprKind::Block(_) => {},
+            ast::ExprKind::Array(_) => {},
+            ast::ExprKind::Repeat(_) => {},
+            ast::ExprKind::Old(_) => {},
+            ast::ExprKind::Quant(_) => {},
+            ast::ExprKind::Trigger(_) => {},
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(_) => {},
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(_) => {},
+            ast::ExprKind::Field(_, _) => {},
+            ast::ExprKind::Match(_) => {},
+            ast::ExprKind::Return(_) => {},
+            ast::ExprKind::Try(_) => {},
+            ast::ExprKind::Loop(_) => {},
+            ast::ExprKind::Break(_) => {},
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(_) => {},
+            ast::ExprKind::Error => {},
+        }
+        out
+    }
+
+    #[summary("bmb mutate (stage0 mutate_sources): every W0904 mutant of the executable functions defs, in the given order, sites in visiting order, uncapped and unproved. A path that is no executable function ends the run with its message alone")]
+    #[effects(alloc)]
+    fn sources(files: &[lib::Input], defs: &[String]) -> Mutants {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Mutants { ok: false, text: diags.to_jsonl(&sm), rows: Vec::new(), trap: false };
+        }
+        let mut table: table::Table<ast::FnDef> = table::new::<ast::FnDef>();
+        for m in 0..fe.ck.program.mods.len()
+            invariant 0 <= m && m <= fe.ck.program.mods.len(),
+        {
+            if !stdlib::is_std(&fe.ck.program.mods[m]) {
+                collect(&fe.ck.program.mods[m], "", &mut table, 1000000);
+            }
+        }
+        let mut rows: Vec<Mutant> = Vec::new();
+        let mut bad: bool = false;
+        for d in 0..defs.len()
+            invariant 0 <= d && d <= defs.len(),
+        {
+            let path: String = defs[d].clone();
+            let at: usize = match table.find(path.as_str()) {
+                None => { return Mutants { ok: false, text: types::cat3("`", path.as_str(), "` is not an executable function\n"), rows: Vec::new(), trap: false }; },
+                Some(found) => found,
+            };
+            if !is_exec(&table.items[at]) {
+                return Mutants { ok: false, text: types::cat3("`", path.as_str(), "` is not an executable function\n"), rows: Vec::new(), trap: false };
+            }
+            let file: usize = table.items[at].span.file as usize;
+            if file >= files.len() {
+                return Mutants { ok: true, text: String::new(), rows: rows, trap: true };
+            }
+            let unit: String = match std::str::find(path.as_str(), "::") {
+                None => path.clone(),
+                Some(cut) => lexer::cut(path.as_str(), 0, cut),
+            };
+            let ss: Vec<Site> = sites(&table.items[at], files[file].text.as_str(), &mut bad);
+            if bad {
+                return Mutants { ok: true, text: String::new(), rows: rows, trap: true };
+            }
+            for k in 0..ss.len()
+                invariant 0 <= k && k <= ss.len(),
+            {
+                let mut prog: ast::Program = fe.ck.program.clone();
+                if !edit(&mut prog, path.as_str(), 2, k, files[file].text.as_str()) {
+                    return Mutants { ok: true, text: String::new(), rows: rows, trap: true };
+                }
+                let units: Vec<fmt::Unit> = fmt::format_units(&prog);
+                let mut text: String = String::new();
+                for u in 0..units.len()
+                    invariant 0 <= u && u <= units.len(),
+                {
+                    if units[u].name == unit {
+                        text = units[u].text.clone();
+                    }
+                }
+                let pos: source::Pos = sm.line_col(ss[k].span.file, ss[k].span.lo);
+                rows.push(Mutant { def: path.clone(), site: k, line: pos.line, col: pos.col, before: ss[k].before.clone(), after: ss[k].after.clone(), unit: unit.clone(), text: text });
+            }
+        }
+        Mutants { ok: true, text: String::new(), rows: rows, trap: false }
+    }
+
+    #[summary("The site that replaces the bytes lo..hi of the source by new, shown in the text of ctx (the splice of stage0 site_of): the text of ctx before, and with the replacement after, each with its white space squashed")]
+    #[effects(alloc)]
+    fn splice(text: &str, ctx: source::Span, lo: u32, hi: u32, new: &str, at: source::Span, bad: &mut bool) -> Site {
+        let c: String = part(text, ctx.lo as usize, ctx.hi as usize, bad);
+        if lo < ctx.lo || hi < ctx.lo {
+            *bad = true;
+            return Site { span: at, before: String::new(), after: String::new() };
+        }
+        let a: usize = (lo - ctx.lo) as usize;
+        let b: usize = (hi - ctx.lo) as usize;
+        let head: String = part(c.as_str(), 0, a, bad);
+        let tail: String = part(c.as_str(), b, c.len(), bad);
+        Site { span: at, before: squash(c.as_str()), after: squash(types::cat3(head.as_str(), new, tail.as_str()).as_str()) }
+    }
+
+    #[summary("Text with each run of white space as one space and none at its ends (stage0 squash)")]
+    #[effects(alloc)]
+    fn squash(s: &str) -> String {
+        types::join(toolchain::words(s).as_slice(), " ")
+    }
+
+    #[summary("The mutated operator of a binary node, if it has one (stage0 swap_op). `*` becomes `+` and not the other way: `+` already becomes `-`")]
+    #[effects(pure)]
+    fn swap_op(op: &ast::BinOp) -> Option<ast::BinOp> {
+        match op {
+            ast::BinOp::Add => Some(ast::BinOp::Sub),
+            ast::BinOp::Sub => Some(ast::BinOp::Add),
+            ast::BinOp::Mul => Some(ast::BinOp::Add),
+            ast::BinOp::Div => Some(ast::BinOp::Rem),
+            ast::BinOp::Rem => Some(ast::BinOp::Div),
+            ast::BinOp::Eq => Some(ast::BinOp::Ne),
+            ast::BinOp::Ne => Some(ast::BinOp::Eq),
+            ast::BinOp::Lt => Some(ast::BinOp::Le),
+            ast::BinOp::Le => Some(ast::BinOp::Lt),
+            ast::BinOp::Gt => Some(ast::BinOp::Ge),
+            ast::BinOp::Ge => Some(ast::BinOp::Gt),
+            ast::BinOp::And => Some(ast::BinOp::Or),
+            ast::BinOp::Or => Some(ast::BinOp::And),
+            ast::BinOp::Implies => None,
+            ast::BinOp::BitAnd => Some(ast::BinOp::BitOr),
+            ast::BinOp::BitOr => Some(ast::BinOp::BitAnd),
+            ast::BinOp::BitXor => Some(ast::BinOp::BitOr),
+            ast::BinOp::Shl => Some(ast::BinOp::Shr),
+            ast::BinOp::Shr => Some(ast::BinOp::Shl),
+        }
+    }
+
+    #[summary("The text of a binary operator")]
+    #[effects(alloc)]
+    fn symbol(op: &ast::BinOp) -> String {
+        let mut s: String = String::new();
+        ast::push_bin_symbol(&mut s, op);
+        s
+    }
+
+    #[summary("One node of the walk: its sites are collected, or, applying, the site numbered k is made when it is among them")]
+    #[effects(alloc)]
+    fn visit(e: &mut ast::Expr, has_parent: bool, parent: source::Span, text: &str, w: &mut Walk) -> () {
+        let ss: Vec<Site> = sites_of(e, has_parent, parent, text, &mut w.bad);
+        let n: usize = ss.len();
+        if w.apply {
+            if w.i <= w.k && w.k - w.i < n {
+                mutate(e, w.k - w.i);
+                w.done = true;
+            }
+        } else {
+            ast::append::<Site>(&mut w.sites, ss);
+        }
+        w.i = w.i.saturating_add(n);
+    }
+
+    #[summary("Visits the executable expressions of block b in a fixed pre-order (stage0 walk_block): `assert`, `assume` and `proof` blocks, loop invariants and measures are left out")]
+    #[effects(alloc)]
+    fn walk_block(b: &mut ast::Block, text: &str, w: &mut Walk, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || w.done {
+            return;
+        }
+        let none: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        let n: usize = b.stmts.len();
+        for i in 0..n
+            invariant b.stmts.len() == n,
+        {
+            match &mut b.stmts[i] {
+                ast::Stmt::Let(sl) => walk_expr(&mut sl.init, false, none, text, w, f - 1),
+                ast::Stmt::Assign(sa) => { walk_expr(&mut sa.target, false, none, text, w, f - 1); walk_expr(&mut sa.value, false, none, text, w, f - 1); },
+                ast::Stmt::While(sw) => { walk_expr(&mut sw.cond, false, none, text, w, f - 1); walk_block(&mut sw.body, text, w, f - 1); },
+                ast::Stmt::For(sf) => { walk_expr(&mut sf.lo, false, none, text, w, f - 1); walk_expr(&mut sf.hi, false, none, text, w, f - 1); walk_block(&mut sf.body, text, w, f - 1); },
+                ast::Stmt::Assert(st) => {},
+                ast::Stmt::Assume(su) => {},
+                ast::Stmt::Proof(sp) => {},
+                ast::Stmt::LetFields(lf) => walk_expr(&mut lf.init, false, none, text, w, f - 1),
+                ast::Stmt::Expr(se) => walk_expr(se, false, none, text, w, f - 1),
+            }
+        }
+        walk_opt(&mut b.tail, text, w, f - 1);
+    }
+
+    #[summary("Visits node e, then the executable expressions in it (stage0 walk_expr). An operand of a unary or binary operator or of a range gets the position of that node as its parent. Closures, `old`, quantifiers and the base of a struct update are not entered")]
+    #[effects(alloc)]
+    fn walk_expr(e: &mut ast::Expr, has_parent: bool, parent: source::Span, text: &str, w: &mut Walk, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 || w.done {
+            return;
+        }
+        visit(e, has_parent, parent, text, w);
+        if w.done {
+            return;
+        }
+        let here: source::Span = e.span;
+        let none: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        match &mut e.kind {
+            ast::ExprKind::Int(_, _) => {},
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(_) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(ca) => walk_exprs(&mut ca.args, text, w, f - 1),
+            ast::ExprKind::Method(me) => { walk_expr(&mut *me.recv, false, none, text, w, f - 1); walk_exprs(&mut me.args, text, w, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { walk_expr(&mut **ib, false, none, text, w, f - 1); walk_expr(&mut **ii, false, none, text, w, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => walk_expr(&mut **ux, true, here, text, w, f - 1),
+            ast::ExprKind::Binary(bop, bl, br) => { walk_expr(&mut **bl, true, here, text, w, f - 1); walk_expr(&mut **br, true, here, text, w, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => walk_expr(&mut **rx, false, none, text, w, f - 1),
+            ast::ExprKind::If(ife) => { walk_expr(&mut *ife.cond, false, none, text, w, f - 1); walk_block(&mut ife.then, text, w, f - 1); walk_opt(&mut ife.els, text, w, f - 1); },
+            ast::ExprKind::Block(blk) => walk_block(blk, text, w, f - 1),
+            ast::ExprKind::Array(ar) => walk_exprs(ar, text, w, f - 1),
+            ast::ExprKind::Repeat(rp) => walk_expr(&mut *rp.value, false, none, text, w, f - 1),
+            ast::ExprKind::Old(_) => {},
+            ast::ExprKind::Quant(_) => {},
+            ast::ExprKind::Trigger(_) => {},
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(sl) => { let n: usize = sl.fields.len(); for i in 0..n invariant sl.fields.len() == n, { walk_expr(&mut sl.fields[i].value, false, none, text, w, f - 1); } },
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(dx) => walk_expr(&mut **dx, false, none, text, w, f - 1),
+            ast::ExprKind::Field(fx, fnm) => walk_expr(&mut **fx, false, none, text, w, f - 1),
+            ast::ExprKind::Match(ma) => { walk_expr(&mut *ma.scrut, false, none, text, w, f - 1); let na: usize = ma.arms.len(); for j in 0..na invariant ma.arms.len() == na, { walk_expr(&mut ma.arms[j].body, false, none, text, w, f - 1); } },
+            ast::ExprKind::Return(rv) => walk_opt(rv, text, w, f - 1),
+            ast::ExprKind::Try(tr) => walk_expr(&mut **tr, false, none, text, w, f - 1),
+            ast::ExprKind::Loop(lp) => walk_block(&mut lp.body, text, w, f - 1),
+            ast::ExprKind::Break(bk) => walk_opt(&mut bk.value, text, w, f - 1),
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(rg) => { walk_expr(&mut *rg.lo, true, here, text, w, f - 1); walk_expr(&mut *rg.hi, true, here, text, w, f - 1); },
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("walk_expr over each expression of xs, none an operand")]
+    #[effects(alloc)]
+    fn walk_exprs(xs: &mut Vec<ast::Expr>, text: &str, w: &mut Walk, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let none: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        let n: usize = xs.len();
+        for i in 0..n
+            invariant xs.len() == n,
+        {
+            walk_expr(&mut xs[i], false, none, text, w, f - 1);
+        }
+    }
+
+    #[summary("walk_expr over the expression, if there is one, not an operand")]
+    #[effects(alloc)]
+    fn walk_opt(o: &mut Option<Box<ast::Expr>>, text: &str, w: &mut Walk, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match o {
+            None => {},
+            Some(x) => walk_expr(&mut **x, false, source::Span { file: 0, lo: 0, hi: 0 }, text, w, f - 1),
+        }
+    }
+}
