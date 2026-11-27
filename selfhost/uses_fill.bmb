@@ -1,0 +1,649 @@
+#[summary("The #[uses(..)] search (port of stage0 compiler/src/uses_fill.rs). A failed obligation's diagnostic lists the predicates the proof saw only by name; for each failing definition the search reveals its current entries and every hinted predicate, again while newly revealed bodies name further hidden ones (bounded), and when that proves the definition it removes entries one at a time in sorted order, keeping each removal that still proves. Every attempt rewrites the attribute text and checks and proves the program again, all failing definitions in step, one program verification per step; the runs share the proof cache and the per-definition cache. The MCP server adds its rows to a verify or write response (--undecided-info)")]
+mod uses_fill {
+    #[summary("A replacement in a text: the bytes lo..hi become text")]
+    struct Edit { lo: usize, hi: usize, text: String }
+
+    #[summary("The result of a search (stage0 UsesOutput): one row per definition with a proof status in path order, every input file with its rewritten text in input order, and the program verifications in all, the first and the final one included")]
+    struct Output { rows: Vec<Row>, files: Vec<lib::Input>, verifications: usize }
+
+    #[summary("A replacement in the original text as a diagnostic's fix has it (stage0 UsesEdit)")]
+    struct Place { file: String, line: u32, col: u32, end_line: u32, end_col: u32, replacement: String }
+
+    #[summary("One definition's row (stage0 UsesRow): its #[uses] entries after the run, sorted, as written in the attribute; its status (0 proved: it failed before and the list makes it prove, 1 unchanged, 2 not found); the program verifications it took part in, without the first and the final one; and for a proved row the rewrite of the attribute")]
+    struct Row { def: String, uses: Vec<String>, status: u8, verifications: usize, edit: Option<Place> }
+
+    #[summary("What one program verification said of one definition: whether it proves, and the hidden predicates its diagnostics name, as full paths")]
+    struct Seen { proved: bool, hints: Vec<String> }
+
+    #[summary("Where the search is for one definition (stage0 State). Phase 0 reveals: set is the candidate list and steps the reveal steps so far. Phase 1 shrinks: set is the list that proves, order the entries to try without and idx the next of them. Phase 2 is done: status and set are the result")]
+    struct State { phase: u8, set: Vec<String>, steps: usize, order: Vec<String>, idx: usize, status: u8 }
+
+    #[summary("A definition as found in the original text (stage0 Target): its unit, whether it is a spec fn, its span from its keyword, the spans of its #[uses(..)] attributes and its current entries as full paths")]
+    struct Target { mod_path: String, is_spec: bool, span: source::Span, attrs: Vec<source::Span>, original: Vec<String> }
+
+    #[summary("The text with the edits made (stage0 apply): from the last place to the first, each on the text the ones before it left")]
+    #[effects(alloc)]
+    fn apply(text: &str, es: &[Edit]) -> String {
+        let mut ord: Vec<usize> = Vec::new();
+        for i in 0..es.len()
+            invariant 0 <= i && i <= es.len(),
+        {
+            let mut placed: Vec<usize> = Vec::new();
+            let mut done: bool = false;
+            for j in 0..ord.len()
+                invariant 0 <= j && j <= ord.len(),
+            {
+                if !done && ord[j] < es.len() && (es[ord[j]].lo < es[i].lo || es[ord[j]].lo == es[i].lo && es[ord[j]].hi < es[i].hi) {
+                    placed.push(i);
+                    done = true;
+                }
+                placed.push(ord[j]);
+            }
+            if !done {
+                placed.push(i);
+            }
+            ord = placed;
+        }
+        let mut s: String = String::from(text);
+        for k in 0..ord.len()
+            invariant 0 <= k && k <= ord.len(),
+        {
+            if ord[k] < es.len() {
+                let lo: usize = es[ord[k]].lo;
+                let hi: usize = es[ord[k]].hi;
+                s = types::cat3(lexer::cut(s.as_str(), 0, lo).as_str(), es[ord[k]].text.as_str(), lexer::cut(s.as_str(), hi, s.len()).as_str());
+            }
+        }
+        s
+    }
+
+    #[summary("Whether the bytes a..z are spaces and tabs only")]
+    #[effects(pure)]
+    fn blank(b: &[u8], a: usize, z: usize) -> bool {
+        let mut i: usize = a;
+        while i < z && i < b.len()
+            decreases z - i,
+        {
+            if b[i] != 32 && b[i] != 9 {
+                return false;
+            }
+            i = i + 1;
+        }
+        true
+    }
+
+    #[summary("The files of original whose text changed, in input order, as a JSON list of names (stage0 changed)")]
+    #[effects(alloc)]
+    fn changed(out: &Output, original: &[lib::Input]) -> String {
+        let mut text: String = String::new();
+        let mut n: usize = 0;
+        for i in 0..out.files.len()
+            invariant 0 <= i && i <= out.files.len(),
+        {
+            if i < original.len() && out.files[i].text != original[i].text {
+                if n > 0 {
+                    text.push_str(",");
+                }
+                std::json::push_string(&mut text, out.files[i].name.as_str());
+                n = n.saturating_add(1);
+            }
+        }
+        text
+    }
+
+    #[summary("The text edits that make the attribute list of t the set (stage0 edits): the first #[uses(..)] is rewritten or, for an empty set, removed with its line when nothing else is on it; a missing one is put before the definition, on a line of its own when the definition starts its line; every further one is removed")]
+    #[effects(alloc)]
+    fn edits(text: &str, t: &Target, set: &[String]) -> Vec<Edit> {
+        let mut out: Vec<Edit> = Vec::new();
+        let attr: String = types::cat3("#[uses(", encode_terms::join(written_list(set, t.mod_path.as_str()).as_slice(), ", ").as_str(), ")]");
+        if t.attrs.len() > 0 {
+            if set.len() > 0 {
+                out.push(Edit { lo: t.attrs[0].lo as usize, hi: t.attrs[0].hi as usize, text: attr });
+            } else {
+                out.push(removal(text.as_bytes(), t.attrs[0]));
+            }
+        } else if set.len() > 0 {
+            let lo: usize = t.span.lo as usize;
+            let ls: usize = line_start(text.as_bytes(), lo);
+            if blank(text.as_bytes(), ls, lo) {
+                out.push(Edit { lo: lo, hi: lo, text: types::cat3(attr.as_str(), "\n", lexer::cut(text, ls, lo).as_str()) });
+            } else {
+                out.push(Edit { lo: lo, hi: lo, text: types::cat2(attr.as_str(), " ") });
+            }
+        }
+        for i in 1..t.attrs.len()
+            invariant 1 <= i,
+        {
+            if i < t.attrs.len() {
+                out.push(removal(text.as_bytes(), t.attrs[i]));
+            }
+        }
+        out
+    }
+
+    #[summary("Finds, for every definition that fails to prove, a minimal #[uses] list built from its current entries and the hidden predicates its diagnostics name, with at most max verifications per definition (stage0 fill_uses_limited). The proof cache and the per-definition cache are those of cache_dir when there is one: loaded before the first verification and written back after the last; bounded is whether the search within small bounds is on. The error is the diagnostics of a program that does not check. A definition of a library unit with a proof status ends the process with exit code 101, as stage0's lookup of it among the program's definitions does")]
+    #[effects(alloc, io, nondet)]
+    fn fill_uses_limited(files: &[lib::Input], cache_dir: &Option<String>, max: usize, bounded: bool) -> Result<Output, String> {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Err(diags.to_jsonl(&sm));
+        }
+        let mut targets: table::Table<Target> = table::new::<Target>();
+        for m in 0..fe.ck.program.mods.len()
+            invariant 0 <= m && m <= fe.ck.program.mods.len(),
+        {
+            if !stdlib::is_std(&fe.ck.program.mods[m]) {
+                walk(&fe.ck.program.mods[m], "", &mut targets, 1000000000);
+            }
+        }
+        let mut proofs: Option<cache::ProofCache> = match cache_dir {
+            None => Some(cache::empty()),
+            Some(dir) => Some(cache::load(dir.as_str())),
+        };
+        let mut defs: Option<incremental::Session> = None;
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let cap: usize = if max > 1000000 {
+            1000000
+        } else {
+            max
+        };
+        let mut total: usize = 1;
+        let first: table::Table<Seen> = match run(files, &mut proofs, &mut defs, cache_dir, &mut z3, bounded) {
+            None => table::new::<Seen>(),
+            Some(seen) => seen,
+        };
+        let mut states: table::Table<State> = table::new::<State>();
+        let mut counts: table::Table<usize> = table::new::<usize>();
+        for a in 0..first.len()
+            invariant 0 <= a,
+        {
+            match first.nth(a) {
+                None => {},
+                Some(fa) => { let path: String = first.key(a); match targets.find(path.as_str()) { None => { eprint_str("bmb: uses search: no entry found for a definition of the library\n"); std::process::exit(101); }, Some(ta) => { let orig: Vec<String> = targets.items[ta].original.clone(); let cand: Vec<String> = joined_set(orig.as_slice(), first.items[fa].hints.as_slice()); if first.items[fa].proved { states.insert(path.as_str(), settled(1, orig)); } else if targets.items[ta].is_spec || workspace::same(cand.as_slice(), orig.as_slice()) { states.insert(path.as_str(), settled(2, orig)); } else { states.insert(path.as_str(), State { phase: 0, set: cand, steps: 1, order: Vec::new(), idx: 0, status: 2 }); } counts.insert(path.as_str(), 0); }, } },
+            }
+        }
+        let mut round: usize = 0;
+        let mut open: bool = true;
+        while open && round <= cap
+            invariant cap <= 1000000,
+            decreases cap + 1 - round,
+        {
+            round = round + 1;
+            let trials: table::Table<Vec<String>> = trials_of(&mut states, &counts, &targets, cap);
+            if trials.len() == 0 {
+                open = false;
+            } else {
+                let texts: Vec<lib::Input> = texts_for(files, &targets, &trials);
+                let result: Option<table::Table<Seen>> = run(texts.as_slice(), &mut proofs, &mut defs, cache_dir, &mut z3, bounded);
+                total = total.saturating_add(1);
+                for t in 0..trials.len()
+                    invariant 0 <= t,
+                {
+                    match trials.nth(t) {
+                        None => {},
+                        Some(tt) => { let tp: String = trials.key(t); let said: Seen = said_of(&result, tp.as_str()); let was: usize = match counts.find(tp.as_str()) { None => 0, Some(c) => counts.items[c], }; counts.insert(tp.as_str(), was.saturating_add(1)); let orig2: Vec<String> = original_of(&targets, tp.as_str()); match states.find(tp.as_str()) { None => {}, Some(sa) => { let next: State = step(&states.items[sa], &said, trials.items[tt].as_slice(), orig2); states.insert(tp.as_str(), next); }, } },
+                    }
+                }
+            }
+        }
+        let mut finals: table::Table<State> = table::new::<State>();
+        let mut any: bool = false;
+        for f in 0..states.len()
+            invariant 0 <= f,
+        {
+            match states.nth(f) {
+                None => {},
+                Some(sf) => { let fp: String = states.key(f); let orig3: Vec<String> = original_of(&targets, fp.as_str()); let st: State = states.items[sf].clone(); if st.phase != 2 || st.status == 0 && workspace::same(st.set.as_slice(), orig3.as_slice()) { finals.insert(fp.as_str(), settled(2, orig3)); } else { if st.status == 0 { any = true; } finals.insert(fp.as_str(), st); } },
+            }
+        }
+        if any {
+            let confirm: Vec<lib::Input> = texts_for(files, &targets, &sets_of(&finals));
+            let check: Option<table::Table<Seen>> = run(confirm.as_slice(), &mut proofs, &mut defs, cache_dir, &mut z3, bounded);
+            total = total.saturating_add(1);
+            for g in 0..finals.len()
+                invariant 0 <= g,
+            {
+                match finals.nth(g) {
+                    None => {},
+                    Some(sg) => { let gp: String = finals.key(g); if finals.items[sg].status == 0 && !said_of(&check, gp.as_str()).proved { finals.insert(gp.as_str(), settled(2, original_of(&targets, gp.as_str()))); } },
+                }
+            }
+        }
+        match cache_dir {
+            None => {},
+            Some(d) => { match incremental::save_slot(&mut defs) { None => {}, Some(why) => { eprint_str(types::cat5("bmb: cannot write incremental cache in ", d.as_str(), ": ", why.as_str(), "\n").as_str()); }, } match &proofs { None => {}, Some(pc) => { match cache::save(pc, d.as_str()) { Ok(saved) => {}, Err(why2) => { eprint_str(types::cat5("bmb: cannot write proof cache in ", d.as_str(), ": ", why2.as_str(), "\n").as_str()); }, } }, } },
+        }
+        let out_files: Vec<lib::Input> = texts_for(files, &targets, &sets_of(&finals));
+        let mut rows: Vec<Row> = Vec::new();
+        for r in 0..finals.len()
+            invariant 0 <= r,
+        {
+            match finals.nth(r) {
+                None => {},
+                Some(sr) => { let rp: String = finals.key(r); match targets.find(rp.as_str()) { None => {}, Some(tr) => { let edit: Option<Place> = if finals.items[sr].status == 0 { place(files, &sm, &targets.items[tr], finals.items[sr].set.as_slice()) } else { None }; let taken: usize = match counts.find(rp.as_str()) { None => 0, Some(c2) => counts.items[c2], }; rows.push(Row { def: rp.clone(), uses: written_list(finals.items[sr].set.as_slice(), targets.items[tr].mod_path.as_str()), status: finals.items[sr].status, verifications: taken, edit: edit }); }, } },
+            }
+        }
+        Ok(Output { rows: rows, files: out_files, verifications: total })
+    }
+
+    #[summary("The full path of a #[uses] entry written in unit mod_path, as the prover resolves it (stage0 full)")]
+    #[effects(alloc)]
+    fn full(name: &str, mod_path: &str) -> String {
+        if workspace::contains(name, "::") {
+            String::from(name)
+        } else {
+            types::cat3(mod_path, "::", name)
+        }
+    }
+
+    #[summary("The hidden predicates the fix of a diagnostic lists after `add to #[uses(` and before `)]`, as full paths of unit mod_path, added to hints")]
+    #[effects(alloc)]
+    fn hints_of(d: &diag::Diag, mod_path: &str, hints: &mut Vec<String>) -> () {
+        match &d.fix {
+            None => {},
+            Some(fx) => { match std::str::find(fx.message.as_str(), "add to #[uses(") { None => {}, Some(i) => { let rest: String = lexer::cut(fx.message.as_str(), i.saturating_add(14), fx.message.len()); match std::str::find(rest.as_str(), ")]") { None => {}, Some(j) => { let names: Vec<String> = encode_terms::split(lexer::cut(rest.as_str(), 0, j).as_str(), 44); for k in 0..names.len() invariant 0 <= k && k <= names.len(), { let n: String = fmt::trim(names[k].as_str()); if n.len() > 0 { hints.push(full(n.as_str(), mod_path)); } } }, } }, } },
+        }
+    }
+
+    #[summary("Whether there is a session")]
+    #[effects(pure)]
+    fn is_session(slot: &Option<incremental::Session>) -> bool {
+        match slot {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[summary("The entries of either list, in byte order, each once")]
+    #[effects(alloc)]
+    fn joined_set(a: &[String], b: &[String]) -> Vec<String> {
+        let mut all: Vec<String> = workspace::copy(a);
+        for i in 0..b.len()
+            invariant 0 <= i && i <= b.len(),
+        {
+            all.push(b[i].clone());
+        }
+        body::sorted_set(all.as_slice())
+    }
+
+    #[summary("Where the line of byte pos starts")]
+    #[effects(pure)]
+    fn line_start(b: &[u8], pos: usize) -> (r: usize)
+        ensures r <= pos,
+    {
+        let mut i: usize = pos;
+        while i > 0 && (i > b.len() || b[i - 1] != 10)
+            invariant i <= pos,
+            decreases i,
+        {
+            i = i - 1;
+        }
+        i
+    }
+
+    #[summary("The current entries of the definition at path; none when it is not a definition of the program")]
+    #[effects(alloc)]
+    fn original_of(targets: &table::Table<Target>, path: &str) -> Vec<String> {
+        match targets.find(path) {
+            None => Vec::new(),
+            Some(at) => targets.items[at].original.clone(),
+        }
+    }
+
+    #[summary("The rewrite of the attribute of t to the set as one replacement in the original text (stage0's UsesEdit of a proved row): from the first edit to the last, with the text between them as it is")]
+    #[effects(alloc)]
+    fn place(files: &[lib::Input], sm: &source::SourceMap, t: &Target, set: &[String]) -> Option<Place> {
+        let f: usize = t.span.file as usize;
+        if f >= files.len() {
+            return None;
+        }
+        let es: Vec<Edit> = edits(files[f].text.as_str(), t, set);
+        let mut lo: usize = 0;
+        let mut hi: usize = 0;
+        for i in 0..es.len()
+            invariant 0 <= i && i <= es.len(),
+        {
+            if i == 0 || es[i].lo < lo {
+                lo = es[i].lo;
+            }
+            if i == 0 || es[i].hi > hi {
+                hi = es[i].hi;
+            }
+        }
+        let mut local: Vec<Edit> = Vec::new();
+        for j in 0..es.len()
+            invariant 0 <= j && j <= es.len(),
+        {
+            local.push(Edit { lo: es[j].lo.saturating_sub(lo), hi: es[j].hi.saturating_sub(lo), text: es[j].text.clone() });
+        }
+        let replacement: String = apply(lexer::cut(files[f].text.as_str(), lo, hi).as_str(), local.as_slice());
+        if lo > 4294967295 || hi > 4294967295 {
+            return None;
+        }
+        let from: source::Pos = sm.line_col(t.span.file, lo as u32);
+        let to: source::Pos = sm.line_col(t.span.file, hi as u32);
+        Some(Place { file: files[f].name.clone(), line: from.line, col: from.col, end_line: to.line, end_col: to.col, replacement: replacement })
+    }
+
+    #[summary("The removal of the attribute at sp (stage0's remove): with its whole line when only spaces and tabs stand beside it and a line follows, otherwise with the spaces and tabs after it")]
+    #[effects(alloc)]
+    fn removal(b: &[u8], sp: source::Span) -> Edit {
+        let lo: usize = sp.lo as usize;
+        let hi: usize = sp.hi as usize;
+        let ls: usize = line_start(b, lo);
+        let mut le: usize = hi;
+        while le < b.len() && b[le] != 10
+            decreases b.len() - le,
+        {
+            le = le + 1;
+        }
+        if le > b.len() {
+            le = b.len();
+        }
+        if blank(b, ls, lo) && blank(b, hi, le) && le < b.len() {
+            return Edit { lo: ls, hi: le + 1, text: String::new() };
+        }
+        let mut end: usize = hi;
+        while end < b.len() && (b[end] == 32 || b[end] == 9)
+            decreases b.len() - end,
+        {
+            end = end + 1;
+        }
+        Edit { lo: lo, hi: end, text: String::new() }
+    }
+
+    #[summary("One row per definition with a proof status, as JSONL (stage0 report): def, uses, status and verifications, and for a proved row the place and a fix with the replacement, as a diagnostic would; then the summary row")]
+    #[effects(alloc)]
+    fn report(out: &Output, original: &[lib::Input]) -> String {
+        let mut text: String = String::new();
+        let mut proved: usize = 0;
+        let mut unchanged: usize = 0;
+        let mut not_found: usize = 0;
+        for i in 0..out.rows.len()
+            invariant 0 <= i && i <= out.rows.len(),
+        {
+            if out.rows[i].status == 0 {
+                proved = proved.saturating_add(1);
+            } else if out.rows[i].status == 1 {
+                unchanged = unchanged.saturating_add(1);
+            } else {
+                not_found = not_found.saturating_add(1);
+            }
+            text.push_str(row_text(&out.rows[i]).as_str());
+        }
+        text.push_str("{\"summary\":true,\"defs\":");
+        std::num::push_u64(&mut text, out.rows.len() as u64);
+        text.push_str(",\"proved\":");
+        std::num::push_u64(&mut text, proved as u64);
+        text.push_str(",\"unchanged\":");
+        std::num::push_u64(&mut text, unchanged as u64);
+        text.push_str(",\"not_found\":");
+        std::num::push_u64(&mut text, not_found as u64);
+        text.push_str(",\"verifications\":");
+        std::num::push_u64(&mut text, out.verifications as u64);
+        text.push_str(",\"changed\":[");
+        text.push_str(changed(out, original).as_str());
+        text.push_str("]}\n");
+        text
+    }
+
+    #[summary("One row of the report with its line end")]
+    #[effects(alloc)]
+    fn row_text(r: &Row) -> String {
+        let mut text: String = String::from("{\"def\":");
+        std::json::push_string(&mut text, r.def.as_str());
+        text.push_str(",\"uses\":[");
+        for i in 0..r.uses.len()
+            invariant 0 <= i && i <= r.uses.len(),
+        {
+            if i > 0 {
+                text.push_str(",");
+            }
+            std::json::push_string(&mut text, r.uses[i].as_str());
+        }
+        text.push_str("],\"status\":\"");
+        if r.status == 0 {
+            text.push_str("proved");
+        } else if r.status == 1 {
+            text.push_str("unchanged");
+        } else {
+            text.push_str("not_found");
+        }
+        text.push_str("\",\"verifications\":");
+        std::num::push_u64(&mut text, r.verifications as u64);
+        match &r.edit {
+            None => {},
+            Some(e) => { text.push_str(",\"file\":"); std::json::push_string(&mut text, e.file.as_str()); text.push_str(",\"line\":"); std::num::push_u64(&mut text, e.line as u64); text.push_str(",\"col\":"); std::num::push_u64(&mut text, e.col as u64); text.push_str(",\"end_line\":"); std::num::push_u64(&mut text, e.end_line as u64); text.push_str(",\"end_col\":"); std::num::push_u64(&mut text, e.end_col as u64); text.push_str(",\"fix\":{\"message\":\"set #[uses(..)] to the smallest list found that proves the definition\",\"replacement\":"); std::json::push_string(&mut text, e.replacement.as_str()); text.push_str("}"); },
+        }
+        text.push_str("}\n");
+        text
+    }
+
+    #[summary("Checks and proves the files (stage0 run): what the verification said of each definition with a proof status, None when the program does not check. The proof cache and the per-definition session are shared between the runs of one search: the session is made on the first run (over the cache of dir; without a directory there is none, and every definition is encoded again) and keyed again for each later version of the program, so a definition unchanged since an earlier run is not encoded again")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], proofs: &mut Option<cache::ProofCache>, defs: &mut Option<incremental::Session>, dir: &Option<String>, z3: &mut toolchain::Z3, bounded: bool) -> Option<table::Table<Seen>> {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return None;
+        }
+        let whole: Option<Vec<String>> = None;
+        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        if is_session(defs) {
+            match defs {
+                None => {},
+                Some(s) => { s.keys = incremental::keys(&fe.ck, &pg.pr, &whole, bounded); },
+            }
+        } else {
+            match dir {
+                None => {},
+                Some(d) => { *defs = Some(incremental::new(d.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &whole, bounded, false)); },
+            }
+        }
+        let outcome: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, proofs, defs, z3, &mut diags);
+        let mut found: table::Table<Target> = table::new::<Target>();
+        for m in 0..fe.ck.program.mods.len()
+            invariant 0 <= m && m <= fe.ck.program.mods.len(),
+        {
+            walk(&fe.ck.program.mods[m], "", &mut found, 1000000000);
+        }
+        let mut seen: table::Table<Seen> = table::new::<Seen>();
+        for i in 0..outcome.statuses.len()
+            invariant 0 <= i && i <= outcome.statuses.len(),
+        {
+            match found.find(outcome.statuses[i].path.as_str()) {
+                None => {},
+                Some(at) => { let sp: source::Span = found.items[at].span; let mut mine: usize = 0; let mut hints: Vec<String> = Vec::new(); for k in 0..diags.items.len() invariant 0 <= k && k <= diags.items.len(), { if diags.items[k].span.file == sp.file && diags.items[k].span.lo >= sp.lo && diags.items[k].span.hi <= sp.hi { mine = mine.saturating_add(1); hints_of(&diags.items[k], found.items[at].mod_path.as_str(), &mut hints); } } seen.insert(outcome.statuses[i].path.as_str(), Seen { proved: outcome.statuses[i].failed == 0 && mine == 0, hints: body::sorted_set(hints.as_slice()) }); },
+            }
+        }
+        Some(seen)
+    }
+
+    #[summary("What a verification said of the definition at path: not proved and no hint when the program did not check or gave it no status")]
+    #[effects(alloc)]
+    fn said_of(result: &Option<table::Table<Seen>>, path: &str) -> Seen {
+        match result {
+            None => Seen { proved: false, hints: Vec::new() },
+            Some(r) => { match r.find(path) { None => Seen { proved: false, hints: Vec::new() }, Some(at) => Seen { proved: r.items[at].proved, hints: r.items[at].hints.clone() }, } },
+        }
+    }
+
+    #[summary("The lists of the states by path")]
+    #[effects(alloc)]
+    fn sets_of(states: &table::Table<State>) -> table::Table<Vec<String>> {
+        let mut out: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for i in 0..states.len()
+            invariant 0 <= i,
+        {
+            match states.nth(i) {
+                None => {},
+                Some(at) => out.insert(states.key(i).as_str(), states.items[at].set.clone()),
+            }
+        }
+        out
+    }
+
+    #[summary("A search that is done with the status and the list")]
+    #[effects(alloc)]
+    fn settled(status: u8, set: Vec<String>) -> State {
+        State { phase: 2, set: set, steps: 0, order: Vec::new(), idx: 0, status: status }
+    }
+
+    #[summary("Where the search of one definition goes after a trial (stage0's transition): a reveal that proves starts the shrinking, one that does not adds the new hints or gives up when there are none or after 8 steps; a shrink keeps the trial list when it proves and goes to the next entry, or is done with the list it has")]
+    #[effects(alloc)]
+    fn step(st: &State, said: &Seen, trial: &[String], orig: Vec<String>) -> State {
+        if st.phase == 0 {
+            if said.proved {
+                return State { phase: 1, set: st.set.clone(), steps: 0, order: st.set.clone(), idx: 0, status: 2 };
+            }
+            let next: Vec<String> = joined_set(st.set.as_slice(), said.hints.as_slice());
+            if workspace::same(next.as_slice(), st.set.as_slice()) || st.steps >= 8 {
+                return settled(2, orig);
+            }
+            return State { phase: 0, set: next, steps: st.steps.saturating_add(1), order: Vec::new(), idx: 0, status: 2 };
+        }
+        if st.phase == 1 {
+            let set: Vec<String> = if said.proved {
+                workspace::copy(trial)
+            } else {
+                st.set.clone()
+            };
+            if st.idx < st.order.len() && st.idx + 1 < st.order.len() {
+                return State { phase: 1, set: set, steps: 0, order: st.order.clone(), idx: st.idx + 1, status: 2 };
+            }
+            return settled(0, set);
+        }
+        st.clone()
+    }
+
+    #[summary("Every file with the attributes of the definitions of sets rewritten to their lists (stage0 texts_for); a list equal to the current entries rewrites nothing")]
+    #[effects(alloc)]
+    fn texts_for(files: &[lib::Input], targets: &table::Table<Target>, sets: &table::Table<Vec<String>>) -> Vec<lib::Input> {
+        let mut out: Vec<lib::Input> = Vec::new();
+        for f in 0..files.len()
+            invariant 0 <= f && f <= files.len(),
+        {
+            let mut es: Vec<Edit> = Vec::new();
+            for i in 0..sets.len()
+                invariant 0 <= i,
+            {
+                match sets.nth(i) {
+                    None => {},
+                    Some(sa) => { match targets.find(sets.key(i).as_str()) { None => {}, Some(ta) => { if targets.items[ta].span.file as usize == f && !workspace::same(sets.items[sa].as_slice(), targets.items[ta].original.as_slice()) { ast::append::<Edit>(&mut es, edits(files[f].text.as_str(), &targets.items[ta], sets.items[sa].as_slice())); } }, } },
+                }
+            }
+            out.push(lib::Input { name: files[f].name.clone(), text: apply(files[f].text.as_str(), es.as_slice()) });
+        }
+        out
+    }
+
+    #[summary("The lists to try next, by path (stage0's trials), after settling the searches that are out of budget: a reveal out of budget is not found, a shrink is done with the list it has. A reveal tries its candidates, a shrink its list without the next entry")]
+    #[effects(alloc)]
+    fn trials_of(states: &mut table::Table<State>, counts: &table::Table<usize>, targets: &table::Table<Target>, max: usize) -> table::Table<Vec<String>> {
+        let mut trials: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        let n: usize = states.len();
+        for i in 0..n
+            invariant 0 <= i,
+        {
+            let path: String = states.key(i);
+            let count: usize = match counts.find(path.as_str()) {
+                None => 0,
+                Some(c) => counts.items[c],
+            };
+            match states.find(path.as_str()) {
+                None => {},
+                Some(at) => { let st: State = states.items[at].clone(); if st.phase == 0 { if count >= max { states.insert(path.as_str(), settled(2, original_of(targets, path.as_str()))); } else { trials.insert(path.as_str(), st.set.clone()); } } else if st.phase == 1 { if count >= max { states.insert(path.as_str(), settled(0, st.set.clone())); } else { let mut less: Vec<String> = Vec::new(); for k in 0..st.set.len() invariant 0 <= k && k <= st.set.len(), { if st.idx >= st.order.len() || st.set[k] != st.order[st.idx] { less.push(st.set[k].clone()); } } trials.insert(path.as_str(), less); } } },
+            }
+        }
+        trials
+    }
+
+    #[summary("One row of the report per definition the search tried (proved, or not found after a verification), each as the value of `uses_search`: what a verify or write response adds (stage0 tried_rows)")]
+    #[effects(alloc)]
+    fn tried_rows(out: &Output, original: &[lib::Input]) -> String {
+        let mut text: String = String::new();
+        for i in 0..out.rows.len()
+            invariant 0 <= i && i <= out.rows.len(),
+        {
+            if out.rows[i].status == 0 || out.rows[i].status == 2 && out.rows[i].verifications > 0 {
+                let line: String = row_text(&out.rows[i]);
+                text.push_str("{\"uses_search\":");
+                text.push_str(lexer::cut(line.as_str(), 0, line.len().saturating_sub(1)).as_str());
+                text.push_str("}\n");
+            }
+        }
+        text
+    }
+
+    #[summary("Adds the functions of unit m and of the units in it to out by full path, the units first; the first definition of a path stays (stage0 walk). f is the remaining depth")]
+    #[effects(alloc)]
+    fn walk(m: &ast::Mod, prefix: &str, out: &mut table::Table<Target>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            walk(&m.mods[i], types::cat2(mp.as_str(), "::").as_str(), out, f - 1);
+        }
+        for j in 0..m.fns.len()
+            invariant 0 <= j && j <= m.fns.len(),
+        {
+            let path: String = types::cat3(mp.as_str(), "::", m.fns[j].name.name.as_str());
+            if !out.has(path.as_str()) {
+                let mut attrs: Vec<source::Span> = Vec::new();
+                let mut original: Vec<String> = Vec::new();
+                for a in 0..m.fns[j].attrs.len()
+                    invariant 0 <= a && a <= m.fns[j].attrs.len(),
+                {
+                    if m.fns[j].attrs[a].name.name == "uses" {
+                        attrs.push(m.fns[j].attrs[a].span);
+                        for x in 0..m.fns[j].attrs[a].args.len()
+                            invariant 0 <= x && x <= m.fns[j].attrs[a].args.len(),
+                        {
+                            match &m.fns[j].attrs[a].args[x] {
+                                ast::AttrArg::Ident(id) => original.push(full(id.name.as_str(), mp.as_str())),
+                                ast::AttrArg::Str(text, at) => {},
+                                ast::AttrArg::Pair(key, value) => {},
+                            }
+                        }
+                    }
+                }
+                let of_spec: bool = match m.fns[j].kind {
+                    ast::FnKind::Exec => false,
+                    ast::FnKind::Spec => true,
+                    ast::FnKind::Proof => false,
+                };
+                out.insert(path.as_str(), Target { mod_path: mp.clone(), is_spec: of_spec, span: m.fns[j].span, attrs: attrs, original: body::sorted_set(original.as_slice()) });
+            }
+        }
+    }
+
+    #[summary("How an entry is written in unit mod_path: without the unit when it is in it (stage0 written)")]
+    #[effects(alloc)]
+    fn written(path: &str, mod_path: &str) -> String {
+        match std::str::strip_prefix(path, types::cat2(mod_path, "::").as_str()) {
+            None => String::from(path),
+            Some(at) => { let local: String = lexer::cut(path, at, path.len()); if workspace::contains(local.as_str(), "::") { String::from(path) } else { local } },
+        }
+    }
+
+    #[summary("The entries of a list as written in unit mod_path, in byte order (stage0 written_list)")]
+    #[effects(alloc)]
+    fn written_list(set: &[String], mod_path: &str) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for i in 0..set.len()
+            invariant 0 <= i && i <= set.len(),
+        {
+            v.push(written(set[i].as_str(), mod_path));
+        }
+        decls::sorted(v.as_slice())
+    }
+}

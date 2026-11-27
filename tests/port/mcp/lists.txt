@@ -1,0 +1,94 @@
+# The tool list under every flag alone and under sets of flags that change the same descriptions together, and
+# `initialize` under each. The frozen lists of the Rust compiler's tests are among them (tests/port/mcp/stage0).
+start nowhere
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --file-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --item-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --rename-ops
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --bounded
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --bounded-16k
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool --compact --tool-docs --file-tools --ast-tools --item-docs --stats --undecided-info --probe-tool --rename-ops --bounded --bounded-16k
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --bounded-16k --bounded --rename-ops --probe-tool --undecided-info --stats --item-docs --ast-tools --file-tools --tool-docs --compact --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool --rename-ops
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool --rename-ops --item-docs --tool-docs --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool --item-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --write-tool --tool-docs --item-docs --rename-ops --bounded-16k --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --bounded --bounded-16k --compact --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --file-tools --ast-tools --write-tool --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --compact --compact --stats --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop
+start nowhere --rename-ops --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}
+stop

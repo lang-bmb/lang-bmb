@@ -1,0 +1,62 @@
+# `build`: a name that is missing, of another type or no plain file name, a workspace that is fully proved and has a
+# `main` (tests/run/swap.bmb; the executable is run), one whose proofs fail (with tests/verify/fail/loops.bmb beside
+# it), one without a `main` (tests/verify/pass/search.bmb), one that does not check, an empty one, `target` a file;
+# built again from the caches, under --compact, and under --undecided-info.
+sh "$bmb0" import ws "$root/tests/run/swap.bmb"
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"build","arguments":{}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"build","arguments":{"name":7}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"build","arguments":{"name":null}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"build","arguments":{"name":""}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"build","arguments":{"name":"."}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"build","arguments":{"name":".."}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"build","arguments":{"name":".hidden"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"build","arguments":{"name":"a/b"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"build","arguments":{"name":"/abs"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"build","arguments":{"name":"a\\b"}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"build","arguments":{"name":"a\u0000b"}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"build","arguments":{"name":"x/"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"build","arguments":{"path":"x"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"build","arguments":{"name":"swap"}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"build","arguments":{"name":"swap"}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"build","arguments":{"name":"a.b cé"}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"build","arguments":{"name":"x.ll"}}}
+stop
+sh ws/target/swap; echo "exit $?"; "ws/target/a.b cé"; ls ws/target
+start ws --compact --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"compact"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"build","arguments":{"name":".x"}}}
+stop
+start ws --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"bounded"}}}
+stop
+sh rm -r ws/target && echo x > ws/target
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"swap"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh rm ws/target && "$bmb0" import fails "$root/tests/run/swap.bmb" "$root/tests/verify/fail/loops.bmb"
+start fails
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+start fails --compact --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+sh "$bmb0" import nomain "$root/tests/verify/pass/search.bmb"
+start nomain
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+sh "$bmb0" import both "$root/tests/verify/pass/search.bmb" "$root/tests/verify/fail/loops.bmb"
+start both
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+sh printf '#[summary("b")]\nmod bad {\n    fn f( -> () {}\n}\n' > nomain/src/bad.bmb
+start nomain
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+sh mkdir none
+start none
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+tree

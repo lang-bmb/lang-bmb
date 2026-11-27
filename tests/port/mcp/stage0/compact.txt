@@ -1,0 +1,16 @@
+# The requests of `compact_view_carries_the_same_answers` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","summary":"calc","code":"spec fn small(x: i64) -> bool { -1000 <= x && x <= 1000 }\n\nspec fn bigger(x: i64, r: i64) -> bool { r > x }\n\n#[effects(pure)]\n#[uses(small, bigger)]\nfn inc(x: i64) -> (r: i64)\n    requires small(x),\n    ensures bigger(x, r),\n{\n    x + 1\n}\n\n#[effects(pure)]\nfn get(a: &[i64], i: usize) -> i64 {\n    a[i]\n}"}}}
+stop
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"all"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify","arguments":{}}}
+stop
+start ws --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"all"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify","arguments":{}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["calc::inc"]}}}
+stop
+tree

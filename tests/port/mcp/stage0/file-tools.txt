@@ -1,0 +1,21 @@
+# The requests of `file_tools_edit_by_unified_diff` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":""}}}
+stop
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":""}}}
+stop
+start ws --file-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/calc.bmb\n@@ -0,0 +1,7 @@\n+#[summary(\"calc\")]\n+mod calc {\n+    #[effects(pure)]\n+    fn twice(x: i64) -> bool {\n+        x\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/other.bmb\n@@ -0,0 +1,7 @@\n+#[summary(\"calc\")]\n+mod calc {\n+    #[effects(pure)]\n+    fn twice(x: i64) -> bool {\n+        x\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/calc.bmb\n@@ -0,0 +1,9 @@\n+#[summary(\"calc\")]\n+mod calc {\n+    #[effects(pure)]\n+    fn twice(x: i64) -> i64 {\n+        let y: i64 = x % 1000;\n+\n+        y + y\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/calc.bmb"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/nope.bmb"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/calc.bmb\n+++ b/src/calc.bmb\n@@ -5,2 +5,2 @@\n-        y * y\n+        y\n"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/calc.bmb\n+++ b/src/calc.bmb\n@@ -5,99 +5,1 @@\n         let y: i64 = x % 1000;\n-        y + y\n+        y * 9223372036854775807\n"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/calc.bmb\n+++ /dev/null\n"}}}
+stop
+tree

@@ -1,0 +1,8 @@
+# The requests of `undecided_info_runs_the_uses_search_in_the_response` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"write","arguments":{"unit":"u","summary":"t","code":"spec fn big(r: i64) -> bool { huge(r) }\n\nspec fn huge(r: i64) -> bool { r > 10 }\n\n#[effects(pure)]\nfn eleven() -> (r: i64)\n    ensures big(r),\n{\n    11\n}"}}}
+stop
+start ws --write-tool --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"write","arguments":{"unit":"u","summary":"t","code":"spec fn big(r: i64) -> bool { huge(r) }\n\nspec fn huge(r: i64) -> bool { r > 10 }\n\n#[effects(pure)]\nfn eleven() -> (r: i64)\n    ensures big(r),\n{\n    11\n}"}}}
+stop
+tree

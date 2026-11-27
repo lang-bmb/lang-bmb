@@ -181,6 +181,12 @@
     "compact-proved": 15.0,
     "compact-edges": 0.1,
     "plan-edits": 0.9,
-    "plan-ends": 1.6
+    "plan-ends": 1.6,
+    "mcp-stage0": 45.6,
+    "mcp-tools": 25.5,
+    "mcp-probe": 10.1,
+    "mcp-uses": 29.1,
+    "mcp-each": 117.4,
+    "mcp-ends": 2.2
   }
 }

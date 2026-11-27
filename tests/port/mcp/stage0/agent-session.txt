@@ -1,0 +1,27 @@
+# The requests of `agent_session_over_mcp` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}
+- {"jsonrpc":"2.0","method":"notifications/initialized"}
+> {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"calc","summary":"calc"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"calc","code":"#[effects(pure)]\nfn twice(x: i64) -> bool { x }"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":2,"path":"calc","summary":"calc"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":2,"unit":"calc","code":"#[effects(pure)]\nfn twice(x: i64) -> i64 { x.wrapping_mul(2) }"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":2,"path":"app","summary":"entry"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":2,"unit":"app","code":"#[effects(io)]\nfn main() -> () { print_i64(calc::twice(21)) }"}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":2}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["calc::twice"]}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["calc::twice","in"]}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"verify","arguments":{}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"build","arguments":{"name":"app"}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":4,"unit":"calc","code":"#[effects(pure)]\nfn one() -> i64 { 1 }"}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":4}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":3}}}
+> {"jsonrpc":"2.0","id":22,"method":"no/such","params":{}}
+stop
+tree

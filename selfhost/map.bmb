@@ -868,19 +868,19 @@ mod map {
         Edge { from: String::from(from), to: String::from(to), kind: String::from(kind), arg: None, targs: None }
     }
 
-    #[summary("Proves checked program ck for a map or a query (the proving of stage0 map_answer), through the caches in cache_dir when there is one (as bmb verify --cache does): the whole program, or with only the definitions it names alone. The diagnostics of the proof are not shown: they go to a copy of shown, the diagnostics of the check")]
+    #[summary("Proves checked program ck for a map or a query (the proving of stage0 map_answer), through the caches in cache_dir when there is one (as bmb verify --cache does): the whole program, or with only the definitions it names alone; bounded is whether the search within small bounds is on. The diagnostics of the proof are not shown: they go to a copy of shown, the diagnostics of the check")]
     #[effects(alloc, io, nondet)]
-    fn proofs(ck: &body::Checked, shown_diags: &diag::Diags, cache_dir: &Option<String>, only: Option<Vec<String>>) -> Proofs {
+    fn proofs(ck: &body::Checked, shown_diags: &diag::Diags, cache_dir: &Option<String>, only: Option<Vec<String>>, bounded: bool) -> Proofs {
         let mut cache_error: Option<String> = None;
         let mut store: Option<cache::ProofCache> = match cache_dir {
             None => None,
             Some(dir) => Some(cache::load(dir.as_str())),
         };
-        let opts: prove::Opts = prove::Opts { only: only, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: only, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,
-            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), ck, &pg.pr, &opts.only, false, false)),
+            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), ck, &pg.pr, &opts.only, bounded, false)),
         };
         let mut z3: toolchain::Z3 = toolchain::new();
         let mut unseen: diag::Diags = diag::Diags { items: shown_diags.items.clone(), aliases: Vec::new() };
@@ -994,6 +994,30 @@ mod map {
         out
     }
 
+    #[summary("The map of checked program ck from its index ix (stage0 map_answer and Model::map): the header and the rows of the level: L0, L1, L2, or all three for all. L1 shows proof results, so for L1 and all the program is proved (proofs)")]
+    #[effects(alloc, io, nondet)]
+    fn rows(ck: &body::Checked, diags: &diag::Diags, idn: &mut Idents, pr: &mut fmt::Printer, ix: &Index, level: &str, cache_dir: &Option<String>, bounded: bool) -> Mapped {
+        let mut out: String = header();
+        let mut cache_error: Option<String> = None;
+        let mut incr_error: Option<String> = None;
+        let whole: Option<Vec<String>> = None;
+        if level == "L0" || level == "all" {
+            out.push_str(l0(ix, idn, pr, &whole).as_str());
+        }
+        if level == "L1" || level == "all" {
+            let all: Option<Vec<String>> = None;
+            let got: Proofs = proofs(ck, diags, cache_dir, all, bounded);
+            let m: Model = model(ix, ck, idn.defs.as_slice(), &got.out);
+            out.push_str(l1(ix, idn, pr, ck, &m, &got.out).as_str());
+            cache_error = got.cache_error;
+            incr_error = got.incr_error;
+        }
+        if level == "L2" || level == "all" {
+            out.push_str(l2(ix).as_str());
+        }
+        Mapped { ok: true, text: out, cache_error: cache_error, incr_error: incr_error }
+    }
+
     #[summary("The rows of a response as Rust's lines gives them: the text between line feeds, a carriage return before a line feed left out, and no row after the last line feed")]
     #[effects(alloc)]
     fn rows_of(text: &str) -> Vec<Row> {
@@ -1033,7 +1057,7 @@ mod map {
         out
     }
 
-    #[summary("bmb map (stage0 lib::map_request_cached, map_answer and Model::map): reads the files as one program and checks it; when it checks, the header and the rows of the level: L0, L1, L2, or all three for all. If there are errors the text is their JSONL and ok is false. L1 shows proof results, so for L1 and all the program is proved (proofs)")]
+    #[summary("bmb map (stage0 lib::map_request_cached, map_answer and Model::map): reads the files as one program and checks it; when it checks, the rows of the level (rows). If there are errors the text is their JSONL and ok is false")]
     #[effects(alloc, io, nondet)]
     fn run(files: &[lib::Input], level: &str, cache_dir: &Option<String>) -> Mapped {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -1045,25 +1069,7 @@ mod map {
         let mut idn: Idents = idents(&fe.ck);
         let mut pr: fmt::Printer = fmt::identity(fe.ck.b.c.fns.clone(), fe.ck.b.c.adts.clone(), fe.ck.b.types.clone(), idn.traits.clone());
         let ix: Index = build(&fe.ck, &sm, &mut idn, &mut pr);
-        let mut out: String = header();
-        let mut cache_error: Option<String> = None;
-        let mut incr_error: Option<String> = None;
-        let whole: Option<Vec<String>> = None;
-        if level == "L0" || level == "all" {
-            out.push_str(l0(&ix, &mut idn, &mut pr, &whole).as_str());
-        }
-        if level == "L1" || level == "all" {
-            let all: Option<Vec<String>> = None;
-            let got: Proofs = proofs(&fe.ck, &diags, cache_dir, all);
-            let m: Model = model(&ix, &fe.ck, idn.defs.as_slice(), &got.out);
-            out.push_str(l1(&ix, &mut idn, &mut pr, &fe.ck, &m, &got.out).as_str());
-            cache_error = got.cache_error;
-            incr_error = got.incr_error;
-        }
-        if level == "L2" || level == "all" {
-            out.push_str(l2(&ix).as_str());
-        }
-        Mapped { ok: true, text: out, cache_error: cache_error, incr_error: incr_error }
+        rows(&fe.ck, &diags, &mut idn, &mut pr, &ix, level, cache_dir, false)
     }
 
     #[summary("The proof results of the definition at path (stage0 Model::view_def): nothing proved when the results hold no status of it")]

@@ -237,39 +237,36 @@ mod lib {
         Outcome { ok: true, text: out }
     }
 
-    #[summary("bmb emit-llvm and bmb build (stage0 lib::emit_llvm_sources_cached and emit_llvm_sources_with): checks the program and, when it checks, builds the module from the lowered tables. With all_checks the prover does not run and every obligation keeps its runtime check. Otherwise the program is proved first, through the caches in cache_dir when there is one (with audit, every reused proof and fragment of IR is computed again and compared), and the runtime check of an obligation is dropped when its proof is usable (usable_proofs). The module is built even when some obligations are not proved: those keep their checks")]
+    #[summary("The module of checked program ck (stage0 emit_llvm_frontend), built from the lowered tables; with the diagnostics of a program that does not check, nothing is built. With all_checks the prover does not run and every obligation keeps its runtime check. Otherwise the program is proved first, through the caches in cache_dir when there is one (with audit, every reused proof and fragment of IR is computed again and compared; bounded is whether the search within small bounds is on), and the runtime check of an obligation is dropped when its proof is usable (usable_proofs). The module is built even when some obligations are not proved: those keep their checks")]
     #[effects(alloc, io, nondet)]
-    fn emit_llvm(files: &[Input], all_checks: bool, cache_dir: &Option<String>, audit: bool) -> Emitted {
-        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
-        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
-        let fe: Front = frontend(files, &mut sm, &mut diags);
+    fn emit_checked(ck: &body::Checked, sm: &source::SourceMap, diags: &mut diag::Diags, all_checks: bool, cache_dir: &Option<String>, audit: bool, bounded: bool) -> Emitted {
         if diags.has_errors() {
-            return Emitted { built: false, ok: false, output: diags.to_jsonl(&sm), ir: String::new(), todo: Vec::new(), checks: 0, has_main: false, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
+            return Emitted { built: false, ok: false, output: diags.to_jsonl(sm), ir: String::new(), todo: Vec::new(), checks: 0, has_main: false, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
         }
-        let low: lowered::Tables = lowered::tables(&fe.ck);
+        let low: lowered::Tables = lowered::tables(ck);
         if all_checks {
             let none: Vec<encode_spec::Trivial> = Vec::new();
             let mut no_incr: Option<incremental::Session> = None;
-            let m: codegen::Module = codegen::emit(&fe.ck, &low, &codegen::proofs(none.as_slice()), &mut no_incr);
+            let m: codegen::Module = codegen::emit(ck, &low, &codegen::proofs(none.as_slice()), &mut no_incr);
             let none_checked: Vec<String> = Vec::new();
             let has_main: bool = match &m.main {
                 None => false,
                 Some(x) => true,
             };
-            return Emitted { built: true, ok: true, output: diags.to_jsonl(&sm), ir: m.ir, todo: m.todo, checks: kept_checks(&m.checks_by, none_checked.as_slice()), has_main: has_main, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
+            return Emitted { built: true, ok: true, output: diags.to_jsonl(sm), ir: m.ir, todo: m.todo, checks: kept_checks(&m.checks_by, none_checked.as_slice()), has_main: has_main, hits: 0, misses: 0, incr: None, cache_error: None, incr_error: None };
         }
         let mut store: Option<cache::ProofCache> = match cache_dir {
             None => None,
             Some(dir) => Some(cache::load(dir.as_str())),
         };
-        let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
-        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,
-            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, false, audit)),
+            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), ck, &pg.pr, &opts.only, bounded, audit)),
         };
         let mut z3: toolchain::Z3 = toolchain::new();
-        let out: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut diags);
+        let out: prove::Outcome = prove::run_cached(ck, &pg, &opts, &mut store, &mut incr, &mut z3, diags);
         let mut hits: usize = 0;
         let mut misses: usize = 0;
         let mut cache_error: Option<String> = None;
@@ -277,16 +274,16 @@ mod lib {
             None => {},
             Some(c) => { hits = c.hits; misses = c.misses; match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
         }
-        let defs: Vec<codegen::Def> = codegen::sorted_defs(&fe.ck.program, &low);
-        let usable: Vec<encode_spec::Trivial> = usable_proofs(&fe.ck, defs.as_slice(), &out);
+        let defs: Vec<codegen::Def> = codegen::sorted_defs(&ck.program, &low);
+        let usable: Vec<encode_spec::Trivial> = usable_proofs(ck, defs.as_slice(), &out);
         match &mut incr {
             None => {},
-            Some(s0) => incremental::with_ir(s0, &fe.ck, &low, &sm),
+            Some(s0) => incremental::with_ir(s0, ck, &low, sm),
         }
-        let m2: codegen::Module = codegen::emit(&fe.ck, &low, &codegen::proofs(usable.as_slice()), &mut incr);
+        let m2: codegen::Module = codegen::emit(ck, &low, &codegen::proofs(usable.as_slice()), &mut incr);
         let incr_error: Option<String> = incremental::save_slot(&mut incr);
-        let mut output: String = diags.to_jsonl(&sm);
-        output.push_str(prove::status_lines(out.statuses.as_slice(), &fe.ck, &pg).as_str());
+        let mut output: String = diags.to_jsonl(sm);
+        output.push_str(prove::status_lines(out.statuses.as_slice(), ck, &pg).as_str());
         let mut ok: bool = !diags.has_errors();
         for j in 0..out.statuses.len()
             invariant 0 <= j && j <= out.statuses.len(),
@@ -300,6 +297,15 @@ mod lib {
             Some(y) => true,
         };
         Emitted { built: true, ok: ok, output: output, ir: m2.ir, todo: m2.todo, checks: kept_checks(&m2.checks_by, out.checked.as_slice()), has_main: has_main2, hits: hits, misses: misses, incr: incremental::stats_of(&incr), cache_error: cache_error, incr_error: incr_error }
+    }
+
+    #[summary("bmb emit-llvm and bmb build (stage0 lib::emit_llvm_sources_cached and emit_llvm_sources_with): checks the program and, when it checks, builds its module (emit_checked)")]
+    #[effects(alloc, io, nondet)]
+    fn emit_llvm(files: &[Input], all_checks: bool, cache_dir: &Option<String>, audit: bool) -> Emitted {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        emit_checked(&fe.ck, &sm, &mut diags, all_checks, cache_dir, audit, false)
     }
 
     #[summary("bmb examples (stage0 examples_sources): reads the files as one program, checks it and, when it checks, the examples of each named function's contract (examples::examples), as JSONL. Not ok with the diagnostics of a program that does not check, or with the line naming a path that is not an executable function")]
@@ -1096,14 +1102,20 @@ mod lib {
         kept
     }
 
-    #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only): reads the files as one program, checks it and, when it checks, proves it. cache_dir is the directory of the caches when there is one: proofs found before are not asked again and new ones are written back, and with reuse an unchanged fully proved definition is not encoded again (the per-definition cache; reuse is off for --emit-smt, which needs every script); audit proves such a definition anyway and compares. only names the definitions to prove when it is not empty; the whole program is still checked and each gets its whole-program status, and the per-definition cache is read lazily with the keys of those alone. bounded asks each undecided obligation once more with its inputs bounded")]
+    #[summary("bmb verify (stage0 lib::verify_sources_opts and verify_sources_only): reads the files as one program, checks it and, when it checks, proves it (verify_checked)")]
     #[effects(alloc, io, nondet)]
     fn verify(files: &[Input], cache_dir: &Option<String>, only: &[String], bounded: bool, reuse: bool, audit: bool) -> Proved {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let fe: Front = frontend(files, &mut sm, &mut diags);
+        verify_checked(&fe.ck, &sm, &mut diags, cache_dir, only, bounded, reuse, audit)
+    }
+
+    #[summary("Proves checked program ck (stage0 verify_frontend_defs); with the diagnostics of a program that does not check, they are the output and nothing is proved. cache_dir is the directory of the caches when there is one: proofs found before are not asked again and new ones are written back, and with reuse an unchanged fully proved definition is not encoded again (the per-definition cache; reuse is off for --emit-smt, which needs every script); audit proves such a definition anyway and compares. only names the definitions to prove when it is not empty; each gets its whole-program status, and the per-definition cache is read lazily with the keys of those alone. bounded asks each undecided obligation once more with its inputs bounded")]
+    #[effects(alloc, io, nondet)]
+    fn verify_checked(ck: &body::Checked, sm: &source::SourceMap, diags: &mut diag::Diags, cache_dir: &Option<String>, only: &[String], bounded: bool, reuse: bool, audit: bool) -> Proved {
         if diags.has_errors() {
-            return Proved { ok: false, output: diags.to_jsonl(&sm), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None, incr: None, incr_error: None };
+            return Proved { ok: false, output: diags.to_jsonl(sm), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None, incr: None, incr_error: None };
         }
         let mut store: Option<cache::ProofCache> = match cache_dir {
             None => None,
@@ -1116,13 +1128,13 @@ mod lib {
             wanted.push(only[i].clone());
         }
         let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
-        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,
-            Some(dir0) => { if reuse { Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, bounded, audit)) } else { None } },
+            Some(dir0) => { if reuse { Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), ck, &pg.pr, &opts.only, bounded, audit)) } else { None } },
         };
         let mut z3: toolchain::Z3 = toolchain::new();
-        let out: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut diags);
+        let out: prove::Outcome = prove::run_cached(ck, &pg, &opts, &mut store, &mut incr, &mut z3, diags);
         let mut hits: usize = 0;
         let mut misses: usize = 0;
         let mut cache_error: Option<String> = None;
@@ -1130,8 +1142,8 @@ mod lib {
             None => {},
             Some(c) => { hits = c.hits; misses = c.misses; match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
         }
-        let mut output: String = diags.to_jsonl(&sm);
-        output.push_str(prove::status_lines(out.statuses.as_slice(), &fe.ck, &pg).as_str());
+        let mut output: String = diags.to_jsonl(sm);
+        output.push_str(prove::status_lines(out.statuses.as_slice(), ck, &pg).as_str());
         let incr_error: Option<String> = incremental::save_slot(&mut incr);
         let incr_stats: Option<incremental::Stats> = incremental::stats_of(&incr);
         let mut ok: bool = !diags.has_errors();

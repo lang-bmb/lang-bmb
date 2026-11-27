@@ -1,0 +1,124 @@
+# --undecided-info: `verify` and `write` add the rows of the #[uses] search when the proof fails and a diagnostic
+# suggests an attribute. On workspaces made of corpus programs whose failures carry such hints
+# (tests/verify/fail/contracts.bmb, invariants.bmb, traits.bmb, trait_contracts.bmb, assumed_values.bmb, bit_vector.bmb): a
+# list that proves, one that is not found, a definition that already has an attribute, the search of a `write`; no row
+# without the flag, for a workspace that proves, and for failures without a hint; the workspace is not changed. The
+# other tools under the flag (the bounded search reaches the proofs of `query`, `map` and `build`). The ends of the
+# search no corpus program reaches, on two small programs written in the session: the budget of four verifications,
+# and attributes that are not in normal form. A workspace that names a library unit: the Rust compiler ends in a
+# panic there, exit code 101, and the port ends with the same code and words of its own, which the script does not
+# show.
+sh "$bmb0" import contracts "$root/tests/verify/fail/contracts.bmb"
+start contracts --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start contracts
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh "$bmb0" import invariants "$root/tests/verify/fail/invariants.bmb"
+start invariants --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start invariants
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh "$bmb0" import traits "$root/tests/verify/fail/traits.bmb"
+start traits --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start traits
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh "$bmb0" import trait_contracts "$root/tests/verify/fail/trait_contracts.bmb"
+start trait_contracts --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start trait_contracts
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh "$bmb0" import assumed_values "$root/tests/verify/fail/assumed_values.bmb"
+start assumed_values --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start assumed_values
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh "$bmb0" import bit_vector "$root/tests/verify/fail/bit_vector.bmb"
+start bit_vector --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+stop
+start bit_vector
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+start contracts --undecided-info --write-tool --compact --stats --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"status"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["contracts::opaque_caller"]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"write","arguments":{"unit":"contracts","code":"#[effects(pure)]\n#[uses(tiny)]\nfn opaque_caller(x: i64) -> i64\n    requires small(x),\n{\n    needs_small(x)\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"write","arguments":{"unit":"contracts","remove":["contracts::wrong_post"]}}}
+stop
+sh "$bmb0" import proved "$root/tests/verify/pass/search.bmb"
+start proved --undecided-info --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"unit":"bsearch","summary":"Proved"}}}
+stop
+sh "$bmb0" import nohint "$root/tests/verify/fail/loops.bmb"
+start nohint --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+# The budget of four verifications per definition (written through `write`, as the test of the search among the tests of the Rust compiler writes its program): five hidden predicates, of which the shrinking reaches three before the budget ends, and a chain of six, each seen only when the one before it is revealed, which is given up.
+sh mkdir budget
+start budget --write-tool --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"write","arguments":{"unit":"five","summary":"Five hidden predicates","code":"spec fn p1(x: i64) -> bool { x > 1 }\n\nspec fn p2(x: i64) -> bool { x > 2 }\n\nspec fn p3(x: i64) -> bool { x > 3 }\n\nspec fn p4(x: i64) -> bool { x > 4 }\n\nspec fn p5(x: i64) -> bool { x > 5 }\n\nspec fn all(x: i64) -> bool { p1(x) && p2(x) && p3(x) && p4(x) && p5(x) }\n\n#[effects(pure)]\nfn six() -> (r: i64)\n    ensures all(r),\n{\n    6\n}"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"unit":"chain","summary":"A chain of hidden predicates","code":"spec fn a(x: i64) -> bool { b(x) }\n\nspec fn b(x: i64) -> bool { c(x) }\n\nspec fn c(x: i64) -> bool { d(x) }\n\nspec fn d(x: i64) -> bool { e(x) }\n\nspec fn e(x: i64) -> bool { f(x) }\n\nspec fn f(x: i64) -> bool { x > 0 }\n\n#[effects(pure)]\nfn one() -> (r: i64)\n    ensures a(r),\n{\n    1\n}"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+stop
+# Attributes as another writer left them, not in normal form: two #[uses] attributes of one definition, on lines of their own and on the line of another attribute, and a definition that starts after an attribute on its line. The rewrite keeps the first, removes the others and puts a new one where the definition starts.
+file hand/src/attrs.bmb 27
+#[summary("Attributes written by hand")]
+mod attrs {
+    spec fn lo(x: i64) -> bool { x > 0 }
+
+    spec fn hi(x: i64) -> bool { x < 9 }
+
+    spec fn mid(x: i64) -> bool { lo(x) && hi(x) }
+
+    spec fn top(x: i64) -> bool { mid(x) && x != 7 }
+
+    #[effects(pure)] #[uses(lo)]
+    #[uses(hi)]
+    fn five() -> (r: i64)
+        ensures top(r),
+    {
+        5
+    }
+
+    #[uses(hi)] #[uses(lo)]   #[effects(pure)]
+    fn six() -> (r: i64) ensures top(r), { 6 }
+
+    #[effects(pure)] fn four() -> (r: i64) ensures mid(r), { 4 }
+
+    #[effects(pure)]
+	#[uses(hi)]	
+    fn three() -> (r: i64) ensures mid(r), { 3 }
+}
+start hand --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh cat hand/src/attrs.bmb | sha256sum
+# A library unit beside a failure with a hint.
+sh "$bmb0" import withstd "$root/tests/verify/fail/contracts.bmb" "$root/tests/run/std_num.bmb"
+start withstd --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["contracts"]}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+end
+tree

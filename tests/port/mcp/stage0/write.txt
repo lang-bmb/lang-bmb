@@ -1,0 +1,16 @@
+# The requests of `write_tool_commits_and_proves_in_one_call` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc"}}}
+stop
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","summary":"calc","code":"#[effects(pure)]\nfn twice(x: i64) -> bool { x }"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","summary":"calc","code":"spec fn small(x: i64) -> bool { -1000 <= x && x <= 1000 }\n\n#[effects(pure)]\n#[uses(small)]\nfn twice(x: i64) -> i64\n    requires small(x),\n{\n    x + x\n}"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","code":"struct P { x: i64 }\n\nimpl P {\n    #[effects(pure)]\n    fn get(self: &P) -> i64 { self.x }\n}\n\n#[effects(pure)]\nfn one() -> i64 { 1 }"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","code":"#[effects(pure)]\nfn thrice(x: i64) -> i64 {\n    x + x + x\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc","remove":["calc::thrice"]}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"unit":"calc"}}}
+stop
+tree

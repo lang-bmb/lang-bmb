@@ -1,0 +1,30 @@
+# The requests of `bounded_results_are_windows_of_the_response` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+# The unit the test writes: 600 definitions, so that `units` is well over the budget.
+sh mkdir -p ws/src && { printf '#[summary("many")]\nmod many {\n'; i=0; while [ $i -lt 600 ]; do printf '    #[effects(pure)]\n    fn definition_number_%s(x: i64) -> i64 {\n        x\n    }\n\n' $i; i=$((i+1)); done; printf '}\n'; } > ws/src/many.bmb
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+stop
+start ws --bounded
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":0}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":136}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":434}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":2}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"overview"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":-1}}}
+stop
+start ws --bounded-16k
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":0}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":1}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":2}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":151}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":300}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":449}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":598}}}
+stop
+start ws --bounded --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+stop
+tree

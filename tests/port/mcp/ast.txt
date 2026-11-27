@@ -1,0 +1,124 @@
+# The JSON AST edit surface (--ast-tools) on a workspace made of two corpus programs (tests/run/method_order.bmb
+# and tests/verify/fail/loops.bmb, whose proofs fail): `read_ast` at every kind of pointer and each that is refused;
+# `verify`, whose diagnostics name the node of the tree instead of a position; `edit_ast` without a patch, with one
+# that is no JSON, no patch, whose operations do not apply, whose result is no syntax tree, one rejected by the checker
+# (the diagnostics name the node), one whose tree has no text of its own (an `if` statement that ends a block), method
+# calls written by path, which are compared in method form and read back as method calls, patches that commit, as an array and as JSON text, and
+# the same under --compact; then a workspace whose files do not parse.
+sh "$bmb0" import ws "$root/tests/run/method_order.bmb" "$root/tests/verify/fail/loops.bmb"
+start ws --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/summary"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/fns"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/traits/T"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/impls"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/types/P"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/0"}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/0/kind"}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/99"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/-1"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/01"}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/x"}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/body/stmts/-"}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/nope"}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/fns/nope"}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/summary/x"}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"m"}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"m/fns"}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m~0"}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m~1fns"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m~2"}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m~"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"//"}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m//fns"}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/é"}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"read_ast"}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"read_ast","arguments":{}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":7}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":null}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"read_ast","arguments":{"pointer":"/m"}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["loops"]}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"edit_ast"}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"edit_ast","arguments":{}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":null}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":7}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":{}}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"not json"}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"{"}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"7"}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"\"[]\""}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"[]"}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[7]}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{}]}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"explode","path":""}]}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/m/summary"}]}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/nope"}]}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"test","path":"/m/summary","value":"other"}]}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"m","value":1}]}}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"move","path":"/x"}]}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"copy","from":"/nope","path":"/x"}]}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"test","path":"/m/summary","value":"Trait methods called in receiver order"},{"op":"remove","path":"/nope"}]}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/m/summary","value":7}]}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"","value":[]}]}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra","value":{}}]}}}
+> {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra","value":{"summary":"s","fns":{"f":{"kind":"nope"}}}}]}}}
+> {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/app/fns/main/body/stmts/0","value":{"kind":"let"}}]}}}
+> {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/app/fns/main/kind"}]}}}
+> {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/app/fns/main/body/tail","value":{"kind":"bool","value":true}}]}}}
+> {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/m/types/P"}]}}}
+> {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"move","from":"/m","path":"/moved"}]}}}
+> {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"copy","from":"/m","path":"/copy"}]}}}
+> {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/9a","value":{"summary":"s"}}]}}}
+> {"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/m/summary","value":"Changed by a patch"}]}}}
+> {"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":"[{\"op\": \"test\", \"path\": \"/m/summary\", \"value\": \"Changed by a patch\"}, {\"op\": \"replace\", \"path\": \"/m/summary\", \"value\": \"Changed by a patch sent as text\"}]"}}}
+> {"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra","value":{"summary":"Made by a patch","fns":{"one":{"kind":"fn","effects":["pure"],"ret":{"ty":{"kind":"i64"}},"body":{"tail":{"kind":"int","value":1}}}}}}]}}}
+> {"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"copy","from":"/extra/fns/one","path":"/extra/fns/two"}]}}}
+> {"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/extra/fns/two/body/tail","value":{"kind":"binary","op":"+","lhs":{"kind":"call","path":"extra::one"},"rhs":{"kind":"call","path":"one"}}}]}}}
+> {"jsonrpc":"2.0","id":74,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/extra/fns/two/body/tail","value":{"kind":"binary","op":"+","lhs":{"kind":"call","path":"nope"},"rhs":{"kind":"int","value":1}}}]}}}
+> {"jsonrpc":"2.0","id":75,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/extra/fns/two/ret/ty","value":{"kind":"bool"}}]}}}
+> {"jsonrpc":"2.0","id":76,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/extra/fns/two/body/tail","value":{"kind":"binary","op":"*","lhs":{"kind":"binary","op":"+","lhs":{"kind":"int","value":1},"rhs":{"kind":"int","value":2}},"rhs":{"kind":"int","value":3}}}]}}}
+> {"jsonrpc":"2.0","id":77,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/extra/fns/two/body/tail","value":{"kind":"binary","op":"+","lhs":{"kind":"int","value":1},"rhs":{"kind":"binary","op":"+","lhs":{"kind":"int","value":2},"rhs":{"kind":"int","value":3}}}}]}}}
+> {"jsonrpc":"2.0","id":78,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra/fns/three","value":{"kind":"fn","effects":["pure"],"params":[{"name":"x","ty":{"kind":"i64"}}],"ret":{"name":"r","ty":{"kind":"i64"}},"ensures":[{"kind":"binary","op":">","lhs":{"kind":"var","name":"r"},"rhs":{"kind":"var","name":"x"}}],"body":{"tail":{"kind":"binary","op":"+","lhs":{"kind":"var","name":"x"},"rhs":{"kind":"int","value":1}}}}}]}}}
+> {"jsonrpc":"2.0","id":79,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra/fns/last_if","value":{"kind":"fn","effects":["pure"],"ret":{"ty":{"kind":"unit"}},"body":{"stmts":[{"kind":"expr","expr":{"kind":"if","cond":{"kind":"bool","value":true},"then":{}}}]}}}]}}}
+> {"jsonrpc":"2.0","id":80,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/extra/fns/by_path","value":{"kind":"fn","effects":["pure"],"params":[{"name":"p","ty":{"kind":"ref","inner":{"kind":"named","path":"m::P"}}}],"ret":{"ty":{"kind":"i64"}},"body":{"tail":{"kind":"binary","op":"+","lhs":{"kind":"call","path":"m::P::f","args":[{"kind":"var","name":"p"}]},"rhs":{"kind":"call","path":"m::T::len","args":[{"kind":"var","name":"p"}]}}}}}]}}}
+> {"jsonrpc":"2.0","id":81,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"test","path":"/extra/fns/by_path/body/tail/lhs/kind","value":"method"}]}}}
+> {"jsonrpc":"2.0","id":82,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"test","path":"/extra/fns/by_path/body/tail/lhs/kind","value":"call"}]}}}
+> {"jsonrpc":"2.0","id":83,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/extra/fns/by_path"}]}}}
+> {"jsonrpc":"2.0","id":84,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/extra/fns/three"},{"op":"remove","path":"/extra/fns/two"}]}}}
+> {"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/extra"}]}}}
+> {"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"remove","path":"/app"},{"op":"remove","path":"/m"},{"op":"remove","path":"/loops"}]}}}
+> {"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/app","value":{"summary":"Entry"}}]}}}
+> {"jsonrpc":"2.0","id":88,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/extra"}}}
+> {"jsonrpc":"2.0","id":89,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/m/summary"}}}
+> {"jsonrpc":"2.0","id":90,"method":"tools/call","params":{"name":"read_ast"}}
+stop
+sh "$bmb0" import ws "$root/tests/run/method_order.bmb" "$root/tests/verify/fail/loops.bmb"
+start ws --ast-tools --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/app/fns/main/effects"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/app/fns/main/body/tail","value":{"kind":"bool","value":true}}]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"replace","path":"/app/summary","value":"Entry"}]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"test","path":"/app/summary","value":"x"}]}}}
+stop
+sh printf '#[summary("b")]\nmod bad {\n    fn f( -> () {}\n}\n' > ws/src/bad.bmb
+start ws --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh mkdir none
+start none --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_ast"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":"/x"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[{"op":"add","path":"/first","value":{"summary":"The first unit"}}]}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"read_ast"}}
+stop
+tree

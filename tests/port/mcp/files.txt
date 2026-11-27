@@ -1,0 +1,123 @@
+# The file diff edit surface (--file-tools) on a workspace made of two corpus programs (tests/run/swap.bmb and
+# tests/verify/pass/search.bmb): `read_file` with every way of naming a file that is taken and each that is refused
+# (the path is taken apart as Rust's Path does it), a file that is not there, a workspace without files; `edit_file`
+# with every refusal of the diff's files (none, another name on each side, both /dev/null, twice, missing, existing),
+# of its reader and of its hunks, a diff rejected as a whole by the checker and by the rule of one unit per file, files
+# created, deleted and left empty, a commit whose file is stored in another form (`reformatted`), a proof that fails
+# after the commit, and the same under --compact.
+sh "$bmb0" import ws "$root/tests/run/swap.bmb" "$root/tests/verify/pass/search.bmb"
+start ws --file-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"a/src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"b/src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr.bmb"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"/abs/olute/src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"/src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src//arr.bmb"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/./arr.bmb"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb/"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb/."}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb//./"}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"x/../src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"ws/src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/../src/./arr.bmb"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"./src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"./arr.bmb"}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"lib/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"srcs/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/x/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"../arr.bmb"}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr"}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr."}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr.txt"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr.bmb.txt"}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"arr.BMB"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"read_file","arguments":{"path":".bmb"}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/.bmb"}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/..bmb"}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/a.b.bmb"}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/fn.bmb"}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/9a.bmb"}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/a-b.bmb"}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/é.bmb"}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb/.."}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"read_file","arguments":{"path":".."}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"."}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"read_file","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"/"}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"//"}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/"}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src"}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/arr.bmb\u0000"}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"a\\src\\arr.bmb"}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"read_file","arguments":{"path":" src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/nope.bmb"}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/app.bmb"}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"app.bmb"}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"read_file"}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"read_file","arguments":{}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"read_file","arguments":{"path":7}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"read_file","arguments":{"path":null}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"read_file","arguments":{"file":"src/arr.bmb"}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"edit_file"}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"edit_file","arguments":{}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":7}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"edit_file","arguments":{"patch":""}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":""}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"no diff here\n"}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"\n\n"}}}
+> {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n"}}}
+> {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n"}}}
+> {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ nonsense @@\n-a\n"}}}
+> {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n-a\n+b\nstray\n"}}}
+> {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/app.bmb\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ /dev/null\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ /dev/null\n"}}}
+> {"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/lib/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.txt\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.txt\n+++ b/lib/arr.bmb\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n-a\n+b\n--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -2 +2 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/nope.bmb\n+++ b/src/nope.bmb\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":74,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/nope.bmb\n+++ /dev/null\n@@ -1 +0,0 @@\n-a\n"}}}
+> {"jsonrpc":"2.0","id":75,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/arr.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":76,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n-not in the file\n+b\n"}}}
+> {"jsonrpc":"2.0","id":77,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1,2 +1,2 @@\n #[effects(pure)]\n+\n"}}}
+> {"jsonrpc":"2.0","id":78,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ +1 @@\n+only added\n"}}}
+> {"jsonrpc":"2.0","id":79,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -999,0 +999 @@\n+past the end\n"}}}
+> {"jsonrpc":"2.0","id":80,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/app.bmb\n+++ b/src/app.bmb\n@@ -1 +1 @@\n-#[summary(\"Entry point\")]\n+#[summary(\"Entry point\")]\n--- a/src/arr.bmb\n+++ b/src/arr.bmb\n@@ -1 +1 @@\n-nope\n+b\n"}}}
+> {"jsonrpc":"2.0","id":81,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod other {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":82,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        true\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":83,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n+#[summary(\"Two\")]\n+mod second {\n+}\n"}}}
+> {"jsonrpc":"2.0","id":84,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1 @@\n+mod fresh {\n"}}}
+> {"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1 @@\n+   \n"}}}
+> {"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":88,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ b/src/fresh.bmb\n@@ -4,3 +4,3 @@\n     fn one() -> i64 {\n-        1\n+        1 +     1\n     }\n"}}}
+> {"jsonrpc":"2.0","id":89,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ b/src/fresh.bmb\n@@ -4,3 +4,3 @@\n     fn one() -> i64 {\n-        1 + 1\n+        2\n     }\n--- a/src/app.bmb\n+++ b/src/app.bmb\n@@ -1 +1 @@\n-#[summary(\"Entry point\")]\n+#[summary(\"Entry\")]\n"}}}
+> {"jsonrpc":"2.0","id":90,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- src/fresh.bmb\n+++ src/fresh.bmb\n@@ -5 +5 @@\n-        2\n+        2 - missing\n"}}}
+> {"jsonrpc":"2.0","id":91,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- fresh.bmb\n+++ ./src/../src/fresh.bmb\n@@ -3,5 +3,9 @@\n     #[effects(pure)]\n     fn one() -> i64 {\n         2\n     }\n+    #[effects(pure)]\n+    fn more(x: i64) -> (r: i64)\n+        ensures r > x,\n+    { x + 1 }\n }\n"}}}
+> {"jsonrpc":"2.0","id":92,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-#[summary(\"New\")]\n-mod fresh {\n"}}}
+> {"jsonrpc":"2.0","id":93,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"text before\n--- a/src/fresh.bmb\t2026-01-01\n+++ b/src/fresh.bmb   \n@@ -1 +1 @@\r\n-#[summary(\"New\")]\r\n+#[summary(\"Newer\")]\r\n\\ No newline at end of file\r\n"}}}
+> {"jsonrpc":"2.0","id":94,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ /dev/null\n@@ -1 +0,0 @@\n-#[summary(\"Newer\")]\n"}}}
+> {"jsonrpc":"2.0","id":95,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ b/src/fresh.bmb\n@@ -1,20 +0,0 @@\n-#[summary(\"Newer\")]\n-mod fresh {\n-    #[effects(pure)]\n-    fn more(x: i64) -> (r: i64)\n-        ensures r > x,\n-    {\n-        x + 1\n-    }\n-\n-    #[effects(pure)]\n-    fn one() -> i64 {\n-        2\n-    }\n-}\n"}}}
+> {"jsonrpc":"2.0","id":96,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/fresh.bmb"}}}
+> {"jsonrpc":"2.0","id":97,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"app.bmb"}}}
+stop
+start ws --file-tools --compact --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"app.bmb"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        true\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one(x: i64) -> i64 {\n+        x + 1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/fresh.bmb\n+++ /dev/null\n@@ -1 +0,0 @@\n-#[summary(\"New\")]\n"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/app.bmb\n+++ /dev/null\n@@ -1 +0,0 @@\n-#[summary(\"Entry\")]\n"}}}
+stop
+sh mkdir none
+start none --file-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/a.bmb"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/a.bmb\n+++ b/src/a.bmb\n@@ -1 +1 @@\n-a\n+b\n"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- /dev/null\n+++ b/src/fresh.bmb\n@@ -0,0 +1,8 @@\n+#[summary(\"New\")]\n+mod fresh {\n+    #[effects(pure)]\n+    fn one() -> i64 {\n+        1\n+    }\n+}\n"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/a.bmb"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"fresh.bmb"}}}
+stop
+tree

@@ -1,0 +1,1630 @@
+#[summary("The MCP server over standard input and output (port of stage0 compiler/src/mcp.rs and of FrontCache of lib.rs): `bmb mcp`. JSON-RPC 2.0, one message per line. The tools read the workspace through the maps and write it through transactions, unified diffs or JSON Patches; every flag of stage0 is here (FLAGS). The front-end results of the last call are kept: every call reads the workspace files again, an unchanged file is not parsed again and an unchanged program is neither checked nor indexed again")]
+mod mcp {
+    #[summary("A place where two trees differ: its pointer and what the second tree has there")]
+    struct Diff { at: String, got: json::Value }
+
+    #[summary("What the server was started with (stage0 Server's switches): the one-call write tool, the compact view of results, tool descriptions that document the tools on their own, the file diff and the JSON AST edit surfaces, descriptions that name every item, the counts of the front-end cache after each reply, the bounded search and the #[uses] search in verify and write, the probe tool, the rename and expect operations, and the window of a query or map result with its budget in bytes")]
+    struct Flags { write_tool: bool, compact: bool, tool_docs: bool, file_tools: bool, ast_tools: bool, item_docs: bool, stats: bool, undecided_info: bool, probe_tool: bool, rename_ops: bool, bounded: bool, budget: usize }
+
+    #[summary("Front-end results kept between calls (stage0 FrontCache; the index itself is held beside it): the files as last read and parsed, the checked program of them, whether the map index of that program is built, and what the cache did so far: files parsed, files whose syntax tree was reused, checker runs and builds of the map index")]
+    struct Front { files: Vec<ParsedFile>, fe: Option<Loaded>, indexed: bool, parsed: usize, reused: usize, checks: usize, indexes: usize }
+
+    #[summary("A checked program with its source map and the diagnostics of reading and checking it (stage0 Frontend)")]
+    struct Loaded { sm: source::SourceMap, diags: diag::Diags, ck: body::Checked }
+
+    #[summary("One workspace file as last read and parsed (stage0 ParsedFile): its top-level units, its lexer and parser diagnostics and the input aliases its parser took")]
+    struct ParsedFile { name: String, text: String, mods: Vec<ast::Mod>, diags: Vec<diag::Diag>, aliases: Vec<diag::Diag> }
+
+    #[summary("A path taken apart: whether it ends in a name, the bytes of that name, and where the path of its directory ends")]
+    struct Parts { dir_end: usize, from: usize, to: usize, found: bool }
+
+    #[summary("An open transaction (stage0 Tx): its operations and the workspace files at tx_begin, which a commit compares with the files then")]
+    struct Tx { id: u64, ops: Vec<workspace::Op>, base: Vec<lib::Input> }
+
+    #[summary("The open transactions in the order of their ids, and the id of the next one")]
+    struct Txs { open: Vec<Tx>, next: u64 }
+
+    #[summary("Adds to the properties of a schema the property name of type ty with its description; an array is one of strings (stage0 schema)")]
+    #[effects(alloc)]
+    fn add_prop(kv: &mut Vec<json::Member>, name: &str, ty: &str, desc: &str) -> () {
+        let mut p: Vec<json::Member> = Vec::new();
+        p.push(member("type", s(ty)));
+        p.push(member("description", s(desc)));
+        if ty == "array" {
+            p.push(member("items", typed("string")));
+        }
+        kv.push(member(name, json::Value::Object(p)));
+    }
+
+    #[summary("The byte after the character that starts at i")]
+    #[effects(pure)]
+    fn after_char(b: &[u8], i: usize) -> (r: usize)
+        requires i < b.len(),
+        ensures i < r && r <= b.len(),
+    {
+        let mut j: usize = i + 1;
+        while j < b.len() && b[j] >= 128 && b[j] < 192
+            invariant i < j && j <= b.len(),
+            decreases b.len() - j,
+        {
+            j = j + 1;
+        }
+        j
+    }
+
+    #[summary("The files after diff (stage0 apply_diff): every file it names exists or is created by it, each at most once; a file left empty is removed. The error is stage0's message")]
+    #[effects(alloc)]
+    fn apply_diff(was_files: &[lib::Input], diff: &str) -> Result<Vec<lib::Input>, String> {
+        let patches: Vec<udiff::FilePatch> = udiff::parse(diff)?;
+        if patches.len() == 0 {
+            return Err(String::from("no file in the diff: each file starts with `--- a/src/UNIT.bmb` and `+++ b/src/UNIT.bmb`"));
+        }
+        let mut files: Vec<lib::Input> = Vec::new();
+        for i in 0..was_files.len()
+            invariant 0 <= i && i <= was_files.len(),
+        {
+            put_file(&mut files, was_files[i].name.as_str(), Some(was_files[i].text.clone()));
+        }
+        let mut seen: Vec<String> = Vec::new();
+        for k in 0..patches.len()
+            invariant 0 <= k && k <= patches.len(),
+        {
+            let old_name: Option<String> = match &patches[k].old_path {
+                None => None,
+                Some(op) => Some(file_name(op.as_str())?),
+            };
+            let new_name: Option<String> = match &patches[k].new_path {
+                None => None,
+                Some(np) => Some(file_name(np.as_str())?),
+            };
+            let name: String = match &new_name {
+                None => { match &old_name { None => { return Err(String::from("`--- /dev/null` with `+++ /dev/null`")); }, Some(a0) => a0.clone(), } },
+                Some(b) => { match &old_name { None => {}, Some(a) => { if a != b { return Err(types::cat5("`--- ", a.as_str(), "` and `+++ ", b.as_str(), "` name different files; a diff edits files in place")); } }, } b.clone() },
+            };
+            if types::has(seen.as_slice(), name.as_str()) {
+                return Err(types::cat2(name.as_str(), " appears twice; put all its hunks under one `---`/`+++` pair"));
+            }
+            seen.push(name.clone());
+            let was: Option<String> = text_of(files.as_slice(), name.as_str());
+            let text: String = match &old_name {
+                None => { match &was { None => String::new(), Some(t0) => { return Err(types::cat2(name.as_str(), " already exists")); }, } },
+                Some(o) => { match &was { None => { return Err(types::cat2(name.as_str(), " does not exist (create it with `--- /dev/null`)")); }, Some(t1) => t1.clone(), } },
+            };
+            let after: String = match udiff::apply(text.as_str(), patches[k].hunks.as_slice()) {
+                Ok(done) => done,
+                Err(e) => { return Err(types::cat3(name.as_str(), ": ", e.as_str())); },
+            };
+            let gone: bool = match &new_name {
+                None => true,
+                Some(kept) => fmt::trim(after.as_str()).len() == 0,
+            };
+            if gone {
+                put_file(&mut files, name.as_str(), None);
+            } else {
+                put_file(&mut files, name.as_str(), Some(after));
+            }
+        }
+        Ok(files)
+    }
+
+    #[summary("The workspace as a JSON syntax tree (stage0 ast_doc); the error is the syntax diagnostics and a line that says the files do not parse")]
+    #[effects(alloc, io, nondet)]
+    fn ast_doc(root: &str) -> Result<json::Value, String> {
+        let files: Vec<lib::Input> = workspace::relative_sources(root)?;
+        let parsed: workspace::Parsed = workspace::parse_files(files.as_slice());
+        if parsed.diags.has_errors() {
+            return Err(types::cat2(parsed.diags.to_jsonl(&parsed.sm).as_str(), "the workspace files do not parse"));
+        }
+        ast_json::export(&parsed.program)
+    }
+
+    #[summary("Runs one tool (stage0 Server::call): Ok is a normal result, Err a tool error. The directories the tools read and write must not lead outside the workspace, so a link in place of one is refused first")]
+    #[effects(alloc, io, nondet)]
+    fn call(root: &str, fl: &Flags, txs: &mut Txs, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, name: &str, a: &json::Value) -> Result<String, String> {
+        workspace::refuse_symlink(cache::within(root, "src").as_str())?;
+        workspace::refuse_symlink(cache::within(root, ".bmb-cache").as_str())?;
+        workspace::refuse_symlink(cache::within(root, "target").as_str())?;
+        if name == "query" {
+            return tool_query(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "map" {
+            return tool_map(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "probe" && fl.probe_tool {
+            return tool_probe(root, fl, a);
+        }
+        if name == "verify" {
+            load(root, front)?;
+            let out: lib::Proved = verify(root, fl, front);
+            let text: String = positions(root, fl, out.output)?;
+            let shown: String = with_uses_search(root, fl, text, out.ok)?;
+            if out.ok {
+                return Ok(shown);
+            }
+            return Err(shown);
+        }
+        if name == "build" {
+            return tool_build(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "write" && fl.write_tool {
+            return tool_write(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "read_file" && fl.file_tools {
+            return tool_read_file(root, a);
+        }
+        if name == "edit_file" && fl.file_tools {
+            return tool_edit_file(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "read_ast" && fl.ast_tools {
+            let path: String = match json::get_str(a, "path") {
+                None => String::new(),
+                Some(p) => p,
+            };
+            let segs: Vec<String> = ast_json::pointer(path.as_str())?;
+            let doc: json::Value = ast_doc(root)?;
+            let at: json::Value = ast_json::resolve(&doc, segs.as_slice())?;
+            return Ok(json::to_json(&at));
+        }
+        if name == "edit_ast" && fl.ast_tools {
+            return tool_edit_ast(root, fl, front, idn, pr, ix, a);
+        }
+        if name == "tx_begin" {
+            if txs.open.len() >= 64 {
+                return Err(String::from("too many open transactions (64); commit or abort one first"));
+            }
+            let id: u64 = txs.next;
+            txs.next = txs.next.saturating_add(1);
+            let base: Vec<lib::Input> = files(root)?;
+            txs.open.push(Tx { id: id, ops: Vec::new(), base: base });
+            let mut began: String = String::from("{\"tx\":");
+            std::num::push_u64(&mut began, id);
+            began.push_str("}");
+            return Ok(began);
+        }
+        if (name == "tx_rename" || name == "tx_expect") && !fl.rename_ops {
+            return Err(types::cat3("unknown tool `", name, "`"));
+        }
+        if name == "tx_unit" || name == "tx_put" || name == "tx_remove" || name == "tx_remove_unit" || name == "tx_rename" || name == "tx_expect" {
+            return tool_tx_op(txs, name, a);
+        }
+        if name == "tx_commit" {
+            return tool_tx_commit(root, txs, a);
+        }
+        if name == "tx_abort" {
+            let gone: u64 = tx_arg(a)?;
+            let found: Tx = take_tx(txs, gone)?;
+            let mut aborted: String = String::from("{\"tx\":");
+            std::num::push_u64(&mut aborted, gone);
+            aborted.push_str(",\"aborted\":true}");
+            return Ok(aborted);
+        }
+        Err(types::cat3("unknown tool `", name, "`"))
+    }
+
+    #[summary("The commit line of the file diff and JSON AST edit surfaces (stage0 commit_line): committed, changed and removed, and with units, for a commit, `reformatted`: the files of now whose stored normal form differs from the text written, when there is one")]
+    #[effects(alloc)]
+    fn commit_line(c: &workspace::Commit, now: &[lib::Input], units: &Option<Vec<fmt::Unit>>, reformatted: bool) -> String {
+        let mut line: String = String::from("{\"committed\":");
+        if c.ok {
+            line.push_str("true");
+        } else {
+            line.push_str("false");
+        }
+        line.push_str(",\"changed\":");
+        line.push_str(names_json(c.changed.as_slice()).as_str());
+        line.push_str(",\"removed\":");
+        line.push_str(names_json(c.removed.as_slice()).as_str());
+        if reformatted && c.ok {
+            match units {
+                None => {},
+                Some(us) => { let mut re: Vec<String> = Vec::new(); for i in 0..now.len() invariant 0 <= i && i <= now.len(), { let unit: String = workspace::file_stem(now[i].name.as_str()); let mut stored: bool = false; for u in 0..us.len() invariant 0 <= u && u <= us.len(), { if us[u].name == unit && us[u].text == now[i].text { stored = true; } } if !stored { re.push(now[i].name.clone()); } } if re.len() > 0 { line.push_str(",\"reformatted\":"); line.push_str(names_json(re.as_slice()).as_str()); } },
+            }
+        }
+        line.push_str("}");
+        line
+    }
+
+    #[summary("A count of rows among the arguments of a call (stage0 window): None when the member key is missing or null; the error when it is no number from 0")]
+    #[effects(alloc)]
+    fn count_arg(a: &json::Value, key: &str) -> Result<Option<usize>, String> {
+        match json::get(a, key) {
+            None => Ok(None),
+            Some(v) => { if is_null(&v) { return Ok(None); } match json::as_i64(&v) { None => Err(types::cat3("`", key, "` is a count of rows, from 0")), Some(n) => { if n >= 0 { Ok(Some(n as usize)) } else { Err(types::cat3("`", key, "` is a count of rows, from 0")) } }, } },
+        }
+    }
+
+    #[summary("The elements of an array; None for another value")]
+    #[effects(alloc)]
+    fn elements(v: &json::Value) -> Option<Vec<json::Value>> {
+        match v {
+            json::Value::Null => None,
+            json::Value::Bool(b) => None,
+            json::Value::Num(n) => None,
+            json::Value::Str(t) => None,
+            json::Value::Array(xs) => Some(xs.clone()),
+            json::Value::Object(kv) => None,
+        }
+    }
+
+    #[summary("A file path as the file diff surface names files (stage0 file_name): src/UNIT.bmb, from that, a/src/UNIT.bmb, UNIT.bmb or a path ending in /src/UNIT.bmb. The path is taken apart as Rust's Path does it: the last component that is a name, without the empty and `.` components before it")]
+    #[effects(alloc)]
+    fn file_name(path: &str) -> Result<String, String> {
+        let pp: Parts = parts(path.as_bytes());
+        let end: usize = pp.dir_end;
+        let from: usize = pp.from;
+        let to: usize = pp.to;
+        let found: bool = pp.found;
+        let dir: String = lexer::cut(path, 0, end);
+        let file: String = lexer::cut(path, from, to);
+        let mut dot_at: usize = 0;
+        for k in 0..file.len()
+            invariant 0 <= k && k <= file.len(), dot_at <= k,
+        {
+            if file.as_bytes()[k] == 46 {
+                dot_at = k;
+            }
+        }
+        let stem: String = lexer::cut(file.as_str(), 0, dot_at);
+        let ok_dir: bool = dir.len() == 0 || dir == "src" || std::str::ends_with(dir.as_str(), "/src");
+        if found && dot_at > 0 && ok_dir && lexer::cut(file.as_str(), dot_at + 1, file.len()) == "bmb" && workspace::is_ident(stem.as_str()) {
+            return Ok(types::cat3("src/", stem.as_str(), ".bmb"));
+        }
+        Err(types::cat3("`", path, "` is not a workspace file: files are src/UNIT.bmb, one per top-level unit"))
+    }
+
+    #[summary("The workspace files as the tools read them (stage0 Server::files): none when the workspace has no src")]
+    #[effects(alloc, io, nondet)]
+    fn files(root: &str) -> Result<Vec<lib::Input>, String> {
+        if workspace::is_dir(workspace::src_dir(root).as_str()) {
+            workspace::read_dir_sources(root)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    #[summary("The first place, in document order, where got differs from want (stage0 first_difference): its pointer and what got has there. An object that has a part only one side has is the place itself. f is fuel above the depth of the values")]
+    #[effects(alloc)]
+    fn first_difference(want: &json::Value, got: &json::Value, at: &mut Vec<String>, f: usize) -> Option<Diff>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match members(want) {
+            None => {},
+            Some(a) => { match members(got) { None => {}, Some(b) => { let mut lone: bool = false; for i in 0..a.len() invariant 0 <= i && i <= a.len(), { if !view::has(b.as_slice(), a[i].key.as_str()) { lone = true; } } for j in 0..b.len() invariant 0 <= j && j <= b.len(), { if !view::has(a.as_slice(), b[j].key.as_str()) { lone = true; } } if lone { return Some(Diff { at: here(at.as_slice()), got: got.clone() }); } for k in 0..a.len() invariant 0 <= k && k <= a.len(), { match json::get(got, a[k].key.as_str()) { None => { return None; }, Some(other) => { at.push(a[k].key.clone()); let d: Option<Diff> = first_difference(&a[k].value, &other, at, f - 1); let popped: Option<String> = at.pop(); if is_diff(&d) { return d; } }, } } return None; }, } },
+        }
+        match elements(want) {
+            None => {},
+            Some(xs) => { match elements(got) { None => {}, Some(ys) => { if xs.len() == ys.len() { for e in 0..xs.len() invariant 0 <= e && e <= xs.len(), xs.len() == ys.len(), { let mut seg: String = String::new(); std::num::push_u64(&mut seg, e as u64); at.push(seg); let d2: Option<Diff> = first_difference(&xs[e], &ys[e], at, f - 1); let popped2: Option<String> = at.pop(); if is_diff(&d2) { return d2; } } return None; } }, } },
+        }
+        if ast_json::same(want, got, 1000000000) {
+            return None;
+        }
+        Some(Diff { at: here(at.as_slice()), got: got.clone() })
+    }
+
+    #[summary("The flags `bmb mcp` takes before the workspace directory (stage0 FLAGS)")]
+    #[effects(alloc)]
+    fn flag_names() -> Vec<String> {
+        encode_terms::split("--write-tool,--compact,--tool-docs,--file-tools,--ast-tools,--item-docs,--stats,--undecided-info,--probe-tool,--rename-ops,--bounded,--bounded-16k", 44)
+    }
+
+    #[summary("The switches the flags given set (stage0 serve): --bounded-16k is the window of --bounded at half the budget")]
+    #[effects(pure)]
+    fn flags_of(given: &[String]) -> Flags {
+        let mut fl: Flags = Flags { write_tool: false, compact: false, tool_docs: false, file_tools: false, ast_tools: false, item_docs: false, stats: false, undecided_info: false, probe_tool: false, rename_ops: false, bounded: false, budget: 32768 };
+        for i in 0..given.len()
+            invariant 0 <= i && i <= given.len(),
+        {
+            if given[i] == "--write-tool" {
+                fl.write_tool = true;
+            }
+            if given[i] == "--compact" {
+                fl.compact = true;
+            }
+            if given[i] == "--tool-docs" {
+                fl.tool_docs = true;
+            }
+            if given[i] == "--file-tools" {
+                fl.file_tools = true;
+            }
+            if given[i] == "--ast-tools" {
+                fl.ast_tools = true;
+            }
+            if given[i] == "--item-docs" {
+                fl.item_docs = true;
+            }
+            if given[i] == "--stats" {
+                fl.stats = true;
+            }
+            if given[i] == "--undecided-info" {
+                fl.undecided_info = true;
+            }
+            if given[i] == "--probe-tool" {
+                fl.probe_tool = true;
+            }
+            if given[i] == "--rename-ops" {
+                fl.rename_ops = true;
+            }
+            if given[i] == "--bounded" {
+                fl.bounded = true;
+            }
+        }
+        if types::has(given, "--bounded-16k") {
+            fl.bounded = true;
+            fl.budget = 16384;
+        }
+        fl
+    }
+
+    #[summary("Handles one JSON-RPC message (stage0 Server::handle): the response, None for a notification. Anything but a request object is an invalid request with a null id")]
+    #[effects(alloc, io, nondet)]
+    fn handle(root: &str, fl: &Flags, txs: &mut Txs, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, msg: &json::Value) -> Option<json::Value> {
+        match members(msg) {
+            None => { return Some(rpc_error(json::Value::Null, 0 - 32600, "invalid request: expected a JSON-RPC request object")); },
+            Some(kv) => {},
+        }
+        let id: json::Value = match json::get(msg, "id") {
+            None => { return None; },
+            Some(v) => v,
+        };
+        let method: String = match json::get_str(msg, "method") {
+            None => { return Some(rpc_error(id, 0 - 32600, "invalid request: missing `method`")); },
+            Some(m) => m,
+        };
+        let mut result: Vec<json::Member> = Vec::new();
+        if method == "initialize" {
+            result.push(member("protocolVersion", s("2025-06-18")));
+            result.push(member("capabilities", obj1("tools", json::Value::Object(Vec::new()))));
+            let mut info: Vec<json::Member> = Vec::new();
+            info.push(member("name", s("bmb")));
+            info.push(member("version", s(version().as_str())));
+            result.push(member("serverInfo", json::Value::Object(info)));
+            result.push(member("instructions", s("BMB workspace tools. Read with `query`/`map` (start from `query units`, then `surface`, `edges`, `slice`). Write only through tx_begin/tx_put/tx_commit. Prove with `verify`.")));
+        } else if method == "ping" {} else if method == "tools/list" {
+            result.push(member("tools", json::Value::Array(tools(fl))));
+        } else if method == "tools/call" {
+            let params: json::Value = match json::get(msg, "params") {
+                None => json::Value::Null,
+                Some(p) => p,
+            };
+            let name: String = match json::get_str(&params, "name") {
+                None => String::new(),
+                Some(n) => n,
+            };
+            let args: json::Value = match json::get(&params, "arguments") {
+                None => json::Value::Object(Vec::new()),
+                Some(a) => a,
+            };
+            let mut is_error: bool = false;
+            let mut text: String = match call(root, fl, txs, front, idn, pr, ix, name.as_str(), &args) {
+                Ok(t) => t,
+                Err(e) => { is_error = true; e },
+            };
+            if fl.compact {
+                text = view::compact(text.as_str());
+            }
+            let mut item: Vec<json::Member> = Vec::new();
+            item.push(member("type", s("text")));
+            item.push(member("text", json::Value::Str(text)));
+            let mut content: Vec<json::Value> = Vec::new();
+            content.push(json::Value::Object(item));
+            result.push(member("content", json::Value::Array(content)));
+            result.push(member("isError", json::Value::Bool(is_error)));
+        } else {
+            return Some(rpc_error(id, 0 - 32601, types::cat2("method not found: ", method.as_str()).as_str()));
+        }
+        let mut reply: Vec<json::Member> = Vec::new();
+        reply.push(member("jsonrpc", s("2.0")));
+        reply.push(member("id", id));
+        reply.push(member("result", json::Value::Object(result)));
+        Some(json::Value::Object(reply))
+    }
+
+    #[summary("The pointer of the place at the segments, `/` for the document itself (the place of stage0 first_difference)")]
+    #[effects(alloc)]
+    fn here(at: &[String]) -> String {
+        if at.len() == 0 {
+            return String::from("/");
+        }
+        let mut p: String = String::new();
+        for i in 0..at.len()
+            invariant 0 <= i && i <= at.len(),
+        {
+            p.push_str("/");
+            p.push_str(ast_json::escape(at[i].as_str()).as_str());
+        }
+        p
+    }
+
+    #[summary("Whether there is a difference")]
+    #[effects(pure)]
+    fn is_diff(d: &Option<Diff>) -> bool {
+        match d {
+            None => false,
+            Some(x) => true,
+        }
+    }
+
+    #[summary("Whether the front end has a program")]
+    #[effects(pure)]
+    fn is_loaded(fe: &Option<Loaded>) -> bool {
+        match fe {
+            None => false,
+            Some(l) => true,
+        }
+    }
+
+    #[summary("Whether the value is null")]
+    #[effects(pure)]
+    fn is_null(v: &json::Value) -> bool {
+        match v {
+            json::Value::Null => true,
+            json::Value::Bool(b) => false,
+            json::Value::Num(n) => false,
+            json::Value::Str(t) => false,
+            json::Value::Array(xs) => false,
+            json::Value::Object(kv) => false,
+        }
+    }
+
+    #[summary("Whether there is a value")]
+    #[effects(pure)]
+    fn is_value(o: &Option<json::Value>) -> bool {
+        match o {
+            None => false,
+            Some(v) => true,
+        }
+    }
+
+    #[summary("Where the last component of b[before..end] starts: after its last separator, before when it has none (Rust's parse_next_component_back)")]
+    #[effects(pure)]
+    fn last_start(b: &[u8], before: usize, end: usize) -> (r: usize)
+        requires before <= end, end <= b.len(),
+        ensures before <= r && r <= end,
+    {
+        let mut j: usize = end;
+        while j > before && b[j - 1] != 47
+            invariant before <= j && j <= end,
+            decreases j,
+        {
+            j = j - 1;
+        }
+        j
+    }
+
+    #[summary("Reads the workspace and brings the front-end results up to date (stage0 Server::load)")]
+    #[effects(alloc, io, nondet)]
+    fn load(root: &str, front: &mut Front) -> Result<(), String> {
+        let read: Vec<lib::Input> = files(root)?;
+        update(front, read.as_slice());
+        Ok(())
+    }
+
+    #[summary("Diagnostics (JSONL) with each position in files replaced by `at`, the JSON Pointer of the innermost syntax-tree node that holds it (stage0 locate). Rows whose position is in no node keep it")]
+    #[effects(alloc)]
+    fn locate(files: &[lib::Input], jsonl: &str) -> String {
+        let parsed: workspace::Parsed = workspace::parse_files(files);
+        let mut spans: Vec<ast_json::Mark> = Vec::new();
+        match ast_json::export_spans(&parsed.program, &mut spans) {
+            Ok(doc) => {},
+            Err(e) => { return String::from(jsonl); },
+        }
+        let rows: Vec<String> = cache::lines_of(jsonl);
+        let mut out: String = String::new();
+        for i in 0..rows.len()
+            invariant 0 <= i && i <= rows.len(),
+        {
+            match located(files, spans.as_slice(), rows[i].as_str()) {
+                None => out.push_str(rows[i].as_str()),
+                Some(t) => out.push_str(t.as_str()),
+            }
+            out.push_str("\n");
+        }
+        out
+    }
+
+    #[summary("One row of diagnostics with its position replaced by `at` (the closure of stage0 locate); None for a row that is no object, names no file of files, has no whole position or one that is in no node")]
+    #[effects(alloc)]
+    fn located(files: &[lib::Input], spans: &[ast_json::Mark], row: &str) -> Option<String> {
+        let v: json::Value = match json::parse(row) {
+            Ok(read) => read,
+            Err(e) => { return None; },
+        };
+        let name: String = json::get_str(&v, "file")?;
+        let mut file: usize = files.len();
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(), file <= files.len(),
+        {
+            if files[i].name == name {
+                file = i;
+            }
+        }
+        if file >= files.len() || file >= 4294967295 {
+            return None;
+        }
+        let lo: u32 = offset(files[file].text.as_bytes(), num_of(&v, "line")?, num_of(&v, "col")?)?;
+        let hi: u32 = offset(files[file].text.as_bytes(), num_of(&v, "end_line")?, num_of(&v, "end_col")?)?;
+        let p: String = ast_json::node_at(spans, file as u32, lo, hi)?;
+        let kv: Vec<json::Member> = members(&v)?;
+        let mut out: Vec<json::Member> = Vec::new();
+        for k in 0..kv.len()
+            invariant 0 <= k && k <= kv.len(),
+        {
+            if kv[k].key == "file" {
+                out.push(member("at", json::Value::Str(p.clone())));
+            } else if !(kv[k].key == "line" || kv[k].key == "col" || kv[k].key == "end_line" || kv[k].key == "end_col") {
+                out.push(json::Member { key: kv[k].key.clone(), value: kv[k].value.clone() });
+            }
+        }
+        Some(json::to_json(&json::Value::Object(out)))
+    }
+
+    #[summary("One member of an object")]
+    #[effects(alloc)]
+    fn member(k: &str, v: json::Value) -> json::Member {
+        json::Member { key: String::from(k), value: v }
+    }
+
+    #[summary("The members of an object; None for another value")]
+    #[effects(alloc)]
+    fn members(v: &json::Value) -> Option<Vec<json::Member>> {
+        match v {
+            json::Value::Null => None,
+            json::Value::Bool(b) => None,
+            json::Value::Num(n) => None,
+            json::Value::Str(t) => None,
+            json::Value::Array(xs) => None,
+            json::Value::Object(kv) => Some(kv.clone()),
+        }
+    }
+
+    #[summary("A list of texts as a JSON array")]
+    #[effects(alloc)]
+    fn names_json(xs: &[String]) -> String {
+        let mut out: String = String::from("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(&mut out, xs[i].as_str());
+        }
+        out.push_str("]");
+        out
+    }
+
+    #[summary("The schema of a tool without arguments")]
+    #[effects(alloc)]
+    fn no_args() -> json::Value {
+        schema(Vec::new(), "")
+    }
+
+    #[summary("The number member key of an object as an i64")]
+    #[effects(alloc)]
+    fn num_of(v: &json::Value, key: &str) -> Option<i64> {
+        let x: json::Value = json::get(v, key)?;
+        json::as_i64(&x)
+    }
+
+    #[summary("An object of one member")]
+    #[effects(alloc)]
+    fn obj1(k: &str, v: json::Value) -> json::Value {
+        let mut kv: Vec<json::Member> = Vec::new();
+        kv.push(member(k, v));
+        json::Value::Object(kv)
+    }
+
+    #[summary("The byte offset in the bytes of a text of line and column (both from 1, the column in characters), as stage0 locate computes it: past the lines before it, then past the characters before it on what is left; None for a line or column below 1 or an offset above 32 bits")]
+    #[effects(pure)]
+    fn offset(b: &[u8], line: i64, col: i64) -> Option<u32> {
+        if line < 1 || col < 1 {
+            return None;
+        }
+        let mut i: usize = 0;
+        let mut left: i64 = line - 1;
+        while i < b.len() && left > 0
+            invariant i <= b.len(), left >= 0,
+            decreases b.len() - i,
+        {
+            if b[i] == 10 {
+                left = left - 1;
+            }
+            i = i + 1;
+        }
+        let mut chars: i64 = col - 1;
+        while i < b.len() && chars > 0
+            invariant i <= b.len(), chars >= 0,
+            decreases b.len() - i,
+        {
+            i = after_char(b, i);
+            chars = chars - 1;
+        }
+        if i > 4294967295 {
+            return None;
+        }
+        Some(i as u32)
+    }
+
+    #[summary("The pairs of the member key of the arguments of write (stage0 pairs): the texts def and other of each object of the array; none when the member is no array. The error is stage0's message")]
+    #[effects(alloc)]
+    fn pairs(a: &json::Value, key: &str, other: &str) -> Result<Vec<encode_terms::Pair>, String> {
+        let mut out: Vec<encode_terms::Pair> = Vec::new();
+        let listed: json::Value = match json::get(a, key) {
+            None => { return Ok(out); },
+            Some(v) => v,
+        };
+        match elements(&listed) {
+            None => {},
+            Some(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { let def: Option<String> = json::get_str(&xs[i], "def"); let to: Option<String> = json::get_str(&xs[i], other); match def { None => { return Err(types::cat5("`", key, "` holds objects with `def` and `", other, "`")); }, Some(d) => { match to { None => { return Err(types::cat5("`", key, "` holds objects with `def` and `", other, "`")); }, Some(t) => out.push(encode_terms::Pair { a: d, b: t }), } }, } } },
+        }
+        Ok(out)
+    }
+
+    #[summary("The schema of an array of objects of two text members, both required (stage0 pairs of add_rename_ops)")]
+    #[effects(alloc)]
+    fn pairs_schema(what: &str, a: &str, b: &str, ad: &str, bd: &str) -> json::Value {
+        let mut kv: Vec<json::Member> = Vec::new();
+        kv.push(member("type", s("array")));
+        kv.push(member("description", s(what)));
+        let mut props: Vec<json::Member> = Vec::new();
+        add_prop(&mut props, a, "string", ad);
+        add_prop(&mut props, b, "string", bd);
+        kv.push(member("items", schema(props, types::cat3(a, ",", b).as_str())));
+        json::Value::Object(kv)
+    }
+
+    #[summary("A path taken apart as Rust's Path does it (file_name and parent): whether its last component is a name, where that name is, and where the path of its directory ends: the empty and `.` components before the name are no part of it, the root or a leading `.` is")]
+    #[effects(pure)]
+    fn parts(b: &[u8]) -> Parts {
+        let n: usize = b.len();
+        let mut before: usize = 0;
+        if n > 0 && b[0] == 47 {
+            before = 1;
+        } else if n > 0 && b[0] == 46 && (n == 1 || b[1] == 47) {
+            before = 1;
+        }
+        let mut end: usize = n;
+        let mut from: usize = n;
+        let mut to: usize = n;
+        let mut found: bool = false;
+        let mut stop: bool = false;
+        while end > before && !found && !stop
+            invariant before <= end && end <= n, from <= to && to <= n,
+            decreases end,
+        {
+            let j: usize = last_start(b, before, end);
+            let next: usize = if j > before {
+                j - 1
+            } else {
+                j
+            };
+            let dot: bool = end - j == 1 && b[j] == 46;
+            let dots: bool = end - j == 2 && b[j] == 46 && b[j + 1] == 46;
+            if dots {
+                stop = true;
+            } else if end > j && !dot {
+                found = true;
+                from = j;
+                to = end;
+            }
+            end = next;
+        }
+        while end > before
+            invariant before <= end && end <= n,
+            decreases end,
+        {
+            let j2: usize = last_start(b, before, end);
+            let dot2: bool = end - j2 == 1 && b[j2] == 46;
+            if end == j2 || dot2 {
+                end = if j2 > before {
+                    j2 - 1
+                } else {
+                    j2
+                };
+            } else {
+                return Parts { dir_end: end, from: from, to: to, found: found };
+            }
+        }
+        Parts { dir_end: end, from: from, to: to, found: found }
+    }
+
+    #[summary("The schema of the arguments of edit_ast: the JSON Patch operations (stage0 tools)")]
+    #[effects(alloc)]
+    fn patch_schema() -> json::Value {
+        let mut op: Vec<json::Member> = Vec::new();
+        op.push(member("type", s("string")));
+        op.push(member("enum", strs("add,remove,replace,move,copy,test")));
+        let mut props: Vec<json::Member> = Vec::new();
+        props.push(member("op", json::Value::Object(op)));
+        props.push(member("path", typed("string")));
+        props.push(member("from", typed("string")));
+        props.push(member("value", json::Value::Object(Vec::new())));
+        let mut item: Vec<json::Member> = Vec::new();
+        item.push(member("type", s("object")));
+        item.push(member("properties", json::Value::Object(props)));
+        item.push(member("required", strs("op,path")));
+        let mut patch: Vec<json::Member> = Vec::new();
+        patch.push(member("type", s("array")));
+        patch.push(member("description", s("the JSON Patch operations, applied in order")));
+        patch.push(member("items", json::Value::Object(item)));
+        let mut top: Vec<json::Member> = Vec::new();
+        top.push(member("type", s("object")));
+        top.push(member("properties", obj1("patch", json::Value::Object(patch))));
+        top.push(member("required", strs("patch")));
+        json::Value::Object(top)
+    }
+
+    #[summary("In the JSON AST surface, the positions of diagnostics as pointers into the tree (stage0 positions); otherwise the text as it is")]
+    #[effects(alloc, io, nondet)]
+    fn positions(root: &str, fl: &Flags, text: String) -> Result<String, String> {
+        if !fl.ast_tools {
+            return Ok(text);
+        }
+        let read: Vec<lib::Input> = files(root)?;
+        Ok(locate(read.as_slice(), text.as_str()))
+    }
+
+    #[summary("The commit line, then the proof of the whole workspace (stage0 prove_after)")]
+    #[effects(alloc, io, nondet)]
+    fn prove_after(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, line: &str) -> Result<String, String> {
+        load(root, front)?;
+        let out: lib::Proved = verify(root, fl, front);
+        let text: String = types::cat3(line, "\n", positions(root, fl, out.output)?.as_str());
+        if out.ok {
+            Ok(text)
+        } else {
+            Err(text)
+        }
+    }
+
+    #[summary("Sets the text of the file name in files, which are in name order, or removes it for None")]
+    #[effects(alloc)]
+    fn put_file(files: &mut Vec<lib::Input>, name: &str, text: Option<String>) -> () {
+        let mut out: Vec<lib::Input> = Vec::new();
+        let mut placed: bool = false;
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            if !placed && files[i].name.as_str() >= name {
+                placed = true;
+                match &text {
+                    None => {},
+                    Some(t) => out.push(lib::Input { name: String::from(name), text: t.clone() }),
+                }
+            }
+            if files[i].name != name {
+                out.push(lib::Input { name: files[i].name.clone(), text: files[i].text.clone() });
+            }
+        }
+        if !placed {
+            match &text {
+                None => {},
+                Some(t2) => out.push(lib::Input { name: String::from(name), text: t2.clone() }),
+            }
+        }
+        *files = out;
+    }
+
+    #[summary("An error response (stage0 rpc_error)")]
+    #[effects(alloc)]
+    fn rpc_error(id: json::Value, code: i64, message: &str) -> json::Value {
+        let mut num: String = String::new();
+        std::num::push_i64(&mut num, code);
+        let mut e: Vec<json::Member> = Vec::new();
+        e.push(member("code", json::Value::Num(num)));
+        e.push(member("message", s(message)));
+        let mut kv: Vec<json::Member> = Vec::new();
+        kv.push(member("jsonrpc", s("2.0")));
+        kv.push(member("id", id));
+        kv.push(member("error", json::Value::Object(e)));
+        json::Value::Object(kv)
+    }
+
+    #[summary("A text value")]
+    #[effects(alloc)]
+    fn s(x: &str) -> json::Value {
+        json::Value::Str(String::from(x))
+    }
+
+    #[summary("Whether two lists of files are the same names and texts in the same order")]
+    #[effects(pure)]
+    fn same_files(a: &[lib::Input], b: &[lib::Input]) -> bool {
+        if a.len() != b.len() {
+            return false;
+        }
+        for i in 0..a.len()
+            invariant 0 <= i && i <= a.len(),
+        {
+            if a[i].name != b[i].name || a[i].text != b[i].text {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The schema of an object with the properties props; required is the names of the required ones, split by commas (stage0 schema)")]
+    #[effects(alloc)]
+    fn schema(props: Vec<json::Member>, required: &str) -> json::Value {
+        let mut kv: Vec<json::Member> = Vec::new();
+        kv.push(member("type", s("object")));
+        kv.push(member("properties", json::Value::Object(props)));
+        kv.push(member("required", strs(required)));
+        json::Value::Object(kv)
+    }
+
+    #[summary("Serves standard input and output until the end of input (stage0 serve): one response line per request, written out before the next line is read; with --stats, the counts of the front-end cache on standard error after each reply. The error is that of a line that cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn serve(root: &str, given: &[String]) -> Result<(), String> {
+        let fl: Flags = flags_of(given);
+        let mut txs: Txs = Txs { open: Vec::new(), next: 1 };
+        let mut front: Front = Front { files: Vec::new(), fe: None, indexed: false, parsed: 0, reused: 0, checks: 0, indexes: 0 };
+        let mut none: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let blank: body::Checked = body::check_resolved(ast::Program { mods: Vec::new() }, &mut none);
+        let mut idn: map::Idents = map::idents(&blank);
+        let mut pr: fmt::Printer = fmt::identity(blank.b.c.fns.clone(), blank.b.c.adts.clone(), blank.b.types.clone(), idn.traits.clone());
+        let mut ix: map::Index = map::build(&blank, &source::SourceMap { files: Vec::new() }, &mut idn, &mut pr);
+        let mut lines: u64 = 0;
+        while lines < 18446744073709551615
+            decreases 18446744073709551615 - lines,
+        {
+            lines = lines + 1;
+            let mut line: String = String::new();
+            match std::io::read_line(&mut line) {
+                Ok(got) => { if got == 0 { return Ok(()); } },
+                Err(e) => { return Err(e.message); },
+            }
+            let text: String = whole_line(line.as_str());
+            if fmt::trim(text.as_str()).len() > 0 {
+                let reply: Option<json::Value> = match json::parse(text.as_str()) {
+                    Ok(msg) => handle(root, &fl, &mut txs, &mut front, &mut idn, &mut pr, &mut ix, &msg),
+                    Err(why) => Some(rpc_error(json::Value::Null, 0 - 32700, why.as_str())),
+                };
+                match &reply {
+                    None => {},
+                    Some(r) => { print_str(json::to_json(r).as_str()); print_str("\n"); eprint_str(""); if fl.stats { eprint_str(stats_line(&front).as_str()); } },
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[summary("The counts of the front-end cache as the line --stats writes after each reply")]
+    #[effects(alloc)]
+    fn stats_line(front: &Front) -> String {
+        let mut out: String = String::from("{\"parsed\":");
+        std::num::push_u64(&mut out, front.parsed as u64);
+        out.push_str(",\"reused\":");
+        std::num::push_u64(&mut out, front.reused as u64);
+        out.push_str(",\"checks\":");
+        std::num::push_u64(&mut out, front.checks as u64);
+        out.push_str(",\"indexes\":");
+        std::num::push_u64(&mut out, front.indexes as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The text member key of the arguments of a call; the error names the member that is missing (stage0 str_arg)")]
+    #[effects(alloc)]
+    fn str_arg(a: &json::Value, key: &str) -> Result<String, String> {
+        match json::get_str(a, key) {
+            None => Err(types::cat3("missing `", key, "`")),
+            Some(t) => Ok(t),
+        }
+    }
+
+    #[summary("An array of the texts of list, which are split by commas; an empty array for an empty list")]
+    #[effects(alloc)]
+    fn strs(list: &str) -> json::Value {
+        let mut out: Vec<json::Value> = Vec::new();
+        if list.len() > 0 {
+            let parts: Vec<String> = encode_terms::split(list, 44);
+            for i in 0..parts.len()
+                invariant 0 <= i && i <= parts.len(),
+            {
+                out.push(json::Value::Str(parts[i].clone()));
+            }
+        }
+        json::Value::Array(out)
+    }
+
+    #[summary("Removes the open transaction id and gives it; the error says that there is none")]
+    #[effects(alloc)]
+    fn take_tx(txs: &mut Txs, id: u64) -> Result<Tx, String> {
+        let mut rest: Vec<Tx> = Vec::new();
+        let mut found: Option<Tx> = None;
+        for i in 0..txs.open.len()
+            invariant 0 <= i && i <= txs.open.len(),
+        {
+            if txs.open[i].id == id {
+                found = Some(txs.open[i].clone());
+            } else {
+                rest.push(txs.open[i].clone());
+            }
+        }
+        match found {
+            None => { let mut m: String = String::from("no open transaction "); std::num::push_u64(&mut m, id); Err(m) },
+            Some(tx) => { txs.open = rest; Ok(tx) },
+        }
+    }
+
+    #[summary("The text of the file name of files, when there is one")]
+    #[effects(alloc)]
+    fn text_of(files: &[lib::Input], name: &str) -> Option<String> {
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            if files[i].name == name {
+                return Some(files[i].text.clone());
+            }
+        }
+        None
+    }
+
+    #[summary("One tool of the list: its name, its description and the schema of its arguments")]
+    #[effects(alloc)]
+    fn tool(name: &str, desc: &str, input: json::Value) -> json::Value {
+        let mut kv: Vec<json::Member> = Vec::new();
+        kv.push(member("name", s(name)));
+        kv.push(member("description", s(desc)));
+        kv.push(member("inputSchema", input));
+        json::Value::Object(kv)
+    }
+
+    #[summary("The tool build (stage0 call): an executable from a fully proved workspace at target/NAME. Refused, after the diagnostics and statuses, when an obligation is not proved or there is no main")]
+    #[effects(alloc, io, nondet)]
+    fn tool_build(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let exe: String = str_arg(a, "name")?;
+        let mut plain: bool = exe.len() > 0;
+        for i in 0..exe.len()
+            invariant 0 <= i && i <= exe.len(),
+        {
+            let c: u8 = exe.as_bytes()[i];
+            if c == 47 || c == 92 || c == 0 || i == 0 && c == 46 {
+                plain = false;
+            }
+        }
+        if !plain {
+            return Err(String::from("`name` must be a plain file name"));
+        }
+        load(root, front)?;
+        let dir: Option<String> = Some(cache::within(root, ".bmb-cache"));
+        let out: lib::Emitted = match &front.fe {
+            None => { return Err(String::new()); },
+            Some(l) => { let mut d: diag::Diags = l.diags.clone(); lib::emit_checked(&l.ck, &l.sm, &mut d, false, &dir, false, fl.undecided_info) },
+        };
+        warn(&dir, &out.cache_error, &out.incr_error);
+        if !out.ok || out.checks > 0 || !out.has_main {
+            if out.has_main {
+                return Err(types::cat2(out.output.as_str(), "build refused: not fully proved"));
+            }
+            return Err(types::cat2(out.output.as_str(), "build refused: no `main`"));
+        }
+        if out.todo.len() > 0 {
+            return Err(types::cat3(out.output.as_str(), "stage1: build: not ported yet: ", encode_terms::join(out.todo.as_slice(), "; ").as_str()));
+        }
+        let target: String = cache::within(root, "target");
+        match std::fs::create_dir_all(target.as_str()) {
+            Ok(made) => {},
+            Err(e) => { return Err(e.message); },
+        }
+        let path: String = cache::within(target.as_str(), exe.as_str());
+        toolchain::build_executable(out.ir.as_str(), path.as_str())?;
+        let mut text: String = out.output.clone();
+        text.push_str("{\"built\":");
+        std::json::push_string(&mut text, path.as_str());
+        text.push_str("}\n");
+        Ok(text)
+    }
+
+    #[summary("The tool edit_ast (stage0 call): a JSON Patch on the syntax tree of the workspace, committed as the files the patched tree prints as, then the proof. The patch may come as JSON text. The tree must be what the printed program parses back to, in the form that writes a method call by path as a method call; otherwise the first part that has no text of its own is the error and nothing is written")]
+    #[effects(alloc, io, nondet)]
+    fn tool_edit_ast(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let given: json::Value = match json::get(a, "patch") {
+            None => { return Err(String::from("missing `patch`")); },
+            Some(p) => p,
+        };
+        let patch: json::Value = match json::as_str(&given) {
+            None => given,
+            Some(t) => { match json::parse(t.as_str()) { Ok(read) => read, Err(e) => { return Err(types::cat2("`patch` is not JSON: ", e.as_str())); }, } },
+        };
+        let doc: json::Value = ast_doc(root)?;
+        let patched: json::Value = ast_json::apply_patch(&doc, &patch)?;
+        let program: ast::Program = ast_json::import(&patched)?;
+        let printed: Vec<fmt::Unit> = fmt::format_units(&program);
+        let now: Vec<lib::Input> = unit_files(printed.as_slice());
+        let before: Vec<lib::Input> = workspace::relative_sources(root)?;
+        let pl: workspace::Planned = workspace::plan_files(before.as_slice(), now.as_slice());
+        let line: String = commit_line(&pl.commit, now.as_slice(), &pl.units, false);
+        if !pl.commit.ok {
+            return Err(types::cat2(locate(now.as_slice(), pl.commit.diagnostics.as_str()).as_str(), line.as_str()));
+        }
+        let units: Vec<fmt::Unit> = match &pl.units {
+            None => Vec::new(),
+            Some(us) => us.clone(),
+        };
+        let back: workspace::Parsed = workspace::parse_files(unit_files(units.as_slice()).as_slice());
+        let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let ck: body::Checked = body::check_resolved(program.clone(), &mut d);
+        let normal: ast::Program = methodize::methodize(&program, &ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+        let want: json::Value = ast_json::export(&normal)?;
+        let got: json::Value = ast_json::export(&back.program)?;
+        let mut at: Vec<String> = Vec::new();
+        match first_difference(&want, &got, &mut at, 1000000000) {
+            None => {},
+            Some(df) => { return Err(types::cat4(df.at.as_str(), ": this part of the tree has no text of its own: it prints and parses back as ", json::to_json(&df.got).as_str(), "; write it that way (nothing written)")); },
+        }
+        workspace::write_units(root, units.as_slice())?;
+        prove_after(root, fl, front, idn, pr, ix, line.as_str())
+    }
+
+    #[summary("The tool edit_file (stage0 call): a unified diff on the workspace files, committed as a whole, then the proof")]
+    #[effects(alloc, io, nondet)]
+    fn tool_edit_file(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let diff: String = str_arg(a, "diff")?;
+        let before: Vec<lib::Input> = workspace::relative_sources(root)?;
+        let now: Vec<lib::Input> = apply_diff(before.as_slice(), diff.as_str())?;
+        let pl: workspace::Planned = workspace::plan_files(before.as_slice(), now.as_slice());
+        let line: String = commit_line(&pl.commit, now.as_slice(), &pl.units, true);
+        if !pl.commit.ok {
+            return Err(types::cat2(pl.commit.diagnostics.as_str(), line.as_str()));
+        }
+        let units: Vec<fmt::Unit> = match &pl.units {
+            None => Vec::new(),
+            Some(us) => us.clone(),
+        };
+        workspace::write_units(root, units.as_slice())?;
+        prove_after(root, fl, front, idn, pr, ix, line.as_str())
+    }
+
+    #[summary("The tool map (stage0 call and FrontCache::map_request): the standard map of the level, all without one, through the window of the call with --bounded")]
+    #[effects(alloc, io, nondet)]
+    fn tool_map(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let level: String = match json::get_str(a, "level") {
+            None => String::from("all"),
+            Some(asked) => asked,
+        };
+        load(root, front)?;
+        with_index(front, idn, pr, ix)?;
+        if !map::is_level(level.as_str()) {
+            return Err(types::cat3("unknown map level `", level.as_str(), "`"));
+        }
+        let dir: Option<String> = Some(cache::within(root, ".bmb-cache"));
+        let got: map::Mapped = match &front.fe {
+            None => { return Err(String::new()); },
+            Some(l) => map::rows(&l.ck, &l.diags, idn, pr, ix, level.as_str(), &dir, fl.undecided_info),
+        };
+        warn(&dir, &got.cache_error, &got.incr_error);
+        window(fl, got.text, a)
+    }
+
+    #[summary("The tool probe (stage0 call): candidate invariants for one loop of one function, tried without writing anything")]
+    #[effects(alloc, io, nondet)]
+    fn tool_probe(root: &str, fl: &Flags, a: &json::Value) -> Result<String, String> {
+        let def: String = str_arg(a, "def")?;
+        let at: i64 = match json::get(a, "loop") {
+            None => 0,
+            Some(v) => { match json::as_i64(&v) { None => 0, Some(n) => n, } },
+        };
+        if at < 0 {
+            return Err(String::from("`loop` counts from 0"));
+        }
+        let listed: Vec<json::Value> = match json::get(a, "candidates") {
+            None => { return Err(String::from("missing `candidates`")); },
+            Some(c) => { match elements(&c) { None => { return Err(String::from("missing `candidates`")); }, Some(xs) => xs, } },
+        };
+        let mut cands: Vec<String> = Vec::new();
+        for i in 0..listed.len()
+            invariant 0 <= i && i <= listed.len(),
+        {
+            match json::as_str(&listed[i]) {
+                None => { return Err(String::from("`candidates` holds expressions")); },
+                Some(t) => cands.push(t),
+            }
+        }
+        let files: Vec<lib::Input> = workspace::relative_sources(root)?;
+        probe::probe(files.as_slice(), def.as_str(), at as usize, cands.as_slice(), fl.undecided_info)
+    }
+
+    #[summary("The tool query (stage0 call and FrontCache::map_request): a read query with its text arguments, through the window of the call with --bounded")]
+    #[effects(alloc, io, nondet)]
+    fn tool_query(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let mut req: Vec<String> = Vec::new();
+        req.push(str_arg(a, "name")?);
+        match json::get(a, "args") {
+            None => {},
+            Some(v) => { match elements(&v) { None => {}, Some(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { match json::as_str(&xs[i]) { None => {}, Some(t) => req.push(t), } } }, } },
+        }
+        load(root, front)?;
+        with_index(front, idn, pr, ix)?;
+        let dir: Option<String> = Some(cache::within(root, ".bmb-cache"));
+        let got: query::Answer = match &front.fe {
+            None => { return Err(String::new()); },
+            Some(l) => query::asked(&l.ck, &l.diags, idn, pr, ix.clone(), req.as_slice(), &dir, fl.undecided_info),
+        };
+        warn(&dir, &got.cache_error, &got.incr_error);
+        if got.kind != 0 {
+            return Err(got.text);
+        }
+        window(fl, got.text, a)
+    }
+
+    #[summary("The tool read_file (stage0 call): the text of one workspace file; the error lists the files there are")]
+    #[effects(alloc, io, nondet)]
+    fn tool_read_file(root: &str, a: &json::Value) -> Result<String, String> {
+        let name: String = file_name(str_arg(a, "path")?.as_str())?;
+        let files: Vec<lib::Input> = workspace::relative_sources(root)?;
+        match text_of(files.as_slice(), name.as_str()) {
+            None => { let mut m: String = types::cat3("no file ", name.as_str(), "; the files are: "); for i in 0..files.len() invariant 0 <= i && i <= files.len(), { if i > 0 { m.push_str(", "); } m.push_str(files[i].name.as_str()); } Err(m) },
+            Some(text) => Ok(text),
+        }
+    }
+
+    #[summary("The tool tx_commit (stage0 call): commits a transaction, which is closed whatever comes of it. Refused when the workspace files are not those of tx_begin")]
+    #[effects(alloc, io, nondet)]
+    fn tool_tx_commit(root: &str, txs: &mut Txs, a: &json::Value) -> Result<String, String> {
+        let id: u64 = tx_arg(a)?;
+        let tx: Tx = take_tx(txs, id)?;
+        let now: Vec<lib::Input> = files(root)?;
+        if !same_files(now.as_slice(), tx.base.as_slice()) {
+            let mut m: String = String::from("{\"committed\":false,\"error\":\"workspace changed since tx_begin; begin a new transaction\",\"tx\":");
+            std::num::push_u64(&mut m, id);
+            m.push_str("}");
+            return Err(m);
+        }
+        let c: workspace::Commit = workspace::commit(root, tx.ops.as_slice())?;
+        let none: Option<Vec<fmt::Unit>> = None;
+        let empty: Vec<lib::Input> = Vec::new();
+        let line: String = commit_line(&c, empty.as_slice(), &none, false);
+        if c.ok {
+            Ok(line)
+        } else {
+            Err(types::cat2(c.diagnostics.as_str(), line.as_str()))
+        }
+    }
+
+    #[summary("The tools that add one operation to a transaction (stage0 call): tx_unit, tx_put, tx_remove, tx_remove_unit, tx_rename and tx_expect. The arguments of the operation are read before the transaction is looked up")]
+    #[effects(alloc)]
+    fn tool_tx_op(txs: &mut Txs, name: &str, a: &json::Value) -> Result<String, String> {
+        let id: u64 = tx_arg(a)?;
+        let op: workspace::Op = if name == "tx_rename" {
+            let rd: String = str_arg(a, "def")?;
+            workspace::Op::Rename(rd, str_arg(a, "to")?)
+        } else if name == "tx_expect" {
+            let ed: String = str_arg(a, "def")?;
+            workspace::Op::Expect(ed, str_arg(a, "id")?)
+        } else if name == "tx_unit" {
+            let up: String = str_arg(a, "path")?;
+            workspace::Op::Unit(up, str_arg(a, "summary")?)
+        } else if name == "tx_put" {
+            let pu: String = str_arg(a, "unit")?;
+            workspace::Op::Put(pu, str_arg(a, "code")?)
+        } else if name == "tx_remove" {
+            workspace::Op::Remove(str_arg(a, "def")?)
+        } else {
+            workspace::Op::RemoveUnit(str_arg(a, "path")?)
+        };
+        let mut count: usize = 0;
+        let mut found: bool = false;
+        let n: usize = txs.open.len();
+        for i in 0..n
+            invariant 0 <= i && i <= n, txs.open.len() == n,
+        {
+            if txs.open[i].id == id && !found {
+                found = true;
+                txs.open[i].ops.push(op.clone());
+                count = txs.open[i].ops.len();
+            }
+        }
+        if !found {
+            let mut m: String = String::from("no open transaction ");
+            std::num::push_u64(&mut m, id);
+            return Err(m);
+        }
+        let mut out: String = String::from("{\"tx\":");
+        std::num::push_u64(&mut out, id);
+        out.push_str(",\"ops\":");
+        std::num::push_u64(&mut out, count as u64);
+        out.push_str("}");
+        Ok(out)
+    }
+
+    #[summary("The tool write (stage0 call): one transaction and a proof in one call. With --rename-ops the identities the write depends on and the renames come first; then the unit's summary, the items of code, the removals; the commit; and when it commits, the proof of the workspace after the commit line")]
+    #[effects(alloc, io, nondet)]
+    fn tool_write(root: &str, fl: &Flags, front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index, a: &json::Value) -> Result<String, String> {
+        let mut ops: Vec<workspace::Op> = Vec::new();
+        if fl.rename_ops {
+            let expects: Vec<encode_terms::Pair> = pairs(a, "expect", "id")?;
+            for i in 0..expects.len()
+                invariant 0 <= i && i <= expects.len(),
+            {
+                ops.push(workspace::Op::Expect(expects[i].a.clone(), expects[i].b.clone()));
+            }
+            let renames: Vec<encode_terms::Pair> = pairs(a, "rename", "to")?;
+            for j in 0..renames.len()
+                invariant 0 <= j && j <= renames.len(),
+            {
+                ops.push(workspace::Op::Rename(renames[j].a.clone(), renames[j].b.clone()));
+            }
+        }
+        let summary: Option<json::Value> = json::get(a, "summary");
+        let code: Option<json::Value> = json::get(a, "code");
+        let remove: Option<json::Value> = json::get(a, "remove");
+        let items: bool = is_value(&summary) || is_value(&code) || is_value(&remove);
+        let unit: String = if items || !fl.rename_ops {
+            str_arg(a, "unit")?
+        } else {
+            String::new()
+        };
+        match json::get_str(a, "summary") {
+            None => {},
+            Some(st) => ops.push(workspace::Op::Unit(unit.clone(), st)),
+        }
+        match json::get_str(a, "code") {
+            None => {},
+            Some(ct) => { if fmt::trim(ct.as_str()).len() > 0 { ops.push(workspace::Op::Put(unit.clone(), ct.clone())); } },
+        }
+        match &remove {
+            None => {},
+            Some(rv) => { match elements(rv) { None => {}, Some(xs) => { for r in 0..xs.len() invariant 0 <= r && r <= xs.len(), { match json::as_str(&xs[r]) { None => { return Err(String::from("`remove` holds definition paths")); }, Some(def) => ops.push(workspace::Op::Remove(def)), } } }, } },
+        }
+        if ops.len() == 0 {
+            if fl.rename_ops {
+                return Err(String::from("nothing to write: give `code`, `summary`, `remove` or `rename`"));
+            }
+            return Err(String::from("nothing to write: give `code`, `summary` or `remove`"));
+        }
+        let c: workspace::Commit = workspace::commit(root, ops.as_slice())?;
+        let none: Option<Vec<fmt::Unit>> = None;
+        let empty: Vec<lib::Input> = Vec::new();
+        let line: String = commit_line(&c, empty.as_slice(), &none, false);
+        if !c.ok {
+            return Err(types::cat2(c.diagnostics.as_str(), line.as_str()));
+        }
+        load(root, front)?;
+        let out: lib::Proved = verify(root, fl, front);
+        let text: String = types::cat3(line.as_str(), "\n", out.output.as_str());
+        let shown: String = with_uses_search(root, fl, text, out.ok)?;
+        if out.ok {
+            Ok(shown)
+        } else {
+            Err(shown)
+        }
+    }
+
+    #[summary("The tool list (stage0 tools, probe_tool and add_rename_ops). write is offered only with --write-tool, the edit surfaces only with their flags, after build; probe comes last; tx_rename and tx_expect stand before tx_commit. With --compact the read and proof tools describe the compact view; with --tool-docs the descriptions document the tools on their own; with --item-docs tx_put, tx_remove and write name every item they take; with --bounded query and map take the window and say so")]
+    #[effects(alloc)]
+    fn tools(fl: &Flags) -> Vec<json::Value> {
+        let statuses: String = if fl.compact {
+            String::from("one status line per definition that did not verify and the number of verified definitions")
+        } else {
+            String::from("one status line per definition")
+        };
+        let query_form: String = if fl.compact {
+            String::from("Units, surfaces and slices come as Rust-shaped text: a surface is the definition without its body, after a `// PATH: STATUS` line; edges as `FROM KIND TO`; other rows as JSON lines without empty fields.")
+        } else {
+            String::from("Returns JSONL.")
+        };
+        let mut query: String = if fl.tool_docs {
+            types::cat2("Read the workspace. Start with `units` (units and their definitions), then narrow down: `surface DEF` (signature, contract, proof status), `edges DEF [out|in|both] [depth]` (resolved calls, contract uses, #[uses], &mut writes), `slice DEF` (the definition and the contracts it depends on), `find NAME`, `contracts PRED`, `status`. ", query_form.as_str())
+        } else {
+            types::cat2("Read query on the standard maps (ADR-0020): units, surface DEF, edges DEF [out|in|both] [depth], slice DEF, find NAME, contracts PRED, status. ", query_form.as_str())
+        };
+        let mut map_desc: String = if fl.compact {
+            String::from("Standard map as Rust-shaped text: level L0 (units and definitions), L1 (surfaces: each definition without its body, after a `// PATH: STATUS` line), L2 (edges, `FROM KIND TO`) or all.")
+        } else {
+            String::from("Standard map as JSONL: level L0 (units and definitions), L1 (surfaces), L2 (edges) or all.")
+        };
+        let mut query_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut query_args, "name", "string", "query name");
+        add_prop(&mut query_args, "args", "array", "query arguments");
+        let mut map_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut map_args, "level", "string", "L0, L1, L2 or all");
+        if fl.bounded {
+            add_prop(&mut query_args, "offset", "integer", "rows of the result to skip (default 0)");
+            add_prop(&mut query_args, "limit", "integer", "rows to return at most");
+            add_prop(&mut map_args, "offset", "integer", "rows of the result to skip (default 0)");
+            add_prop(&mut map_args, "limit", "integer", "rows to return at most");
+            let mut budget: String = String::new();
+            std::num::push_u64(&mut budget, fl.budget as u64);
+            query.push_str(" A result over ");
+            query.push_str(budget.as_str());
+            query.push_str(" bytes is cut after a whole row and ends with a `truncated` row (rows shown, rows and bytes of the whole result, `next`): go on with `offset`, or ask for less. `overview [PATH..]` lists units without their definitions; `units`, `status`, `duplicates`, `effects` and `tests` take paths (units, definitions, types) and answer for what is under them; `edges` takes a fourth argument, the edge kinds to follow (`calls,uses`); `text PATTERN [PATH..]` finds the lines of the code that hold PATTERN as written (no pattern language): the definition, the line in it and the text around the occurrence.");
+            map_desc.push_str(" A result over ");
+            map_desc.push_str(budget.as_str());
+            map_desc.push_str(" bytes is cut after a whole row and ends with a `truncated` row: go on with `offset`, or use `query` with paths.");
+        }
+        let mut list: Vec<json::Value> = Vec::new();
+        list.push(tool("query", query.as_str(), schema(query_args, "name")));
+        list.push(tool("map", map_desc.as_str(), schema(map_args, "")));
+        let joint: String = if fl.compact {
+            String::from(",")
+        } else {
+            String::from(" and")
+        };
+        list.push(tool("verify", types::cat5("Check and prove the workspace. Returns diagnostics (with counterexamples)", joint.as_str(), " ", statuses.as_str(), ".").as_str(), no_args()));
+        let mut build_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut build_args, "name", "string", "executable name");
+        list.push(tool("build", "Build an executable from a fully proved workspace into target/NAME. Refused if any obligation is unproved.", schema(build_args, "name")));
+        if fl.write_tool {
+            list.push(write_tool(fl, statuses.as_str()));
+        }
+        if fl.file_tools {
+            let mut read_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut read_args, "path", "string", "the file, e.g. src/calc.bmb");
+            list.push(tool("read_file", "Read one workspace file. `src/UNIT.bmb` holds the top-level unit UNIT (with its nested units) in normal form. Returns the file's text exactly, to write diffs against.", schema(read_args, "path")));
+            let mut diff_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut diff_args, "diff", "string", "the unified diff");
+            list.push(tool("edit_file", types::cat3("The only way to write: apply a unified diff to one or more files, then commit and prove the whole workspace. Each file starts with `--- a/src/UNIT.bmb` and `+++ b/src/UNIT.bmb` (`--- /dev/null` creates a file, `+++ /dev/null` deletes one; `src/UNIT.bmb` holds exactly the top-level unit UNIT), then hunks `@@ -LINE,COUNT +LINE,COUNT @@` whose lines start with ' ' (context), '-' (remove) or '+' (add). Counts are recounted and LINE is where a hunk is looked for first; context and removed lines must match the file exactly. Rejected as a whole if a hunk does not apply or on any structural or type error (diagnostics returned, nothing written). Committed files are stored in normal form: `reformatted` lists the files whose text the normal form changed, to read again before the next diff. After a commit, returns the commit line and the proof result (diagnostics with counterexamples, ", statuses.as_str(), "), as an error when a proof fails.").as_str(), schema(diff_args, "diff")));
+        }
+        if fl.ast_tools {
+            let mut ast_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut ast_args, "path", "string", "JSON Pointer, e.g. /calc/fns/twice (empty: the whole workspace)");
+            list.push(tool("read_ast", "Read the workspace's syntax tree as JSON, at a JSON Pointer `path` (default: the whole workspace). The document is keyed by top-level unit name; a unit has `summary` and, keyed by name, `units`, `types`, `traits`, `impls` and `fns`, so `/calc/fns/twice` is function `calc::twice` and `/calc/fns/twice/body/tail` its body's last expression. Every other node is an object with a `kind` (`fn`, `let`, `while`, `call`, `binary`, `var`, `int`, `i64`, `ref`, ..) and its parts by name; empty parts are left out.", schema(ast_args, "")));
+            list.push(tool("edit_ast", types::cat3("The only way to write: apply a JSON Patch (RFC 6902: `add`, `remove`, `replace`, `move`, `copy`, `test`, each at a JSON Pointer `path`) to the syntax tree `read_ast` shows, then commit and prove the whole workspace. `add` at `/UNIT/fns/NAME` adds or replaces a function, at `/UNIT` a unit; any node can be replaced in place. Rejected as a whole if an operation does not apply, the result is not a syntax tree, or on any structural or type error (diagnostics returned with `at`, the pointer of the node, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples and `at`, ", statuses.as_str(), "), as an error when a proof fails.").as_str(), patch_schema()));
+        }
+        list.push(tool("tx_begin", "Start a write transaction. Returns its id.", no_args()));
+        let mut unit_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut unit_args, "tx", "integer", "transaction id");
+        add_prop(&mut unit_args, "path", "string", "unit path");
+        add_prop(&mut unit_args, "summary", "string", "one-line summary");
+        list.push(tool("tx_unit", "In a transaction: create unit PATH (a or a::b) or replace its one-line summary.", schema(unit_args, "tx,path,summary")));
+        let mut put_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut put_args, "tx", "integer", "transaction id");
+        add_prop(&mut put_args, "unit", "string", "unit path");
+        let mut remove_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut remove_args, "tx", "integer", "transaction id");
+        if fl.item_docs {
+            add_prop(&mut put_args, "code", "string", "the items");
+            list.push(tool("tx_put", "In a transaction: add or replace items in UNIT. A function, type (with its attributes), trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's `impl` block.", schema(put_args, "tx,unit,code")));
+            add_prop(&mut remove_args, "def", "string", "item path");
+            list.push(tool("tx_remove", "In a transaction: remove the item at PATH: `unit::f`, `unit::T` (with its `impl` block), `unit::T::f`, `unit::Trait` or `<unit::T as unit::Trait>`.", schema(remove_args, "tx,def")));
+        } else {
+            add_prop(&mut put_args, "code", "string", "the definition");
+            list.push(tool("tx_put", "In a transaction: add or replace one definition (fn or spec fn with its attributes) in UNIT.", schema(put_args, "tx,unit,code")));
+            add_prop(&mut remove_args, "def", "string", "definition path");
+            list.push(tool("tx_remove", "In a transaction: remove definition DEF (full path).", schema(remove_args, "tx,def")));
+        }
+        let mut gone_args: Vec<json::Member> = Vec::new();
+        add_prop(&mut gone_args, "tx", "integer", "transaction id");
+        add_prop(&mut gone_args, "path", "string", "unit path");
+        list.push(tool("tx_remove_unit", "In a transaction: remove unit PATH and everything in it.", schema(gone_args, "tx,path")));
+        if fl.rename_ops {
+            let mut rename_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut rename_args, "tx", "integer", "transaction id");
+            add_prop(&mut rename_args, "def", "string", "definition path");
+            add_prop(&mut rename_args, "to", "string", "the new name (not a path)");
+            list.push(tool("tx_rename", "In a transaction: rename definition DEF to the new name TO (in its unit), in its declaration and in every reference. Rejected when the name is taken or a reference would then mean another definition. The definitions' identities do not change.", schema(rename_args, "tx,def,to")));
+            let mut expect_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut expect_args, "tx", "integer", "transaction id");
+            add_prop(&mut expect_args, "def", "string", "definition path");
+            add_prop(&mut expect_args, "id", "string", "the identity the definition must have");
+            list.push(tool("tx_expect", "In a transaction: require that definition DEF has identity ID (`id` of `query surface DEF`) in the workspace the commit starts from. The commit is rejected when it does not: the definition was changed since it was read. A rename of another definition does not change an identity; an edit of a callee's body changes its callers'.", schema(expect_args, "tx,def,id")));
+        }
+        list.push(tool("tx_commit", "Commit a transaction. Rejected as a whole on any structural or type error (diagnostics returned, nothing written) or if the workspace changed since tx_begin. Proofs are not required to commit.", tx_only()));
+        list.push(tool("tx_abort", "Discard a transaction.", tx_only()));
+        if fl.probe_tool {
+            let mut probe_args: Vec<json::Member> = Vec::new();
+            add_prop(&mut probe_args, "def", "string", "the function's full path, e.g. unit::f");
+            add_prop(&mut probe_args, "loop", "integer", "which loop of the function, from 0 in source order (default 0)");
+            add_prop(&mut probe_args, "candidates", "array", "candidate invariants, each a boolean expression (at most 16)");
+            list.push(tool("probe", "Try candidate invariants for one loop of one function without writing anything. Each candidate is added to the loop's invariants and the function alone is proved; candidates that fail on entry, are not kept by the body, are undecided there or do not check are dropped, and the rest are tried again until none drops (the largest set that holds together). Returns one line per candidate (kept, or where it failed with a counterexample, or its error), then the kept set and whether the function proves with it.", schema(probe_args, "def,candidates")));
+        }
+        list
+    }
+
+    #[summary("The transaction id among the arguments of a call (stage0 tx_arg): the number tx, a negative one as the 64 unsigned bits it is")]
+    #[effects(alloc)]
+    fn tx_arg(a: &json::Value) -> Result<u64, String> {
+        match num_of(a, "tx") {
+            None => Err(String::from("missing `tx`")),
+            Some(v) => { if v >= 0 { Ok(v as u64) } else { Ok(18446744073709551615 - (0 - (v + 1)) as u64) } },
+        }
+    }
+
+    #[summary("The schema of a tool whose one argument is a transaction id")]
+    #[effects(alloc)]
+    fn tx_only() -> json::Value {
+        let mut props: Vec<json::Member> = Vec::new();
+        add_prop(&mut props, "tx", "integer", "transaction id");
+        schema(props, "tx")
+    }
+
+    #[summary("An object that says only its type")]
+    #[effects(alloc)]
+    fn typed(ty: &str) -> json::Value {
+        obj1("type", s(ty))
+    }
+
+    #[summary("The units as the workspace files they are stored in: src/UNIT.bmb")]
+    #[effects(alloc)]
+    fn unit_files(units: &[fmt::Unit]) -> Vec<lib::Input> {
+        let mut out: Vec<lib::Input> = Vec::new();
+        for i in 0..units.len()
+            invariant 0 <= i && i <= units.len(),
+        {
+            out.push(lib::Input { name: types::cat3("src/", units[i].name.as_str(), ".bmb"), text: units[i].text.clone() });
+        }
+        out
+    }
+
+    #[summary("Brings the front-end results to the files as just read, in program order (stage0 FrontCache::update), redoing only what they changed: a file whose name, position and text are those of the last call is not lexed or parsed again; any change runs the checker over the whole program again and drops the map index. When nothing changed, everything is kept")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn update(front: &mut Front, read: &[lib::Input]) -> () {
+        let mut same: bool = is_loaded(&front.fe) && read.len() == front.files.len();
+        for i in 0..read.len()
+            invariant 0 <= i && i <= read.len(),
+        {
+            if i >= front.files.len() || read[i].name != front.files[i].name || read[i].text != front.files[i].text {
+                same = false;
+            }
+        }
+        if same {
+            return;
+        }
+        front.indexed = false;
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut mods: Vec<ast::Mod> = Vec::new();
+        let mut now: Vec<ParsedFile> = Vec::new();
+        for k in 0..read.len()
+            invariant 0 <= k && k <= read.len(),
+        {
+            if read[k].text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let at: usize = now.len();
+                let id: u32 = sm.add(read[k].name.clone(), read[k].text.clone());
+                let mut pf: ParsedFile = ParsedFile { name: read[k].name.clone(), text: read[k].text.clone(), mods: Vec::new(), diags: Vec::new(), aliases: Vec::new() };
+                if at < front.files.len() && front.files[at].name == read[k].name && front.files[at].text == read[k].text {
+                    front.reused = front.reused.saturating_add(1);
+                    pf.mods = front.files[at].mods.clone();
+                    pf.diags = front.files[at].diags.clone();
+                    pf.aliases = front.files[at].aliases.clone();
+                } else {
+                    front.parsed = front.parsed.saturating_add(1);
+                    let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+                    let toks: Vec<lexer::Token> = lexer::lex(id, read[k].text.as_str(), &mut d);
+                    let p: ast::Program = parser::parse(toks, &mut d, read[k].text.as_str());
+                    pf.mods = p.mods;
+                    pf.diags = d.items;
+                    pf.aliases = d.aliases;
+                }
+                ast::append::<diag::Diag>(&mut diags.items, pf.diags.clone());
+                ast::append::<diag::Diag>(&mut diags.aliases, pf.aliases.clone());
+                ast::append::<ast::Mod>(&mut mods, pf.mods.clone());
+                now.push(pf);
+            }
+        }
+        let mut program: ast::Program = ast::Program { mods: mods };
+        stdlib::add(&mut sm, &mut program, &mut diags);
+        front.checks = front.checks.saturating_add(1);
+        let ck: body::Checked = body::check_resolved(program, &mut diags);
+        front.files = now;
+        front.fe = Some(Loaded { sm: sm, diags: diags, ck: ck });
+    }
+
+    #[summary("Proves the program of the front end through the caches of the workspace (stage0 FrontCache::verify); a cache that cannot be written is said on standard error")]
+    #[effects(alloc, io, nondet)]
+    fn verify(root: &str, fl: &Flags, front: &Front) -> lib::Proved {
+        let dir: Option<String> = Some(cache::within(root, ".bmb-cache"));
+        let only: Vec<String> = Vec::new();
+        match &front.fe {
+            None => lib::Proved { ok: false, output: String::new(), scripts: Vec::new(), hits: 0, misses: 0, missing: Vec::new(), cache_error: None, incr: None, incr_error: None },
+            Some(l) => { let mut d: diag::Diags = l.diags.clone(); let out: lib::Proved = lib::verify_checked(&l.ck, &l.sm, &mut d, &dir, only.as_slice(), fl.undecided_info, true, false); warn(&dir, &out.cache_error, &out.incr_error); out },
+        }
+    }
+
+    #[summary("The version of the package, which `initialize` reports (stage0's CARGO_PKG_VERSION)")]
+    #[effects(alloc)]
+    fn version() -> String {
+        String::from("0.2.0")
+    }
+
+    #[summary("Says on standard error that the proof cache or the per-definition cache of dir could not be written, as stage0 does where it saves them")]
+    #[effects(alloc, io)]
+    fn warn(dir: &Option<String>, cache_error: &Option<String>, incr_error: &Option<String>) -> () {
+        match dir {
+            None => {},
+            Some(d) => { match cache_error { None => {}, Some(why) => { eprint_str(types::cat5("bmb: cannot write proof cache in ", d.as_str(), ": ", why.as_str(), "\n").as_str()); }, } match incr_error { None => {}, Some(why2) => { eprint_str(types::cat5("bmb: cannot write incremental cache in ", d.as_str(), ": ", why2.as_str(), "\n").as_str()); }, } },
+        }
+    }
+
+    #[summary("A line of input without its line end: the line feed, and a carriage return before it (Rust's lines)")]
+    #[effects(alloc)]
+    fn whole_line(line: &str) -> String {
+        let n: usize = line.len();
+        if n > 0 && line.as_bytes()[n - 1] == 10 {
+            if n > 1 && line.as_bytes()[n - 2] == 13 {
+                return lexer::cut(line, 0, n - 2);
+            }
+            return lexer::cut(line, 0, n - 1);
+        }
+        String::from(line)
+    }
+
+    #[summary("With --bounded, the window of the response text that the call's offset and limit ask for (stage0 window); otherwise the text")]
+    #[effects(alloc)]
+    fn window(fl: &Flags, text: String, a: &json::Value) -> Result<String, String> {
+        if !fl.bounded {
+            return Ok(text);
+        }
+        let offset: usize = match count_arg(a, "offset")? {
+            None => 0,
+            Some(n) => n,
+        };
+        let limit: Option<usize> = count_arg(a, "limit")?;
+        Ok(map::bound(text.as_str(), &map::Window { budget: fl.budget, offset: offset, limit: limit }))
+    }
+
+    #[summary("The map index of the program of the front end, built when there is none (stage0 FrontCache::map_request); the error is the diagnostics of a program that does not check")]
+    #[effects(alloc)]
+    fn with_index(front: &mut Front, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: &mut map::Index) -> Result<(), String> {
+        if front.indexed {
+            match &front.fe {
+                None => {},
+                Some(l0) => { if l0.diags.has_errors() { return Err(l0.diags.to_jsonl(&l0.sm)); } },
+            }
+            return Ok(());
+        }
+        match &front.fe {
+            None => { return Err(String::new()); },
+            Some(l) => { if l.diags.has_errors() { return Err(l.diags.to_jsonl(&l.sm)); } *idn = map::idents(&l.ck); *pr = fmt::identity(l.ck.b.c.fns.clone(), l.ck.b.c.adts.clone(), l.ck.b.types.clone(), idn.traits.clone()); *ix = map::build(&l.ck, &l.sm, idn, pr); },
+        }
+        front.indexed = true;
+        front.indexes = front.indexes.saturating_add(1);
+        Ok(())
+    }
+
+    #[summary("The text and, with --undecided-info when the proof failed and a diagnostic suggests #[uses(..)], the rows of that search on the workspace, at most 4 verifications per definition (stage0 with_uses_search). The workspace is not changed")]
+    #[effects(alloc, io, nondet)]
+    fn with_uses_search(root: &str, fl: &Flags, text: String, ok: bool) -> Result<String, String> {
+        if !fl.undecided_info || ok || !workspace::contains(text.as_str(), "add to #[uses(") {
+            return Ok(text);
+        }
+        let files: Vec<lib::Input> = workspace::relative_sources(root)?;
+        let dir: Option<String> = Some(cache::within(root, ".bmb-cache"));
+        match uses_fill::fill_uses_limited(files.as_slice(), &dir, 4, true) {
+            Ok(u) => Ok(types::cat2(text.as_str(), uses_fill::tried_rows(&u, files.as_slice()).as_str())),
+            Err(e) => Ok(text),
+        }
+    }
+
+    #[summary("The tool write of the list (stage0 tools and add_rename_ops): with --tool-docs what each argument does is said once, in the schema; with --rename-ops it takes the lists rename and expect and requires no unit")]
+    #[effects(alloc)]
+    fn write_tool(fl: &Flags, statuses: &str) -> json::Value {
+        let mut what: String = String::from("Write in one call (backlog 2D-24): when `summary` is given, create unit UNIT or replace its summary; add or replace the definitions in `code` (one or more, with attributes) in UNIT; remove the definitions in `remove` (full paths); commit; then prove the workspace.");
+        let mut code: String = String::from("definitions to add or replace");
+        let mut remove: String = String::from("definition paths to remove");
+        if fl.tool_docs && !fl.item_docs {
+            what = String::from("The only way to write: add, replace and remove definitions in one unit, then commit and prove the whole workspace.");
+            code = String::from("one or more complete definitions (with attributes) to add or replace");
+            remove = String::from("full paths of definitions to remove");
+        }
+        if fl.tool_docs && fl.item_docs {
+            what = String::from("The only way to write: add, replace and remove items (functions, types, `impl` functions, traits, trait impls) in one unit, then commit and prove the whole workspace. A function, type, trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's block.");
+            code = String::from("one or more complete items (with attributes) to add or replace");
+        }
+        if !fl.tool_docs && fl.item_docs {
+            what = String::from("Write in one call: when `summary` is given, create unit UNIT or replace its summary; add or replace the items in `code` (functions, types, `impl` functions, traits, trait impls, with attributes) in UNIT; remove the items in `remove`; commit; then prove the workspace. A function, type, trait or trait impl replaces the one at the same path; the functions of an `impl T { .. }` block are added to or replace those of T's block.");
+            code = String::from("items to add or replace");
+        }
+        if fl.item_docs {
+            remove = String::from("item paths to remove: `unit::f`, `unit::T` (with its `impl` block), `unit::T::f`, `unit::Trait`, `<unit::T as unit::Trait>`");
+        }
+        let mut desc: String = types::cat4(what.as_str(), " Rejected as a whole on any structural or type error (diagnostics returned, nothing written). After a commit, returns the commit line and the proof result (diagnostics with counterexamples, ", statuses, "), as an error when a proof fails.");
+        let mut props: Vec<json::Member> = Vec::new();
+        add_prop(&mut props, "unit", "string", "unit path");
+        add_prop(&mut props, "code", "string", code.as_str());
+        add_prop(&mut props, "summary", "string", "one-line summary: creates the unit or replaces its summary");
+        add_prop(&mut props, "remove", "array", remove.as_str());
+        if fl.rename_ops {
+            desc.push_str(" Each `expect` is checked against the workspace the write starts from (the write is rejected when a definition's identity is not the one given); each `rename` is applied before the items, in the declaration and every reference.");
+            props.push(member("rename", pairs_schema("definitions to rename, before the items are written", "def", "to", "definition path", "the new name (not a path)")));
+            props.push(member("expect", pairs_schema("identities the write depends on (`id` of `query surface DEF`)", "def", "id", "definition path", "the identity the definition must have")));
+            return tool("write", desc.as_str(), schema(props, ""));
+        }
+        tool("write", desc.as_str(), schema(props, "unit"))
+    }
+}

@@ -1,0 +1,423 @@
+# The read tools on a workspace made of two corpus programs (tests/run/method_order.bmb and
+# tests/verify/pass/structs.bmb): every query with and without its arguments and each refusal of a query, the arguments
+# of the tool missing or of another type, every level of the map; then the same under --compact, under --bounded and
+# --bounded-16k with every form of `offset` and `limit`, and under --stats, where a file changed by another writer is
+# parsed again and the others are not. Then the workspace in the states a read can find it in: a source file that does
+# not parse, one that does not check, one that is not UTF-8, a directory named as a source, `src` a file, no `src`.
+sh "$bmb0" import ws "$root/tests/run/method_order.bmb" "$root/tests/verify/pass/structs.bmb"
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo::Point","m"]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"overview"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"name":"overview","args":["geo","arrs"]}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::Point"]}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::nope"]}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::pick","geo::twice"]}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["<m::P as m::T>::f"]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","in"]}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::small","both","2"]}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","1","calls,uses"]}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","sideways"]}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","deep"]}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","1","nope"]}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["nope::f"]}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice"}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["app::main"]}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"query","arguments":{"name":"find"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["small"]}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["Point"]}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["zzz"]}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts"}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["geo::small"]}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["small"]}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["nope::p"]}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"query","arguments":{"name":"status"}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo::pick","arrs"]}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests"}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"query","arguments":{"name":"duplicates"}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"query","arguments":{"name":"duplicates","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects"}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects","args":["app"]}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects","args":["app::main"]}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect"}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["io"]}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["io","app"]}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact"}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small"]}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small","body"]}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::Point","layout"]}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small","nope"]}}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["nope::f"]}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"query","arguments":{"name":"text"}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":["saturating"]}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":["x","geo::pick"]}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":[""]}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"query","arguments":{"name":"nonsense"}}}
+> {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"query","arguments":{"name":""}}}
+> {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"query","arguments":{"name":"units "}}}
+> {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo","geo"]}}}
+> {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"query"}}
+> {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"query","arguments":{}}}
+> {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"query","arguments":{"name":7}}}
+> {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"query","arguments":{"name":null}}}
+> {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"query","arguments":{"name":["units"]}}}
+> {"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":"geo"}}}
+> {"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":{"0":"geo"}}}}
+> {"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":[7,"geo",null,["m"],"m",true]}}}
+> {"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":[null]}}}
+> {"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"query","arguments":{"args":["geo"]}}}
+> {"jsonrpc":"2.0","id":74,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","name2":"x","extra":1}}}
+> {"jsonrpc":"2.0","id":75,"method":"tools/call","params":{"name":"map"}}
+> {"jsonrpc":"2.0","id":76,"method":"tools/call","params":{"name":"map","arguments":{}}}
+> {"jsonrpc":"2.0","id":77,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":78,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":79,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2"}}}
+> {"jsonrpc":"2.0","id":80,"method":"tools/call","params":{"name":"map","arguments":{"level":"all"}}}
+> {"jsonrpc":"2.0","id":81,"method":"tools/call","params":{"name":"map","arguments":{"level":"L3"}}}
+> {"jsonrpc":"2.0","id":82,"method":"tools/call","params":{"name":"map","arguments":{"level":"l0"}}}
+> {"jsonrpc":"2.0","id":83,"method":"tools/call","params":{"name":"map","arguments":{"level":""}}}
+> {"jsonrpc":"2.0","id":84,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0 "}}}
+> {"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"map","arguments":{"level":0}}}
+> {"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"map","arguments":{"level":null}}}
+> {"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"map","arguments":{"level":["L0"]}}}
+> {"jsonrpc":"2.0","id":88,"method":"tools/call","params":{"name":"map","arguments":{"Level":"L0"}}}
+stop
+start ws --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo::Point","m"]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"overview"}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"name":"overview","args":["geo","arrs"]}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::Point"]}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::nope"]}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::pick","geo::twice"]}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["<m::P as m::T>::f"]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","in"]}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::small","both","2"]}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","1","calls,uses"]}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","sideways"]}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","deep"]}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["geo::pick","out","1","nope"]}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"query","arguments":{"name":"edges","args":["nope::f"]}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice"}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["app::main"]}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"query","arguments":{"name":"slice","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"query","arguments":{"name":"find"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["small"]}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["Point"]}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["zzz"]}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts"}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["geo::small"]}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["small"]}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"query","arguments":{"name":"contracts","args":["nope::p"]}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"query","arguments":{"name":"status"}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo::pick","arrs"]}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests"}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"query","arguments":{"name":"tests","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"query","arguments":{"name":"duplicates"}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"query","arguments":{"name":"duplicates","args":["geo"]}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects"}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects","args":["app"]}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"query","arguments":{"name":"effects","args":["app::main"]}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect"}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["io"]}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["io","app"]}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"query","arguments":{"name":"effect","args":["nope"]}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact"}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small"]}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small","body"]}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::Point","layout"]}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["geo::small","nope"]}}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"query","arguments":{"name":"impact","args":["nope::f"]}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"query","arguments":{"name":"text"}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":["saturating"]}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":["x","geo::pick"]}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"query","arguments":{"name":"text","args":[""]}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"query","arguments":{"name":"nonsense"}}}
+> {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"query","arguments":{"name":""}}}
+> {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"query","arguments":{"name":"units "}}}
+> {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo","geo"]}}}
+> {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"query"}}
+> {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"query","arguments":{}}}
+> {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"query","arguments":{"name":7}}}
+> {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"query","arguments":{"name":null}}}
+> {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"query","arguments":{"name":["units"]}}}
+> {"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":"geo"}}}
+> {"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":{"0":"geo"}}}}
+> {"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":[7,"geo",null,["m"],"m",true]}}}
+> {"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":[null]}}}
+> {"jsonrpc":"2.0","id":73,"method":"tools/call","params":{"name":"query","arguments":{"args":["geo"]}}}
+> {"jsonrpc":"2.0","id":74,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","name2":"x","extra":1}}}
+> {"jsonrpc":"2.0","id":75,"method":"tools/call","params":{"name":"map"}}
+> {"jsonrpc":"2.0","id":76,"method":"tools/call","params":{"name":"map","arguments":{}}}
+> {"jsonrpc":"2.0","id":77,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":78,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":79,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2"}}}
+> {"jsonrpc":"2.0","id":80,"method":"tools/call","params":{"name":"map","arguments":{"level":"all"}}}
+> {"jsonrpc":"2.0","id":81,"method":"tools/call","params":{"name":"map","arguments":{"level":"L3"}}}
+> {"jsonrpc":"2.0","id":82,"method":"tools/call","params":{"name":"map","arguments":{"level":"l0"}}}
+> {"jsonrpc":"2.0","id":83,"method":"tools/call","params":{"name":"map","arguments":{"level":""}}}
+> {"jsonrpc":"2.0","id":84,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0 "}}}
+> {"jsonrpc":"2.0","id":85,"method":"tools/call","params":{"name":"map","arguments":{"level":0}}}
+> {"jsonrpc":"2.0","id":86,"method":"tools/call","params":{"name":"map","arguments":{"level":null}}}
+> {"jsonrpc":"2.0","id":87,"method":"tools/call","params":{"name":"map","arguments":{"level":["L0"]}}}
+> {"jsonrpc":"2.0","id":88,"method":"tools/call","params":{"name":"map","arguments":{"Level":"L0"}}}
+> {"jsonrpc":"2.0","id":89,"method":"tools/call","params":{"name":"verify"}}
+stop
+start ws --bounded
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":0}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":0}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":3}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":3}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":3,"limit":2}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":3,"limit":2}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":0}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":0}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":1}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":1}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":100000}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":100000}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":null,"limit":null}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":null,"limit":null}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":-1}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":-1}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":-1}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":-1}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":-1,"limit":-1}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":-1,"limit":-1}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":"x"}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":"x"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":"3"}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":"3"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":1.5}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":1.5}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":1000.0}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":1000.0}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":[1]}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":[1]}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":true}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":true}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":9223372036854775808}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":9223372036854775808}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":9223372036854775807,"offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":9223372036854775807,"offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":{}}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":{}}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","offset":1,"limit":1}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"query","arguments":{"name":"nonsense","offset":-1}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::nope"],"limit":"x"}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"map","arguments":{"level":"L9","offset":-1}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo"],"offset":2}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"map","arguments":{"offset":40,"limit":5}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2","offset":0,"limit":100000}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"verify","arguments":{"offset":-1}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"tx_begin","arguments":{"limit":"x"}}}
+stop
+start ws --bounded-16k --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":0}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":0}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":3}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":3}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":3,"limit":2}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":3,"limit":2}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":0}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":0}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":1}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":1}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":100000}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":100000}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":null,"limit":null}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":null,"limit":null}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":-1}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":-1}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":-1}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":-1}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":-1,"limit":-1}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":-1,"limit":-1}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":"x"}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":"x"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":"3"}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":"3"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":1.5}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":1.5}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":1000.0}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":1000.0}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":[1]}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":[1]}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":true}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":true}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":9223372036854775808}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":9223372036854775808}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","limit":9223372036854775807,"offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","limit":9223372036854775807,"offset":9223372036854775807}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","offset":{}}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":{}}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","offset":1,"limit":1}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"query","arguments":{"name":"nonsense","offset":-1}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::nope"],"limit":"x"}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"map","arguments":{"level":"L9","offset":-1}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"query","arguments":{"name":"units","args":["geo"],"offset":2}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"map","arguments":{"offset":40,"limit":5}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2","offset":0,"limit":100000}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"verify","arguments":{"offset":-1}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"tx_begin","arguments":{"limit":"x"}}}
+stop
+start ws --bounded --bounded-16k
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1","offset":5}}}
+stop
+# The counts of the front-end cache: a call that changes nothing, a file another writer changed, added and took away, a program that does not check any more, and the same files again.
+start ws --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"status"}}}
+sh printf '\n' >> ws/src/geo.bmb
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["small"]}}}
+sh printf '#[summary("z")]\nmod zz {\n}\n' > ws/src/zz.bmb
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2"}}}
+sh printf '#[summary("a")]\nmod aa {\n}\n' > ws/src/aa.bmb
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+sh rm ws/src/aa.bmb ws/src/zz.bmb
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"verify"}}
+sh printf '#[summary("b")]\nmod bad {\n    fn f( -> () {}\n}\n' > ws/src/bad.bmb
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"map"}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["geo::pick"]}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"probe","arguments":{"def":"geo::pick","candidates":["true"]}}}
+sh printf '#[summary("b")]\nmod bad {\n    #[effects(pure)]\n    fn f() -> bool {\n        nope(1)\n    }\n}\n' > ws/src/bad.bmb
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"map","arguments":{"level":"L1"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"query","arguments":{"name":"status","args":["geo"]}}}
+sh rm ws/src/bad.bmb
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+stop
+# Sources that cannot be read.
+sh printf 'mod \377' > ws/src/raw.bmb
+start ws --file-tools --ast-tools --write-tool --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"unit":"geo","summary":"s"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/geo.bmb"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/geo.bmb\n+++ b/src/geo.bmb\n@@ -1 +1 @@\n-x\n+y\n"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"probe","arguments":{"def":"geo::pick","candidates":["true"]}}}
+stop
+sh rm ws/src/raw.bmb && mkdir ws/src/dir.bmb
+start ws --file-tools --ast-tools --write-tool --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"unit":"geo","summary":"s"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/geo.bmb"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/geo.bmb\n+++ b/src/geo.bmb\n@@ -1 +1 @@\n-x\n+y\n"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"probe","arguments":{"def":"geo::pick","candidates":["true"]}}}
+stop
+sh rmdir ws/src/dir.bmb && mkdir filed empty && echo x > filed/src
+start filed --file-tools --ast-tools --write-tool --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"unit":"geo","summary":"s"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/geo.bmb"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/geo.bmb\n+++ b/src/geo.bmb\n@@ -1 +1 @@\n-x\n+y\n"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"probe","arguments":{"def":"geo::pick","candidates":["true"]}}}
+stop
+start empty --file-tools --ast-tools --write-tool --probe-tool --stats
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"unit":"geo","summary":"s"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"src/geo.bmb"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"edit_file","arguments":{"diff":"--- a/src/geo.bmb\n+++ b/src/geo.bmb\n@@ -1 +1 @@\n-x\n+y\n"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"read_ast","arguments":{"path":""}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"edit_ast","arguments":{"patch":[]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"probe","arguments":{"def":"geo::pick","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"query","arguments":{"name":"status"}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["a::b"]}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"query","arguments":{"name":"find","args":["x"]}}}
+stop
+# The directory given with a separator at its end, as nothing (the directory of the run) and as a file.
+start empty/
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"u","summary":"s"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"verify"}}
+stop
+sh echo x > plain.txt
+start plain.txt
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"name":"units"}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tx_begin"}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"u","summary":"s"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"verify"}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"build","arguments":{"name":"x"}}}
+stop
+tree

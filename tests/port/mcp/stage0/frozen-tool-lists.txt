@@ -1,0 +1,17 @@
+# The requests of `frozen_tool_lists_keep_their_bytes` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --write-tool --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --file-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --ast-tools
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+tree

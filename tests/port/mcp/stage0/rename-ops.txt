@@ -1,0 +1,26 @@
+# The requests of `rename_and_expect_on_request` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"unit":"m","summary":"t","code":"#[effects(pure)]\nfn twice(x: i64) -> (r: i64)\n    requires x < 1000 && x > -1000,\n    ensures r == 2 * x,\n{\n    x + x\n}\n\n#[effects(pure)]\nfn four(x: i64) -> (r: i64)\n    requires x < 100 && x > -100,\n    ensures r == 4 * x,\n{\n    twice(twice(x))\n}\n"}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write","arguments":{"rename":[{"def":"m::twice","to":"double"}]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tx_rename","arguments":{"tx":1,"def":"m::twice","to":"double"}}}
+stop
+start ws --write-tool --rename-ops
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["m::twice"]}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["m::four"]}}}
+# The identities the test reads from the two answers before: of `m::twice` for the write that holds, of `m::four` for the one that no longer does and for the transaction.
+ids ws
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"write","arguments":{"expect":[{"def":"m::twice","id":"@id{m::twice}"}],"rename":[{"def":"m::twice","to":"double"}]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["m::double"]}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"query","arguments":{"name":"surface","args":["m::four"]}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"write","arguments":{"unit":"m","expect":[{"def":"m::double","id":"@id{m::four}"}],"remove":["m::four"]}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"write","arguments":{"rename":[{"def":"m::double","to":"four"}]}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"write","arguments":{}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"write","arguments":{"rename":["m::double"]}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"tx_expect","arguments":{"tx":1,"def":"m::four","id":"@id{m::four}"}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"tx_rename","arguments":{"tx":1,"def":"m::double","to":"twice"}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+stop
+tree

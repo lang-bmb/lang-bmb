@@ -1,0 +1,20 @@
+# The requests of `tool_docs_document_the_tools_on_their_own` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --write-tool --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --write-tool --compact
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --write-tool --compact --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+start ws --tool-docs
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+stop
+tree

@@ -1,0 +1,536 @@
+#[summary("Candidate loop invariants, tried without a commit (port of stage0 compiler/src/probe.rs, ADR-0109). Each candidate is parsed as the tail of a function of its own file, so that every diagnostic names the candidate it is about by its file, added to the loop's invariants in a copy of the program, and the definition alone is proved. A candidate that fails on entry (E0806), is not kept by the body (E0807), is undecided there (E0811 of those) or does not check leaves; the rest are tried again until none leaves: the largest set that holds together. The program is not changed")]
+mod probe {
+    #[summary("Why a candidate left: the round it left in, what that round said of it on entry and after the body (0 holds, 1 fails, 2 undecided), and the counterexample when there is one")]
+    struct Left { round: usize, entry: u8, body: u8, cex: Option<String> }
+
+    #[summary("The visitor of the loops of a body (stage0 each_loop over ast::block_mut): with adding, the candidates go to the invariants of the first loop found that starts at lo; otherwise the start of every loop is collected in starts, and the spans of the closures in closures when collecting is on")]
+    struct Loops { adding: bool, lo: u32, cands: Vec<ast::Expr>, done: bool, starts: Vec<u32>, collecting: bool, closures: Vec<source::Span> }
+
+    impl ast::ExprFn for Loops {
+        #[effects(alloc)]
+        fn expr(self: &mut Loops, e: &mut ast::Expr) -> () {
+            let at: u32 = e.span.lo;
+            match &mut e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(st) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => {},
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => shallow(&mut ife.then, self, 1000000000),
+                ast::ExprKind::Block(blk) => shallow(blk, self, 1000000000),
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => { if self.collecting { self.closures.push(cl.span); } else { shallow(&mut cl.body, self, 1000000000); } },
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => { found(self, at, &mut lp.invariants); shallow(&mut lp.body, self, 1000000000); },
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("What a round said of one candidate (stage0 Said): 0 holds, 1 fails, 2 undecided")]
+    struct Said { entry: u8, body: u8 }
+
+    #[summary("Where a function is: the positions down to its unit, a copy of the unit, and the place of the function among the unit's functions")]
+    struct Where { at: Vec<usize>, f: usize, m: ast::Mod }
+
+    #[summary("Adds the candidates to the invariants of the loop of body that starts at lo; whether it was there (stage0 add_to_loop)")]
+    #[effects(alloc)]
+    fn add_to_loop(body: &mut ast::Block, lo: u32, cands: &[ast::Expr]) -> bool {
+        let mut v: Loops = Loops { adding: true, lo: lo, cands: Vec::new(), done: false, starts: Vec::new(), collecting: false, closures: Vec::new() };
+        for i in 0..cands.len()
+            invariant 0 <= i && i <= cands.len(),
+        {
+            v.cands.push(cands[i].clone());
+        }
+        each_loop(body, &mut v);
+        v.done
+    }
+
+    #[summary("The candidate as the file it is parsed from: the tail of a function of its own")]
+    #[effects(alloc)]
+    fn candidate_text(c: &str) -> String {
+        types::cat3("#[summary(\"probe\")]\nmod __probe {\n    #[effects(pure)]\n    fn __candidate() -> bool {\n        ", c, "\n    }\n}\n")
+    }
+
+    #[summary("The counterexample of the first diagnostic of file id that has one: the text after `; counterexample: `")]
+    #[effects(alloc)]
+    fn counterexample(items: &[diag::Diag], id: u32) -> Option<String> {
+        for i in 0..items.len()
+            invariant 0 <= i && i <= items.len(),
+        {
+            if items[i].span.file == id {
+                match std::str::find(items[i].message.as_str(), "; counterexample: ") {
+                    None => {},
+                    Some(at) => { return Some(lexer::cut(items[i].message.as_str(), at.saturating_add(18), items[i].message.len())); },
+                }
+            }
+        }
+        None
+    }
+
+    #[summary("Gives the visitor every loop of body (stage0 each_loop): the statement loops of the body and of the loops, proof blocks in it; then, for every expression at any depth, its own loop and the statement loops of the blocks it holds")]
+    #[effects(alloc)]
+    fn each_loop(body: &mut ast::Block, v: &mut Loops) -> () {
+        shallow(body, v, 1000000000);
+        ast::block_mut::<Loops>(body, v, true, 1000000000);
+    }
+
+    #[summary("The positions down to the unit of the function at path and the place of the function among the unit's functions (stage0 find_fn): at each level the first unit of that name, then its first function of the name; None when there is none")]
+    #[effects(alloc)]
+    fn find_fn(p: &ast::Program, path: &str) -> Option<Where> {
+        let segs: Vec<String> = refs::split_path(path);
+        if segs.len() < 2 {
+            return None;
+        }
+        let unit: Vec<String> = workspace::prefix(segs.as_slice(), segs.len() - 1);
+        let hit: workspace::Found = workspace::find_mod(p.mods.as_slice(), unit.as_slice())?;
+        for i in 0..hit.m.fns.len()
+            invariant 0 <= i && i <= hit.m.fns.len(),
+        {
+            if hit.m.fns[i].name.name == segs[segs.len() - 1] {
+                return Some(Where { at: hit.at, f: i, m: hit.m });
+            }
+        }
+        None
+    }
+
+    #[summary("A loop the walk found, with its start and its invariants: adds the candidates when it is the one, or collects the start")]
+    #[effects(alloc)]
+    fn found(v: &mut Loops, at: u32, invariants: &mut Vec<ast::Expr>) -> () {
+        if v.adding {
+            if at == v.lo && !v.done {
+                for i in 0..v.cands.len()
+                    invariant 0 <= i && i <= v.cands.len(),
+                {
+                    invariants.push(v.cands[i].clone());
+                }
+                v.done = true;
+            }
+        } else if !v.collecting {
+            v.starts.push(at);
+        }
+    }
+
+    #[summary("Whether k is among xs")]
+    #[effects(pure)]
+    fn has(xs: &[usize], k: usize) -> bool {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i] == k {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether there is an expression")]
+    #[effects(pure)]
+    fn is_expr(o: &Option<ast::Expr>) -> bool {
+        match o {
+            None => false,
+            Some(e) => true,
+        }
+    }
+
+    #[summary("Whether there is a text")]
+    #[effects(pure)]
+    fn is_text(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(t) => true,
+        }
+    }
+
+    #[summary("Where each loop of the function starts, in source order (stage0 loop_starts). A loop inside a closure is not counted: the closure's body is a definition of its own after lowering, which a proof of the function does not prove")]
+    #[effects(alloc)]
+    fn loop_starts(d: &ast::FnDef) -> Vec<u32> {
+        let mut body: ast::Block = d.body.clone();
+        let mut seen: Loops = Loops { adding: false, lo: 0, cands: Vec::new(), done: false, starts: Vec::new(), collecting: true, closures: Vec::new() };
+        ast::block_mut::<Loops>(&mut body, &mut seen, true, 1000000000);
+        let mut v: Loops = Loops { adding: false, lo: 0, cands: Vec::new(), done: false, starts: Vec::new(), collecting: false, closures: Vec::new() };
+        each_loop(&mut body, &mut v);
+        let mut out: Vec<u32> = Vec::new();
+        for i in 0..v.starts.len()
+            invariant 0 <= i && i <= v.starts.len(),
+        {
+            let lo: u32 = v.starts[i];
+            let mut inside: bool = false;
+            for c in 0..seen.closures.len()
+                invariant 0 <= c && c <= seen.closures.len(),
+            {
+                if seen.closures[c].lo <= lo && lo < seen.closures[c].hi {
+                    inside = true;
+                }
+            }
+            if !inside {
+                out = with_start(out.as_slice(), lo);
+            }
+        }
+        out
+    }
+
+    #[summary("The answer to a probe as JSONL (stage0 probe): per candidate its number, its text and, for a kept one, holds on both; for one that left, the round and where it failed or was undecided (`-` for the other) with the counterexample; for one that does not check, its error; then the row of the probe with the kept ones, whether the definition proves with them, and the rounds. The error is that of a program that does not check, of a definition or a loop that is not there, or of more than 16 candidates or none. bounded is whether the search within small bounds is on")]
+    #[effects(alloc, io, nondet)]
+    #[uses(source::room, source::small)]
+    fn probe(files: &[lib::Input], def: &str, loop_index: usize, candidates: &[String], bounded: bool) -> Result<String, String> {
+        if candidates.len() == 0 || candidates.len() > 16 {
+            return Err(String::from("give 1 to 16 candidates"));
+        }
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut program: ast::Program = ast::Program { mods: Vec::new() };
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            if files[i].text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                let id: u32 = sm.add(files[i].name.clone(), files[i].text.clone());
+                let toks: Vec<lexer::Token> = lexer::lex(id, files[i].text.as_str(), &mut diags);
+                let p: ast::Program = parser::parse(toks, &mut diags, files[i].text.as_str());
+                ast::append::<ast::Mod>(&mut program.mods, p.mods);
+            }
+        }
+        stdlib::add(&mut sm, &mut program, &mut diags);
+        let mut d0: diag::Diags = diags.clone();
+        let ck0: body::Checked = body::check_resolved(program.clone(), &mut d0);
+        if d0.has_errors() {
+            return Err(d0.to_jsonl(&sm));
+        }
+        let starts: Vec<u32> = match find_fn(&program, def) {
+            None => { return Err(types::cat3("no function `", def, "`")); },
+            Some(w) => { if w.f < w.m.fns.len() { loop_starts(&w.m.fns[w.f]) } else { Vec::new() } },
+        };
+        if loop_index >= starts.len() {
+            let mut none: String = types::cat3("`", def, "` has ");
+            std::num::push_u64(&mut none, starts.len() as u64);
+            none.push_str(" loop(s); `loop` counts them from 0 in source order");
+            return Err(none);
+        }
+        let lo: u32 = starts[loop_index];
+        let n: usize = candidates.len();
+        let mut parsed: Vec<Option<ast::Expr>> = Vec::new();
+        let mut ids: Vec<u32> = Vec::new();
+        let mut errors: Vec<Option<String>> = Vec::new();
+        let mut left: Vec<Option<Left>> = Vec::new();
+        let mut kept: Vec<usize> = Vec::new();
+        for k in 0..n
+            invariant 0 <= k && k <= n, parsed.len() == k, ids.len() == k, errors.len() == k, left.len() == k,
+        {
+            let text: String = candidate_text(candidates[k].as_str());
+            let mut name: String = String::from("<candidate ");
+            std::num::push_u64(&mut name, k as u64);
+            name.push_str(">");
+            let mut tail: Option<ast::Expr> = None;
+            let mut cid: u32 = 0;
+            let mut cd: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+            if text.len() < 4294967295 && sm.files.len() < 4294967295 {
+                cid = sm.add(name.clone(), text.clone());
+                let ctoks: Vec<lexer::Token> = lexer::lex(cid, text.as_str(), &mut cd);
+                let cp: ast::Program = parser::parse(ctoks, &mut cd, text.as_str());
+                tail = tail_of(&cp);
+            }
+            ids.push(cid);
+            left.push(None);
+            if cd.has_errors() || !is_expr(&tail) {
+                let rows: Vec<String> = cache::lines_of(cd.to_jsonl(&sm).as_str());
+                if rows.len() > 0 {
+                    errors.push(Some(rows[0].clone()));
+                } else {
+                    errors.push(Some(String::from("does not parse")));
+                }
+                parsed.push(None);
+            } else {
+                errors.push(None);
+                parsed.push(tail);
+                kept.push(k);
+            }
+        }
+        let mut only: Vec<String> = Vec::new();
+        only.push(String::from(def));
+        let mut rounds: usize = 0;
+        let mut verified: bool = false;
+        let mut open: bool = true;
+        let mut turn: usize = 0;
+        while open && turn <= n
+            invariant parsed.len() == n, ids.len() == n, errors.len() == n, left.len() == n, n <= 16,
+            decreases n + 1 - turn,
+        {
+            turn = turn + 1;
+            rounds = rounds.saturating_add(1);
+            let mut p2: ast::Program = program.clone();
+            let mut cands: Vec<ast::Expr> = Vec::new();
+            for c in 0..kept.len()
+                invariant 0 <= c && c <= kept.len(), parsed.len() == n,
+            {
+                if kept[c] < n {
+                    match &parsed[kept[c]] {
+                        None => {},
+                        Some(e) => cands.push(e.clone()),
+                    }
+                }
+            }
+            let added: bool = match find_fn(&p2, def) {
+                None => false,
+                Some(w2) => { let mut m2: ast::Mod = w2.m; let mut took: bool = false; if w2.f < m2.fns.len() { took = add_to_loop(&mut m2.fns[w2.f].body, lo, cands.as_slice()); } workspace::set_mod(&mut p2.mods, w2.at.as_slice(), 0, m2); took },
+            };
+            if !added {
+                let mut cannot: String = String::from("loop ");
+                std::num::push_u64(&mut cannot, loop_index as u64);
+                cannot.push_str(" of `");
+                cannot.push_str(def);
+                cannot.push_str("` could not take the candidates");
+                return Err(cannot);
+            }
+            let mut d: diag::Diags = diags.clone();
+            let ck: body::Checked = body::check_resolved(p2, &mut d);
+            let mut leave: Vec<usize> = Vec::new();
+            if d.has_errors() {
+                for a in 0..kept.len()
+                    invariant 0 <= a && a <= kept.len(), errors.len() == n, ids.len() == n,
+                {
+                    let ka: usize = kept[a];
+                    if ka < n {
+                        let mut first: Option<String> = None;
+                        for x in 0..d.items.len()
+                            invariant 0 <= x && x <= d.items.len(),
+                        {
+                            if d.items[x].span.file == ids[ka] && !is_text(&first) {
+                                first = Some(d.items[x].message.clone());
+                            }
+                        }
+                        if is_text(&first) {
+                            errors[ka] = first.clone();
+                            leave.push(ka);
+                        }
+                    }
+                }
+                if leave.len() == 0 {
+                    return Err(d.to_jsonl(&sm));
+                }
+            } else {
+                let out: prove::Outcome = prove_only(&ck, only.as_slice(), bounded, &mut d);
+                for b in 0..kept.len()
+                    invariant 0 <= b && b <= kept.len(), left.len() == n, ids.len() == n,
+                {
+                    let kb: usize = kept[b];
+                    if kb < n {
+                        let sd: Said = said(d.items.as_slice(), ids[kb]);
+                        if sd.entry != 0 || sd.body != 0 {
+                            left[kb] = Some(Left { round: rounds, entry: sd.entry, body: sd.body, cex: counterexample(d.items.as_slice(), ids[kb]) });
+                            leave.push(kb);
+                        }
+                    }
+                }
+                if leave.len() == 0 {
+                    verified = proves(&out, def);
+                }
+            }
+            if leave.len() == 0 {
+                open = false;
+            } else {
+                let mut rest: Vec<usize> = Vec::new();
+                for r in 0..kept.len()
+                    invariant 0 <= r && r <= kept.len(),
+                {
+                    if !has(leave.as_slice(), kept[r]) {
+                        rest.push(kept[r]);
+                    }
+                }
+                kept = rest;
+                if kept.len() == 0 {
+                    let mut d2: diag::Diags = diags.clone();
+                    let ck2: body::Checked = body::check_resolved(program.clone(), &mut d2);
+                    let out2: prove::Outcome = prove_only(&ck2, only.as_slice(), bounded, &mut d2);
+                    rounds = rounds.saturating_add(1);
+                    verified = proves(&out2, def);
+                    open = false;
+                }
+            }
+        }
+        let mut text2: String = String::new();
+        for q in 0..n
+            invariant 0 <= q && q <= n, errors.len() == n, left.len() == n,
+        {
+            text2.push_str("{\"candidate\":");
+            std::num::push_u64(&mut text2, q as u64);
+            text2.push_str(",\"text\":");
+            std::json::push_string(&mut text2, candidates[q].as_str());
+            let is_kept: bool = has(kept.as_slice(), q);
+            match &errors[q] {
+                None => { match &left[q] { None => { if is_kept { text2.push_str(",\"entry\":\"holds\",\"kept_by_body\":\"holds\""); } }, Some(l) => { text2.push_str(",\"round\":"); std::num::push_u64(&mut text2, l.round as u64); text2.push_str(",\"entry\":\""); text2.push_str(shown(l.entry).as_str()); text2.push_str("\",\"kept_by_body\":\""); text2.push_str(shown(l.body).as_str()); text2.push_str("\""); match &l.cex { None => {}, Some(cx) => { text2.push_str(",\"counterexample\":"); std::json::push_string(&mut text2, cx.as_str()); }, } }, } },
+                Some(er) => { text2.push_str(",\"error\":"); std::json::push_string(&mut text2, er.as_str()); },
+            }
+            if is_kept {
+                text2.push_str(",\"kept\":true}\n");
+            } else {
+                text2.push_str(",\"kept\":false}\n");
+            }
+        }
+        text2.push_str("{\"probe\":true,\"def\":");
+        std::json::push_string(&mut text2, def);
+        text2.push_str(",\"loop\":");
+        std::num::push_u64(&mut text2, loop_index as u64);
+        text2.push_str(",\"kept\":[");
+        for z in 0..kept.len()
+            invariant 0 <= z && z <= kept.len(),
+        {
+            if z > 0 {
+                text2.push_str(",");
+            }
+            std::num::push_u64(&mut text2, kept[z] as u64);
+        }
+        if verified {
+            text2.push_str("],\"verified\":true,\"rounds\":");
+        } else {
+            text2.push_str("],\"verified\":false,\"rounds\":");
+        }
+        std::num::push_u64(&mut text2, rounds as u64);
+        text2.push_str("}\n");
+        Ok(text2)
+    }
+
+    #[summary("Proves the definitions only name of checked program ck without a cache (stage0 verify_only); the diagnostics of the proof are added to diags")]
+    #[effects(alloc, io, nondet)]
+    fn prove_only(ck: &body::Checked, only: &[String], bounded: bool, diags: &mut diag::Diags) -> prove::Outcome {
+        let opts: prove::Opts = prove::Opts { only: Some(workspace::copy(only)), bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let mut store: Option<cache::ProofCache> = None;
+        let mut incr: Option<incremental::Session> = None;
+        let mut z3: toolchain::Z3 = toolchain::new();
+        prove::run_cached(ck, &pg, &opts, &mut store, &mut incr, &mut z3, diags)
+    }
+
+    #[summary("Whether the results hold a status of def with no failed obligation")]
+    #[effects(pure)]
+    fn proves(out: &prove::Outcome, def: &str) -> bool {
+        for i in 0..out.statuses.len()
+            invariant 0 <= i && i <= out.statuses.len(),
+        {
+            if out.statuses[i].path == def && out.statuses[i].failed == 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("What the diagnostics of file id say of the candidate there, on entry (E0806) and after the body (E0807): fails with a diagnostic of the code, undecided with an E0811 of that obligation, holds otherwise")]
+    #[effects(pure)]
+    fn said(items: &[diag::Diag], id: u32) -> Said {
+        let mut entry: u8 = 0;
+        let mut body: u8 = 0;
+        for i in 0..items.len()
+            invariant 0 <= i && i <= items.len(),
+        {
+            if items[i].span.file == id {
+                if items[i].code == "E0806" {
+                    entry = 1;
+                }
+                if items[i].code == "E0807" {
+                    body = 1;
+                }
+                if items[i].code == "E0811" {
+                    match &items[i].obligation {
+                        None => {},
+                        Some(ob) => { if ob == "E0806" && entry == 0 { entry = 2; } if ob == "E0807" && body == 0 { body = 2; } },
+                    }
+                }
+            }
+        }
+        Said { entry: entry, body: body }
+    }
+
+    #[summary("The statement loops of a block and of the loops and proof blocks in it, to the visitor (stage0 shallow). f is the remaining depth")]
+    #[effects(alloc)]
+    fn shallow(b: &mut ast::Block, v: &mut Loops, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let n: usize = b.stmts.len();
+        for i in 0..n
+            invariant b.stmts.len() == n,
+        {
+            match &mut b.stmts[i] {
+                ast::Stmt::Let(sl) => {},
+                ast::Stmt::Assign(sa) => {},
+                ast::Stmt::While(sw) => { let wl: u32 = sw.span.lo; found(v, wl, &mut sw.invariants); shallow(&mut sw.body, v, f - 1); },
+                ast::Stmt::For(sf) => { let fl: u32 = sf.span.lo; found(v, fl, &mut sf.invariants); shallow(&mut sf.body, v, f - 1); },
+                ast::Stmt::Assert(st) => {},
+                ast::Stmt::Assume(su) => {},
+                ast::Stmt::Proof(sp) => shallow(&mut sp.body, v, f - 1),
+                ast::Stmt::LetFields(lf) => {},
+                ast::Stmt::Expr(se) => {},
+            }
+        }
+    }
+
+    #[summary("What a row shows of an answer that is not holds: `-` for holds, which beside another candidate's failure may be empty")]
+    #[effects(alloc)]
+    fn shown(s: u8) -> String {
+        if s == 1 {
+            String::from("fails")
+        } else if s == 2 {
+            String::from("undecided")
+        } else {
+            String::from("-")
+        }
+    }
+
+    #[summary("The tail of the body of the first function of the first unit of a parsed candidate")]
+    #[effects(alloc)]
+    fn tail_of(p: &ast::Program) -> Option<ast::Expr> {
+        if p.mods.len() == 0 || p.mods[0].fns.len() == 0 {
+            return None;
+        }
+        match &p.mods[0].fns[0].body.tail {
+            None => None,
+            Some(e) => Some((**e).clone()),
+        }
+    }
+
+    #[summary("The starts in order with lo among them, once")]
+    #[effects(alloc)]
+    fn with_start(xs: &[u32], lo: u32) -> Vec<u32> {
+        let mut out: Vec<u32> = Vec::new();
+        let mut placed: bool = false;
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if !placed && lo <= xs[i] {
+                placed = true;
+                if lo < xs[i] {
+                    out.push(lo);
+                }
+            }
+            out.push(xs[i]);
+        }
+        if !placed {
+            out.push(lo);
+        }
+        out
+    }
+}

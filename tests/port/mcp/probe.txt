@@ -1,0 +1,99 @@
+# `probe` (--probe-tool) on a workspace made of corpus programs with loops (tests/verify/pass/loops.bmb,
+# tests/verify/pass/loop_exits.bmb and tests/verify/fail/loops.bmb): its arguments missing or of another type, no
+# candidate and more than 16, a definition and a loop that are not there, candidates that hold, that fail on entry,
+# that the body does not keep, that do not parse, that do not check, that leave in a later round because another left,
+# all of them leaving, every loop of a function by its number (`while`, `for` and `loop`, nested ones), a definition of
+# a nested path; nothing is written. Then under --compact and --undecided-info, and on a workspace that does not check.
+sh "$bmb0" import ws "$root/tests/verify/pass/loops.bmb" "$root/tests/verify/pass/loop_exits.bmb"
+sh "$bmb0" import failing "$root/tests/verify/fail/loops.bmb"
+start ws --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe"}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"probe","arguments":{}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to"}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"probe","arguments":{"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"probe","arguments":{"def":7,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":"true"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":null}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":{}}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":[]}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["true","true","true","true","true","true","true","true","true","true","true","true","true","true","true","true","true"]}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["true","true","true","true","true","true","true","true","true","true","true","true","true","true","true","true"]}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["true",7]}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":[null]}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":-1,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":"x","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":null,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":1.5,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":1,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":9223372036854775807,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":-1,"candidates":[]}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","loop":-1}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::nope","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"probe","arguments":{"def":"sum_to","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"probe","arguments":{"def":"","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"probe","arguments":{"def":"::sum_to","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"probe","arguments":{"def":"nope::sum_to","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::small","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"probe","arguments":{"def":"std::num::push_u64","candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["true","false","1 == 1","i <= n","i < n","i > 5","s >= 0","nope(","","7","missing > 0","i <= n && ","true // note","\"text\" == \"text\"","s <= i * 1000"]}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["false"]}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["nope("]}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["missing"]}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["i == 0"]}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["i == 0","i <= 1","i <= 2","i <= n"]}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["i <= n","i <= n"]}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::sum_to","candidates":["forall(k: u64) k >= 0","old(n) == n","loops::small(1)","small(i as i64)","{ true }","if i < n { true } else { true }","i <= n } fn evil() -> bool { true"]}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::max_index","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::max_index","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::max_index","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::copy","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::copy","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::copy","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::increment_all","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::increment_all","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::increment_all","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::count_eq","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::count_eq","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::count_eq","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::element_after_loop","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::element_after_loop","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::element_after_loop","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::index_of","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::index_of","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::index_of","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_pair","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_pair","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_pair","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_square_at_least","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_square_at_least","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::first_square_at_least","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::sum_even","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::sum_even","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::sum_even","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::bounded","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::bounded","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::bounded","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":69,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::owned","loop":0,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":70,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::owned","loop":1,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":71,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lx::owned","loop":2,"candidates":["true","false","i >= 0","0 < 1"]}}}
+> {"jsonrpc":"2.0","id":72,"method":"tools/call","params":{"name":"verify"}}
+stop
+tree
+start failing --probe-tool --compact --undecided-info
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::entry","candidates":["i <= n","i == 1","true","false"]}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::entry","loop":1,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::preserve","candidates":["i <= n","i == 1","true","false"]}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::preserve","loop":1,"candidates":["true"]}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::no_progress","candidates":["i <= n","i == 1","true","false"]}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::no_progress","loop":1,"candidates":["true"]}}}
+stop
+sh printf '#[summary("b")]\nmod bad {\n    #[effects(pure)]\n    fn f() -> bool {\n        nope(1)\n    }\n}\n' > failing/src/bad.bmb && mkdir none
+start failing --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::entry","candidates":["true"]}}}
+stop
+start none --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"probe","arguments":{"def":"loops::entry","candidates":["true"]}}}
+stop
+tree

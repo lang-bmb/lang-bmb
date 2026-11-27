@@ -224,6 +224,73 @@ mod query {
         Ok(map::l1_def(&cx.ix.defs.items[sd], &idn.defs[sk].d, &sh, &cx.m, &cx.proved, ck, qp))
     }
 
+    #[summary("The answer to the query req names with its arguments on checked program ck and its index ix (stage0 map_answer), after the header of the maps; kind 2 with the message when the query or its arguments are not ones. Proof results reach only `surface` of a definition, `status` and `tests`, so only for those the solver runs, through the caches in cache_dir when there is one (bounded is whether the search within small bounds is on): `surface` proves its definition alone, `status` and `tests` the definitions in their scope, the whole program without one, and nothing when the scope is no scope")]
+    #[effects(alloc, io, nondet)]
+    fn asked(ck: &body::Checked, diags: &diag::Diags, idn: &mut map::Idents, pr: &mut fmt::Printer, ix: map::Index, req: &[String], cache_dir: &Option<String>, bounded: bool) -> Answer {
+        let mut args: Vec<String> = Vec::new();
+        for i in 1..req.len()
+            invariant 1 <= i,
+        {
+            if i < req.len() {
+                args.push(req[i].clone());
+            }
+        }
+        let mut proving: bool = false;
+        let mut only: Option<Vec<String>> = None;
+        if req.len() > 0 && (req[0] == "status" || req[0] == "tests") {
+            match scope(&ix, args.as_slice(), 0) {
+                Ok(sc) => { proving = true; match &sc { None => {}, Some(ps) => { let mut inside: Vec<String> = Vec::new(); for d in 0..ix.defs.len() invariant 0 <= d, { match ix.defs.nth(d) { None => {}, Some(da) => { if map::within(&sc, ix.defs.items[da].path.as_str(), ix.defs.items[da].unit.as_str()) { inside.push(ix.defs.items[da].path.clone()); } }, } } only = Some(inside); }, } },
+                Err(why) => {},
+            }
+        }
+        if req.len() > 1 && req[0] == "surface" && ix.defs.has(req[1].as_str()) {
+            proving = true;
+            let mut one: Vec<String> = Vec::new();
+            one.push(req[1].clone());
+            only = Some(one);
+        }
+        let mut cache_error: Option<String> = None;
+        let mut incr_error: Option<String> = None;
+        let proved: prove::Outcome = if proving {
+            let got: map::Proofs = map::proofs(ck, diags, cache_dir, only, bounded);
+            cache_error = got.cache_error;
+            incr_error = got.incr_error;
+            got.out
+        } else {
+            prove::Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new(), assumed: table::new::<usize>() }
+        };
+        let m: map::Model = map::model(&ix, ck, idn.defs.as_slice(), &proved);
+        let mut out: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
+        let mut inc: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
+        for n in 0..ix.edges.len()
+            invariant 0 <= n,
+        {
+            match ix.edges.nth(n) {
+                None => {},
+                Some(ea) => { add_slot(&mut out, ix.edges.items[ea].from.as_str(), ea); add_slot(&mut inc, ix.edges.items[ea].to.as_str(), ea); },
+            }
+        }
+        let mut io: table::Table<bool> = table::new::<bool>();
+        for s in 0..ck.b.c.fns.len()
+            invariant 0 <= s,
+        {
+            match ck.b.c.fns.nth(s) {
+                None => {},
+                Some(sa) => { if body::is_exec(ck.b.c.fns.items[sa].kind) && ck.b.c.fns.items[sa].effect.io { io.insert(ck.b.c.fns.key(s).as_str(), true); } },
+            }
+        }
+        let own: table::Table<types::Effects> = map::own_effects(ck, &map::call_lists(&ix.edges));
+        let cx: Ctx = Ctx { ix: ix, m: m, proved: proved, out: out, inc: inc, own: own, io: io };
+        if req.len() == 0 {
+            return Answer { kind: 2, text: String::from("missing query name"), cache_error: cache_error, incr_error: incr_error };
+        }
+        let mut qp: fmt::Printer = fmt::qualifying(ck.b.c.fns.clone(), "");
+        match answer(&cx, ck, idn, pr, &mut qp, req[0].as_str(), args.as_slice()) {
+            Ok(rows) => Answer { kind: 0, text: types::cat2(map::header().as_str(), rows.as_str()), cache_error: cache_error, incr_error: incr_error },
+            Err(usage) => Answer { kind: 2, text: usage, cache_error: cache_error, incr_error: incr_error },
+        }
+    }
+
     #[summary("Whether byte i of s starts a character, or is the end of s (Rust's is_char_boundary)")]
     #[effects(pure)]
     fn boundary(s: &str, i: usize) -> bool {
@@ -885,7 +952,7 @@ mod query {
         }
     }
 
-    #[summary("bmb query (stage0 lib::map_request_cached and map_answer): reads the files as one program and checks it; when it checks, answers the query req names with its arguments, after the header of the maps. Proof results reach only `surface` of a definition, `status` and `tests`, so only for those the solver runs, through the caches in cache_dir when there is one: `surface` proves its definition alone, `status` and `tests` the definitions in their scope, the whole program without one, and nothing when the scope is no scope")]
+    #[summary("bmb query (stage0 lib::map_request_cached and map_answer): reads the files as one program and checks it; when it checks, answers the query req names with its arguments (asked). If there are errors the text is their JSONL and the kind is 1")]
     #[effects(alloc, io, nondet)]
     fn run(files: &[lib::Input], req: &[String], cache_dir: &Option<String>) -> Answer {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -897,68 +964,7 @@ mod query {
         let mut idn: map::Idents = map::idents(&fe.ck);
         let mut pr: fmt::Printer = fmt::identity(fe.ck.b.c.fns.clone(), fe.ck.b.c.adts.clone(), fe.ck.b.types.clone(), idn.traits.clone());
         let ix: map::Index = map::build(&fe.ck, &sm, &mut idn, &mut pr);
-        let mut args: Vec<String> = Vec::new();
-        for i in 1..req.len()
-            invariant 1 <= i,
-        {
-            if i < req.len() {
-                args.push(req[i].clone());
-            }
-        }
-        let mut proving: bool = false;
-        let mut only: Option<Vec<String>> = None;
-        if req.len() > 0 && (req[0] == "status" || req[0] == "tests") {
-            match scope(&ix, args.as_slice(), 0) {
-                Ok(sc) => { proving = true; match &sc { None => {}, Some(ps) => { let mut inside: Vec<String> = Vec::new(); for d in 0..ix.defs.len() invariant 0 <= d, { match ix.defs.nth(d) { None => {}, Some(da) => { if map::within(&sc, ix.defs.items[da].path.as_str(), ix.defs.items[da].unit.as_str()) { inside.push(ix.defs.items[da].path.clone()); } }, } } only = Some(inside); }, } },
-                Err(why) => {},
-            }
-        }
-        if req.len() > 1 && req[0] == "surface" && ix.defs.has(req[1].as_str()) {
-            proving = true;
-            let mut one: Vec<String> = Vec::new();
-            one.push(req[1].clone());
-            only = Some(one);
-        }
-        let mut cache_error: Option<String> = None;
-        let mut incr_error: Option<String> = None;
-        let proved: prove::Outcome = if proving {
-            let got: map::Proofs = map::proofs(&fe.ck, &diags, cache_dir, only);
-            cache_error = got.cache_error;
-            incr_error = got.incr_error;
-            got.out
-        } else {
-            prove::Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new(), assumed: table::new::<usize>() }
-        };
-        let m: map::Model = map::model(&ix, &fe.ck, idn.defs.as_slice(), &proved);
-        let mut out: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
-        let mut inc: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
-        for n in 0..ix.edges.len()
-            invariant 0 <= n,
-        {
-            match ix.edges.nth(n) {
-                None => {},
-                Some(ea) => { add_slot(&mut out, ix.edges.items[ea].from.as_str(), ea); add_slot(&mut inc, ix.edges.items[ea].to.as_str(), ea); },
-            }
-        }
-        let mut io: table::Table<bool> = table::new::<bool>();
-        for s in 0..fe.ck.b.c.fns.len()
-            invariant 0 <= s,
-        {
-            match fe.ck.b.c.fns.nth(s) {
-                None => {},
-                Some(sa) => { if body::is_exec(fe.ck.b.c.fns.items[sa].kind) && fe.ck.b.c.fns.items[sa].effect.io { io.insert(fe.ck.b.c.fns.key(s).as_str(), true); } },
-            }
-        }
-        let own: table::Table<types::Effects> = map::own_effects(&fe.ck, &map::call_lists(&ix.edges));
-        let cx: Ctx = Ctx { ix: ix, m: m, proved: proved, out: out, inc: inc, own: own, io: io };
-        if req.len() == 0 {
-            return Answer { kind: 2, text: String::from("missing query name"), cache_error: cache_error, incr_error: incr_error };
-        }
-        let mut qp: fmt::Printer = fmt::qualifying(fe.ck.b.c.fns.clone(), "");
-        match answer(&cx, &fe.ck, &mut idn, &mut pr, &mut qp, req[0].as_str(), args.as_slice()) {
-            Ok(rows) => Answer { kind: 0, text: types::cat2(map::header().as_str(), rows.as_str()), cache_error: cache_error, incr_error: incr_error },
-            Err(usage) => Answer { kind: 2, text: usage, cache_error: cache_error, incr_error: incr_error },
-        }
+        asked(&fe.ck, &diags, &mut idn, &mut pr, ix, req, cache_dir, false)
     }
 
     #[summary("The scope the paths of args from position from name (stage0 Index::scope): none for no path, otherwise the paths in order, each once. A path that names no unit, definition or type and has nothing under it is a message")]

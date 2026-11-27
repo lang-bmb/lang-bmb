@@ -1,0 +1,14 @@
+# The requests of `status_of_a_scope_proves_its_definitions_with_the_same_rows` of compiler/tests/mcp_cache.rs, each client of the test in the order they were started.
+start ws --stats
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"lib","summary":"tools"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"lib","code":"spec fn small(x: i64) -> bool { x >= 0 && x < 1000 }\n\nspec fn pos(r: i64) -> bool { r >= 0 && r < 2000 }"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"lib","code":"#[effects(pure)]\n#[uses(small, pos)]\nfn dec(x: i64) -> (r: i64)\n    requires small(x),\n    ensures pos(r),\n{\n    if x > 0 { x - 1 } else { x }\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"lib","code":"#[effects(pure)]\nfn bad(x: i64) -> i64 {\n    let a: i64 = x + 1;\n    a * 2\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"lib","code":"#[effects(pure)]\n#[uses(small, pos)]\nfn rec(n: i64) -> (r: i64)\n    requires small(n),\n    ensures pos(r),\n    decreases n,\n{\n    if n <= 0 { 0 } else { rec(n - 1) }\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"lib","code":"#[effects(pure)]\nfn zero(a: &mut [i64]) -> () {\n    let mut i: usize = 0;\n    while i < a.len()\n        invariant i <= a.len(),\n        decreases a.len() - i,\n    {\n        a[i] = 0;\n        i = i + 1;\n    }\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"app","summary":"entry point"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":1,"unit":"app","code":"#[effects(io)]\nfn main() -> () {\n    let mut xs: [i64; 2] = [5, 6];\n    lib::zero(&mut xs);\n    print_i64(lib::dec(5));\n}"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+stop
+tree

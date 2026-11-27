@@ -1,0 +1,12 @@
+# The requests of `invalid_requests_get_an_error_response` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> "str"
+> 42
+> [1,2]
+> []
+> {"jsonrpc":"2.0","id":7}
+> {"jsonrpc":"2.0","id":8,"method":3}
+- {"jsonrpc":"2.0"}
+> {"jsonrpc":"2.0","id":1,"method":"ping","params":{}}
+stop
+tree

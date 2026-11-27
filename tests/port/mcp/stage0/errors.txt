@@ -1,0 +1,66 @@
+# The requests of `tool_errors_over_mcp` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws
+> {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"teleport","arguments":{}}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{}}}
+> {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tx_put","arguments":{"unit":"a","code":""}}}
+> {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tx_commit","arguments":{}}}
+> {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"build","arguments":{}}}
+> {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":99,"path":"a","summary":"s","unit":"a","code":"","def":"a::f"}}}
+> {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":99,"path":"a","summary":"s","unit":"a","code":"","def":"a::f"}}}
+> {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"tx_remove","arguments":{"tx":99,"path":"a","summary":"s","unit":"a","code":"","def":"a::f"}}}
+> {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"tx_remove_unit","arguments":{"tx":99,"path":"a","summary":"s","unit":"a","code":"","def":"a::f"}}}
+> {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":99,"path":"a"}}}
+> {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":99}}}
+> {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":99}}}
+> {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":1,"path":"gone","summary":"s"}}}
+> {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"tx_abort","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":1}}}
+> {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":2,"path":"lib","summary":"s"}}}
+> {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":2,"unit":"lib","code":"#[effects(pure)]\nfn inc(x: i64) -> i64 { x.wrapping_add(1) }"}}}
+> {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":2}}}
+> {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":3,"unit":"lib","code":"impl Q { }\n\n#[effects(pure)]\nfn inc(x: i64) -> i64 { x.wrapping_add(1) }"}}}
+> {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":3}}}
+> {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"build","arguments":{"name":"app"}}}
+> {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"build","arguments":{"name":"../x"}}}
+> {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"build","arguments":{"name":".x"}}}
+> {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"build","arguments":{"name":"a/b"}}}
+> {"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"build","arguments":{"name":"a\\b"}}}
+> {"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"build","arguments":{"name":""}}}
+> {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"build","arguments":{"name":".."}}}
+> {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":4,"unit":"lib","code":"#[effects(pure)]\nfn dec(x: i64) -> i64 { x - 1 }"}}}
+> {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":4,"path":"app","summary":"s"}}}
+> {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":4,"unit":"app","code":"#[effects(io)]\nfn main() -> () { print_i64(lib::dec(1)) }"}}}
+> {"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":4}}}
+> {"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"verify","arguments":{}}}
+> {"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"build","arguments":{"name":"app"}}}
+> {"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"map","arguments":{"level":"L0"}}}
+> {"jsonrpc":"2.0","id":39,"method":"tools/call","params":{"name":"map","arguments":{"level":"L2"}}}
+> {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"map","arguments":{"level":"L9"}}}
+> {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"tx_remove","arguments":{"tx":5,"def":"lib::dec"}}}
+> {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":5}}}
+> {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"tx_remove","arguments":{"tx":6,"def":"lib::nope"}}}
+> {"jsonrpc":"2.0","id":46,"method":"tools/call","params":{"name":"tx_remove_unit","arguments":{"tx":6,"path":"nope"}}}
+> {"jsonrpc":"2.0","id":47,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":6}}}
+> {"jsonrpc":"2.0","id":48,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":49,"method":"tools/call","params":{"name":"tx_remove_unit","arguments":{"tx":7,"path":"app"}}}
+> {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"tx_remove","arguments":{"tx":7,"def":"lib::dec"}}}
+> {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":7}}}
+> {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"tx_unit","arguments":{"tx":8,"path":"../../evil","summary":"s"}}}
+> {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":8}}}
+> {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":9,"unit":"lib","code":""}}}
+> {"jsonrpc":"2.0","id":57,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":9}}}
+> {"jsonrpc":"2.0","id":58,"method":"tools/call","params":{"name":"tx_begin","arguments":{}}}
+> {"jsonrpc":"2.0","id":59,"method":"tools/call","params":{"name":"tx_put","arguments":{"tx":10,"unit":"lib","code":"#[summary(\"x\")]\nmod inner {\n#[effects(pure)]\nfn f() -> i64 { 1 }\n}"}}}
+> {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"tx_commit","arguments":{"tx":10}}}
+>* 200000 [
+> {"jsonrpc":"2.0","id":61,"method":"ping","params":{}}
+stop
+tree

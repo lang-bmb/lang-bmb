@@ -5131,6 +5131,177 @@
       "inputs": {
         "none": true
       }
+    },
+    {
+      "name": "mcp-stage0",
+      "component": "C12",
+      "a": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{bmb}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{build:stage1}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/mcp/stage0/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "mcp-tools",
+      "component": "C12",
+      "a": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{bmb}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{build:stage1}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/mcp/*.txt"
+        ],
+        "except": [
+          "tests/port/mcp/stage0/*",
+          "tests/port/mcp/probe.txt",
+          "tests/port/mcp/undecided.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "mcp-probe",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{bmb}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{build:stage1}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/mcp/probe.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "mcp-uses",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{bmb}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/mcp/session.py",
+        "{bmb}",
+        "{build:stage1}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/mcp/undecided.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "mcp-each",
+      "component": "C12",
+      "a": [
+        "python3",
+        "{root}/tests/port/mcp/each.py",
+        "{bmb}",
+        "{bmb}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/mcp/each.py",
+        "{bmb}",
+        "{build:stage1}",
+        "{root}/",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/fail/*.bmb",
+          "tests/check/err/*.bmb",
+          "tests/check/ok/*.bmb",
+          "tests/verify/pass/loops.bmb",
+          "tests/verify/pass/loop_exits.bmb",
+          "tests/verify/pass/invariants.bmb",
+          "tests/verify/pass/search.bmb",
+          "tests/verify/pass/traits.bmb",
+          "tests/verify/pass/closure_context.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/run/std_num.bmb"
+        ],
+        "except": [
+          "tests/verify/fail/nonlinear.bmb",
+          "tests/verify/fail/proofs.bmb",
+          "tests/verify/fail/floats.bmb",
+          "tests/verify/fail/assumed_values.bmb",
+          "tests/verify/fail/bit_vector.bmb",
+          "tests/verify/fail/structs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "mcp-ends",
+      "component": "C12",
+      "a": [
+        "sh",
+        "{root}/tests/port/mcp/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/mcp/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
     }
   ]
 }

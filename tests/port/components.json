@@ -443,7 +443,9 @@
         "selfhost/lint.bmb",
         "selfhost/stability.bmb",
         "selfhost/ast_json.bmb",
-        "selfhost/udiff.bmb"
+        "selfhost/udiff.bmb",
+        "selfhost/uses_fill.bmb",
+        "selfhost/probe.bmb"
       ],
       "pin": null,
       "ledger": {
@@ -461,7 +463,9 @@
           "An array index of a JSON Pointer of 19 digits or more is out of range without being read (`index_of`): stage0 parses it as `usize` and compares; no array is that long, so the answers are the same, and the port needs no overflow check on the way",
           "`udiff` (`selfhost/udiff.bmb`): `parse` and `apply` of unified diffs. Only the MCP server reaches it, so it is compared through the test programs (`udiff`, `udiff-edges`). A hunk line is a struct with the byte of its kind (`Line`); `old` is a keyword, so `FilePatch` has `old_path` and `new_path`. stage0 stops reading a hunk's lines with `break`; the port's loop asks `in_hunk` in its condition, so that its measure decreases on every turn. The lines that match are looked for by `places`, and `apply` checks at run time that the place it takes is inside the file (an unreachable arm: the proof does not follow `places`). The distance from the header's line is computed in 64 signed bits that wrap (`distance`), as stage0's optimized build does: from line 2^63 on stage0's debug build stops with an overflow where the hunk matches in several places, and that input is not compared",
           "Proof gate of `ast_json` and `udiff`: 194 definitions and 1,402 obligations in `ast_json`, 15 and 200 in `udiff`; the whole port is 3,185 definitions and 27,577 obligations. Three definitions failed in the first run: E0815 in `Im::bytes` (a number narrowed to `u8` after `small_num`, fixed by its `ensures`), E0803 in `off` (`k + 1` of a segment index), and E0808 three times with E0805 in `udiff::parse` (three nested loops over one index: each got the invariant that the index only grows, and the test of a file's header says that a second line is there). Before the first run, a build with every runtime check kept had stopped on one compared input (`len - d` in `index_of`, for an index of one digit larger than the length), which was fixed before the gate read it. No undecided obligation",
-          "First diagnostics from `bmb check` of the new units: E0403 with E0409 eight times (`let b: &[u8] = s.as_bytes()`: each such function became a pair, the second taking the bytes), E0304 once (a helper of another unit named without its unit), E0103 (`old` as a field name), E0426 seven times in the test program (`Err` before `Ok`)"
+          "First diagnostics from `bmb check` of the new units: E0403 with E0409 eight times (`let b: &[u8] = s.as_bytes()`: each such function became a pair, the second taking the bytes), E0304 once (a helper of another unit named without its unit), E0103 (`old` as a field name), E0426 seven times in the test program (`Err` before `Ok`)",
+          "`uses_fill` (`selfhost/uses_fill.bmb`): 619 lines of stage0 became 649 lines, 26 definitions and 322 obligations. Sets of paths are sorted lists (`body::sorted_set`), the maps by path are `table::Table`, and the three-way `State` is one struct with a phase number. `union` and `spec` are keywords and cannot name a function or a field (E0103). The search loop has no natural measure (`loop` until no trial is left): it runs at most `max + 1` rounds, which is what the budget per definition allows, with `max` capped at a million. stage0 shares one `Caches` struct between the runs; a struct cannot be passed as `&mut` twice in one call (E0410), so the proof cache, the session and the solver are three arguments. `Session::rekey` is an assignment of `incremental::keys`. stage0's `Session::in_memory` (no cache directory) has no port: without a directory there is no session and every definition is encoded again, with the same results; only the MCP server calls the search, always with a directory",
+          "`probe` (`selfhost/probe.bmb`): 338 lines of stage0 became 536 lines, 19 definitions and 224 obligations. stage0 walks the loops with a closure over `ast::block_mut`; the port's visitor is a struct that implements `ast::ExprFn` with three modes (collect closures, collect starts, add candidates). `find_fn` returns a `&mut FnDef` in stage0; a reference cannot be returned, so the port finds the positions down to the unit, changes a copy of the unit and writes it back (`workspace::find_mod`, `workspace::set_mod`). The rounds are bounded by the number of candidates plus one, which is the measure of the loop"
         ]
       }
     },
@@ -504,13 +508,24 @@
       "stage0": [
         "mcp.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/mcp.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
-        "friction": []
+        "friction": [
+          "`mcp` (`selfhost/mcp.bmb`): 1,491 lines of stage0 and `FrontCache` of `lib.rs` (about 130) became 1,630 lines, 72 definitions and 387 obligations. The server's state cannot be one struct: a borrow is of a whole variable, so two fields of one struct cannot be passed to one call when one of them is `&mut` (E0410), and a binding of an outer `match` on a `&mut` cannot be used inside an inner one. The state is therefore separate locals of `serve` (the transactions, the front-end results, the identities, the printer and the index), handed down as separate arguments; the index and its printers always hold a value (those of an empty program at the start) with a flag beside them, instead of an `Option` to match on",
+          "`lib::verify`, `lib::emit_llvm`, `map::run` and `query::run` each read their files and checked them before doing their work; they were split into the reading and a function over a checked program (`verify_checked`, `emit_checked`, `map::rows`, `query::asked`) so that the server can keep the checked program between calls. `query::asked` takes the index by value (its context owns it): the driver gives its own, the server a copy",
+          "stage0's `--undecided-info` turns the bounded search on for the whole process (a global flag); the port has no globals, so `bounded` is an argument of `map::proofs`, `map::rows`, `query::asked`, `lib::emit_checked` and the probe",
+          "A loop that reads standard input until its end has no measure: the server counts its lines up to 2^64 - 1. There is no built-in that flushes standard output; `eprint_str` flushes it first, so the server writes an empty text to standard error after each response (`eprint_str(\"\")`), which sends the response to a client that waits for it before its next request",
+          "`as` of a negative `i64` to `u64` is an obligation, where stage0's `as` wraps: `tx_arg` computes the 64 unsigned bits by hand. Rust's `Path` (`file_stem`, `parent`, `extension`) is rewritten over bytes for the names the file diff surface takes (`mcp::parts`): the last component that is a name, without the empty and `.` components before it",
+          "A local cannot hold `&[u8]` (E0409): `parts` and `offset` take the bytes as an argument. A name has one type in a function (E0303), `old` is a keyword (E0103), a value moved under an `if` is cloned (E0414): the first `bmb check` gave these four kinds and no other",
+          "The package version that `initialize` reports is a text in `mcp::version` (stage0 reads `CARGO_PKG_VERSION`); the differential test fails when the two differ",
+          "Proof gate: three obligations failed in the first run and none after their fix (E0808 in `mcp::parts`: the second loop ended through a flag without decreasing its measure, now a `return`; E0805 in `probe::probe`: an index a helper returned without saying it is in range; E0807: a count of rounds beside the loop's own counter, now saturating); the whole port is 3,306 definitions and 28,522 obligations"
+        ]
       }
     },
     {

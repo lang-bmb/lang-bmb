@@ -1,0 +1,10 @@
+# The requests of `probe_tool_on_request_and_read_only` of compiler/tests/mcp.rs, each client of the test in the order they were started.
+start ws --write-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"write","arguments":{"unit":"lp","summary":"t","code":"#[effects(pure)]\nfn sum(n: u64) -> (r: u64)\n    requires n < 1000,\n    ensures r <= 1000 * n,\n{\n    let mut s: u64 = 0;\n    let mut i: u64 = 0;\n    while i < n\n        decreases n - i,\n    {\n        s = s + i;\n        i = i + 1;\n    }\n    s\n}"}}}
+stop
+start ws --write-tool --probe-tool
+> {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+> {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"probe","arguments":{"def":"lp::sum","candidates":["i <= n","s <= 1000 * i","i > 5"]}}}
+stop
+tree
