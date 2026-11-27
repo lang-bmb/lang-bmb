@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[effects(alloc, io, nondet)]
     fn main() -> () {
@@ -382,6 +382,62 @@ mod main {
             }
             return;
         }
+        if args.len() > 3 && args[1] == "query" {
+            let mut at: usize = 2;
+            let mut query_cache: Option<String> = None;
+            if args.len() - at >= 2 && args[at] == "--cache" {
+                query_cache = Some(args[at + 1].clone());
+                at = at + 2;
+            }
+            let wf: map::Windowed = map::window_flags(args.as_slice(), at);
+            match &wf.why {
+                None => {},
+                Some(flag_why) => { eprint_str("bmb: "); eprint_str(flag_why.as_str()); eprint_str("\n"); std::process::exit(2); },
+            }
+            at = wf.next;
+            let mut sep: usize = at;
+            while sep < args.len() && args[sep] != "--"
+                invariant at <= sep,
+                decreases args.len() - sep,
+            {
+                sep = sep + 1;
+            }
+            if sep >= args.len() {
+                eprint_str("bmb: put `--` between the query and the files\n");
+                std::process::exit(2);
+            }
+            let queried: Vec<lib::Input> = read_files(args.as_slice(), sep + 1);
+            let mut req: Vec<String> = Vec::new();
+            for q in at..sep
+                invariant at <= q && q <= sep,
+            {
+                req.push(args[q].clone());
+            }
+            let qr: query::Answer = query::run(queried.as_slice(), req.as_slice(), &query_cache);
+            match &qr.cache_error {
+                None => {},
+                Some(query_why) => { match &query_cache { None => {}, Some(qd) => { eprint_str("bmb: cannot write proof cache in "); eprint_str(qd.as_str()); eprint_str(": "); eprint_str(query_why.as_str()); eprint_str("\n"); }, } },
+            }
+            match &qr.incr_error {
+                None => {},
+                Some(query_incr_why) => { match &query_cache { None => {}, Some(qd2) => { eprint_str("bmb: cannot write incremental cache in "); eprint_str(qd2.as_str()); eprint_str(": "); eprint_str(query_incr_why.as_str()); eprint_str("\n"); }, } },
+            }
+            if qr.kind == 1 {
+                print_str(qr.text.as_str());
+                std::process::exit(1);
+            }
+            if qr.kind == 2 {
+                eprint_str("bmb: ");
+                eprint_str(qr.text.as_str());
+                eprint_str("\n");
+                std::process::exit(1);
+            }
+            match &wf.window {
+                None => print_str(qr.text.as_str()),
+                Some(w) => print_str(map::bound(qr.text.as_str(), w).as_str()),
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -391,7 +447,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
         std::process::exit(2);
     }
 

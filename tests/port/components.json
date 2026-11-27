@@ -226,7 +226,8 @@
         "view.rs"
       ],
       "port": [
-        "selfhost/map.bmb"
+        "selfhost/map.bmb",
+        "selfhost/query.bmb"
       ],
       "pin": null,
       "ledger": {
@@ -234,14 +235,24 @@
         "gate_runs": null,
         "undecided_runs": null,
         "friction": [
-          "`map` (`selfhost/map.bmb`): the index and the rows of L0, L1 and L2 with the window flags; the `query` subcommands of the same stage0 file and `view.rs` are not ported, so the ratio of this row is against all of `map.rs`",
+          "`map` (`selfhost/map.bmb`): the index and the rows of L0, L1 and L2 with the window flags. `query` (`selfhost/query.bmb`): every read query of the same stage0 file (`Model::query` and what it calls, and the part of `lib::map_answer` that says what a query needs proved). `view.rs` (the compact view of `mcp --compact`) is not ported, so the ratio of this row is against `map.rs` and `view.rs` together",
           "stage0's edge set is a `BTreeSet<Edge>` with a derived order over five fields, two of them optional. There is no derived `Ord` and `table::Table` is keyed by text, so an edge is stored under a text key whose byte order is that order (`map::edge_key`: the fields joined by byte 1, an argument position as twenty digits): left as is",
           "The rows of a level are sorted by path with a stable sort in stage0. The port appends each row to the list of its path in a table and reads the table in key order (`map::add_row`): left as is",
           "The hashes of a definition are made on first use in stage0 (`OnceCell`). The port asks the identities for them when a level that shows them is written, so `map L2` hashes no definition: left as is",
           "A struct that holds the identities and the printer that writes their texts cannot be passed as `&mut` to a call that needs both (`ids.get(&mut pr, ..)` is E0410: the same root twice), so the printer is a parameter of its own (`map::Idents`, `escape::Hashes`): left as is",
           "`fmt.bmb` is pinned, so the three texts stage0's `fmt.rs` gives the map (`surface_parts`, `type_text`, `trait_text`) are in `map.bmb` (`signature`, `type_text`, `trait_text`) over the printer's own methods: left as is",
           "`body::Checked` gained `passes` and `at` (stage0 `Tables::passes`, `Tables::at`), `prove::Outcome` gained `assumed` (stage0 `assumed_obligations`) and `lib::CallAt` the number of arguments of a call (the `writes` edges). With the two new units, 182 definitions of the port were encoded again and 3,636 of its 24,278 queries asked (12 minutes in one process over the gate's proof cache)",
-          "Proof gate: 52 definitions and 742 obligations in `map`, 8 and 90 in `escape` (C4). One failure in two runs: an index into a `Vec` field checked before a call that takes the struct by `&mut` (E0805: the length is not known after the call), fixed by checking after the call"
+          "Proof gate: 52 definitions and 742 obligations in `map`, 8 and 90 in `escape` (C4). One failure in two runs: an index into a `Vec` field checked before a call that takes the struct by `&mut` (E0805: the length is not known after the call), fixed by checking after the call",
+          "The pieces of a row that L1 and `status` share (the proof results of a definition, its test reasons, its escape keys) were inside `map::l1_def`; they are definitions of their own now (`map::seen`, `test_reasons`, `escapes`, `push_proof`), and so are the proving of a map or a query (`map::proofs`) and the own effects of a definition (`map::own_effects`), which the queries read too",
+          "stage0 reads the edges out of a path as a range of the ordered edge set (`edges.range(from..)`) and keeps those into a path in a map. `table::Table` has no lookup of the first key from a bound, so both are lists of slots made once per query (`query::Ctx::out`, `inc`): left as is",
+          "stage0 renders every row from a tree of JSON values (`J`), and `type_impact` reads the rows of `impact` back out of that tree. The port writes rows as text, so the two share the table of paths and reasons instead (`query::impact_hits`): left as is",
+          "The breadth-first search over the calls keeps a parent per path in a map of `Option<String>`; the port keeps the queue and, per entry, the index of the entry it was reached from (`query::effect_paths`, `path_to`). stage0 finishes the search and then takes the first result; the port ends at the first when only that is asked, with the same answer: left as is",
+          "A reference cannot be held in a local or returned, so a query that reads one definition takes its slot in the index (`query::def_at`, whose `ensures` is the bound `slot_in`) and passes `&items[slot]` on as an argument; the closures of stage0 that count or select (`count(&|d| ..)`, `by(|f| &f.requires)`) are loops and a struct of counts (`query::Tally`): left as is",
+          "`fmt.bmb` is pinned, so the two texts of a definition the queries show (stage0 `fmt::def_text`, `iface_text`) are `query::def_text` over the printer's own method: left as is",
+          "The sort of `(path, line, text)` rows of `query text` is a text key in a table, as for the edges (`query::text_row`): left as is",
+          "`prove::escapes_of` counted the `assume` statements from a list the body check filled, while stage0 counts with `escape::of`, which does not enter the arguments of a call, the operands of an operator or the value of a `return`. An `assume` there gave `\"escapes\":1` in the port's `verify` row and none in stage0's; the port now asks `escape::of` (compared by `query-ends`). `body::Body::assumes` is still filled and no longer read: removing the field changes the type every definition of the body check reads, and the port's proof of those was not finished in 20 minutes over the gate's cache, so it is left for a change that proves `body` again anyway",
+          "First diagnostics from `bmb check` of the new unit: E0414 twice (an owned text moved into a table under an `if` and not on the other path: cloned), E0103 (`spec` is a keyword and cannot name a local), E0303 once (a name with another type elsewhere in `main`)",
+          "Proof gate: 56 definitions and 648 obligations in `query`, 65 and 738 in `map`; the whole port is 2,845 definitions and 24,935 obligations. Three definitions failed in the first run. `query::answer`, which held the argument checks of every query in one body (37 obligations), lost its solver (E0812, `z3 input closed: Broken pipe`) and 32 of its obligations failed: split into one definition per query that reads arguments (`ask_edges`, `ask_effect`, `ask_effects`, `ask_impact`, `ask_surface`), after which all prove; one of its failures was real (E0805, an index into a `Vec` field checked before a call that takes the struct by `&mut`, as in `map`). `query::path_to` (E0808: a loop ended by a flag does not decrease its measure on the last turn; ended by `break`) and `query::run` (E0806: `1 <= i && i <= n` does not hold on entry of `for i in 1..n` when `n` is 0)"
         ]
       }
     },

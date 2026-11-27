@@ -1,10 +1,13 @@
-#[summary("The standard maps and the window on a response (port of the index and the map rows of stage0 compiler/src/map.rs, ADR-0020, and of the window of ADR-0127): `bmb map`. The index holds what the maps know of a checked program without proof results (units, definitions, type declarations, edges); the rows of L0 and L2 are written from it, and those of L1 from it and the proof results. The read queries of the same stage0 file are not ported yet: they read this index")]
+#[summary("The standard maps and the window on a response (port of the index and the map rows of stage0 compiler/src/map.rs, ADR-0020, and of the window of ADR-0127): `bmb map`. The index holds what the maps know of a checked program without proof results (units, definitions, type declarations, edges); the rows of L0 and L2 are written from it, and those of L1 from it and the proof results. The read queries of the same stage0 file are in unit query: they read this index, and the pieces of a row they share with the maps are here")]
 mod map {
     #[summary("One edge of the L2 map (stage0 Edge): from a definition to what it calls, names in a contract, writes through, reads, uses or passes. arg is the argument position of a `writes` edge, targs the type arguments of a call of a generic definition (ADR-0046 §3)")]
     struct Edge { from: String, to: String, kind: String, arg: Option<usize>, targs: Option<String> }
 
     #[summary("One definition of an index (stage0 Entry): what the maps know of it without proof results. at is its position in the definitions in walk order (Idents::defs), kind its keyword, display what a reader calls a definition the lowering of function values made, when that differs from path")]
     struct Entry { path: String, unit: String, at: usize, kind: ast::FnKind, file: String, line: u32, display: Option<String> }
+
+    #[summary("The escape keys of a definition's row (stage0 Model::escape_keys, ADR-0029 §5): trust is proved, assumed, external or failed, count its `assume` statements and one more for #[external_body], assumed the obligations only trusted facts prove, checked whether it is compiled with every check, rationale none, confirmed or unconfirmed (every rationale carries the hash it is bound to, §3), and kinds the kinds of its rationales")]
+    struct Escapes { trust: String, count: usize, assumed: usize, checked: bool, rationale: String, kinds: Vec<String> }
 
     #[summary("The identities of a program (ADR-0059 §1) as the maps ask for them: the items, the full paths of the traits (for the printer that writes their texts, printer), and the definitions with a body in walk order (stage0 Model::fns)")]
     struct Idents { ids: identity::Ids, traits: Vec<String>, defs: Vec<codegen::Def> }
@@ -18,8 +21,14 @@ mod map {
     #[summary("What the L1 rows read besides the index (the proof side of stage0 Model): status maps a path to its place in the proof results, checked holds the definitions compiled with every check, unproved those whose termination is not proved (stage0 Index::nonterminating), effects the transitive effects of each executable definition with a body (the `all` of stage0 Index::effects), uses the targets of the `uses` edges of each definition in edge order, and rationales what the hashes of rationales read")]
     struct Model { status: table::Table<usize>, checked: table::Table<bool>, unproved: table::Table<bool>, effects: table::Table<types::Effects>, uses: table::Table<Vec<String>>, rationales: escape::Hashes }
 
+    #[summary("What proving for a map or a query gave: the proof results, and why the proof cache or the per-definition cache could not be written back, if one could not")]
+    struct Proofs { out: prove::Outcome, cache_error: Option<String>, incr_error: Option<String> }
+
     #[summary("One row of a response as a byte range of its text, without the line end")]
     struct Row { lo: usize, hi: usize }
+
+    #[summary("The proof results of one definition as a row shows them (the proof side of stage0 Def): its obligations, those that failed, the largest resource units of one obligation, and its trust level (0 proved, 1 assumed, 2 external)")]
+    struct Seen { obligations: usize, failed: usize, max: u64, trust: u8 }
 
     #[summary("A type declaration of an index (stage0 TypeEntry, ADR-0026 §6): kind is struct, enum, trait or const (ADR-0052 §7), text the declaration in normal form on one line, id its identity and hash the hash of its nameless text, names the types its fields or payloads name, inv the predicate of its #[invariant(p)] by full path")]
     struct TypeEntry { path: String, unit: String, kind: String, text: String, id: String, hash: String, file: String, line: u32, display: Option<String>, names: Vec<String>, inv: Option<String>, summary: Option<String> }
@@ -130,6 +139,21 @@ mod map {
             const_entries(&ck.program.mods[c], "", ck, sm, &mut ix, 100000);
         }
         ix
+    }
+
+    #[summary("The targets of the `calls` edges of each definition, in edge order")]
+    #[effects(alloc)]
+    fn call_lists(edges: &table::Table<Edge>) -> table::Table<Vec<String>> {
+        let mut calls: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..edges.len()
+            invariant 0 <= n,
+        {
+            match edges.nth(n) {
+                None => {},
+                Some(at) => { if edges.items[at].kind == "calls" { add_row(&mut calls, edges.items[at].from.as_str(), edges.items[at].to.clone()); } },
+            }
+        }
+        calls
     }
 
     #[summary("The entries of the `const`s of unit m and its inner units (stage0 walk_consts and the loop over it, ADR-0052 §7): the declaration with its evaluated value is the surface and its hash the identity; one reading another is a `reads` edge. A constant the checker has no value table entry for is left out")]
@@ -248,27 +272,11 @@ mod map {
         }
     }
 
-    #[summary("The transitive effects of each executable definition with a body (the `all` of stage0 def_effects, ADR-0030 §5): its own operations, the declared effects of the built-ins it calls, and, to a fixed point over the `calls` edges, the effects of every callee (one without a body by its declaration)")]
+    #[summary("The transitive effects of each executable definition with a body (the `all` of stage0 def_effects, ADR-0030 §5): its own effects (own_effects) and, to a fixed point over the `calls` edges, the effects of every callee (one without a body by its declaration)")]
     #[effects(alloc)]
     fn def_effects(ck: &body::Checked, edges: &table::Table<Edge>) -> table::Table<types::Effects> {
-        let mut calls: table::Table<Vec<String>> = table::new::<Vec<String>>();
-        for n in 0..edges.len()
-            invariant 0 <= n,
-        {
-            match edges.nth(n) {
-                None => {},
-                Some(at) => { if edges.items[at].kind == "calls" { add_row(&mut calls, edges.items[at].from.as_str(), edges.items[at].to.clone()); } },
-            }
-        }
-        let mut out: table::Table<types::Effects> = table::new::<types::Effects>();
-        for d in 0..ck.b.needs.len()
-            invariant 0 <= d,
-        {
-            match ck.b.needs.nth(d) {
-                None => {},
-                Some(na) => { let p: String = ck.b.needs.key(d); let mut own: types::Effects = ck.b.needs.items[na].own; match calls.find(p.as_str()) { None => {}, Some(ca) => { for c in 0..calls.items[ca].len() invariant 0 <= c && c <= calls.items[ca].len(), { match ck.b.c.fns.find(calls.items[ca][c].as_str()) { None => {}, Some(sg) => { if ck.b.c.fns.items[sg].builtin { own = types::e_union(own, ck.b.c.fns.items[sg].effect); } }, } } }, } out.insert(p.as_str(), own); },
-            }
-        }
+        let calls: table::Table<Vec<String>> = call_lists(edges);
+        let mut out: table::Table<types::Effects> = own_effects(ck, &calls);
         let mut changed: bool = true;
         let mut fuel: usize = 1000000000;
         while changed && fuel > 0
@@ -365,6 +373,52 @@ mod map {
         Entry { path: def.path.clone(), unit: def.unit.clone(), at: at, kind: def.d.kind, file: file_name(sm, here.file), line: sm.line_col(here.file, here.lo).line, display: shown(ck, def.path.as_str()) }
     }
 
+    #[summary("The escape keys of definition d at path, with the proof results s (stage0 Model::escape_keys). qp is the printer of qualified texts, which the hash of a rationale reads")]
+    #[effects(alloc)]
+    fn escapes(path: &str, d: &ast::FnDef, m: &Model, proved: &prove::Outcome, ck: &body::Checked, qp: &mut fmt::Printer, s: &Seen) -> Escapes {
+        let trust: String = if s.failed > 0 {
+            String::from("failed")
+        } else if s.trust == 1 {
+            String::from("assumed")
+        } else if s.trust == 2 {
+            String::from("external")
+        } else {
+            String::from("proved")
+        };
+        let es: escape::DefEscapes = escape::of(d);
+        let mut count: usize = es.assumes;
+        if es.external {
+            count = count.saturating_add(1);
+        }
+        let assumed: usize = match proved.assumed.find(path) {
+            None => 0,
+            Some(aa) => proved.assumed.items[aa],
+        };
+        let rationale: String = if es.rationales.len() == 0 {
+            String::from("none")
+        } else {
+            let bound: bool = match escape::hash_of(&m.rationales, qp, &ck.b.c.fns, path) {
+                None => false,
+                Some(hash) => escape::confirmed(&es, hash.as_str()),
+            };
+            if bound {
+                String::from("confirmed")
+            } else {
+                String::from("unconfirmed")
+            }
+        };
+        let mut kinds: Vec<String> = Vec::new();
+        for r in 0..es.rationales.len()
+            invariant 0 <= r && r <= es.rationales.len(),
+        {
+            match &es.rationales[r].kind {
+                None => {},
+                Some(rk) => kinds.push(rk.clone()),
+            }
+        }
+        Escapes { trust: trust, count: count, assumed: assumed, checked: body::is_exec(d.kind) && m.checked.has(path), rationale: rationale, kinds: body::sorted_set(kinds.as_slice()) }
+    }
+
     #[summary("The name of file id (stage0 SourceMap::name): a file made by the compiler is <generated>")]
     #[effects(alloc)]
     fn file_name(sm: &source::SourceMap, id: u32) -> String {
@@ -453,16 +507,16 @@ mod map {
         }
     }
 
-    #[summary("The L0 rows of the units, definitions and types of the index, by path (stage0 Model::l0_rows): a unit with its summary and lists, a definition or type with its kind and the first twelve digits of the hash of its nameless text")]
+    #[summary("The L0 rows of the units, definitions and types of the index that are in scope, by path (stage0 Model::l0_rows_in): a unit with its summary and lists, a definition or type with its kind and the first twelve digits of the hash of its nameless text")]
     #[effects(alloc)]
-    fn l0(ix: &Index, idn: &mut Idents, pr: &mut fmt::Printer) -> String {
+    fn l0(ix: &Index, idn: &mut Idents, pr: &mut fmt::Printer, scope: &Option<Vec<String>>) -> String {
         let mut rows: table::Table<Vec<String>> = table::new::<Vec<String>>();
         for u in 0..ix.units.len()
             invariant 0 <= u,
         {
             match ix.units.nth(u) {
                 None => {},
-                Some(ua) => { let mut row: String = String::from("{\"level\":\"L0\",\"kind\":\"unit\",\"path\":"); std::json::push_string(&mut row, ix.units.items[ua].path.as_str()); row.push_str(",\"summary\":"); std::json::push_string(&mut row, ix.units.items[ua].summary.as_str()); row.push_str(",\"units\":"); push_strs(&mut row, ix.units.items[ua].units.as_slice()); row.push_str(",\"defs\":"); push_strs(&mut row, ix.units.items[ua].defs.as_slice()); push_library(&mut row, ix.units.items[ua].path.as_str()); row.push_str("}\n"); add_row(&mut rows, ix.units.items[ua].path.as_str(), row); },
+                Some(ua) => { if within(scope, ix.units.items[ua].path.as_str(), ix.units.items[ua].path.as_str()) { let mut row: String = String::from("{\"level\":\"L0\",\"kind\":\"unit\",\"path\":"); std::json::push_string(&mut row, ix.units.items[ua].path.as_str()); row.push_str(",\"summary\":"); std::json::push_string(&mut row, ix.units.items[ua].summary.as_str()); row.push_str(",\"units\":"); push_strs(&mut row, ix.units.items[ua].units.as_slice()); row.push_str(",\"defs\":"); push_strs(&mut row, ix.units.items[ua].defs.as_slice()); push_library(&mut row, ix.units.items[ua].path.as_str()); row.push_str("}\n"); add_row(&mut rows, ix.units.items[ua].path.as_str(), row); } },
             }
         }
         for d in 0..ix.defs.len()
@@ -470,7 +524,7 @@ mod map {
         {
             match ix.defs.nth(d) {
                 None => {},
-                Some(da) => { let h: identity::Hashes = ident(idn, pr, types::cat2("0:", ix.defs.items[da].path.as_str()).as_str()); let drow: String = l0_row(ix.defs.items[da].path.as_str(), def_kind(ix.defs.items[da].kind).as_str(), h.body.as_str(), &ix.defs.items[da].display); add_row(&mut rows, ix.defs.items[da].path.as_str(), drow); },
+                Some(da) => { if within(scope, ix.defs.items[da].path.as_str(), ix.defs.items[da].unit.as_str()) { let h: identity::Hashes = ident(idn, pr, types::cat2("0:", ix.defs.items[da].path.as_str()).as_str()); let drow: String = l0_row(ix.defs.items[da].path.as_str(), def_kind(ix.defs.items[da].kind).as_str(), h.body.as_str(), &ix.defs.items[da].display); add_row(&mut rows, ix.defs.items[da].path.as_str(), drow); } },
             }
         }
         for t in 0..ix.types.len()
@@ -478,19 +532,10 @@ mod map {
         {
             match ix.types.nth(t) {
                 None => {},
-                Some(ta) => { let trow: String = l0_row(ix.types.items[ta].path.as_str(), ix.types.items[ta].kind.as_str(), ix.types.items[ta].hash.as_str(), &ix.types.items[ta].display); add_row(&mut rows, ix.types.items[ta].path.as_str(), trow); },
+                Some(ta) => { if within(scope, ix.types.items[ta].path.as_str(), ix.types.items[ta].unit.as_str()) { let trow: String = l0_row(ix.types.items[ta].path.as_str(), ix.types.items[ta].kind.as_str(), ix.types.items[ta].hash.as_str(), &ix.types.items[ta].display); add_row(&mut rows, ix.types.items[ta].path.as_str(), trow); } },
             }
         }
-        let mut out: String = String::new();
-        for r in 0..rows.len()
-            invariant 0 <= r,
-        {
-            match rows.nth(r) {
-                None => {},
-                Some(ra) => { for k in 0..rows.items[ra].len() invariant 0 <= k && k <= rows.items[ra].len(), { out.push_str(rows.items[ra][k].as_str()); } },
-            }
-        }
-        out
+        rows_text(&rows)
     }
 
     #[summary("The L0 row of a definition or a type declaration (stage0 l0_def and l0_type): hash is shown to its first nineteen characters (`sha256:` and twelve digits)")]
@@ -534,31 +579,13 @@ mod map {
                 Some(ta) => { let trow: String = l1_type(&ix.types.items[ta]); add_row(&mut rows, ix.types.items[ta].path.as_str(), trow); },
             }
         }
-        let mut out: String = String::new();
-        for r in 0..rows.len()
-            invariant 0 <= r,
-        {
-            match rows.nth(r) {
-                None => {},
-                Some(ra) => { for q in 0..rows.items[ra].len() invariant 0 <= q && q <= rows.items[ra].len(), { out.push_str(rows.items[ra][q].as_str()); } },
-            }
-        }
-        out
+        rows_text(&rows)
     }
 
-    #[summary("The L1 row of a definition (stage0 Model::l1 with escape_keys, termination_key, effects_required and test_reasons): its surface (signature, contract, declared effects, the definitions it uses), its proof status, its hashes and place, the largest resource units of one obligation, the effects it needs, why it still needs tests (ADR-0030 §4: `io`, `nondet` or `panic` among its effects, termination not proved, an obligation failed, a proof that rests on trusted facts), the escape keys (ADR-0029 §5: trust, escapes, the obligations only trusted facts prove, whether it is compiled with every check, whether its rationales carry the hash they are bound to, and their kinds), and where they apply `termination`, `summary`, `display` and `library`")]
+    #[summary("The L1 row of a definition (stage0 Model::l1): its surface (signature, contract, declared effects, the definitions it uses), its proof status, its hashes and place, then what a `status` row shares with it (push_proof), and where they apply `summary`, `display` and `library`")]
     #[effects(alloc)]
     fn l1_def(e: &Entry, d: &ast::FnDef, h: &identity::Hashes, m: &Model, proved: &prove::Outcome, ck: &body::Checked, qp: &mut fmt::Printer) -> String {
-        let mut obligations: usize = 0;
-        let mut failed: usize = 0;
-        let mut max: u64 = 0;
-        let mut trust: u8 = 0;
-        match m.status.find(e.path.as_str()) {
-            None => {},
-            Some(sa) => { let k: usize = m.status.items[sa]; if k < proved.statuses.len() { obligations = proved.statuses[k].obligations; failed = proved.statuses[k].failed; max = proved.statuses[k].max; trust = proved.statuses[k].trust; } },
-        }
-        let exec: bool = body::is_exec(d.kind);
-        let unproved: bool = m.unproved.has(e.path.as_str());
+        let s: Seen = seen(m, proved, e.path.as_str());
         let mut row: String = String::from("{\"level\":\"L1\",\"path\":");
         std::json::push_string(&mut row, e.path.as_str());
         row.push_str(",\"def_kind\":");
@@ -594,17 +621,11 @@ mod map {
             Some(ua) => push_strs(&mut row, m.uses.items[ua].as_slice()),
         }
         row.push_str(",\"status\":");
-        if failed > 0 {
-            row.push_str("\"failed\"");
-        } else if obligations > 0 {
-            row.push_str("\"verified\"");
-        } else {
-            row.push_str("\"none\"");
-        }
+        std::json::push_string(&mut row, status_text(&s).as_str());
         row.push_str(",\"obligations\":");
-        std::num::push_u64(&mut row, obligations as u64);
+        std::num::push_u64(&mut row, s.obligations as u64);
         row.push_str(",\"failed\":");
-        std::num::push_u64(&mut row, failed as u64);
+        std::num::push_u64(&mut row, s.failed as u64);
         row.push_str(",\"body\":");
         std::json::push_string(&mut row, h.body.as_str());
         row.push_str(",\"iface\":");
@@ -615,83 +636,9 @@ mod map {
         std::json::push_string(&mut row, e.file.as_str());
         row.push_str(",\"line\":");
         std::num::push_u64(&mut row, e.line as u64);
-        row.push_str(",\"rlimit_max\":");
-        std::num::push_u64(&mut row, max);
-        let mut required: Vec<String> = Vec::new();
-        let mut reasons: Vec<String> = Vec::new();
-        match m.effects.find(e.path.as_str()) {
-            None => {},
-            Some(ea) => { let all: types::Effects = m.effects.items[ea]; if all.alloc { required.push(String::from("alloc")); } if all.io { required.push(String::from("io")); } if all.nondet { required.push(String::from("nondet")); } if all.panic { required.push(String::from("panic")); } if exec { if all.io { reasons.push(String::from("io")); } if all.nondet { reasons.push(String::from("nondet")); } if all.panic { reasons.push(String::from("panic")); } } },
-        }
-        if exec {
-            if unproved {
-                reasons.push(String::from("nonterminating"));
-            }
-            if failed > 0 {
-                reasons.push(String::from("unproved"));
-            } else if trust != 0 {
-                reasons.push(String::from("trust"));
-            }
-        }
-        row.push_str(",\"effects_required\":");
-        push_strs(&mut row, required.as_slice());
-        row.push_str(",\"test_reasons\":");
-        push_strs(&mut row, reasons.as_slice());
-        row.push_str(",\"trust\":");
-        if failed > 0 {
-            row.push_str("\"failed\"");
-        } else if trust == 1 {
-            row.push_str("\"assumed\"");
-        } else if trust == 2 {
-            row.push_str("\"external\"");
-        } else {
-            row.push_str("\"proved\"");
-        }
-        let es: escape::DefEscapes = escape::of(d);
-        let mut count: usize = es.assumes;
-        if es.external {
-            count = count.saturating_add(1);
-        }
-        row.push_str(",\"escapes\":");
-        std::num::push_u64(&mut row, count as u64);
-        row.push_str(",\"assumed_obligations\":");
-        match proved.assumed.find(e.path.as_str()) {
-            None => row.push_str("0"),
-            Some(aa) => std::num::push_u64(&mut row, proved.assumed.items[aa] as u64),
-        }
-        if exec && m.checked.has(e.path.as_str()) {
-            row.push_str(",\"checked\":true");
-        } else {
-            row.push_str(",\"checked\":false");
-        }
-        row.push_str(",\"rationale\":");
-        if es.rationales.len() == 0 {
-            row.push_str("\"none\"");
-        } else {
-            let bound: bool = match escape::hash_of(&m.rationales, qp, &ck.b.c.fns, e.path.as_str()) {
-                None => false,
-                Some(hash) => escape::confirmed(&es, hash.as_str()),
-            };
-            if bound {
-                row.push_str("\"confirmed\"");
-            } else {
-                row.push_str("\"unconfirmed\"");
-            }
-        }
-        let mut kinds: Vec<String> = Vec::new();
-        for r in 0..es.rationales.len()
-            invariant 0 <= r && r <= es.rationales.len(),
-        {
-            match &es.rationales[r].kind {
-                None => {},
-                Some(rk) => kinds.push(rk.clone()),
-            }
-        }
-        row.push_str(",\"rationale_kinds\":");
-        push_strs(&mut row, body::sorted_set(kinds.as_slice()).as_slice());
-        if unproved {
-            row.push_str(",\"termination\":\"unproved\"");
-        }
+        let reasons: Vec<String> = test_reasons(m, e.path.as_str(), body::is_exec(d.kind), &s);
+        let es: Escapes = escapes(e.path.as_str(), d, m, proved, ck, qp, &s);
+        push_proof(&mut row, e.path.as_str(), m, &s, reasons.as_slice(), &es);
         push_summary(&mut row, &summary_of(d.attrs.as_slice()));
         push_display(&mut row, &e.display);
         push_library(&mut row, e.path.as_str());
@@ -734,7 +681,7 @@ mod map {
         {
             match ix.edges.nth(n) {
                 None => {},
-                Some(at) => { out.push_str("{\"level\":\"L2\",\"from\":"); std::json::push_string(&mut out, ix.edges.items[at].from.as_str()); out.push_str(",\"to\":"); std::json::push_string(&mut out, ix.edges.items[at].to.as_str()); out.push_str(",\"kind\":"); std::json::push_string(&mut out, ix.edges.items[at].kind.as_str()); match &ix.edges.items[at].arg { None => {}, Some(a) => { out.push_str(",\"arg\":"); std::num::push_u64(&mut out, *a as u64); }, } match &ix.edges.items[at].targs { None => {}, Some(ts) => { out.push_str(",\"type_args\":"); std::json::push_string(&mut out, ts.as_str()); }, } out.push_str("}\n"); },
+                Some(at) => push_l2(&mut out, &ix.edges.items[at]),
             }
         }
         out
@@ -826,6 +773,21 @@ mod map {
         out
     }
 
+    #[summary("The own effects of each executable definition with a body (the `own` of stage0 def_effects, ADR-0030 §5): those of its own operations and the declared effects of the built-ins it calls. calls holds the targets of the `calls` edges of each definition")]
+    #[effects(alloc)]
+    fn own_effects(ck: &body::Checked, calls: &table::Table<Vec<String>>) -> table::Table<types::Effects> {
+        let mut out: table::Table<types::Effects> = table::new::<types::Effects>();
+        for d in 0..ck.b.needs.len()
+            invariant 0 <= d,
+        {
+            match ck.b.needs.nth(d) {
+                None => {},
+                Some(na) => { let p: String = ck.b.needs.key(d); let mut own: types::Effects = ck.b.needs.items[na].own; match calls.find(p.as_str()) { None => {}, Some(ca) => { for c in 0..calls.items[ca].len() invariant 0 <= c && c <= calls.items[ca].len(), { match ck.b.c.fns.find(calls.items[ca][c].as_str()) { None => {}, Some(sg) => { if ck.b.c.fns.items[sg].builtin { own = types::e_union(own, ck.b.c.fns.items[sg].effect); } }, } } }, } out.insert(p.as_str(), own); },
+            }
+        }
+        out
+    }
+
     #[summary("Writes n as a twenty-digit decimal number to out: the order of the texts is the order of the numbers")]
     #[effects(alloc)]
     fn pad20(out: &mut String, n: u64) -> () {
@@ -906,6 +868,31 @@ mod map {
         Edge { from: String::from(from), to: String::from(to), kind: String::from(kind), arg: None, targs: None }
     }
 
+    #[summary("Proves checked program ck for a map or a query (the proving of stage0 map_answer), through the caches in cache_dir when there is one (as bmb verify --cache does): the whole program, or with only the definitions it names alone. The diagnostics of the proof are not shown: they go to a copy of shown, the diagnostics of the check")]
+    #[effects(alloc, io, nondet)]
+    fn proofs(ck: &body::Checked, shown_diags: &diag::Diags, cache_dir: &Option<String>, only: Option<Vec<String>>) -> Proofs {
+        let mut cache_error: Option<String> = None;
+        let mut store: Option<cache::ProofCache> = match cache_dir {
+            None => None,
+            Some(dir) => Some(cache::load(dir.as_str())),
+        };
+        let opts: prove::Opts = prove::Opts { only: only, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let mut incr: Option<incremental::Session> = match cache_dir {
+            None => None,
+            Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), ck, &pg.pr, &opts.only, false, false)),
+        };
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let mut unseen: diag::Diags = diag::Diags { items: shown_diags.items.clone(), aliases: Vec::new() };
+        let proved: prove::Outcome = prove::run_cached(ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut unseen);
+        match &store {
+            None => {},
+            Some(c) => { match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
+        }
+        let incr_error: Option<String> = incremental::save_slot(&mut incr);
+        Proofs { out: proved, cache_error: cache_error, incr_error: incr_error }
+    }
+
     #[summary("Appends the `display` key of a row, when the definition has one (stage0 display_key)")]
     #[effects(alloc)]
     fn push_display(row: &mut String, display: &Option<String>) -> () {
@@ -915,11 +902,60 @@ mod map {
         }
     }
 
+    #[summary("Appends edge e as an L2 row (stage0 Model::l2)")]
+    #[effects(alloc)]
+    fn push_l2(out: &mut String, e: &Edge) -> () {
+        out.push_str("{\"level\":\"L2\",\"from\":");
+        std::json::push_string(out, e.from.as_str());
+        out.push_str(",\"to\":");
+        std::json::push_string(out, e.to.as_str());
+        out.push_str(",\"kind\":");
+        std::json::push_string(out, e.kind.as_str());
+        match &e.arg {
+            None => {},
+            Some(a) => { out.push_str(",\"arg\":"); std::num::push_u64(out, *a as u64); },
+        }
+        match &e.targs {
+            None => {},
+            Some(ts) => { out.push_str(",\"type_args\":"); std::json::push_string(out, ts.as_str()); },
+        }
+        out.push_str("}\n");
+    }
+
     #[summary("Appends `\"library\":\"std\"` to a row of the standard library (stage0 library_key, ADR-0092 §1: a key added only where it applies)")]
     #[effects(alloc)]
     fn push_library(row: &mut String, path: &str) -> () {
         if stdlib::in_std(path) {
             row.push_str(",\"library\":\"std\"");
+        }
+    }
+
+    #[summary("Appends what an L1 row and a `status` row share of the definition at path (stage0 Model::l1 and the rows of `status`): the largest resource units of one obligation, the effects it needs, why it still needs tests, the escape keys (ADR-0029 §5), and `termination` where it is not proved")]
+    #[effects(alloc)]
+    fn push_proof(row: &mut String, path: &str, m: &Model, s: &Seen, reasons: &[String], es: &Escapes) -> () {
+        row.push_str(",\"rlimit_max\":");
+        std::num::push_u64(row, s.max);
+        row.push_str(",\"effects_required\":");
+        push_strs(row, required(m, path).as_slice());
+        row.push_str(",\"test_reasons\":");
+        push_strs(row, reasons);
+        row.push_str(",\"trust\":");
+        std::json::push_string(row, es.trust.as_str());
+        row.push_str(",\"escapes\":");
+        std::num::push_u64(row, es.count as u64);
+        row.push_str(",\"assumed_obligations\":");
+        std::num::push_u64(row, es.assumed as u64);
+        if es.checked {
+            row.push_str(",\"checked\":true");
+        } else {
+            row.push_str(",\"checked\":false");
+        }
+        row.push_str(",\"rationale\":");
+        std::json::push_string(row, es.rationale.as_str());
+        row.push_str(",\"rationale_kinds\":");
+        push_strs(row, es.kinds.as_slice());
+        if m.unproved.has(path) {
+            row.push_str(",\"termination\":\"unproved\"");
         }
     }
 
@@ -947,6 +983,17 @@ mod map {
         }
     }
 
+    #[summary("The transitive effects of the definition at path by name (stage0 Model::effects_required, ADR-0030 §5); none for a spec or proof function")]
+    #[effects(alloc)]
+    fn required(m: &Model, path: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        match m.effects.find(path) {
+            None => {},
+            Some(ea) => { let all: types::Effects = m.effects.items[ea]; if all.alloc { out.push(String::from("alloc")); } if all.io { out.push(String::from("io")); } if all.nondet { out.push(String::from("nondet")); } if all.panic { out.push(String::from("panic")); } },
+        }
+        out
+    }
+
     #[summary("The rows of a response as Rust's lines gives them: the text between line feeds, a carriage return before a line feed left out, and no row after the last line feed")]
     #[effects(alloc)]
     fn rows_of(text: &str) -> Vec<Row> {
@@ -971,7 +1018,22 @@ mod map {
         rows
     }
 
-    #[summary("bmb map (stage0 lib::map_request_cached, map_answer and Model::map): reads the files as one program and checks it; when it checks, the header and the rows of the level: L0, L1, L2, or all three for all. If there are errors the text is their JSONL and ok is false. L1 shows proof results, so for L1 and all the program is proved, through the caches in cache_dir when there is one (as bmb verify --cache does); the diagnostics of the proof are not shown")]
+    #[summary("The rows of each path in path order, one after another")]
+    #[effects(alloc)]
+    fn rows_text(rows: &table::Table<Vec<String>>) -> String {
+        let mut out: String = String::new();
+        for r in 0..rows.len()
+            invariant 0 <= r,
+        {
+            match rows.nth(r) {
+                None => {},
+                Some(ra) => { for k in 0..rows.items[ra].len() invariant 0 <= k && k <= rows.items[ra].len(), { out.push_str(rows.items[ra][k].as_str()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("bmb map (stage0 lib::map_request_cached, map_answer and Model::map): reads the files as one program and checks it; when it checks, the header and the rows of the level: L0, L1, L2, or all three for all. If there are errors the text is their JSONL and ok is false. L1 shows proof results, so for L1 and all the program is proved (proofs)")]
     #[effects(alloc, io, nondet)]
     fn run(files: &[lib::Input], level: &str, cache_dir: &Option<String>) -> Mapped {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -986,35 +1048,31 @@ mod map {
         let mut out: String = header();
         let mut cache_error: Option<String> = None;
         let mut incr_error: Option<String> = None;
+        let whole: Option<Vec<String>> = None;
         if level == "L0" || level == "all" {
-            out.push_str(l0(&ix, &mut idn, &mut pr).as_str());
+            out.push_str(l0(&ix, &mut idn, &mut pr, &whole).as_str());
         }
         if level == "L1" || level == "all" {
-            let mut store: Option<cache::ProofCache> = match cache_dir {
-                None => None,
-                Some(dir) => Some(cache::load(dir.as_str())),
-            };
-            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
-            let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
-            let mut incr: Option<incremental::Session> = match cache_dir {
-                None => None,
-                Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, false, false)),
-            };
-            let mut z3: toolchain::Z3 = toolchain::new();
-            let mut unseen: diag::Diags = diag::Diags { items: diags.items.clone(), aliases: Vec::new() };
-            let proved: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut unseen);
-            match &store {
-                None => {},
-                Some(c) => { match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
-            }
-            incr_error = incremental::save_slot(&mut incr);
-            let m: Model = model(&ix, &fe.ck, idn.defs.as_slice(), &proved);
-            out.push_str(l1(&ix, &mut idn, &mut pr, &fe.ck, &m, &proved).as_str());
+            let all: Option<Vec<String>> = None;
+            let got: Proofs = proofs(&fe.ck, &diags, cache_dir, all);
+            let m: Model = model(&ix, &fe.ck, idn.defs.as_slice(), &got.out);
+            out.push_str(l1(&ix, &mut idn, &mut pr, &fe.ck, &m, &got.out).as_str());
+            cache_error = got.cache_error;
+            incr_error = got.incr_error;
         }
         if level == "L2" || level == "all" {
             out.push_str(l2(&ix).as_str());
         }
         Mapped { ok: true, text: out, cache_error: cache_error, incr_error: incr_error }
+    }
+
+    #[summary("The proof results of the definition at path (stage0 Model::view_def): nothing proved when the results hold no status of it")]
+    #[effects(pure)]
+    fn seen(m: &Model, proved: &prove::Outcome, path: &str) -> Seen {
+        match m.status.find(path) {
+            None => Seen { obligations: 0, failed: 0, max: 0, trust: 0 },
+            Some(sa) => { let k: usize = m.status.items[sa]; if k < proved.statuses.len() { Seen { obligations: proved.statuses[k].obligations, failed: proved.statuses[k].failed, max: proved.statuses[k].max, trust: proved.statuses[k].trust } } else { Seen { obligations: 0, failed: 0, max: 0, trust: 0 } } },
+        }
     }
 
     #[summary("What a reader calls the item at path when the lowering of function values made it and that differs from path (stage0 Tables::shown)")]
@@ -1045,6 +1103,18 @@ mod map {
         s
     }
 
+    #[summary("The proof status a row shows (stage0 Model::view_def): failed when an obligation failed, verified when there are obligations and none failed, none without obligations")]
+    #[effects(alloc)]
+    fn status_text(s: &Seen) -> String {
+        if s.failed > 0 {
+            String::from("failed")
+        } else if s.obligations > 0 {
+            String::from("verified")
+        } else {
+            String::from("none")
+        }
+    }
+
     #[summary("The text of the #[summary(\"..\")] of a definition or type (stage0 summary_of, ADR-0117): the first argument of the first attribute of that name, when it is a string")]
     #[effects(alloc)]
     fn summary_of(attrs: &[ast::Attr]) -> Option<String> {
@@ -1068,6 +1138,28 @@ mod map {
             None => None,
             Some(at) => { let mut names: Vec<String> = Vec::new(); for i in 0..ck.b.targs.items[at].len() invariant 0 <= i && i <= ck.b.targs.items[at].len(), { names.push(types::text(&ck.b.targs.items[at][i])); } Some(types::join(names.as_slice(), ", ")) },
         }
+    }
+
+    #[summary("Why the definition at path still needs tests (stage0 Model::test_reasons, ADR-0030 §4, ADR-0003), none for one that is not executable: `io`, `nondet` or `panic` among its transitive effects, termination not proved, an obligation failed (`unproved`), or otherwise a proof that rests on trusted facts (`trust`, ADR-0029)")]
+    #[effects(alloc)]
+    fn test_reasons(m: &Model, path: &str, exec: bool, s: &Seen) -> Vec<String> {
+        let mut reasons: Vec<String> = Vec::new();
+        if !exec {
+            return reasons;
+        }
+        match m.effects.find(path) {
+            None => {},
+            Some(ea) => { let all: types::Effects = m.effects.items[ea]; if all.io { reasons.push(String::from("io")); } if all.nondet { reasons.push(String::from("nondet")); } if all.panic { reasons.push(String::from("panic")); } },
+        }
+        if m.unproved.has(path) {
+            reasons.push(String::from("nonterminating"));
+        }
+        if s.failed > 0 {
+            reasons.push(String::from("unproved"));
+        } else if s.trust != 0 {
+            reasons.push(String::from("trust"));
+        }
+        reasons
     }
 
     #[summary("The entries of the traits of unit m and its inner units (stage0 walk_traits and the loop over it)")]
@@ -1203,6 +1295,12 @@ mod map {
         }
         out.push_str(lexer::cut(text.as_str(), from, text.len()).as_str());
         out
+    }
+
+    #[summary("Whether path is prefix or under it, `prefix::..` (stage0 under)")]
+    #[effects(pure)]
+    fn under(path: &str, prefix: &str) -> bool {
+        std::str::starts_with(path, prefix) && (path.len() == prefix.len() || encode_terms::starts_at(path, prefix.len(), "::"))
     }
 
     #[summary("The summary of a unit (stage0 walk): the first argument of the first `summary` attribute whose first argument is a string, empty text if none")]
@@ -1347,5 +1445,14 @@ mod map {
             Some(ov) => ov,
         };
         Windowed { why: None, window: Some(Window { budget: b, offset: o, limit: limit }), next: at }
+    }
+
+    #[summary("Whether the definition or type at path in unit unit (a unit: its own path twice) is in scope (stage0 within and Scope::has): no scope is the whole program; otherwise the path or the unit is one of the scope's paths or under one. The unit counts because the paths of the definitions the lowering of function values makes do not start with their unit's")]
+    #[effects(pure)]
+    fn within(scope: &Option<Vec<String>>, path: &str, unit: &str) -> bool {
+        match scope {
+            None => true,
+            Some(ps) => { for i in 0..ps.len() invariant 0 <= i && i <= ps.len(), { if under(path, ps[i].as_str()) || under(unit, ps[i].as_str()) { return true; } } false },
+        }
     }
 }

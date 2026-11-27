@@ -345,21 +345,13 @@ mod prove {
         s
     }
 
-    #[summary("The escapes of the definition at path (stage0 escape::of(..).count()): its `assume` statements, and one more for `#[external_body]`")]
-    #[effects(pure)]
-    fn escapes_of(ck: &body::Checked, path: &str) -> u64 {
-        let mut n: u64 = 0;
-        for i in 0..ck.b.assumes.len()
-            invariant 0 <= i && i <= ck.b.assumes.len(),
-        {
-            if ck.b.assumes[i].as_str() == path {
-                n = n.saturating_add(1);
-            }
+    #[summary("The escapes of the definition at path (stage0 escape::of(..).count()): its `assume` statements where escape::of finds them, and one more for `#[external_body]`; none for a path that is no definition of the program")]
+    #[effects(alloc)]
+    fn escapes_of(pg: &encode_spec::Prog, path: &str) -> u64 {
+        match pg.defs.find(path) {
+            None => 0,
+            Some(at) => { let es: escape::DefEscapes = escape::of(&pg.defs.items[at].d); let n: u64 = es.assumes as u64; if es.external { n.saturating_add(1) } else { n } },
         }
-        if types::has(ck.b.external.as_slice(), path) {
-            n = n.saturating_add(1);
-        }
-        n
     }
 
     #[summary("E0811 for an obligation whose `f64` counterexample IEEE 754 arithmetic does not confirm (stage0 f64_undecided): undecided, no counterexample")]
@@ -787,7 +779,7 @@ mod prove {
 
     #[summary("The status rows `bmb verify` prints (stage0 status_lines): per definition its verdict, obligations, failures and resource units. A proof with trusted facts says so (ADR-0029 §5); a definition with escapes says how many, and one whose termination is not proved says so, whether or not the proof needed them (ADR-0160); and a definition whose queries the backstop ended says how many")]
     #[effects(alloc)]
-    fn status_lines(statuses: &[Status], ck: &body::Checked) -> String {
+    fn status_lines(statuses: &[Status], ck: &body::Checked, pg: &encode_spec::Prog) -> String {
         let unproved: Vec<String> = nonterminating(ck);
         let mut out: String = String::new();
         for i in 0..statuses.len()
@@ -813,7 +805,7 @@ mod prove {
             if statuses[i].failed == 0 && statuses[i].trust == 2 {
                 out.push_str(",\"trust\":\"external\"");
             }
-            let escapes: u64 = escapes_of(ck, statuses[i].path.as_str());
+            let escapes: u64 = escapes_of(pg, statuses[i].path.as_str());
             if escapes > 0 {
                 out.push_str(",\"escapes\":");
                 std::num::push_u64(&mut out, escapes);

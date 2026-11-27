@@ -1,0 +1,1388 @@
+#[summary("The read queries (port of the queries of stage0 compiler/src/map.rs, Model::query and what it calls, and of the part of lib::map_answer that answers them, ADR-0020): `bmb query`. A query reads the index of unit map and, where its rows show proof results (`surface`, `status`, `tests`), the proofs of the definitions it shows alone. The answer is the header of the maps and the rows of the query; a query that cannot be answered is a message")]
+mod query {
+    #[summary("Result of bmb query: kind 0 is an answer and text the response; kind 1 a program that does not check, and text the JSONL of its diagnostics; kind 2 a query that cannot be answered, and text why (stage0's usage error). cache_error and incr_error are why the proof cache or the per-definition cache could not be written back, if one could not")]
+    struct Answer { kind: u8, text: String, cache_error: Option<String>, incr_error: Option<String> }
+
+    #[summary("What the queries read: the index, the proof side of the rows and the proof results, the edges out of and into each path as slots of the index's edges in edge order (stage0 Model::out_edges and Index::incoming), the own effects of each executable definition with a body (the `own` of stage0 Index::effects), and the executable functions with effect `io`, built-ins included (stage0 Index::io)")]
+    struct Ctx { ix: map::Index, m: map::Model, proved: prove::Outcome, out: table::Table<Vec<usize>>, inc: table::Table<Vec<usize>>, own: table::Table<types::Effects>, io: table::Table<bool> }
+
+    #[summary("A definition a search over the calls reached, with the call path to it from the start")]
+    struct Reached { to: String, path: Vec<String> }
+
+    #[summary("The counts of the summary row of `status` (stage0 Model::query and escape_summary)")]
+    struct Tally { defs: usize, verified: usize, failed: usize, io: usize, tested: usize, proved: usize, assumed: usize, external: usize, escapes: usize, unconfirmed: usize }
+
+    #[summary("Appends slot at to the slots of key k")]
+    #[effects(alloc)]
+    fn add_slot(t: &mut table::Table<Vec<usize>>, k: &str, at: usize) -> () {
+        match t.find(k) {
+            None => { let mut one: Vec<usize> = Vec::new(); one.push(at); t.insert(k, one); },
+            Some(i) => t.items[i].push(at),
+        }
+    }
+
+    #[summary("Runs one query (stage0 Model::query): the rows of the answer, or why it cannot be answered. name is the query and args its arguments")]
+    #[effects(alloc)]
+    fn answer(cx: &Ctx, ck: &body::Checked, idn: &mut map::Idents, pr: &mut fmt::Printer, qp: &mut fmt::Printer, name: &str, args: &[String]) -> Result<String, String> {
+        if name == "units" {
+            let units_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+            return Ok(map::l0(&cx.ix, idn, pr, &units_in));
+        }
+        if name == "overview" {
+            let overview_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+            return Ok(overview(cx, &overview_in));
+        }
+        if name == "surface" {
+            return ask_surface(cx, ck, idn, pr, qp, args);
+        }
+        if name == "impact" {
+            return ask_impact(cx, ck, idn, args);
+        }
+        if name == "edges" {
+            return ask_edges(cx, args);
+        }
+        if name == "slice" {
+            let ld: usize = def_at(cx, args)?;
+            let lk: usize = cx.ix.defs.items[ld].at;
+            if lk >= idn.defs.len() {
+                return Ok(String::new());
+            }
+            return Ok(slice(cx, idn, &cx.ix.defs.items[ld], &idn.defs[lk].d));
+        }
+        if name == "find" {
+            if args.len() == 0 {
+                return Err(String::from("missing name"));
+            }
+            return Ok(find(cx, idn, pr, args[0].as_str()));
+        }
+        if name == "contracts" {
+            if args.len() == 0 {
+                return Err(String::from("missing predicate path"));
+            }
+            return Ok(contracts(cx, ck, idn, args[0].as_str()));
+        }
+        if name == "status" {
+            let status_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+            return Ok(status(cx, ck, idn, qp, &status_in));
+        }
+        if name == "duplicates" {
+            let dup_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+            return Ok(duplicates(cx, idn, pr, &dup_in));
+        }
+        if name == "tests" {
+            let tests_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+            return Ok(tests(cx, ck, idn, &tests_in));
+        }
+        if name == "effects" {
+            return ask_effects(cx, ck, args);
+        }
+        if name == "effect" {
+            return ask_effect(cx, ck, args);
+        }
+        if name == "text" {
+            if args.len() == 0 || args[0].len() == 0 {
+                return Err(String::from("`text` takes the text to find"));
+            }
+            let text_in: Option<Vec<String>> = scope(&cx.ix, args, 1)?;
+            return Ok(text_rows(cx, idn, args[0].as_str(), &text_in));
+        }
+        Err(types::cat3("unknown query `", name, "`"))
+    }
+
+    #[summary("What `query text` shows of a line that holds the pattern at byte at, len bytes long (stage0 around, ADR-0146): the line without the blanks around it when that is at most 200 bytes, else from 60 bytes before the occurrence to 200 bytes in all (cut at character boundaries, and at least to the end of the occurrence), with `..` where the line goes on. A row's size does not grow with the line")]
+    #[effects(alloc)]
+    fn around(line: &str, at: usize, len: usize) -> String {
+        let trimmed: String = fmt::trim(line);
+        if trimmed.len() <= 200 {
+            return trimmed;
+        }
+        let mut lo: usize = at.saturating_sub(60);
+        while lo > 0 && !boundary(line, lo)
+            decreases lo,
+        {
+            lo = lo - 1;
+        }
+        let mut hi: usize = lo.saturating_add(200);
+        let end: usize = at.saturating_add(len);
+        if end > hi {
+            hi = end;
+        }
+        if hi > line.len() {
+            hi = line.len();
+        }
+        while hi < line.len() && !boundary(line, hi)
+            decreases line.len() - hi,
+        {
+            hi = hi + 1;
+        }
+        let mut out: String = String::new();
+        if fmt::trim(lexer::cut(line, 0, lo).as_str()).len() > 0 {
+            out.push_str("..");
+        }
+        out.push_str(fmt::trim(lexer::cut(line, lo, hi).as_str()).as_str());
+        if fmt::trim(lexer::cut(line, hi, line.len()).as_str()).len() > 0 {
+            out.push_str("..");
+        }
+        out
+    }
+
+    #[summary("`edges START [out|in|both] [DEPTH] [KIND,..]` (stage0 Model::query): the start is the type or the definition the first argument names; the direction is out when not given, the depth 1, and the kinds, separated by commas, every kind. A message for a start that is neither, a direction that is none of the three, a depth that is no count, or a kind the L2 map has not")]
+    #[effects(alloc)]
+    fn ask_edges(cx: &Ctx, args: &[String]) -> Result<String, String> {
+        let start: String = match type_at(cx, args) {
+            None => { let ed: usize = def_at(cx, args)?; cx.ix.defs.items[ed].path.clone() },
+            Some(et) => cx.ix.types.items[et].path.clone(),
+        };
+        let dir: String = if args.len() > 1 {
+            args[1].clone()
+        } else {
+            String::from("out")
+        };
+        if !(dir == "out" || dir == "in" || dir == "both") {
+            return Err(types::cat3("direction must be out, in or both, not `", dir.as_str(), "`"));
+        }
+        let depth: usize = if args.len() > 2 {
+            match map::parse_usize(args[2].as_str()) {
+                None => { return Err(types::cat3("bad depth `", args[2].as_str(), "`")); },
+                Some(n) => n,
+            }
+        } else {
+            1
+        };
+        let mut kinds: Vec<String> = Vec::new();
+        if args.len() > 3 {
+            let known_kinds: Vec<String> = edge_kinds();
+            let asked: Vec<String> = encode_terms::split(args[3].as_str(), 44);
+            for k in 0..asked.len()
+                invariant 0 <= k && k <= asked.len(),
+            {
+                if !types::has(known_kinds.as_slice(), asked[k].as_str()) {
+                    return Err(types::cat5("unknown edge kind `", asked[k].as_str(), "` (the kinds are ", types::join(known_kinds.as_slice(), ", ").as_str(), ")"));
+                }
+                kinds.push(asked[k].clone());
+            }
+        }
+        Ok(edges(cx, start.as_str(), dir.as_str(), depth, kinds.as_slice()))
+    }
+
+    #[summary("`effect E [PATH..]` (stage0 Model::query): a message when there is no effect or it is none of the effects, then the scope of the paths")]
+    #[effects(alloc)]
+    fn ask_effect(cx: &Ctx, ck: &body::Checked, args: &[String]) -> Result<String, String> {
+        if args.len() == 0 {
+            return Err(String::from("`effect` takes an effect: `alloc` or `io`"));
+        }
+        let e: types::Effects = match types::atom(args[0].as_str()) {
+            None => { return Err(types::cat3("unknown effect `", args[0].as_str(), "`: `alloc` or `io`")); },
+            Some(a) => a,
+        };
+        let effect_in: Option<Vec<String>> = scope(&cx.ix, args, 1)?;
+        Ok(effect_defs(cx, ck, args[0].as_str(), e, &effect_in))
+    }
+
+    #[summary("`effects [PATH..]` (stage0 Model::query): with one path that is a definition, what it reaches; anything else (no path, a unit, several paths) is the listing of the scope's definitions")]
+    #[effects(alloc)]
+    fn ask_effects(cx: &Ctx, ck: &body::Checked, args: &[String]) -> Result<String, String> {
+        if args.len() == 1 {
+            match cx.ix.defs.find(args[0].as_str()) {
+                None => {},
+                Some(fd) => { return Ok(effects_of(cx, ck, cx.ix.defs.items[fd].path.as_str())); },
+            }
+        }
+        let effects_in: Option<Vec<String>> = scope(&cx.ix, args, 0)?;
+        Ok(effects_all(cx, ck, &effects_in))
+    }
+
+    #[summary("`impact PATH [body|iface]` (stage0 Model::query): of the type the first argument names, otherwise of the definition it names")]
+    #[effects(alloc)]
+    fn ask_impact(cx: &Ctx, ck: &body::Checked, idn: &map::Idents, args: &[String]) -> Result<String, String> {
+        match type_at(cx, args) {
+            None => {},
+            Some(it) => { let type_change: String = change_of(args)?; return Ok(type_impact(cx, ck, idn, &cx.ix.types.items[it], type_change.as_str())); },
+        }
+        let id: usize = def_at(cx, args)?;
+        let change: String = change_of(args)?;
+        let ik: usize = cx.ix.defs.items[id].at;
+        if ik >= idn.defs.len() {
+            return Ok(String::new());
+        }
+        Ok(impact(cx, &cx.ix.defs.items[id], &idn.defs[ik].d, change.as_str()))
+    }
+
+    #[summary("`surface PATH` (stage0 Model::query): the L1 row of the type the first argument names, otherwise of the definition it names")]
+    #[effects(alloc)]
+    fn ask_surface(cx: &Ctx, ck: &body::Checked, idn: &mut map::Idents, pr: &mut fmt::Printer, qp: &mut fmt::Printer, args: &[String]) -> Result<String, String> {
+        match type_at(cx, args) {
+            None => {},
+            Some(st) => { return Ok(map::l1_type(&cx.ix.types.items[st])); },
+        }
+        let sd: usize = def_at(cx, args)?;
+        let sh: identity::Hashes = map::ident(idn, pr, types::cat2("0:", cx.ix.defs.items[sd].path.as_str()).as_str());
+        let sk: usize = cx.ix.defs.items[sd].at;
+        if sk >= idn.defs.len() {
+            return Ok(String::new());
+        }
+        Ok(map::l1_def(&cx.ix.defs.items[sd], &idn.defs[sk].d, &sh, &cx.m, &cx.proved, ck, qp))
+    }
+
+    #[summary("Whether byte i of s starts a character, or is the end of s (Rust's is_char_boundary)")]
+    #[effects(pure)]
+    fn boundary(s: &str, i: usize) -> bool {
+        if i >= s.len() {
+            return i == s.len();
+        }
+        s.as_bytes()[i] < 128 || s.as_bytes()[i] >= 192
+    }
+
+    #[summary("The change `impact` is asked about, the second argument (stage0 Model::query): iface when there is none, and a message unless it is body or iface")]
+    #[effects(alloc)]
+    fn change_of(args: &[String]) -> Result<String, String> {
+        if args.len() < 2 {
+            return Ok(String::from("iface"));
+        }
+        if args[1] == "body" || args[1] == "iface" {
+            return Ok(args[1].clone());
+        }
+        Err(types::cat3("change must be body or iface, not `", args[1].as_str(), "`"))
+    }
+
+    #[summary("`contracts PRED` (stage0 Model::query): one row with the definitions whose `requires` names the predicate at p, those whose `ensures` does, each by path, and those that reveal it (the sources of its `uses` edges, in edge order)")]
+    #[effects(alloc)]
+    fn contracts(cx: &Ctx, ck: &body::Checked, idn: &map::Idents, p: &str) -> String {
+        let mut required: Vec<String> = Vec::new();
+        let mut ensured: Vec<String> = Vec::new();
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() { if names(cx, ck, idn.defs[k].d.pre.as_slice(), cx.ix.defs.items[da].unit.as_str(), p) { required.push(cx.ix.defs.items[da].path.clone()); } if names(cx, ck, idn.defs[k].d.post.as_slice(), cx.ix.defs.items[da].unit.as_str(), p) { ensured.push(cx.ix.defs.items[da].path.clone()); } } },
+            }
+        }
+        let mut uses: Vec<String> = Vec::new();
+        match cx.inc.find(p) {
+            None => {},
+            Some(ia) => { for j in 0..cx.inc.items[ia].len() invariant 0 <= j && j <= cx.inc.items[ia].len(), { let s: usize = cx.inc.items[ia][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].kind == "uses" { uses.push(cx.ix.edges.items[s].from.clone()); } } },
+        }
+        let mut row: String = String::from("{\"pred\":");
+        std::json::push_string(&mut row, p);
+        row.push_str(",\"required_by\":");
+        map::push_strs(&mut row, required.as_slice());
+        row.push_str(",\"ensured_by\":");
+        map::push_strs(&mut row, ensured.as_slice());
+        row.push_str(",\"uses_by\":");
+        map::push_strs(&mut row, uses.as_slice());
+        row.push_str("}\n");
+        row
+    }
+
+    #[summary("How many definitions of the index are in scope (stage0 defs_in(scope).count())")]
+    #[effects(pure)]
+    fn count_defs(cx: &Ctx, scope_in: &Option<Vec<String>>) -> usize {
+        let mut n: usize = 0;
+        for i in 0..cx.ix.defs.items.len()
+            invariant 0 <= i && i <= cx.ix.defs.items.len(),
+        {
+            if map::within(scope_in, cx.ix.defs.items[i].path.as_str(), cx.ix.defs.items[i].unit.as_str()) {
+                n = n.saturating_add(1);
+            }
+        }
+        n
+    }
+
+    #[summary("The declared effects of the function at path (the `declared` of stage0 def_effects): none for a path that is no function")]
+    #[effects(pure)]
+    fn declared(ck: &body::Checked, path: &str) -> types::Effects {
+        match ck.b.c.fns.find(path) {
+            None => types::pure(),
+            Some(sg) => ck.b.c.fns.items[sg].effect,
+        }
+    }
+
+    #[summary("Whether executable definition d declares `io` (stage0 Model::declares_io): `io` is one of the names of its first #[effects(..)]")]
+    #[effects(pure)]
+    fn declares_io(d: &ast::FnDef) -> bool {
+        if !body::is_exec(d.kind) {
+            return false;
+        }
+        for i in 0..d.attrs.len()
+            invariant 0 <= i && i <= d.attrs.len(),
+        {
+            if d.attrs[i].name.name == "effects" {
+                for x in 0..d.attrs[i].args.len()
+                    invariant 0 <= x && x <= d.attrs[i].args.len(),
+                {
+                    let io: bool = match &d.attrs[i].args[x] {
+                        ast::AttrArg::Ident(id) => id.name == "io",
+                        ast::AttrArg::Str(st, sp) => false,
+                        ast::AttrArg::Pair(pk, pv) => false,
+                    };
+                    if io {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        false
+    }
+
+    #[summary("The definition the first argument names, as its slot in the index's definitions (the `def` of stage0 Model::query): a message when there is no argument or it names no definition")]
+    #[effects(alloc)]
+    #[uses(slot_in)]
+    fn def_at(cx: &Ctx, args: &[String]) -> (r: Result<usize, String>)
+        ensures slot_in(r, cx.ix.defs.items.len()),
+    {
+        if args.len() == 0 {
+            return Err(String::from("missing definition path"));
+        }
+        match cx.ix.defs.find(args[0].as_str()) {
+            None => Err(types::cat3("unknown definition `", args[0].as_str(), "`")),
+            Some(da) => Ok(da),
+        }
+    }
+
+    #[summary("Normal form of definition d (stage0 fmt::def_text), or without its body, its surface (stage0 fmt::iface_text)")]
+    #[effects(alloc)]
+    fn def_text(d: &ast::FnDef, with_body: bool) -> String {
+        let mut pr: fmt::Printer = fmt::plain();
+        pr.function(d, 0, "", with_body, 1000000000);
+        pr.out.clone()
+    }
+
+    #[summary("One dependency of a slice (the loop of stage0 Model::slice), of edge e: a type gives its declaration, and the predicate of its invariant its definition (ADR-0060 §1); a definition gives its text when the edge reveals it (`uses`) and its surface otherwise, the longer of what the edges to it give")]
+    #[effects(alloc)]
+    fn dep(cx: &Ctx, idn: &map::Idents, e: &map::Edge, deps: &mut table::Table<String>) -> () {
+        if e.kind == "types" {
+            match cx.ix.types.find(e.to.as_str()) {
+                None => {},
+                Some(ta) => { deps.insert(e.to.as_str(), cx.ix.types.items[ta].text.clone()); match &cx.ix.types.items[ta].inv { None => {}, Some(p) => { match text_of(cx, idn, p.as_str(), true) { None => {}, Some(inv_text) => deps.insert(p.as_str(), inv_text), } }, } },
+            }
+            return;
+        }
+        let text: String = match text_of(cx, idn, e.to.as_str(), e.kind == "uses") {
+            None => { return; },
+            Some(t) => t,
+        };
+        let longer: bool = match deps.find(e.to.as_str()) {
+            None => true,
+            Some(at) => text.len() > deps.items[at].len(),
+        };
+        if longer {
+            deps.insert(e.to.as_str(), text.clone());
+        }
+    }
+
+    #[summary("`duplicates` (stage0 Model::duplicates, ADR-0059 §6): the groups of definitions with the same identity. One row with the identity and the definitions per group of two or more that has a definition in scope, by identity, then a summary row")]
+    #[effects(alloc)]
+    fn duplicates(cx: &Ctx, idn: &mut map::Idents, pr: &mut fmt::Printer, scope_in: &Option<Vec<String>>) -> String {
+        let mut groups: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        let mut inside: table::Table<bool> = table::new::<bool>();
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { let h: identity::Hashes = map::ident(idn, pr, types::cat2("0:", cx.ix.defs.items[da].path.as_str()).as_str()); map::add_row(&mut groups, h.id.as_str(), cx.ix.defs.items[da].path.clone()); if map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()) { inside.insert(h.id.as_str(), true); } },
+            }
+        }
+        let mut out: String = String::new();
+        let mut rows: usize = 0;
+        let mut dup_defs: usize = 0;
+        for g in 0..groups.len()
+            invariant 0 <= g,
+        {
+            match groups.nth(g) {
+                None => {},
+                Some(ga) => { let hash: String = groups.key(g); if groups.items[ga].len() >= 2 && inside.has(hash.as_str()) { rows = rows.saturating_add(1); dup_defs = dup_defs.saturating_add(groups.items[ga].len()); out.push_str("{\"hash\":"); std::json::push_string(&mut out, hash.as_str()); out.push_str(",\"defs\":"); map::push_strs(&mut out, decls::sorted(groups.items[ga].as_slice()).as_slice()); out.push_str("}\n"); } },
+            }
+        }
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"groups\":");
+        std::num::push_u64(&mut out, rows as u64);
+        out.push_str(",\"duplicate_defs\":");
+        std::num::push_u64(&mut out, dup_defs as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, count_defs(cx, scope_in) as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The edge kinds of the L2 map, as `edges` filters them (stage0 EDGE_KINDS)")]
+    #[effects(alloc)]
+    fn edge_kinds() -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        out.push(String::from("calls"));
+        out.push(String::from("const"));
+        out.push(String::from("contract"));
+        out.push(String::from("passes"));
+        out.push(String::from("proof_calls"));
+        out.push(String::from("reads"));
+        out.push(String::from("spec_calls"));
+        out.push(String::from("trait"));
+        out.push(String::from("types"));
+        out.push(String::from("uses"));
+        out.push(String::from("writes"));
+        out
+    }
+
+    #[summary("`edges START [out|in|both] [DEPTH] [KIND,..]` (stage0 Model::reach and the rows of it): the edges reachable from start within depth steps as L2 rows in edge order, following only the edges of kinds when it names any. A step visits the edges at the frontier, the paths the step before reached first; an edge with both ends in the frontier counts as outgoing")]
+    #[effects(alloc)]
+    fn edges(cx: &Ctx, start: &str, dir: &str, depth: usize, kinds: &[String]) -> String {
+        let mut seen: Vec<bool> = Vec::new();
+        for i in 0..cx.ix.edges.items.len()
+            invariant 0 <= i && i <= cx.ix.edges.items.len(),
+        {
+            seen.push(false);
+        }
+        let mut frontier: Vec<String> = Vec::new();
+        frontier.push(String::from(start));
+        let mut visited: table::Table<bool> = table::new::<bool>();
+        visited.insert(start, true);
+        let mut step: usize = 0;
+        while step < depth && frontier.len() > 0
+            decreases depth - step,
+        {
+            let mut here: table::Table<bool> = table::new::<bool>();
+            for h in 0..frontier.len()
+                invariant 0 <= h && h <= frontier.len(),
+            {
+                here.insert(frontier[h].as_str(), true);
+            }
+            let mut next: Vec<String> = Vec::new();
+            for f in 0..frontier.len()
+                invariant 0 <= f && f <= frontier.len(),
+            {
+                if dir != "in" {
+                    match cx.out.find(frontier[f].as_str()) {
+                        None => {},
+                        Some(oa) => { for a in 0..cx.out.items[oa].len() invariant 0 <= a && a <= cx.out.items[oa].len(), { let so: usize = cx.out.items[oa][a]; if so < cx.ix.edges.items.len() && follows(kinds, cx.ix.edges.items[so].kind.as_str()) { if so < seen.len() { seen[so] = true; } if !visited.has(cx.ix.edges.items[so].to.as_str()) { visited.insert(cx.ix.edges.items[so].to.as_str(), true); next.push(cx.ix.edges.items[so].to.clone()); } } } },
+                    }
+                }
+                if dir != "out" {
+                    match cx.inc.find(frontier[f].as_str()) {
+                        None => {},
+                        Some(ia) => { for b in 0..cx.inc.items[ia].len() invariant 0 <= b && b <= cx.inc.items[ia].len(), { let si: usize = cx.inc.items[ia][b]; if si < cx.ix.edges.items.len() && (dir == "in" || !here.has(cx.ix.edges.items[si].from.as_str())) && follows(kinds, cx.ix.edges.items[si].kind.as_str()) { if si < seen.len() { seen[si] = true; } if !visited.has(cx.ix.edges.items[si].from.as_str()) { visited.insert(cx.ix.edges.items[si].from.as_str(), true); next.push(cx.ix.edges.items[si].from.clone()); } } } },
+                    }
+                }
+            }
+            frontier = next;
+            step = step + 1;
+        }
+        let mut out: String = String::new();
+        for n in 0..cx.ix.edges.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.edges.nth(n) {
+                None => {},
+                Some(at) => { if at < seen.len() && seen[at] { map::push_l2(&mut out, &cx.ix.edges.items[at]); } },
+            }
+        }
+        out
+    }
+
+    #[summary("`effect E` (stage0 Model::effect_defs, ADR-0030 §5): the executable definitions in scope that declare effect e or need it (it is among their transitive effects), by path, each with whether it declares it, whether it needs it, and the source: own (its own operations have it), callee (only through its calls) or null (declared, not needed); then a summary row. name is the effect as asked")]
+    #[effects(alloc)]
+    fn effect_defs(cx: &Ctx, ck: &body::Checked, name: &str, e: types::Effects, scope_in: &Option<Vec<String>>) -> String {
+        let mut out: String = String::new();
+        let mut declares: usize = 0;
+        let mut requires_n: usize = 0;
+        for n in 0..cx.m.effects.len()
+            invariant 0 <= n,
+        {
+            match cx.m.effects.nth(n) {
+                None => {},
+                Some(ea) => { let path: String = cx.m.effects.key(n); if path_in(cx, scope_in, path.as_str()) { let decl: bool = types::e_contains(declared(ck, path.as_str()), e); let req: bool = types::e_contains(cx.m.effects.items[ea], e); if decl || req { if decl { declares = declares.saturating_add(1); } if req { requires_n = requires_n.saturating_add(1); } let own: bool = match cx.own.find(path.as_str()) { None => false, Some(oa) => types::e_contains(cx.own.items[oa], e), }; out.push_str("{\"def\":"); std::json::push_string(&mut out, path.as_str()); out.push_str(",\"effect\":"); std::json::push_string(&mut out, name); if decl { out.push_str(",\"declares\":true"); } else { out.push_str(",\"declares\":false"); } if req { out.push_str(",\"requires\":true"); } else { out.push_str(",\"requires\":false"); } if own { out.push_str(",\"source\":\"own\"}\n"); } else if req { out.push_str(",\"source\":\"callee\"}\n"); } else { out.push_str(",\"source\":null}\n"); } } } },
+            }
+        }
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"effect\":");
+        std::json::push_string(&mut out, name);
+        out.push_str(",\"declares\":");
+        std::num::push_u64(&mut out, declares as u64);
+        out.push_str(",\"requires\":");
+        std::num::push_u64(&mut out, requires_n as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, count_defs(cx, scope_in) as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The definitions the target holds for (target) that are reachable from start over `calls` edges, start itself included, each with a shortest call path from start, in breadth-first order (stage0 Model::effect_paths): callees are taken in edge order, so each path is the smallest of the shortest ones and the first entry is the nearest. With first the search ends at the first one found")]
+    #[effects(alloc)]
+    fn effect_paths(cx: &Ctx, ck: &body::Checked, start: &str, which: u8, first: bool) -> Vec<Reached> {
+        let mut visited: table::Table<bool> = table::new::<bool>();
+        let mut queue: Vec<String> = Vec::new();
+        let mut from: Vec<usize> = Vec::new();
+        queue.push(String::from(start));
+        from.push(0);
+        visited.insert(start, true);
+        let mut found: Vec<Reached> = Vec::new();
+        let mut head: usize = 0;
+        while head < queue.len()
+            decreases 1000000000 - head,
+        {
+            if head >= 1000000000 {
+                return found;
+            }
+            let at: String = queue[head].clone();
+            if target(cx, ck, which, at.as_str()) {
+                found.push(Reached { to: at.clone(), path: path_to(queue.as_slice(), from.as_slice(), head) });
+                if first {
+                    return found;
+                }
+            }
+            match cx.out.find(at.as_str()) {
+                None => {},
+                Some(oa) => { for j in 0..cx.out.items[oa].len() invariant 0 <= j && j <= cx.out.items[oa].len(), { let s: usize = cx.out.items[oa][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].kind == "calls" && !visited.has(cx.ix.edges.items[s].to.as_str()) { visited.insert(cx.ix.edges.items[s].to.as_str(), true); queue.push(cx.ix.edges.items[s].to.clone()); from.push(head); } } },
+            }
+            head = head + 1;
+        }
+        found
+    }
+
+    #[summary("One row of the effect view (stage0 Model::effect_row): the definition asked about, the effect, and the call path")]
+    #[effects(alloc)]
+    fn effect_row(out: &mut String, def: &str, effect: &str, path: &[String]) -> () {
+        out.push_str("{\"def\":");
+        std::json::push_string(out, def);
+        out.push_str(",\"effect\":");
+        std::json::push_string(out, effect);
+        out.push_str(",\"path\":");
+        map::push_strs(out, path);
+        out.push_str("}\n");
+    }
+
+    #[summary("`effects` without one definition (stage0 Model::effects_all): one row per definition in scope whose calls reach a built-in `io` operation, by path, with a shortest call path to the nearest one; then one row per definition that reaches a definition whose own operations allocate, the path ending there; then a summary row. A definition that declares an effect but reaches no operation has no row")]
+    #[effects(alloc)]
+    fn effects_all(cx: &Ctx, ck: &body::Checked, scope_in: &Option<Vec<String>>) -> String {
+        let mut out: String = String::new();
+        let mut io_rows: usize = 0;
+        let mut alloc_rows: usize = 0;
+        let mut defs: usize = 0;
+        let mut io_defs: usize = 0;
+        let mut alloc_defs: usize = 0;
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { if map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()) { defs = defs.saturating_add(1); if cx.io.has(cx.ix.defs.items[da].path.as_str()) { io_defs = io_defs.saturating_add(1); } if target(cx, ck, 2, cx.ix.defs.items[da].path.as_str()) { alloc_defs = alloc_defs.saturating_add(1); } let near: Vec<Reached> = effect_paths(cx, ck, cx.ix.defs.items[da].path.as_str(), 1, true); if near.len() > 0 { io_rows = io_rows.saturating_add(1); effect_row(&mut out, cx.ix.defs.items[da].path.as_str(), "io", near[0].path.as_slice()); } } },
+            }
+        }
+        for k in 0..cx.ix.defs.len()
+            invariant 0 <= k,
+        {
+            match cx.ix.defs.nth(k) {
+                None => {},
+                Some(db) => { if map::within(scope_in, cx.ix.defs.items[db].path.as_str(), cx.ix.defs.items[db].unit.as_str()) { let nearest: Vec<Reached> = effect_paths(cx, ck, cx.ix.defs.items[db].path.as_str(), 3, true); if nearest.len() > 0 { alloc_rows = alloc_rows.saturating_add(1); effect_row(&mut out, cx.ix.defs.items[db].path.as_str(), "alloc", nearest[0].path.as_slice()); } } },
+            }
+        }
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"io_reaching\":");
+        std::num::push_u64(&mut out, io_rows as u64);
+        out.push_str(",\"io_defs\":");
+        std::num::push_u64(&mut out, io_defs as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, defs as u64);
+        out.push_str(",\"alloc_reaching\":");
+        std::num::push_u64(&mut out, alloc_rows as u64);
+        out.push_str(",\"alloc_defs\":");
+        std::num::push_u64(&mut out, alloc_defs as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("`effects DEF` (stage0 Model::effects_of): one row per definition the one at path reaches that has the effect, with a shortest call path that ends at it: first each `io` function (the definition itself and built-ins included), then each definition declaring `alloc`, each group ordered by the definition reached; then a summary row")]
+    #[effects(alloc)]
+    fn effects_of(cx: &Ctx, ck: &body::Checked, path: &str) -> String {
+        let mut out: String = String::new();
+        let io: Vec<Reached> = effect_paths(cx, ck, path, 0, false);
+        let mut by_io: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for i in 0..io.len()
+            invariant 0 <= i && i <= io.len(),
+        {
+            by_io.insert(io[i].to.as_str(), io[i].path.clone());
+        }
+        for a in 0..by_io.len()
+            invariant 0 <= a,
+        {
+            match by_io.nth(a) {
+                None => {},
+                Some(ia) => effect_row(&mut out, path, "io", by_io.items[ia].as_slice()),
+            }
+        }
+        let alloc: Vec<Reached> = effect_paths(cx, ck, path, 2, false);
+        let mut by_alloc: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for j in 0..alloc.len()
+            invariant 0 <= j && j <= alloc.len(),
+        {
+            by_alloc.insert(alloc[j].to.as_str(), alloc[j].path.clone());
+        }
+        for b in 0..by_alloc.len()
+            invariant 0 <= b,
+        {
+            match by_alloc.nth(b) {
+                None => {},
+                Some(ab) => effect_row(&mut out, path, "alloc", by_alloc.items[ab].as_slice()),
+            }
+        }
+        out.push_str("{\"summary\":true,\"def\":");
+        std::json::push_string(&mut out, path);
+        out.push_str(",\"io_reached\":");
+        std::num::push_u64(&mut out, io.len() as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, cx.ix.defs.len() as u64);
+        out.push_str(",\"alloc_reached\":");
+        std::num::push_u64(&mut out, alloc.len() as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("`find NAME` (stage0 Model::query): the L0 rows of the definitions and types whose path is name or ends in `::name`, by path")]
+    #[effects(alloc)]
+    fn find(cx: &Ctx, idn: &mut map::Idents, pr: &mut fmt::Printer, name: &str) -> String {
+        let mut rows: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for d in 0..cx.ix.defs.len()
+            invariant 0 <= d,
+        {
+            match cx.ix.defs.nth(d) {
+                None => {},
+                Some(da) => { if hit(cx.ix.defs.items[da].path.as_str(), name) { let h: identity::Hashes = map::ident(idn, pr, types::cat2("0:", cx.ix.defs.items[da].path.as_str()).as_str()); let drow: String = map::l0_row(cx.ix.defs.items[da].path.as_str(), map::def_kind(cx.ix.defs.items[da].kind).as_str(), h.body.as_str(), &cx.ix.defs.items[da].display); map::add_row(&mut rows, cx.ix.defs.items[da].path.as_str(), drow); } },
+            }
+        }
+        for t in 0..cx.ix.types.len()
+            invariant 0 <= t,
+        {
+            match cx.ix.types.nth(t) {
+                None => {},
+                Some(ta) => { if hit(cx.ix.types.items[ta].path.as_str(), name) { let trow: String = map::l0_row(cx.ix.types.items[ta].path.as_str(), cx.ix.types.items[ta].kind.as_str(), cx.ix.types.items[ta].hash.as_str(), &cx.ix.types.items[ta].display); map::add_row(&mut rows, cx.ix.types.items[ta].path.as_str(), trow); } },
+            }
+        }
+        map::rows_text(&rows)
+    }
+
+    #[summary("Whether `edges` follows an edge of kind kind: every kind when kinds names none")]
+    #[effects(pure)]
+    fn follows(kinds: &[String], kind: &str) -> bool {
+        kinds.len() == 0 || types::has(kinds, kind)
+    }
+
+    #[summary("Whether `find` takes path for name: it is name, or its last segment is")]
+    #[effects(alloc)]
+    fn hit(path: &str, name: &str) -> bool {
+        path == name || fmt::last_seg(path) == name
+    }
+
+    #[summary("`impact DEF [body|iface]` (stage0 Model::impact): the definitions whose proofs must be redone when the one of entry e changes, by path with the reason, then a summary row")]
+    #[effects(alloc)]
+    fn impact(cx: &Ctx, e: &map::Entry, d: &ast::FnDef, change: &str) -> String {
+        let hits: table::Table<String> = impact_hits(cx, e, d, change);
+        impact_rows(cx, &hits, e.path.as_str(), change)
+    }
+
+    #[summary("The definitions whose proofs must be redone when definition d of entry e changes, with the reason (stage0 Model::impact). Proofs see callees only through their contracts and spec fns only through `#[uses]`, so the set never grows past one step: the definition itself (`changed`) unless only the body of a spec fn that is not recursive changes; for the surface of an executable or proof function its callers (`calls`); for a spec fn the definitions that reveal it (`uses`) and, for its surface, those that name it (`names`, which a later `uses` or `names` edge replaces)")]
+    #[effects(alloc)]
+    fn impact_hits(cx: &Ctx, e: &map::Entry, d: &ast::FnDef, change: &str) -> table::Table<String> {
+        let of_spec: bool = body::is_spec(d.kind);
+        let measured: bool = match &d.measure {
+            None => false,
+            Some(dm) => true,
+        };
+        let mut hits: table::Table<String> = table::new::<String>();
+        if !of_spec || measured || change == "iface" {
+            hits.insert(e.path.as_str(), String::from("changed"));
+        }
+        match cx.inc.find(e.path.as_str()) {
+            None => {},
+            Some(ia) => { for j in 0..cx.inc.items[ia].len() invariant 0 <= j && j <= cx.inc.items[ia].len(), { let s: usize = cx.inc.items[ia][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].from != e.path { let reason: String = impact_reason(of_spec, change, cx.ix.edges.items[s].kind.as_str()); let put: bool = match hits.find(cx.ix.edges.items[s].from.as_str()) { None => true, Some(ha) => hits.items[ha] == "names", }; if reason.len() > 0 && put { hits.insert(cx.ix.edges.items[s].from.as_str(), reason.clone()); } } } },
+        }
+        hits
+    }
+
+    #[summary("Why an edge of kind kind into a changed definition makes its source prove again (the match of stage0 Model::impact), empty when it does not: of_spec is whether the changed definition is a spec fn")]
+    #[effects(alloc)]
+    fn impact_reason(of_spec: bool, change: &str, kind: &str) -> String {
+        if !of_spec && change == "iface" && (kind == "calls" || kind == "proof_calls") {
+            return String::from("calls");
+        }
+        if of_spec && kind == "uses" {
+            return String::from("uses");
+        }
+        if of_spec && change == "iface" && (kind == "contract" || kind == "spec_calls") {
+            return String::from("names");
+        }
+        String::new()
+    }
+
+    #[summary("The rows of `impact` (stage0 Model::impact and type_impact): one per path of hits with its reason, by path, then the summary row with what changed, how, how many prove again, and the number of definitions")]
+    #[effects(alloc)]
+    fn impact_rows(cx: &Ctx, hits: &table::Table<String>, changed: &str, change: &str) -> String {
+        let mut out: String = String::new();
+        for n in 0..hits.len()
+            invariant 0 <= n,
+        {
+            match hits.nth(n) {
+                None => {},
+                Some(ha) => { out.push_str("{\"path\":"); std::json::push_string(&mut out, hits.key(n).as_str()); out.push_str(",\"reason\":"); std::json::push_string(&mut out, hits.items[ha].as_str()); out.push_str("}\n"); },
+            }
+        }
+        out.push_str("{\"summary\":true,\"changed\":");
+        std::json::push_string(&mut out, changed);
+        out.push_str(",\"change\":");
+        std::json::push_string(&mut out, change);
+        out.push_str(",\"reprove\":");
+        std::num::push_u64(&mut out, hits.len() as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, cx.ix.defs.len() as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("Whether path names a unit, definition or type of the index or has one under it (stage0 Index::scope)")]
+    #[effects(alloc)]
+    fn known(ix: &map::Index, path: &str) -> bool {
+        for u in 0..ix.units.len()
+            invariant 0 <= u,
+        {
+            if map::under(ix.units.key(u).as_str(), path) {
+                return true;
+            }
+        }
+        for d in 0..ix.defs.len()
+            invariant 0 <= d,
+        {
+            if map::under(ix.defs.key(d).as_str(), path) {
+                return true;
+            }
+        }
+        for t in 0..ix.types.len()
+            invariant 0 <= t,
+        {
+            if map::under(ix.types.key(t).as_str(), path) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether type t names one of the affected types, at any depth (the `mentions` of stage0 Model::type_impact)")]
+    #[effects(alloc)]
+    fn mentions(t: &ast::TypeKind, affected: &table::Table<bool>, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match t {
+            ast::TypeKind::Int(it) => false,
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(ae, an) => mentions(&ae.kind, affected, f - 1),
+            ast::TypeKind::ArrayN(ne, nn) => false,
+            ast::TypeKind::Slice(se) => mentions(&se.kind, affected, f - 1),
+            ast::TypeKind::Ref(rm, ri) => mentions(&ri.kind, affected, f - 1),
+            ast::TypeKind::Named(path, args) => { if affected.has(types::join(path.as_slice(), "::").as_str()) { return true; } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if mentions(&args[i].kind, affected, f - 1) { return true; } } false },
+            ast::TypeKind::Vec(ve) => mentions(&ve.kind, affected, f - 1),
+            ast::TypeKind::Box(be) => mentions(&be.kind, affected, f - 1),
+            ast::TypeKind::Param(pn) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("Whether one of the contract clauses xs calls the predicate at p, as the clauses of a definition of unit unit resolve their calls (the `by` of stage0 Model::query)")]
+    #[effects(alloc)]
+    fn names(cx: &Ctx, ck: &body::Checked, xs: &[ast::Expr], unit: &str, p: &str) -> bool {
+        let mut calls: Vec<lib::CallAt> = Vec::new();
+        lib::calls_in_exprs(xs, true, &mut calls, 1000000000);
+        for i in 0..calls.len()
+            invariant 0 <= i && i <= calls.len(),
+        {
+            if resolved(cx, ck, calls[i].path.as_slice(), unit) == p {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("`overview [PATH..]` (stage0 Model::overview_unit, ADR-0127): the units in scope, by path, each with what its L0 row says with the lists as counts, and the number of types it declares, so the row's size does not grow with the unit")]
+    #[effects(alloc)]
+    fn overview(cx: &Ctx, scope_in: &Option<Vec<String>>) -> String {
+        let mut types_of: table::Table<usize> = table::new::<usize>();
+        for t in 0..cx.ix.types.items.len()
+            invariant 0 <= t && t <= cx.ix.types.items.len(),
+        {
+            match types_of.find(cx.ix.types.items[t].unit.as_str()) {
+                None => types_of.insert(cx.ix.types.items[t].unit.as_str(), 1),
+                Some(ta) => { types_of.items[ta] = types_of.items[ta].saturating_add(1); },
+            }
+        }
+        let mut out: String = String::new();
+        for u in 0..cx.ix.units.len()
+            invariant 0 <= u,
+        {
+            match cx.ix.units.nth(u) {
+                None => {},
+                Some(ua) => { if map::within(scope_in, cx.ix.units.items[ua].path.as_str(), cx.ix.units.items[ua].path.as_str()) { out.push_str("{\"kind\":\"unit\",\"path\":"); std::json::push_string(&mut out, cx.ix.units.items[ua].path.as_str()); out.push_str(",\"summary\":"); std::json::push_string(&mut out, cx.ix.units.items[ua].summary.as_str()); out.push_str(",\"units\":"); std::num::push_u64(&mut out, cx.ix.units.items[ua].units.len() as u64); out.push_str(",\"defs\":"); std::num::push_u64(&mut out, cx.ix.units.items[ua].defs.len() as u64); out.push_str(",\"types\":"); match types_of.find(cx.ix.units.items[ua].path.as_str()) { None => out.push_str("0"), Some(tn) => std::num::push_u64(&mut out, types_of.items[tn] as u64), } map::push_library(&mut out, cx.ix.units.items[ua].path.as_str()); out.push_str("}\n"); } },
+            }
+        }
+        out
+    }
+
+    #[summary("Whether the definition at path is in scope, by the unit the index has of it (stage0 Model::path_in): no scope is the whole program, and a path that is no definition of the index is in no scope")]
+    #[effects(pure)]
+    fn path_in(cx: &Ctx, scope_in: &Option<Vec<String>>, path: &str) -> bool {
+        match scope_in {
+            None => true,
+            Some(ps) => match cx.ix.defs.find(path) { None => false, Some(da) => map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()), },
+        }
+    }
+
+    #[summary("The call path to entry k of a breadth-first queue: from holds per entry the entry it was reached from, an earlier one, and the start its own")]
+    #[effects(alloc)]
+    fn path_to(queue: &[String], from: &[usize], k: usize) -> Vec<String> {
+        let mut back: Vec<String> = Vec::new();
+        let mut i: usize = k;
+        while i < queue.len() && i < from.len()
+            decreases i,
+        {
+            back.push(queue[i].clone());
+            if from[i] >= i {
+                break;
+            }
+            i = from[i];
+        }
+        let mut path: Vec<String> = Vec::new();
+        let mut n: usize = back.len();
+        while n > 0
+            invariant n <= back.len(),
+            decreases n,
+        {
+            n = n - 1;
+            path.push(back[n].clone());
+        }
+        path
+    }
+
+    #[summary("The function a call by path names in a definition of unit unit, as the queries resolve it (stage0 Model::resolves_to): `f` and `T::f` of an impl function are the unit's when the index has that definition, any other path is as written")]
+    #[effects(alloc)]
+    fn resolved(cx: &Ctx, ck: &body::Checked, path: &[ast::Ident], unit: &str) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len(),
+        {
+            parts.push(path[i].name.clone());
+        }
+        let plain: String = types::join(parts.as_slice(), "::");
+        let local: String = types::cat3(unit, "::", plain.as_str());
+        match ck.b.c.fns.find(local.as_str()) {
+            None => plain,
+            Some(at) => { if cx.ix.defs.has(local.as_str()) && (path.len() == 1 || path.len() == 2 && ck.b.c.fns.items[at].in_impl) { local } else { plain } },
+        }
+    }
+
+    #[summary("bmb query (stage0 lib::map_request_cached and map_answer): reads the files as one program and checks it; when it checks, answers the query req names with its arguments, after the header of the maps. Proof results reach only `surface` of a definition, `status` and `tests`, so only for those the solver runs, through the caches in cache_dir when there is one: `surface` proves its definition alone, `status` and `tests` the definitions in their scope, the whole program without one, and nothing when the scope is no scope")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], req: &[String], cache_dir: &Option<String>) -> Answer {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Answer { kind: 1, text: diags.to_jsonl(&sm), cache_error: None, incr_error: None };
+        }
+        let mut idn: map::Idents = map::idents(&fe.ck);
+        let mut pr: fmt::Printer = fmt::identity(fe.ck.b.c.fns.clone(), fe.ck.b.c.adts.clone(), fe.ck.b.types.clone(), idn.traits.clone());
+        let ix: map::Index = map::build(&fe.ck, &sm, &mut idn, &mut pr);
+        let mut args: Vec<String> = Vec::new();
+        for i in 1..req.len()
+            invariant 1 <= i,
+        {
+            if i < req.len() {
+                args.push(req[i].clone());
+            }
+        }
+        let mut proving: bool = false;
+        let mut only: Option<Vec<String>> = None;
+        if req.len() > 0 && (req[0] == "status" || req[0] == "tests") {
+            match scope(&ix, args.as_slice(), 0) {
+                Ok(sc) => { proving = true; match &sc { None => {}, Some(ps) => { let mut inside: Vec<String> = Vec::new(); for d in 0..ix.defs.len() invariant 0 <= d, { match ix.defs.nth(d) { None => {}, Some(da) => { if map::within(&sc, ix.defs.items[da].path.as_str(), ix.defs.items[da].unit.as_str()) { inside.push(ix.defs.items[da].path.clone()); } }, } } only = Some(inside); }, } },
+                Err(why) => {},
+            }
+        }
+        if req.len() > 1 && req[0] == "surface" && ix.defs.has(req[1].as_str()) {
+            proving = true;
+            let mut one: Vec<String> = Vec::new();
+            one.push(req[1].clone());
+            only = Some(one);
+        }
+        let mut cache_error: Option<String> = None;
+        let mut incr_error: Option<String> = None;
+        let proved: prove::Outcome = if proving {
+            let got: map::Proofs = map::proofs(&fe.ck, &diags, cache_dir, only);
+            cache_error = got.cache_error;
+            incr_error = got.incr_error;
+            got.out
+        } else {
+            prove::Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new(), assumed: table::new::<usize>() }
+        };
+        let m: map::Model = map::model(&ix, &fe.ck, idn.defs.as_slice(), &proved);
+        let mut out: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
+        let mut inc: table::Table<Vec<usize>> = table::new::<Vec<usize>>();
+        for n in 0..ix.edges.len()
+            invariant 0 <= n,
+        {
+            match ix.edges.nth(n) {
+                None => {},
+                Some(ea) => { add_slot(&mut out, ix.edges.items[ea].from.as_str(), ea); add_slot(&mut inc, ix.edges.items[ea].to.as_str(), ea); },
+            }
+        }
+        let mut io: table::Table<bool> = table::new::<bool>();
+        for s in 0..fe.ck.b.c.fns.len()
+            invariant 0 <= s,
+        {
+            match fe.ck.b.c.fns.nth(s) {
+                None => {},
+                Some(sa) => { if body::is_exec(fe.ck.b.c.fns.items[sa].kind) && fe.ck.b.c.fns.items[sa].effect.io { io.insert(fe.ck.b.c.fns.key(s).as_str(), true); } },
+            }
+        }
+        let own: table::Table<types::Effects> = map::own_effects(&fe.ck, &map::call_lists(&ix.edges));
+        let cx: Ctx = Ctx { ix: ix, m: m, proved: proved, out: out, inc: inc, own: own, io: io };
+        if req.len() == 0 {
+            return Answer { kind: 2, text: String::from("missing query name"), cache_error: cache_error, incr_error: incr_error };
+        }
+        let mut qp: fmt::Printer = fmt::qualifying(fe.ck.b.c.fns.clone(), "");
+        match answer(&cx, &fe.ck, &mut idn, &mut pr, &mut qp, req[0].as_str(), args.as_slice()) {
+            Ok(rows) => Answer { kind: 0, text: types::cat2(map::header().as_str(), rows.as_str()), cache_error: cache_error, incr_error: incr_error },
+            Err(usage) => Answer { kind: 2, text: usage, cache_error: cache_error, incr_error: incr_error },
+        }
+    }
+
+    #[summary("The scope the paths of args from position from name (stage0 Index::scope): none for no path, otherwise the paths in order, each once. A path that names no unit, definition or type and has nothing under it is a message")]
+    #[effects(alloc)]
+    fn scope(ix: &map::Index, args: &[String], from: usize) -> Result<Option<Vec<String>>, String> {
+        let mut paths: Vec<String> = Vec::new();
+        for i in from..args.len()
+            invariant from <= i,
+        {
+            if i < args.len() {
+                if !known(ix, args[i].as_str()) {
+                    return Err(types::cat3("unknown definition or unit `", args[i].as_str(), "`"));
+                }
+                paths.push(args[i].clone());
+            }
+        }
+        if paths.len() == 0 {
+            return Ok(None);
+        }
+        Ok(Some(body::sorted_set(paths.as_slice())))
+    }
+
+    #[summary("Whether a parameter or the result of the function at path mentions one of the affected types")]
+    #[effects(alloc)]
+    fn signature_mentions(ck: &body::Checked, path: &str, affected: &table::Table<bool>) -> bool {
+        match ck.b.c.fns.find(path) {
+            None => false,
+            Some(sg) => { for i in 0..ck.b.c.fns.items[sg].params.len() invariant 0 <= i && i <= ck.b.c.fns.items[sg].params.len(), { if mentions(&ck.b.c.fns.items[sg].params[i], affected, 100000) { return true; } } mentions(&ck.b.c.fns.items[sg].ret, affected, 100000) },
+        }
+    }
+
+    #[summary("`slice DEF` (stage0 Model::slice): one row with the definition's normal form, its dependencies by path (what its edges other than `writes` and those to itself lead to, each with the text dep gives), the bytes of all of it and about how many tokens that is (a quarter, rounded up)")]
+    #[effects(alloc)]
+    fn slice(cx: &Ctx, idn: &map::Idents, e: &map::Entry, d: &ast::FnDef) -> String {
+        let code: String = def_text(d, true);
+        let mut deps: table::Table<String> = table::new::<String>();
+        match cx.out.find(e.path.as_str()) {
+            None => {},
+            Some(oa) => { for j in 0..cx.out.items[oa].len() invariant 0 <= j && j <= cx.out.items[oa].len(), { let s: usize = cx.out.items[oa][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].to != e.path && cx.ix.edges.items[s].kind != "writes" { dep(cx, idn, &cx.ix.edges.items[s], &mut deps); } } },
+        }
+        let mut bytes: usize = code.len();
+        let mut row: String = String::from("{\"path\":");
+        std::json::push_string(&mut row, e.path.as_str());
+        row.push_str(",\"code\":");
+        std::json::push_string(&mut row, code.as_str());
+        row.push_str(",\"deps\":[");
+        for n in 0..deps.len()
+            invariant 0 <= n,
+        {
+            match deps.nth(n) {
+                None => {},
+                Some(at) => { if n > 0 { row.push_str(","); } bytes = bytes.saturating_add(deps.items[at].len()); row.push_str("{\"path\":"); std::json::push_string(&mut row, deps.key(n).as_str()); row.push_str(",\"text\":"); std::json::push_string(&mut row, deps.items[at].as_str()); row.push_str("}"); },
+            }
+        }
+        row.push_str("],\"bytes\":");
+        std::num::push_u64(&mut row, bytes as u64);
+        row.push_str(",\"approx_tokens\":");
+        let tokens: usize = if bytes % 4 == 0 {
+            bytes / 4
+        } else {
+            bytes / 4 + 1
+        };
+        std::num::push_u64(&mut row, tokens as u64);
+        row.push_str("}\n");
+        row
+    }
+
+    #[summary("r, if it is a slot, is less than n")]
+    spec fn slot_in(r: Result<usize, String>, n: usize) -> bool {
+        match r {
+            Ok(i) => i < n,
+            Err(e) => true,
+        }
+    }
+
+    #[summary("`status [PATH..]` (stage0 Model::query): one row per definition in scope, by path, with its proof status and what an L1 row shares with it, then the summary row: the definitions, those verified and failed, those declaring `io` and `alloc`, those that still need tests, and the escape counts (stage0 escape_summary, ADR-0029 §5)")]
+    #[effects(alloc)]
+    fn status(cx: &Ctx, ck: &body::Checked, idn: &map::Idents, qp: &mut fmt::Printer, scope_in: &Option<Vec<String>>) -> String {
+        let mut out: String = String::new();
+        let mut t: Tally = Tally { defs: 0, verified: 0, failed: 0, io: 0, tested: 0, proved: 0, assumed: 0, external: 0, escapes: 0, unconfirmed: 0 };
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() && map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()) { status_row(&mut out, cx, ck, qp, cx.ix.defs.items[da].path.as_str(), &idn.defs[k].d, &mut t); } },
+            }
+        }
+        let mut alloc: usize = 0;
+        for a in 0..cx.m.effects.len()
+            invariant 0 <= a,
+        {
+            let path: String = cx.m.effects.key(a);
+            if path_in(cx, scope_in, path.as_str()) && declared(ck, path.as_str()).alloc {
+                alloc = alloc.saturating_add(1);
+            }
+        }
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, t.defs as u64);
+        out.push_str(",\"verified\":");
+        std::num::push_u64(&mut out, t.verified as u64);
+        out.push_str(",\"failed\":");
+        std::num::push_u64(&mut out, t.failed as u64);
+        out.push_str(",\"io_defs\":");
+        std::num::push_u64(&mut out, t.io as u64);
+        out.push_str(",\"alloc_defs\":");
+        std::num::push_u64(&mut out, alloc as u64);
+        out.push_str(",\"test_needed_defs\":");
+        std::num::push_u64(&mut out, t.tested as u64);
+        out.push_str(",\"proved\":");
+        std::num::push_u64(&mut out, t.proved as u64);
+        out.push_str(",\"assumed\":");
+        std::num::push_u64(&mut out, t.assumed as u64);
+        out.push_str(",\"external\":");
+        std::num::push_u64(&mut out, t.external as u64);
+        out.push_str(",\"escapes\":");
+        std::num::push_u64(&mut out, t.escapes as u64);
+        out.push_str(",\"unconfirmed\":");
+        std::num::push_u64(&mut out, t.unconfirmed as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The `status` row of definition d at path, appended to out, and its part in the counts t")]
+    #[effects(alloc)]
+    fn status_row(out: &mut String, cx: &Ctx, ck: &body::Checked, qp: &mut fmt::Printer, path: &str, d: &ast::FnDef, t: &mut Tally) -> () {
+        let s: map::Seen = map::seen(&cx.m, &cx.proved, path);
+        let reasons: Vec<String> = map::test_reasons(&cx.m, path, body::is_exec(d.kind), &s);
+        let es: map::Escapes = map::escapes(path, d, &cx.m, &cx.proved, ck, qp, &s);
+        let state: String = map::status_text(&s);
+        out.push_str("{\"path\":");
+        std::json::push_string(out, path);
+        out.push_str(",\"status\":");
+        std::json::push_string(out, state.as_str());
+        out.push_str(",\"obligations\":");
+        std::num::push_u64(out, s.obligations as u64);
+        out.push_str(",\"failed\":");
+        std::num::push_u64(out, s.failed as u64);
+        out.push_str(",\"effects\":");
+        std::json::push_string(out, map::effects_text(d).as_str());
+        map::push_proof(out, path, &cx.m, &s, reasons.as_slice(), &es);
+        out.push_str("}\n");
+        t.defs = t.defs.saturating_add(1);
+        if state == "verified" {
+            t.verified = t.verified.saturating_add(1);
+        }
+        if state == "failed" {
+            t.failed = t.failed.saturating_add(1);
+        }
+        if declares_io(d) {
+            t.io = t.io.saturating_add(1);
+        }
+        if reasons.len() > 0 {
+            t.tested = t.tested.saturating_add(1);
+        }
+        if es.trust == "proved" {
+            t.proved = t.proved.saturating_add(1);
+        }
+        if es.trust == "assumed" {
+            t.assumed = t.assumed.saturating_add(1);
+        }
+        if es.trust == "external" {
+            t.external = t.external.saturating_add(1);
+        }
+        t.escapes = t.escapes.saturating_add(es.count);
+        if es.rationale == "unconfirmed" {
+            t.unconfirmed = t.unconfirmed.saturating_add(1);
+        }
+    }
+
+    #[summary("The head of a summary row (stage0 summary_head): `\"summary\":true`, and the scope's paths when the query was given one (its counts are then those of the scope). The row is left open")]
+    #[effects(alloc)]
+    fn summary_head(scope_in: &Option<Vec<String>>) -> String {
+        let mut out: String = String::from("{\"summary\":true");
+        match scope_in {
+            None => {},
+            Some(ps) => { out.push_str(",\"scope\":"); map::push_strs(&mut out, ps.as_slice()); },
+        }
+        out
+    }
+
+    #[summary("Whether a search over the calls is for the function at p (the targets of stage0 effects_of and effects_all): 0 an `io` function, 1 an `io` function that is no definition of the index (a built-in operation), 2 a definition with a body that declares `alloc`, 3 a definition whose own operations allocate")]
+    #[effects(pure)]
+    fn target(cx: &Ctx, ck: &body::Checked, which: u8, p: &str) -> bool {
+        if which == 0 {
+            return cx.io.has(p);
+        }
+        if which == 1 {
+            return cx.io.has(p) && !cx.ix.defs.has(p);
+        }
+        if which == 2 {
+            return cx.own.has(p) && declared(ck, p).alloc;
+        }
+        match cx.own.find(p) {
+            None => false,
+            Some(oa) => cx.own.items[oa].alloc,
+        }
+    }
+
+    #[summary("The calls of built-in `io` operations in the body of definition d of unit unit, outside specification context (the `sites` of stage0 Model::tests_needed)")]
+    #[effects(alloc)]
+    fn test_sites(cx: &Ctx, ck: &body::Checked, d: &ast::FnDef, unit: &str) -> usize {
+        let mut calls: Vec<lib::CallAt> = Vec::new();
+        lib::calls_in_block(&d.body, false, &mut calls, 1000000000);
+        let mut sites: usize = 0;
+        for i in 0..calls.len()
+            invariant 0 <= i && i <= calls.len(),
+        {
+            if !calls[i].ghost && target(cx, ck, 1, resolved(cx, ck, calls[i].path.as_slice(), unit).as_str()) {
+                sites = sites.saturating_add(1);
+            }
+        }
+        sites
+    }
+
+    #[summary("`tests [PATH..]` (stage0 Model::tests_needed, ADR-0003): the executable definitions in scope that still need tests, by path, each with why (map::test_reasons), its own calls of built-in `io` operations outside specification context (`sites`, where a test aims) and its normal-form lines; then a summary row with the area in definitions, sites and lines")]
+    #[effects(alloc)]
+    fn tests(cx: &Ctx, ck: &body::Checked, idn: &map::Idents, scope_in: &Option<Vec<String>>) -> String {
+        let mut out: String = String::new();
+        let mut exec: usize = 0;
+        let mut rows: usize = 0;
+        let mut io_n: usize = 0;
+        let mut unproved_n: usize = 0;
+        let mut sites_total: usize = 0;
+        let mut lines_total: usize = 0;
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() && body::is_exec(idn.defs[k].d.kind) && map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()) { exec = exec.saturating_add(1); let s: map::Seen = map::seen(&cx.m, &cx.proved, cx.ix.defs.items[da].path.as_str()); let reasons: Vec<String> = map::test_reasons(&cx.m, cx.ix.defs.items[da].path.as_str(), true, &s); if types::has(reasons.as_slice(), "io") { io_n = io_n.saturating_add(1); } if types::has(reasons.as_slice(), "unproved") { unproved_n = unproved_n.saturating_add(1); } if reasons.len() > 0 { let sites: usize = test_sites(cx, ck, &idn.defs[k].d, cx.ix.defs.items[da].unit.as_str()); let lines: usize = map::rows_of(def_text(&idn.defs[k].d, true).as_str()).len(); rows = rows.saturating_add(1); sites_total = sites_total.saturating_add(sites); lines_total = lines_total.saturating_add(lines); out.push_str("{\"path\":"); std::json::push_string(&mut out, cx.ix.defs.items[da].path.as_str()); out.push_str(",\"test_reasons\":"); map::push_strs(&mut out, reasons.as_slice()); out.push_str(",\"sites\":"); std::num::push_u64(&mut out, sites as u64); out.push_str(",\"lines\":"); std::num::push_u64(&mut out, lines as u64); out.push_str("}\n"); } } },
+            }
+        }
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"exec_defs\":");
+        std::num::push_u64(&mut out, exec as u64);
+        out.push_str(",\"test_needed_defs\":");
+        std::num::push_u64(&mut out, rows as u64);
+        out.push_str(",\"io_defs\":");
+        std::num::push_u64(&mut out, io_n as u64);
+        out.push_str(",\"unproved_defs\":");
+        std::num::push_u64(&mut out, unproved_n as u64);
+        out.push_str(",\"test_sites\":");
+        std::num::push_u64(&mut out, sites_total as u64);
+        out.push_str(",\"test_lines\":");
+        std::num::push_u64(&mut out, lines_total as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The text a slice shows of the definition at path: its normal form, or with whole false its surface; none when the index has no such definition")]
+    #[effects(alloc)]
+    fn text_of(cx: &Ctx, idn: &map::Idents, path: &str, whole: bool) -> Option<String> {
+        match cx.ix.defs.find(path) {
+            None => None,
+            Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() { Some(def_text(&idn.defs[k].d, whole)) } else { None } },
+        }
+    }
+
+    #[summary("Adds one row of `text` to found under a key whose order is the order of stage0's sort: by path, then line, then text")]
+    #[effects(alloc)]
+    fn text_row(found: &mut table::Table<Vec<String>>, path: &str, line: u64, text: &str) -> () {
+        let mut key: String = String::from(path);
+        key.push_str("\u{1}");
+        map::pad20(&mut key, line);
+        key.push_str(text);
+        let mut row: String = String::from("{\"path\":");
+        std::json::push_string(&mut row, path);
+        row.push_str(",\"line\":");
+        std::num::push_u64(&mut row, line);
+        row.push_str(",\"text\":");
+        std::json::push_string(&mut row, text);
+        row.push_str("}\n");
+        map::add_row(found, key.as_str(), row);
+    }
+
+    #[summary("`text PATTERN [PATH..]` (stage0 Model::text_rows, ADR-0146): one row per line of the normal form that holds pat as written (case matters, no pattern language), by path, line and text. The path is the definition or type the line is in, the line counts from 1 within its normal form (a type's declaration is one line), and the text is the line without the blanks around it, or of a long line the part around the first occurrence (around). Then the summary row: the lines found and how many definitions and types hold them")]
+    #[effects(alloc)]
+    fn text_rows(cx: &Ctx, idn: &map::Idents, pat: &str, scope_in: &Option<Vec<String>>) -> String {
+        let mut found: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        let mut holders: table::Table<bool> = table::new::<bool>();
+        let mut matches: usize = 0;
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            match cx.ix.defs.nth(n) {
+                None => {},
+                Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() && map::within(scope_in, cx.ix.defs.items[da].path.as_str(), cx.ix.defs.items[da].unit.as_str()) { let text: String = def_text(&idn.defs[k].d, true); let lines: Vec<map::Row> = map::rows_of(text.as_str()); for l in 0..lines.len() invariant 0 <= l && l <= lines.len(), { let line: String = lexer::cut(text.as_str(), lines[l].lo, lines[l].hi); match std::str::find(line.as_str(), pat) { None => {}, Some(at) => { matches = matches.saturating_add(1); holders.insert(cx.ix.defs.items[da].path.as_str(), true); text_row(&mut found, cx.ix.defs.items[da].path.as_str(), (l as u64).saturating_add(1), around(line.as_str(), at, pat.len()).as_str()); }, } } } },
+            }
+        }
+        for t in 0..cx.ix.types.len()
+            invariant 0 <= t,
+        {
+            match cx.ix.types.nth(t) {
+                None => {},
+                Some(ta) => { if map::within(scope_in, cx.ix.types.items[ta].path.as_str(), cx.ix.types.items[ta].unit.as_str()) { match std::str::find(cx.ix.types.items[ta].text.as_str(), pat) { None => {}, Some(tat) => { matches = matches.saturating_add(1); holders.insert(cx.ix.types.items[ta].path.as_str(), true); text_row(&mut found, cx.ix.types.items[ta].path.as_str(), 1, around(cx.ix.types.items[ta].text.as_str(), tat, pat.len()).as_str()); }, } } },
+            }
+        }
+        let mut out: String = map::rows_text(&found);
+        out.push_str(summary_head(scope_in).as_str());
+        out.push_str(",\"pattern\":");
+        std::json::push_string(&mut out, pat);
+        out.push_str(",\"matches\":");
+        std::num::push_u64(&mut out, matches as u64);
+        out.push_str(",\"defs\":");
+        std::num::push_u64(&mut out, holders.len() as u64);
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("The type declaration the first argument names, as its slot in the index's types, when it names one (the `ty` of stage0 Model::query)")]
+    #[effects(pure)]
+    #[uses(table::within)]
+    fn type_at(cx: &Ctx, args: &[String]) -> (r: Option<usize>)
+        ensures table::within(r, cx.ix.types.items.len()),
+    {
+        if args.len() == 0 {
+            return None;
+        }
+        cx.ix.types.find(args[0].as_str())
+    }
+
+    #[summary("`impact TYPE [body|iface]` (stage0 Model::type_impact, ADR-0026 §6): what changing type ty proves again, by path with the reason, then a summary row. The definitions that name it or a type holding it (`types`); then, as for a change of their surface, the callers of an executable one that names it in its surface and what reveals or names a spec fn that does (`calls`, `uses`, `names`, the first found for a path); then every definition a value of the type passes through, by its locals, its own signature and those of its callees (`values`, ADR-0060 §3)")]
+    #[effects(alloc)]
+    fn type_impact(cx: &Ctx, ck: &body::Checked, idn: &map::Idents, ty: &map::TypeEntry, change: &str) -> String {
+        let mut affected: table::Table<bool> = table::new::<bool>();
+        affected.insert(ty.path.as_str(), true);
+        let mut grew: bool = true;
+        let mut fuel: usize = 1000000000;
+        while grew && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            grew = false;
+            for t in 0..cx.ix.types.items.len()
+                invariant 0 <= t && t <= cx.ix.types.items.len(),
+            {
+                if !affected.has(cx.ix.types.items[t].path.as_str()) {
+                    let mut holds: bool = false;
+                    for q in 0..cx.ix.types.items[t].names.len()
+                        invariant 0 <= q && q <= cx.ix.types.items[t].names.len(),
+                    {
+                        if affected.has(cx.ix.types.items[t].names[q].as_str()) {
+                            holds = true;
+                        }
+                    }
+                    if holds {
+                        affected.insert(cx.ix.types.items[t].path.as_str(), true);
+                        grew = true;
+                    }
+                }
+            }
+        }
+        let mut hits: table::Table<String> = table::new::<String>();
+        let mut direct: Vec<String> = Vec::new();
+        let mut names_of: Vec<String> = Vec::new();
+        for a in 0..affected.len()
+            invariant 0 <= a,
+        {
+            let ap: String = affected.key(a);
+            names_of.push(ap.clone());
+            match cx.inc.find(ap.as_str()) {
+                None => {},
+                Some(ia) => { for j in 0..cx.inc.items[ia].len() invariant 0 <= j && j <= cx.inc.items[ia].len(), { let s: usize = cx.inc.items[ia][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].kind == "types" { hits.insert(cx.ix.edges.items[s].from.as_str(), String::from("types")); direct.push(cx.ix.edges.items[s].from.clone()); } } },
+            }
+        }
+        for p in 0..direct.len()
+            invariant 0 <= p && p <= direct.len(),
+        {
+            match cx.ix.defs.find(direct[p].as_str()) {
+                None => {},
+                Some(da) => { let k: usize = cx.ix.defs.items[da].at; if k < idn.defs.len() { let surface: String = def_text(&idn.defs[k].d, body::is_spec(idn.defs[k].d.kind)); if type_named(surface.as_str(), names_of.as_slice()) { let more: table::Table<String> = impact_hits(cx, &cx.ix.defs.items[da], &idn.defs[k].d, "iface"); for h in 0..more.len() invariant 0 <= h, { match more.nth(h) { None => {}, Some(ma) => { let mp: String = more.key(h); if more.items[ma] != "changed" && !hits.has(mp.as_str()) { hits.insert(mp.as_str(), more.items[ma].clone()); } }, } } } } },
+            }
+        }
+        for n in 0..cx.ix.defs.len()
+            invariant 0 <= n,
+        {
+            let path: String = cx.ix.defs.key(n);
+            if !hits.has(path.as_str()) && values_pass(cx, ck, path.as_str(), &affected) {
+                hits.insert(path.as_str(), String::from("values"));
+            }
+        }
+        impact_rows(cx, &hits, ty.path.as_str(), change)
+    }
+
+    #[summary("Whether text surface holds the path of one of the types, or its last segment (the `names_it` of stage0 Model::type_impact)")]
+    #[effects(alloc)]
+    fn type_named(surface: &str, paths: &[String]) -> bool {
+        for i in 0..paths.len()
+            invariant 0 <= i && i <= paths.len(),
+        {
+            let whole: bool = match std::str::find(surface, paths[i].as_str()) {
+                None => false,
+                Some(at) => true,
+            };
+            if whole {
+                return true;
+            }
+            let last: bool = match std::str::find(surface, fmt::last_seg(paths[i].as_str()).as_str()) {
+                None => false,
+                Some(la) => true,
+            };
+            if last {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether a value of one of the affected types passes through the definition at path (stage0 Model::type_impact): one of its locals, or a parameter or the result of its own signature or of a function it calls, mentions one")]
+    #[effects(alloc)]
+    fn values_pass(cx: &Ctx, ck: &body::Checked, path: &str, affected: &table::Table<bool>) -> bool {
+        match ck.b.locals.find(path) {
+            None => {},
+            Some(la) => { for l in 0..ck.b.locals.items[la].items.len() invariant 0 <= l && l <= ck.b.locals.items[la].items.len(), { if mentions(&ck.b.locals.items[la].items[l], affected, 100000) { return true; } } },
+        }
+        if signature_mentions(ck, path, affected) {
+            return true;
+        }
+        match cx.out.find(path) {
+            None => {},
+            Some(oa) => { for j in 0..cx.out.items[oa].len() invariant 0 <= j && j <= cx.out.items[oa].len(), { let s: usize = cx.out.items[oa][j]; if s < cx.ix.edges.items.len() && cx.ix.edges.items[s].kind == "calls" && signature_mentions(ck, cx.ix.edges.items[s].to.as_str(), affected) { return true; } } },
+        }
+        false
+    }
+}

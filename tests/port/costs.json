@@ -154,6 +154,13 @@
     "map-window": 2.5,
     "map-window-together": 10.9,
     "map-ends": 2.4,
-    "map-cache": 32.0
+    "map-cache": 32.0,
+    "query-each": 26.9,
+    "query-together": 52.7,
+    "query-paths": 109.7,
+    "query-paths-together": 26.5,
+    "query-proved": 36.7,
+    "query-fake-models": 1.8,
+    "query-ends": 3.3
   }
 }
