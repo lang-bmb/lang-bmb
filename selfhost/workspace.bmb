@@ -1,0 +1,1690 @@
+#[summary("Workspace and write transactions (port of stage0 compiler/src/workspace.rs; ADR-0009, ADR-0019 §3). A workspace is a directory whose src/ holds one normal-form file per top-level unit. A transaction commits only if the resulting program has no structural or type errors; proofs are not required to commit")]
+mod workspace {
+    #[summary("What a commit compares and what expect reads of the workspace a transaction starts from: the qualified hashes by path, and the identities by path (only of a workspace that checks)")]
+    struct Before { hashes: table::Table<String>, ids: Option<table::Table<String>> }
+
+    #[summary("Outcome of a commit: diagnostics is JSONL when rejected and empty when committed; changed is the definitions whose text changed or was added, removed those that are gone")]
+    struct Commit { ok: bool, diagnostics: String, changed: Vec<String>, removed: Vec<String> }
+
+    #[summary("A unit found by path: the positions down to it and a copy of it (a reference cannot be returned; set_mod writes a changed copy back)")]
+    struct Found { at: Vec<usize>, m: ast::Mod }
+
+    #[summary("The items of a put's code")]
+    enum Item { Fn(ast::FnDef), Type(ast::TypeDef), Impl(ast::Impl), Trait(ast::TraitDef), TraitImpl(ast::TraitImpl), Use(ast::UseItem), Const(ast::ConstDef) }
+
+    #[summary("References to the moved function, by its new full path")]
+    struct Mover { from: Vec<String>, name: String, to: Vec<String> }
+
+    impl refs::Rewrite for Mover {
+        #[effects(alloc)]
+        fn decl(self: &mut Mover, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut Mover, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut Mover, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            if site_code(&site) != 0 {
+                return;
+            }
+            let n: usize = self.from.len();
+            let full: bool = segs.len() > n && segs.len() - n == 1 && starts(segs.as_slice(), self.from.as_slice()) && segs[n] == self.name;
+            let short: bool = same(unit, self.from.as_slice()) && segs.len() == 1 && segs[0] == self.name;
+            if full || short {
+                let mut out: Vec<String> = copy(self.to.as_slice());
+                out.push(self.name.clone());
+                *segs = out;
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut Mover, name: &mut String) -> () {}
+    }
+
+    #[summary("One operation of a transaction. Unit(path, summary) creates a unit or replaces its summary; Put(unit, code) adds or replaces definitions; Remove(def) removes a definition by full path; RemoveUnit(path) a unit and everything in it; Rename(def, to) renames a function, type, trait or unit and every reference to it; Expect(def, id) commits only if def has identity id in the workspace the transaction starts from; Move(def, to) moves a function of a unit into unit to")]
+    enum Op { Unit(String, String), Put(String, String), Remove(String), RemoveUnit(String), Rename(String, String), Expect(String, String), Move(String, String) }
+
+    #[summary("The result of plan: the commit and, when it is accepted, the new normal-form files (unit name and text, in name order)")]
+    struct Planned { commit: Commit, units: Option<Vec<fmt::Unit>> }
+
+    #[summary("What the moved function names of its old unit by a short path, by the full path")]
+    struct Qualifier { unit: Vec<String>, locals: Vec<String> }
+
+    impl refs::Rewrite for Qualifier {
+        #[effects(alloc)]
+        fn decl(self: &mut Qualifier, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut Qualifier, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut Qualifier, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            if segs.len() == 0 {
+                return;
+            }
+            let type_param: bool = site_code(&site) == 1 && segs.len() == 1 && types::has(tparams, segs[0].as_str());
+            if types::has(self.locals.as_slice(), segs[0].as_str()) && !type_param && !starts(segs.as_slice(), self.unit.as_slice()) {
+                let mut out: Vec<String> = copy(self.unit.as_slice());
+                for i in 0..segs.len()
+                    invariant 0 <= i && i <= segs.len(),
+                {
+                    out.push(segs[i].clone());
+                }
+                *segs = out;
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut Qualifier, name: &mut String) -> () {}
+    }
+
+    #[summary("Renames one definition and every reference to it (ADR-0059 §5). unit is the full path of the target's unit, local the segments that name it there (f, T::f, T, Trait), kind 0 a function, 1 an impl function, 2 a type, 3 a trait, 4 a trait's method (its declaration, the function of that name in every impl of the trait, and its calls); methods holds the method calls of the target (x.f(..)) by position")]
+    struct Renamer { unit: Vec<String>, local: Vec<String>, kind: u8, to: String, methods: table::Table<bool> }
+
+    impl refs::Rewrite for Renamer {
+        #[summary("The target's own declaration (a type's also in its impl head). An impl of the target's trait may be in any unit: by the full path of the trait, or by its name in the trait's own unit")]
+        #[effects(alloc)]
+        fn decl(self: &mut Renamer, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {
+            let d: u8 = decl_code(&kind);
+            if self.local.len() == 0 {
+                return;
+            }
+            if d == 6 {
+                let mut full: Vec<String> = copy(self.unit.as_slice());
+                full.push(self.local[0].clone());
+                let names: bool = same(owner, full.as_slice()) || same(unit, self.unit.as_slice()) && owner.len() == 1 && owner[0] == self.local[0];
+                if self.kind == 4 && names && self.local.len() > 1 && name.name == self.local[1] {
+                    name.name = self.to.clone();
+                }
+                return;
+            }
+            if !same(unit, self.unit.as_slice()) {
+                return;
+            }
+            let mut hit: bool = false;
+            if d == 5 {
+                hit = self.kind == 4 && owner.len() > 0 && owner[0] == self.local[0] && self.local.len() > 1 && name.name == self.local[1];
+            } else if d == 0 {
+                hit = self.kind == 0 && name.name == self.local[0];
+            } else if d == 1 || d == 2 {
+                hit = self.kind == 2 && name.name == self.local[0];
+            } else if d == 3 {
+                hit = self.kind == 1 && owner.len() > 0 && owner[0] == self.local[0] && self.local.len() > 1 && name.name == self.local[1];
+            } else if d == 4 {
+                hit = self.kind == 3 && name.name == self.local[0];
+            }
+            if hit {
+                name.name = self.to.clone();
+            }
+        }
+
+        #[effects(alloc)]
+        fn method(self: &mut Renamer, call: source::Span, name: &mut ast::Ident) -> () {
+            if self.methods.has(body::span_key(call).as_str()) {
+                name.name = self.to.clone();
+            }
+        }
+
+        #[summary("Rewrites segs (as written in unit) if they name the target at site")]
+        #[effects(alloc)]
+        fn path(self: &mut Renamer, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            let s: u8 = site_code(&site);
+            let k: u8 = self.kind;
+            let mut extra: usize = 2;
+            if (k == 0 || k == 1 || k == 4) && s == 0 {
+                extra = 0;
+            } else if k == 2 && (s == 0 || s == 3) {
+                extra = 1;
+            } else if k == 2 && (s == 1 || s == 2) {
+                extra = 0;
+            } else if k == 3 && s == 0 {
+                extra = 1;
+            } else if k == 3 && s == 4 {
+                extra = 0;
+            }
+            if extra == 2 || segs.len() < extra {
+                return;
+            }
+            let mut full: Vec<String> = copy(self.unit.as_slice());
+            for i in 0..self.local.len()
+                invariant 0 <= i && i <= self.local.len(),
+            {
+                full.push(self.local[i].clone());
+            }
+            if segs.len() - extra == full.len() && starts(segs.as_slice(), full.as_slice()) {
+                set_seg(segs, full.len(), self.to.as_str());
+            } else if same(unit, self.unit.as_slice()) && segs.len() - extra == self.local.len() && starts(segs.as_slice(), self.local.as_slice()) {
+                let type_param: bool = s == 1 && segs.len() == 1 && types::has(tparams, segs[0].as_str());
+                if !type_param {
+                    set_seg(segs, self.local.len(), self.to.as_str());
+                }
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut Renamer, name: &mut String) -> () {}
+    }
+
+    #[summary("Visitor that collects the positions of the method calls whose function is def (ADR-0051)")]
+    struct Sites { def: String, out: table::Table<bool> }
+
+    impl ast::ExprFn for Sites {
+        #[effects(alloc)]
+        fn expr(self: &mut Sites, e: &mut ast::Expr) -> () {
+            match &e.kind {
+                ast::ExprKind::Int(iv, ir) => {},
+                ast::ExprKind::Float(fb) => {},
+                ast::ExprKind::ByteLit(by) => {},
+                ast::ExprKind::ByteStr(bys) => {},
+                ast::ExprKind::StrLit(st) => {},
+                ast::ExprKind::CharLit(ch) => {},
+                ast::ExprKind::Bool(bo) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(id) => {},
+                ast::ExprKind::Call(ca) => { if is_method(&ca.method) && ident_path(ca.path.as_slice()) == self.def { self.out.insert(body::span_key(e.span).as_str(), true); } },
+                ast::ExprKind::Method(me) => {},
+                ast::ExprKind::Index(ib, ii) => {},
+                ast::ExprKind::Unary(uo, ux) => {},
+                ast::ExprKind::Binary(bop, bl, br) => {},
+                ast::ExprKind::Ref(rm, rx) => {},
+                ast::ExprKind::If(ife) => {},
+                ast::ExprKind::Block(blk) => {},
+                ast::ExprKind::Array(ar) => {},
+                ast::ExprKind::Repeat(rp) => {},
+                ast::ExprKind::Old(ox) => {},
+                ast::ExprKind::Quant(qu) => {},
+                ast::ExprKind::Trigger(tx) => {},
+                ast::ExprKind::Closure(cl) => {},
+                ast::ExprKind::StructLit(sl) => {},
+                ast::ExprKind::Path(pa) => {},
+                ast::ExprKind::Deref(dx) => {},
+                ast::ExprKind::Field(fx, fnm) => {},
+                ast::ExprKind::Match(ma) => {},
+                ast::ExprKind::Return(rv) => {},
+                ast::ExprKind::Try(tr) => {},
+                ast::ExprKind::Loop(lp) => {},
+                ast::ExprKind::Break(bk) => {},
+                ast::ExprKind::Continue(co) => {},
+                ast::ExprKind::Range(rg) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("A program with the library units it names, and the diagnostics of adding them")]
+    struct Std { program: ast::Program, diags: diag::Diags }
+
+    #[summary("Every path through one unit, to its new name")]
+    struct UnitRenamer { unit: Vec<String>, to: String }
+
+    impl refs::Rewrite for UnitRenamer {
+        #[effects(alloc)]
+        fn decl(self: &mut UnitRenamer, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut UnitRenamer, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut UnitRenamer, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            let n: usize = self.unit.len();
+            if segs.len() > n && starts(segs.as_slice(), self.unit.as_slice()) {
+                set_seg(segs, n, self.to.as_str());
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut UnitRenamer, name: &mut String) -> () {}
+    }
+
+    #[summary("The qualified hashes changed compares, and the identities expect reads (only of a workspace that checks). Nothing of a workspace with a syntax error")]
+    #[effects(alloc)]
+    fn before_state(program: &ast::Program, diags: &diag::Diags) -> Before {
+        if diags.has_errors() {
+            return Before { hashes: table::new::<String>(), ids: None };
+        }
+        let st: Std = with_std(program);
+        let mut d2: diag::Diags = st.diags;
+        let full: ast::Program = st.program;
+        let ck: body::Checked = body::check_resolved(full.clone(), &mut d2);
+        let mut ids: Option<table::Table<String>> = None;
+        if !d2.has_errors() {
+            ids = Some(identities(&ck));
+        }
+        Before { hashes: program_hashes(&full, &ck.b.c.fns), ids: ids }
+    }
+
+    #[summary("Checks a copy of p with the library units it names (ADR-0092 §1): the program with its method calls resolved and its tables, or None when it does not check")]
+    #[effects(alloc)]
+    fn checked(p: &ast::Program) -> Option<body::Checked> {
+        let st: Std = with_std(p);
+        let mut d: diag::Diags = st.diags;
+        let ck: body::Checked = body::check_resolved(st.program, &mut d);
+        if d.has_errors() {
+            None
+        } else {
+            Some(ck)
+        }
+    }
+
+    #[summary("Commits ops to the workspace at root: files change only on success. The error is one of reading or writing the workspace")]
+    #[effects(alloc, io, nondet)]
+    fn commit(root: &str, ops: &[Op]) -> Result<Commit, String> {
+        let mut files: Vec<lib::Input> = Vec::new();
+        if is_dir(src_dir(root).as_str()) {
+            match read_dir_sources(root) {
+                Ok(read) => { files = read; },
+                Err(why) => { return Err(why); },
+            }
+        }
+        let pl: Planned = plan(files.as_slice(), ops);
+        match &pl.units {
+            None => {},
+            Some(units) => { match write_units(root, units.as_slice()) { Ok(done) => {}, Err(w2) => { return Err(w2); }, } },
+        }
+        Ok(pl.commit)
+    }
+
+    #[summary("Whether pat occurs in s")]
+    #[effects(pure)]
+    fn contains(s: &str, pat: &str) -> bool {
+        match std::str::find(s, pat) {
+            None => false,
+            Some(at) => true,
+        }
+    }
+
+    #[summary("A copy of the segments")]
+    #[effects(alloc)]
+    fn copy(xs: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            out.push(xs[i].clone());
+        }
+        out
+    }
+
+    #[summary("The kind of a declaration name as a number: 0 Fn, 1 Type, 2 ImplTy, 3 ImplFn, 4 Trait, 5 TraitFn, 6 TraitImplFn")]
+    #[effects(pure)]
+    fn decl_code(k: &refs::DeclKind) -> u8 {
+        match k {
+            refs::DeclKind::Fn => 0,
+            refs::DeclKind::Type => 1,
+            refs::DeclKind::ImplTy => 2,
+            refs::DeclKind::ImplFn => 3,
+            refs::DeclKind::Trait => 4,
+            refs::DeclKind::TraitFn => 5,
+            refs::DeclKind::TraitImplFn => 6,
+        }
+    }
+
+    #[summary("The unit at segs with the positions down to it (stage0's find_mod: at each level the first unit of that name, and no other is tried when the rest is not found in it). None for an empty path")]
+    #[effects(alloc)]
+    fn find_mod(mods: &[ast::Mod], segs: &[String]) -> Option<Found> {
+        let mut at: Vec<usize> = Vec::new();
+        if !locate(mods, segs, 0, &mut at) {
+            return None;
+        }
+        match mod_at(mods, at.as_slice(), 0) {
+            None => None,
+            Some(m) => Some(Found { at: at, m: m }),
+        }
+    }
+
+    #[summary("Checks the new program with the library units it names and reports what changed against before. The files are written without the library")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn finish(program0: ast::Program, sm0: source::SourceMap, diags0: diag::Diags, problems: &[String], before: &table::Table<String>) -> Planned {
+        let mut sm: source::SourceMap = sm0;
+        let mut diags: diag::Diags = diags0;
+        let mut program: ast::Program = program0;
+        stdlib::add(&mut sm, &mut program, &mut diags);
+        let ck: body::Checked = body::check_resolved(program.clone(), &mut diags);
+        let mut diagnostics: String = diags.to_jsonl(&sm);
+        for i in 0..problems.len()
+            invariant 0 <= i && i <= problems.len(),
+        {
+            diagnostics.push_str("{\"error\":");
+            std::json::push_string(&mut diagnostics, problems[i].as_str());
+            diagnostics.push_str("}\n");
+        }
+        if diagnostics.len() > 0 {
+            return Planned { commit: Commit { ok: false, diagnostics: diagnostics, changed: Vec::new(), removed: Vec::new() }, units: None };
+        }
+        let normal: ast::Program = methodize::methodize(&program, &ck.program, &ck.b.c.fns, &ck.b.c.adts, &ck.b.types);
+        let after: table::Table<String> = program_hashes(&normal, &ck.b.c.fns);
+        let mut changed: Vec<String> = Vec::new();
+        let total: usize = after.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match after.nth(n) {
+                None => {},
+                Some(a) => { let key: String = after.key(n); let mut is_same: bool = false; match before.find(key.as_str()) { None => {}, Some(b) => { is_same = before.items[b] == after.items[a]; }, } if !is_same { changed.push(key.clone()); } },
+            }
+        }
+        let mut removed: Vec<String> = Vec::new();
+        let olds: usize = before.len();
+        for o in 0..olds
+            invariant 0 <= o && o <= olds,
+        {
+            let old_key: String = before.key(o);
+            if !after.has(old_key.as_str()) {
+                removed.push(old_key.clone());
+            }
+        }
+        let all: Vec<fmt::Unit> = fmt::format_units(&normal);
+        let mut units: Vec<fmt::Unit> = Vec::new();
+        for u in 0..all.len()
+            invariant 0 <= u && u <= all.len(),
+        {
+            if all[u].name != "std" {
+                units.push(all[u].clone());
+            }
+        }
+        Planned { commit: Commit { ok: true, diagnostics: String::new(), changed: changed, removed: removed }, units: Some(units) }
+    }
+
+    #[summary("Whether a unit was found")]
+    #[effects(pure)]
+    fn found(o: &Option<Found>) -> bool {
+        match o {
+            None => false,
+            Some(f) => true,
+        }
+    }
+
+    #[summary("The path of names joined with ::")]
+    #[effects(alloc)]
+    fn ident_path(path: &[ast::Ident]) -> String {
+        let mut out: String = String::new();
+        for i in 0..path.len()
+            invariant 0 <= i && i <= path.len(),
+        {
+            if i > 0 {
+                out.push_str("::");
+            }
+            out.push_str(path[i].name.as_str());
+        }
+        out
+    }
+
+    #[summary("The identity of every definition, type and trait, by path (ADR-0059 §1). As in stage0's map, a path that is both a definition and a type or trait keeps the last of them in that order")]
+    #[effects(alloc)]
+    fn identities(ck: &body::Checked) -> table::Table<String> {
+        let mut w: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut ids: identity::Ids = identity::new(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &mut w);
+        let mut pr: fmt::Printer = fmt::identity(ck.b.c.fns.clone(), ck.b.c.adts.clone(), ck.b.types.clone(), w.traits.clone());
+        let mut keys: Vec<String> = Vec::new();
+        let total: usize = ids.ents.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            keys.push(ids.ents.key(n));
+        }
+        let mut out: table::Table<String> = table::new::<String>();
+        for i in 0..keys.len()
+            invariant 0 <= i && i <= keys.len(),
+        {
+            match ids.get(&mut pr, keys[i].as_str()) {
+                None => {},
+                Some(h) => out.insert(identity::path_of(keys[i].as_str()).as_str(), h.id),
+            }
+        }
+        out
+    }
+
+    #[summary("Whether p is a directory (a link to one too)")]
+    #[effects(alloc, io, nondet)]
+    fn is_dir(p: &str) -> bool {
+        match std::fs::metadata(p) {
+            Ok(m) => m.is_dir,
+            Err(e) => false,
+        }
+    }
+
+    #[summary("Whether name is a name the parser accepts for a unit or definition (stage0 parser::is_ident): the lexer's identifier rule ([A-Za-z_][A-Za-z0-9_]*) minus reserved words")]
+    #[effects(pure)]
+    fn is_ident(name: &str) -> bool {
+        if name.len() == 0 {
+            return false;
+        }
+        for i in 0..name.len()
+            invariant 0 <= i && i <= name.len(),
+        {
+            let c: u8 = name.as_bytes()[i];
+            let letter: bool = c >= 65 && c <= 90 || c >= 97 && c <= 122 || c == 95;
+            if !(letter || i > 0 && c >= 48 && c <= 57) {
+                return false;
+            }
+        }
+        !parser::reserved(name)
+    }
+
+    #[summary("Whether the call is one written as a method call")]
+    #[effects(pure)]
+    fn is_method(m: &Option<ast::Adjust>) -> bool {
+        match m {
+            None => false,
+            Some(a) => true,
+        }
+    }
+
+    #[summary("The items of the unit a put's code was read as, in source order (ADR-0074 §2: a later item at the same address replaces an earlier one)")]
+    #[effects(alloc)]
+    fn items_of(m: &ast::Mod) -> Vec<Item> {
+        let mut los: Vec<u32> = Vec::new();
+        let mut items: Vec<Item> = Vec::new();
+        for a in 0..m.fns.len()
+            invariant 0 <= a && a <= m.fns.len(),
+        {
+            los.push(m.fns[a].span.lo);
+            items.push(Item::Fn(m.fns[a].clone()));
+        }
+        for b in 0..m.types.len()
+            invariant 0 <= b && b <= m.types.len(),
+        {
+            los.push(m.types[b].span.lo);
+            items.push(Item::Type(m.types[b].clone()));
+        }
+        for c in 0..m.impls.len()
+            invariant 0 <= c && c <= m.impls.len(),
+        {
+            los.push(m.impls[c].span.lo);
+            items.push(Item::Impl(m.impls[c].clone()));
+        }
+        for d in 0..m.traits.len()
+            invariant 0 <= d && d <= m.traits.len(),
+        {
+            los.push(m.traits[d].span.lo);
+            items.push(Item::Trait(m.traits[d].clone()));
+        }
+        for e in 0..m.trait_impls.len()
+            invariant 0 <= e && e <= m.trait_impls.len(),
+        {
+            los.push(m.trait_impls[e].span.lo);
+            items.push(Item::TraitImpl(m.trait_impls[e].clone()));
+        }
+        for g in 0..m.uses.len()
+            invariant 0 <= g && g <= m.uses.len(),
+        {
+            los.push(m.uses[g].span.lo);
+            items.push(Item::Use(m.uses[g].clone()));
+        }
+        for h in 0..m.consts.len()
+            invariant 0 <= h && h <= m.consts.len(),
+        {
+            los.push(m.consts[h].span.lo);
+            items.push(Item::Const(m.consts[h].clone()));
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<u32>(los.as_slice());
+        let mut out: Vec<Item> = Vec::new();
+        for i in 0..ord.len()
+            invariant 0 <= i && i <= ord.len(),
+        {
+            if ord[i] < items.len() {
+                out.push(items[ord[i]].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The constants not named name")]
+    #[effects(alloc)]
+    fn keep_consts(xs: &[ast::ConstDef], name: &str) -> Vec<ast::ConstDef> {
+        let mut out: Vec<ast::ConstDef> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].name.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The functions not named name")]
+    #[effects(alloc)]
+    fn keep_fns(xs: &[ast::FnDef], name: &str) -> Vec<ast::FnDef> {
+        let mut out: Vec<ast::FnDef> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].name.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The impl blocks of types not named name")]
+    #[effects(alloc)]
+    fn keep_impls(xs: &[ast::Impl], name: &str) -> Vec<ast::Impl> {
+        let mut out: Vec<ast::Impl> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].ty.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The units not named name")]
+    #[effects(alloc)]
+    fn keep_mods(xs: &[ast::Mod], name: &str) -> Vec<ast::Mod> {
+        let mut out: Vec<ast::Mod> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].name.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The trait impls of unit m (path mp) whose address is not addr")]
+    #[effects(alloc)]
+    fn keep_trait_impls(m: &ast::Mod, mp: &str, addr: &str) -> Vec<ast::TraitImpl> {
+        let mut out: Vec<ast::TraitImpl> = Vec::new();
+        for i in 0..m.trait_impls.len()
+            invariant 0 <= i && i <= m.trait_impls.len(),
+        {
+            if fmt::trait_impl_address(mp, m, &m.trait_impls[i]).as_str() != addr {
+                out.push(m.trait_impls[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The traits not named name")]
+    #[effects(alloc)]
+    fn keep_traits(xs: &[ast::TraitDef], name: &str) -> Vec<ast::TraitDef> {
+        let mut out: Vec<ast::TraitDef> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].name.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The type declarations not named name")]
+    #[effects(alloc)]
+    fn keep_types(xs: &[ast::TypeDef], name: &str) -> Vec<ast::TypeDef> {
+        let mut out: Vec<ast::TypeDef> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].name.name.as_str() != name {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The positions down to the unit at segs[k..], pushed to out; false when there is none")]
+    #[effects(alloc)]
+    fn locate(mods: &[ast::Mod], segs: &[String], k: usize, out: &mut Vec<usize>) -> bool
+        decreases segs.len() - k,
+    {
+        if k >= segs.len() {
+            return false;
+        }
+        for i in 0..mods.len()
+            invariant 0 <= i && i <= mods.len(),
+        {
+            if mods[i].name.name == segs[k] {
+                out.push(i);
+                if k + 1 == segs.len() {
+                    return true;
+                }
+                return locate(mods[i].mods.as_slice(), segs, k + 1, out);
+            }
+        }
+        false
+    }
+
+    #[summary("A copy of the unit at the positions at[k..]")]
+    #[effects(alloc)]
+    fn mod_at(mods: &[ast::Mod], at: &[usize], k: usize) -> Option<ast::Mod>
+        decreases at.len() - k,
+    {
+        if k >= at.len() || at[k] >= mods.len() {
+            return None;
+        }
+        if k + 1 == at.len() {
+            return Some(mods[at[k]].clone());
+        }
+        mod_at(mods[at[k]].mods.as_slice(), at, k + 1)
+    }
+
+    #[summary("Moves the function at def into unit to. The moved function then names the functions, types and traits of its old unit by full path, and every reference to it is written by its new full path. As for a rename, every identity must stay as it was: otherwise it fails and p is left as it was")]
+    #[effects(alloc)]
+    fn move_def(p: &mut ast::Program, def: &str, to: &str) -> Result<(), String> {
+        let ck: body::Checked = match checked(p) {
+            None => { return Err(String::from("`move` needs a program that checks; this one does not")); },
+            Some(c) => c,
+        };
+        let mut plain: bool = false;
+        match ck.b.c.fns.find(def) {
+            None => {},
+            Some(at) => { plain = !ck.b.c.fns.items[at].builtin && !ck.b.c.fns.items[at].in_impl && !lib::is_some(&ck.b.c.fns.items[at].trait_of); },
+        }
+        if !plain {
+            return Err(types::cat3("`move` takes a function or `spec fn` of a unit; `", def, "` is not one"));
+        }
+        let segs: Vec<String> = refs::split_path(def);
+        let to_segs: Vec<String> = refs::split_path(to);
+        if segs.len() < 2 {
+            return Err(types::cat3("`", def, "` is not a full path"));
+        }
+        let name: String = segs[segs.len() - 1].clone();
+        let from: Vec<String> = prefix(segs.as_slice(), segs.len() - 1);
+        if same(from.as_slice(), to_segs.as_slice()) {
+            return Err(types::cat5("`", def, "` is in unit `", to, "`"));
+        }
+        let mut renamed: ast::Program = p.clone();
+        let src: Found = match find_mod(renamed.mods.as_slice(), from.as_slice()) {
+            None => { return Err(types::cat3("no unit `", refs::join_path(from.as_slice()).as_str(), "`")); },
+            Some(f0) => f0,
+        };
+        let mut om: ast::Mod = src.m;
+        let mut locals: Vec<String> = Vec::new();
+        for a in 0..om.fns.len()
+            invariant 0 <= a && a <= om.fns.len(),
+        {
+            locals.push(om.fns[a].name.name.clone());
+        }
+        for b in 0..om.types.len()
+            invariant 0 <= b && b <= om.types.len(),
+        {
+            locals.push(om.types[b].name.name.clone());
+        }
+        for t in 0..om.traits.len()
+            invariant 0 <= t && t <= om.traits.len(),
+        {
+            locals.push(om.traits[t].name.name.clone());
+        }
+        let mut pos: usize = om.fns.len();
+        let mut i: usize = om.fns.len();
+        while i > 0
+            invariant i <= om.fns.len() && pos <= om.fns.len(),
+            decreases i,
+        {
+            i = i - 1;
+            if om.fns[i].name.name == name {
+                pos = i;
+            }
+        }
+        if pos >= om.fns.len() {
+            return Err(types::cat3("no function `", def, "`"));
+        }
+        let mut f: ast::FnDef = om.fns[pos].clone();
+        let mut rest: Vec<ast::FnDef> = Vec::new();
+        for g in 0..om.fns.len()
+            invariant 0 <= g && g <= om.fns.len(),
+        {
+            if g != pos {
+                rest.push(om.fns[g].clone());
+            }
+        }
+        om.fns = rest;
+        let mut q: Qualifier = Qualifier { unit: copy(from.as_slice()), locals: locals };
+        refs::walk_fn::<Qualifier>(&mut f, from.as_slice(), &mut q);
+        set_mod(&mut renamed.mods, src.at.as_slice(), 0, om);
+        let dst: Found = match find_mod(renamed.mods.as_slice(), to_segs.as_slice()) {
+            None => { return Err(types::cat3("no unit `", to, "`: create it first")); },
+            Some(f1) => f1,
+        };
+        let mut dm: ast::Mod = dst.m;
+        for h in 0..dm.fns.len()
+            invariant 0 <= h && h <= dm.fns.len(),
+        {
+            if dm.fns[h].name.name == name {
+                return Err(types::cat5("unit `", to, "` has a function `", name.as_str(), "`"));
+            }
+        }
+        dm.fns.push(f);
+        set_mod(&mut renamed.mods, dst.at.as_slice(), 0, dm);
+        let mut mv: Mover = Mover { from: copy(from.as_slice()), name: name.clone(), to: copy(to_segs.as_slice()) };
+        refs::walk::<Mover>(&mut renamed, &mut mv);
+        let before: table::Table<String> = identities(&ck);
+        match checked(&renamed) {
+            None => {},
+            Some(ck2) => { let after: table::Table<String> = identities(&ck2); if !same(sorted_values(&before).as_slice(), sorted_values(&after).as_slice()) { return Err(types::cat5("moving `", def, "` to `", to, "` would change what other names refer to")); } },
+        }
+        *p = renamed;
+        Ok(())
+    }
+
+    #[summary("An empty unit with a summary")]
+    #[effects(alloc)]
+    fn new_mod(name: &str, summary: &str) -> ast::Mod {
+        let sp: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        let mut attrs: Vec<ast::Attr> = Vec::new();
+        attrs.push(summary_attr(summary));
+        ast::Mod { name: ast::Ident { name: String::from(name), span: sp }, attrs: attrs, fns: Vec::new(), mods: Vec::new(), types: Vec::new(), impls: Vec::new(), traits: Vec::new(), trait_impls: Vec::new(), uses: Vec::new(), consts: Vec::new(), lens: Vec::new(), span: sp }
+    }
+
+    #[summary("The normal-form files of the program in files, the library's unit left out (what import writes): unit name and text in name order, method calls written by path as method calls (ADR-0051). The error is the diagnostics as JSONL when the program does not check")]
+    #[effects(alloc)]
+    fn normal_units(files: &[lib::Input]) -> Result<Vec<fmt::Unit>, String> {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Err(diags.to_jsonl(&sm));
+        }
+        let normal: ast::Program = methodize::methodize(&fe.source, &fe.ck.program, &fe.ck.b.c.fns, &fe.ck.b.c.adts, &fe.ck.b.types);
+        let all: Vec<fmt::Unit> = fmt::format_units(&normal);
+        let mut units: Vec<fmt::Unit> = Vec::new();
+        for u in 0..all.len()
+            invariant 0 <= u && u <= all.len(),
+        {
+            if all[u].name != "std" {
+                units.push(all[u].clone());
+            }
+        }
+        Ok(units)
+    }
+
+    #[summary("expect: the definition at def has identity id in the workspace the transaction starts from (ADR-0059 §5: optimistic concurrency)")]
+    #[effects(alloc)]
+    fn op_expect(problems: &mut Vec<String>, k: usize, def: &str, id: &str, ids: &Option<table::Table<String>>) -> () {
+        match ids {
+            None => problems.push(op_msg(k, "`expect` needs a workspace that checks; it does not")),
+            Some(t) => { match t.find(def) { None => problems.push(op_msg(k, types::cat3("no definition `", def, "`").as_str())), Some(at) => { if t.items[at].as_str() != id { problems.push(op_msg(k, types::cat7("`", def, "` has identity ", t.items[at].as_str(), ", not ", id, ": it changed since it was read").as_str())); } }, } },
+        }
+    }
+
+    #[summary("move: a function of a unit into another unit")]
+    #[effects(alloc)]
+    fn op_move(program: &mut ast::Program, problems: &mut Vec<String>, k: usize, def: &str, to: &str) -> () {
+        match segments(k, "definition", def) {
+            Ok(s1) => {},
+            Err(e1) => { problems.push(e1); return; },
+        }
+        match segments(k, "unit", to) {
+            Ok(s2) => {},
+            Err(e2) => { problems.push(e2); return; },
+        }
+        if stdlib::in_std(to) {
+            problems.push(op_msg(k, "`std` is the standard library: a transaction does not change it"));
+            return;
+        }
+        match move_def(program, def, to) {
+            Ok(done) => {},
+            Err(e3) => problems.push(op_msg(k, e3.as_str())),
+        }
+    }
+
+    #[summary("op k: and the message")]
+    #[effects(alloc)]
+    fn op_msg(k: usize, rest: &str) -> String {
+        let mut s: String = String::from("op ");
+        std::num::push_u64(&mut s, k as u64);
+        s.push_str(": ");
+        s.push_str(rest);
+        s
+    }
+
+    #[summary("put: every item of code at its address in the unit (ADR-0074 §1, §2), in source order. The code is read inside a unit written on its first line, so diagnostic lines match the submitted code, and must stay inside it: units are made by unit operations")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn op_put(sm: &mut source::SourceMap, diags: &mut diag::Diags, program: &mut ast::Program, problems: &mut Vec<String>, k: usize, unit: &str, code: &str) -> () {
+        let segs: Vec<String> = match segments(k, "unit", unit) {
+            Ok(s) => s,
+            Err(e) => { problems.push(e); return; },
+        };
+        let mut last: String = String::new();
+        if segs.len() > 0 {
+            last = segs[segs.len() - 1].clone();
+        }
+        let wrapped: String = types::cat5("#[summary(\"\")] mod ", last.as_str(), " { ", code, "\n}\n");
+        let before: usize = diags.items.len();
+        let mut name: String = String::from("tx/op");
+        std::num::push_u64(&mut name, k as u64);
+        let parsed: ast::Program = parse_into(sm, diags, name.as_str(), wrapped.as_str());
+        let syntax_ok: bool = diags.items.len() == before;
+        if syntax_ok && (parsed.mods.len() != 1 || parsed.mods[0].mods.len() > 0) {
+            problems.push(op_msg(k, "`code` must not contain units (create units with a `unit` op)"));
+            return;
+        }
+        let mut lens: Vec<ast::Len> = Vec::new();
+        let mut items: Vec<Item> = Vec::new();
+        for a in 0..parsed.mods.len()
+            invariant 0 <= a && a <= parsed.mods.len(),
+        {
+            for b in 0..parsed.mods[a].lens.len()
+                invariant 0 <= b && b <= parsed.mods[a].lens.len(),
+            {
+                lens.push(parsed.mods[a].lens[b].clone());
+            }
+            let found: Vec<Item> = items_of(&parsed.mods[a]);
+            for c in 0..found.len()
+                invariant 0 <= c && c <= found.len(),
+            {
+                items.push(found[c].clone());
+            }
+        }
+        for d in 0..items.len()
+            invariant 0 <= d && d <= items.len(),
+        {
+            match unfilled(&items[d]) {
+                None => {},
+                Some(ty) => { problems.push(op_msg(k, types::cat3("`impl ", ty.as_str(), " { }` contains no definition").as_str())); return; },
+            }
+        }
+        if syntax_ok && items.len() == 0 {
+            problems.push(op_msg(k, "`code` contains no definition"));
+            return;
+        }
+        let f: Found = match find_mod(program.mods.as_slice(), segs.as_slice()) {
+            None => { problems.push(op_msg(k, types::cat3("unit `", unit, "` does not exist (create it with a `unit` op)").as_str())); return; },
+            Some(f0) => f0,
+        };
+        let mut m: ast::Mod = f.m;
+        for g in 0..lens.len()
+            invariant 0 <= g && g <= lens.len(),
+        {
+            m.lens.push(lens[g].clone());
+        }
+        for h in 0..items.len()
+            invariant 0 <= h && h <= items.len(),
+        {
+            put_item(&mut m, unit, &items[h]);
+        }
+        set_mod(&mut program.mods, f.at.as_slice(), 0, m);
+    }
+
+    #[summary("remove: a definition by full path, or a trait impl by its address <unit::T as unit::Trait> (ADR-0074 §3); one function of a trait impl is refused")]
+    #[effects(alloc)]
+    fn op_remove(program: &mut ast::Program, problems: &mut Vec<String>, k: usize, def: &str) -> () {
+        if def.len() > 0 && def.as_bytes()[0] == 60 {
+            let ok: bool = def.as_bytes()[def.len() - 1] == 62 && contains(def, " as ");
+            if !ok {
+                problems.push(op_msg(k, types::cat3("`", def, "` is a function of a trait impl; a trait impl is written whole: `put` the impl without it").as_str()));
+            } else if !remove_trait_impl(&mut program.mods, "", def, 100000) {
+                problems.push(op_msg(k, types::cat3("no trait impl `", def, "`").as_str()));
+            }
+            return;
+        }
+        let segs: Vec<String> = match segments(k, "definition", def) {
+            Ok(s) => s,
+            Err(e) => { problems.push(e); return; },
+        };
+        match remove_item(&mut program.mods, def, segs.as_slice()) {
+            Ok(done) => {},
+            Err(e2) => problems.push(op_msg(k, e2.as_str())),
+        }
+    }
+
+    #[summary("remove_unit: every unit of that name under its parent, with everything in it")]
+    #[effects(alloc)]
+    fn op_remove_unit(program: &mut ast::Program, problems: &mut Vec<String>, k: usize, path: &str) -> () {
+        let segs: Vec<String> = match segments(k, "unit", path) {
+            Ok(s) => s,
+            Err(e) => { problems.push(e); return; },
+        };
+        if segs.len() == 0 {
+            return;
+        }
+        let last: String = segs[segs.len() - 1].clone();
+        if segs.len() == 1 {
+            if unit_named(program.mods.as_slice(), last.as_str()) {
+                program.mods = keep_mods(program.mods.as_slice(), last.as_str());
+                return;
+            }
+        } else {
+            match find_mod(program.mods.as_slice(), prefix(segs.as_slice(), segs.len() - 1).as_slice()) {
+                None => {},
+                Some(f) => { if unit_named(f.m.mods.as_slice(), last.as_str()) { let mut pm: ast::Mod = f.m; pm.mods = keep_mods(pm.mods.as_slice(), last.as_str()); set_mod(&mut program.mods, f.at.as_slice(), 0, pm); return; } },
+            }
+        }
+        problems.push(op_msg(k, types::cat3("no unit `", path, "`").as_str()));
+    }
+
+    #[summary("rename: a function, spec fn, impl function, type, trait or unit (full path) to the one identifier to")]
+    #[effects(alloc)]
+    fn op_rename(program: &mut ast::Program, problems: &mut Vec<String>, k: usize, def: &str, to: &str) -> () {
+        match segments(k, "definition", def) {
+            Ok(s) => {},
+            Err(e) => { problems.push(e); return; },
+        }
+        if !is_ident(to) {
+            problems.push(op_msg(k, types::cat3("new name `", to, "` is not an identifier (rename keeps the unit; give the last segment only)").as_str()));
+            return;
+        }
+        match rename(program, def, to) {
+            Ok(done) => {},
+            Err(e2) => problems.push(op_msg(k, e2.as_str())),
+        }
+    }
+
+    #[summary("unit: creates the unit under its parent, or replaces the summary of the one that is there")]
+    #[effects(alloc)]
+    fn op_unit(program: &mut ast::Program, problems: &mut Vec<String>, k: usize, path: &str, summary: &str) -> () {
+        let segs: Vec<String> = match segments(k, "unit", path) {
+            Ok(s) => s,
+            Err(e) => { problems.push(e); return; },
+        };
+        if segs.len() == 0 {
+            return;
+        }
+        match find_mod(program.mods.as_slice(), segs.as_slice()) {
+            None => {},
+            Some(f) => { let mut m: ast::Mod = f.m; let mut attrs: Vec<ast::Attr> = Vec::new(); attrs.push(summary_attr(summary)); for i in 0..m.attrs.len() invariant 0 <= i && i <= m.attrs.len(), { if m.attrs[i].name.name != "summary" { attrs.push(m.attrs[i].clone()); } } m.attrs = attrs; set_mod(&mut program.mods, f.at.as_slice(), 0, m); return; },
+        }
+        let last: String = segs[segs.len() - 1].clone();
+        if segs.len() == 1 {
+            program.mods.push(new_mod(last.as_str(), summary));
+            return;
+        }
+        match find_mod(program.mods.as_slice(), prefix(segs.as_slice(), segs.len() - 1).as_slice()) {
+            None => problems.push(op_msg(k, types::cat3("parent unit of `", path, "` does not exist").as_str())),
+            Some(pf) => { let mut pm: ast::Mod = pf.m; pm.mods.push(new_mod(last.as_str(), summary)); set_mod(&mut program.mods, pf.at.as_slice(), 0, pm); },
+        }
+    }
+
+    #[summary("Reads one file into the source map and parses it")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn parse_into(sm: &mut source::SourceMap, diags: &mut diag::Diags, name: &str, text: &str) -> ast::Program {
+        if text.len() < 4294967295 && sm.files.len() < 4294967295 {
+            let id: u32 = sm.add(String::from(name), String::from(text));
+            let toks: Vec<lexer::Token> = lexer::lex(id, text, diags);
+            return parser::parse(toks, diags, text);
+        }
+        ast::Program { mods: Vec::new() }
+    }
+
+    #[summary("Reads transaction operations from a JSON array of objects, each with the text member op (unit, put, remove, remove_unit, rename, expect, move) and the text members of that operation. The error is stage0's message")]
+    #[effects(alloc)]
+    fn parse_ops(text: &str) -> Result<Vec<Op>, String> {
+        let v: json::Value = match json::parse(text) {
+            Ok(v0) => v0,
+            Err(why) => { return Err(why); },
+        };
+        let mut ops: Vec<Op> = Vec::new();
+        match &v {
+            json::Value::Null => { return Err(String::from("transaction must be a JSON array of operations")); },
+            json::Value::Bool(b) => { return Err(String::from("transaction must be a JSON array of operations")); },
+            json::Value::Num(n) => { return Err(String::from("transaction must be a JSON array of operations")); },
+            json::Value::Str(s) => { return Err(String::from("transaction must be a JSON array of operations")); },
+            json::Value::Array(items) => { for k in 0..items.len() invariant 0 <= k && k <= items.len(), { match read_op(&items[k], k) { Ok(op) => ops.push(op), Err(e) => { return Err(e); }, } } },
+            json::Value::Object(kv) => { return Err(String::from("transaction must be a JSON array of operations")); },
+        }
+        Ok(ops)
+    }
+
+    #[summary("Applies ops to the program in files and checks the result. Nothing is written")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn plan(files: &[lib::Input], ops: &[Op]) -> Planned {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut program: ast::Program = ast::Program { mods: Vec::new() };
+        let mut problems: Vec<String> = Vec::new();
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            let p: ast::Program = parse_into(&mut sm, &mut diags, files[i].name.as_str(), files[i].text.as_str());
+            ast::append::<ast::Mod>(&mut program.mods, p.mods);
+        }
+        let before: Before = before_state(&program, &diags);
+        for k in 0..ops.len()
+            invariant 0 <= k && k <= ops.len(),
+        {
+            if stdlib::in_std(target(&ops[k]).as_str()) {
+                problems.push(op_msg(k, "`std` is the standard library: a transaction does not change it"));
+            } else {
+                match &ops[k] {
+                    Op::Unit(up, us) => op_unit(&mut program, &mut problems, k, up.as_str(), us.as_str()),
+                    Op::Put(pu, pc) => op_put(&mut sm, &mut diags, &mut program, &mut problems, k, pu.as_str(), pc.as_str()),
+                    Op::Remove(rd) => op_remove(&mut program, &mut problems, k, rd.as_str()),
+                    Op::RemoveUnit(rp) => op_remove_unit(&mut program, &mut problems, k, rp.as_str()),
+                    Op::Rename(nd, nt) => op_rename(&mut program, &mut problems, k, nd.as_str(), nt.as_str()),
+                    Op::Expect(ed, ei) => op_expect(&mut problems, k, ed.as_str(), ei.as_str(), &before.ids),
+                    Op::Move(md, mt) => op_move(&mut program, &mut problems, k, md.as_str(), mt.as_str()),
+                }
+            }
+        }
+        finish(program, sm, diags, problems.as_slice(), &before.hashes)
+    }
+
+    #[summary("The first n segments")]
+    #[effects(alloc)]
+    fn prefix(xs: &[String], n: usize) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i < n {
+                out.push(xs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The qualified hashes of the program's definitions, the library's left out: each definition's own text, other definitions by path. A body edit reports that definition alone, though the identities of its referrers change too (ADR-0059)")]
+    #[effects(alloc)]
+    fn program_hashes(p: &ast::Program, fns: &table::Table<types::FnSig>) -> table::Table<String> {
+        let rows: Vec<fmt::QualRow> = fmt::qual_rows(p, fns);
+        let all: table::Table<String> = fmt::qualified_hashes(p, rows.as_slice());
+        let mut out: table::Table<String> = table::new::<String>();
+        let total: usize = all.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match all.nth(n) {
+                None => {},
+                Some(at) => { let key: String = all.key(n); if !stdlib::in_std(key.as_str()) { out.insert(key.as_str(), all.items[at].clone()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("Writes item into unit m (path mp) by the merge rules of ADR-0074 §2: a function, type, trait, constant or trait impl replaces the one at its address; the functions of impl T { .. } replace or join those of T's block of the same bounds, whose head becomes this one; a use joins the unit for the checker to reject (E0214). Items of another kind under the same name are added, not replaced: the checker rejects the clash (E0302)")]
+    #[effects(alloc)]
+    fn put_item(m: &mut ast::Mod, mp: &str, item: &Item) -> () {
+        match item {
+            Item::Fn(f) => { m.fns = keep_fns(m.fns.as_slice(), f.name.name.as_str()); m.fns.push(f.clone()); },
+            Item::Type(t) => { m.types = keep_types(m.types.as_slice(), t.name.name.as_str()); m.types.push(t.clone()); },
+            Item::Impl(i) => { let want: String = fmt::generics_str(i.generics.as_slice()); let n: usize = m.impls.len(); let mut at: usize = n; let mut j: usize = n; while j > 0 invariant j <= n && at <= n && m.impls.len() == n, decreases j, { j = j - 1; if m.impls[j].ty.name == i.ty.name && fmt::generics_str(m.impls[j].generics.as_slice()) == want { at = j; } } if at < n { let mut block: ast::Impl = m.impls[at].clone(); block.generics = i.generics.clone(); block.ty_args = i.ty_args.clone(); for x in 0..i.fns.len() invariant 0 <= x && x <= i.fns.len(), { block.fns = keep_fns(block.fns.as_slice(), i.fns[x].name.name.as_str()); block.fns.push(i.fns[x].clone()); } m.impls[at] = block; } else { m.impls.push(i.clone()); } },
+            Item::Trait(tr) => { m.traits = keep_traits(m.traits.as_slice(), tr.name.name.as_str()); m.traits.push(tr.clone()); },
+            Item::TraitImpl(ti) => { let addr: String = fmt::trait_impl_address(mp, m, ti); let kept: Vec<ast::TraitImpl> = keep_trait_impls(m, mp, addr.as_str()); m.trait_impls = kept; m.trait_impls.push(ti.clone()); },
+            Item::Use(u) => m.uses.push(u.clone()),
+            Item::Const(c) => { m.consts = keep_consts(m.consts.as_slice(), c.name.name.as_str()); m.consts.push(c.clone()); },
+        }
+    }
+
+    #[summary("Reads the .bmb files of a workspace (its src/) or of any directory, sorted by name. The name of each is its path under the directory as given. A symbolic link in place of src or of a file is refused")]
+    #[effects(alloc, io, nondet)]
+    fn read_dir_sources(dir: &str) -> Result<Vec<lib::Input>, String> {
+        let src: String = src_dir(dir);
+        match refuse_symlink(src.as_str()) {
+            Ok(u) => {},
+            Err(why) => { return Err(why); },
+        }
+        let d: String = if is_dir(src.as_str()) {
+            src
+        } else {
+            String::from(dir)
+        };
+        let names: Vec<String> = match std::fs::read_dir(d.as_str()) {
+            Ok(ns) => ns,
+            Err(e) => { return Err(types::cat4("cannot read ", d.as_str(), ": ", e.message.as_str())); },
+        };
+        let mut out: Vec<lib::Input> = Vec::new();
+        for i in 0..names.len()
+            invariant 0 <= i && i <= names.len(),
+        {
+            if source_name(names[i].as_str()) {
+                let p: String = cache::within(d.as_str(), names[i].as_str());
+                match refuse_symlink(p.as_str()) {
+                    Ok(u2) => {},
+                    Err(w2) => { return Err(w2); },
+                }
+                match std::fs::read_to_string(p.as_str()) {
+                    Ok(text) => out.push(lib::Input { name: p, text: text }),
+                    Err(e2) => { return Err(types::cat4("cannot read ", p.as_str(), ": ", e2.message.as_str())); },
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("One operation from its JSON object: the text member op, then the text members of that operation in stage0's order (the first one missing is the error)")]
+    #[effects(alloc)]
+    fn read_op(it: &json::Value, k: usize) -> Result<Op, String> {
+        let op: String = match text_field(it, k, "op") {
+            Ok(o) => o,
+            Err(e) => { return Err(e); },
+        };
+        let mut first: String = String::from("def");
+        let mut second: String = String::new();
+        if op == "unit" {
+            first = String::from("path");
+            second = String::from("summary");
+        } else if op == "put" {
+            first = String::from("unit");
+            second = String::from("code");
+        } else if op == "remove_unit" {
+            first = String::from("path");
+        } else if op == "rename" || op == "move" {
+            second = String::from("to");
+        } else if op == "expect" {
+            second = String::from("id");
+        } else if op != "remove" {
+            return Err(op_msg(k, types::cat3("unknown op `", op.as_str(), "`").as_str()));
+        }
+        let a: String = match text_field(it, k, first.as_str()) {
+            Ok(a0) => a0,
+            Err(e1) => { return Err(e1); },
+        };
+        let mut b: String = String::new();
+        if second.len() > 0 {
+            match text_field(it, k, second.as_str()) {
+                Ok(b0) => { b = b0; },
+                Err(e2) => { return Err(e2); },
+            }
+        }
+        if op == "unit" {
+            return Ok(Op::Unit(a, b));
+        }
+        if op == "put" {
+            return Ok(Op::Put(a, b));
+        }
+        if op == "remove" {
+            return Ok(Op::Remove(a));
+        }
+        if op == "remove_unit" {
+            return Ok(Op::RemoveUnit(a));
+        }
+        if op == "rename" {
+            return Ok(Op::Rename(a, b));
+        }
+        if op == "expect" {
+            return Ok(Op::Expect(a, b));
+        }
+        Ok(Op::Move(a, b))
+    }
+
+    #[summary("Fails when p exists and is a symbolic link. A workspace's files are laid out by the tools (ADR-0011), and its contents may come from someone else: a link would make reads and writes reach outside it")]
+    #[effects(alloc, io, nondet)]
+    fn refuse_symlink(p: &str) -> Result<(), String> {
+        match std::fs::symlink_metadata(p) {
+            Ok(m) => { if m.is_symlink { return Err(types::cat2(p, " is a symbolic link; workspace files must be plain files and directories")); } Ok(()) },
+            Err(e) => Ok(()),
+        }
+    }
+
+    #[summary("Removes the item at segs (ADR-0074 §3): a constant, a function, a type with its impl blocks, a trait with its default bodies, an impl function (and the blocks of its type when it was the last of the first one). The error says why nothing was removed")]
+    #[effects(alloc)]
+    fn remove_item(mods: &mut Vec<ast::Mod>, def: &str, segs: &[String]) -> Result<(), String> {
+        if segs.len() == 0 {
+            return Err(types::cat3("no definition `", def, "`"));
+        }
+        let name: String = segs[segs.len() - 1].clone();
+        let unit: Vec<String> = prefix(segs, segs.len() - 1);
+        if found(&find_mod(mods.as_slice(), segs)) {
+            return Err(types::cat3("`", def, "` is a unit; remove a unit with a `remove_unit` op"));
+        }
+        match find_mod(mods.as_slice(), unit.as_slice()) {
+            None => {},
+            Some(f) => { let mut m: ast::Mod = f.m; let consts: Vec<ast::ConstDef> = keep_consts(m.consts.as_slice(), name.as_str()); if consts.len() < m.consts.len() { m.consts = consts; set_mod(mods, f.at.as_slice(), 0, m); return Ok(()); } let fns: Vec<ast::FnDef> = keep_fns(m.fns.as_slice(), name.as_str()); let tys: Vec<ast::TypeDef> = keep_types(m.types.as_slice(), name.as_str()); let traits: Vec<ast::TraitDef> = keep_traits(m.traits.as_slice(), name.as_str()); let changed: bool = fns.len() != m.fns.len() || tys.len() != m.types.len() || traits.len() != m.traits.len(); if tys.len() < m.types.len() { m.impls = keep_impls(m.impls.as_slice(), name.as_str()); } if changed { m.fns = fns; m.types = tys; m.traits = traits; set_mod(mods, f.at.as_slice(), 0, m); return Ok(()); } },
+        }
+        if unit.len() > 0 {
+            let ty: String = unit[unit.len() - 1].clone();
+            match find_mod(mods.as_slice(), prefix(unit.as_slice(), unit.len() - 1).as_slice()) {
+                None => {},
+                Some(f2) => { let mut m2: ast::Mod = f2.m; for t in 0..m2.traits.len() invariant 0 <= t && t <= m2.traits.len(), { if m2.traits[t].name.name == ty { return Err(types::cat5("`", def, "` is a method of trait `", refs::join_path(unit.as_slice()).as_str(), "`; a trait is written whole: `put` the trait without it")); } } let n: usize = m2.impls.len(); let mut at: usize = n; let mut j: usize = n; while j > 0 invariant j <= n && at <= n && m2.impls.len() == n, decreases j, { j = j - 1; if m2.impls[j].ty.name == ty { at = j; } } if at < n { let left: Vec<ast::FnDef> = keep_fns(m2.impls[at].fns.as_slice(), name.as_str()); if left.len() < m2.impls[at].fns.len() { if left.len() == 0 { m2.impls = keep_impls(m2.impls.as_slice(), ty.as_str()); } else { m2.impls[at].fns = left; } set_mod(mods, f2.at.as_slice(), 0, m2); return Ok(()); } } },
+            }
+        }
+        Err(types::cat3("no definition `", def, "`"))
+    }
+
+    #[summary("Removes the trait impl at addr (<unit::T as unit::Trait>) from the first unit that holds it; false when no unit does. prefix is the path of the unit around mods with its ::")]
+    #[effects(alloc)]
+    fn remove_trait_impl(mods: &mut Vec<ast::Mod>, prefix: &str, addr: &str, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        let n: usize = mods.len();
+        for i in 0..n
+            invariant mods.len() == n,
+        {
+            let mp: String = types::cat2(prefix, mods[i].name.name.as_str());
+            let kept: Vec<ast::TraitImpl> = keep_trait_impls(&mods[i], mp.as_str(), addr);
+            if kept.len() < mods[i].trait_impls.len() {
+                mods[i].trait_impls = kept;
+                return true;
+            }
+            if remove_trait_impl(&mut mods[i].mods, types::cat2(mp.as_str(), "::").as_str(), addr, f - 1) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Renames the definition at def to to in p (ADR-0059 §5): its declaration and every reference, which the checker resolves first. Every identity must stay as it was; otherwise (the new name captures other references, or the target is not one rename handles) it fails and p is left as it was")]
+    #[effects(alloc)]
+    fn rename(p: &mut ast::Program, def: &str, to: &str) -> Result<(), String> {
+        let mut ck: body::Checked = match checked(p) {
+            None => { return Err(String::from("`rename` needs a program that checks; this one does not")); },
+            Some(c) => c,
+        };
+        let mut is_fn: bool = false;
+        let mut in_impl: bool = false;
+        let mut trait_of: Option<String> = None;
+        match ck.b.c.fns.find(def) {
+            None => {},
+            Some(at) => { if !ck.b.c.fns.items[at].builtin { is_fn = true; in_impl = ck.b.c.fns.items[at].in_impl; trait_of = ck.b.c.fns.items[at].trait_of.clone(); } },
+        }
+        let segs: Vec<String> = refs::split_path(def);
+        let is_type: bool = ck.b.c.adts.has(def);
+        if found(&find_mod(p.mods.as_slice(), segs.as_slice())) && !is_type && !is_fn {
+            return rename_unit(p, &ck, segs.as_slice(), to);
+        }
+        let mut kind: u8 = 0;
+        let mut n_local: usize = 1;
+        if is_type {
+            kind = 2;
+        } else if is_fn && lib::is_some(&trait_of) {
+            let tr: String = match &trait_of {
+                None => String::new(),
+                Some(t0) => t0.clone(),
+            };
+            if !std::str::starts_with(def, types::cat2(tr.as_str(), "::").as_str()) {
+                return Err(types::cat7("`", def, "` implements a method of `", tr.as_str(), "`: rename the trait's method (`", tr.as_str(), "::..`)"));
+            }
+            kind = 4;
+            n_local = 2;
+        } else if is_fn && in_impl {
+            kind = 1;
+            n_local = 2;
+        } else if is_fn {
+            kind = 0;
+        } else if types::has(trait_paths(p).as_slice(), def) {
+            kind = 3;
+        } else {
+            return Err(types::cat3("no function, type or trait `", def, "`"));
+        }
+        if segs.len() <= n_local {
+            return Err(types::cat3("`", def, "` is not a full path"));
+        }
+        let before: table::Table<String> = identities(&ck);
+        let mut sites: Sites = Sites { def: String::from(def), out: table::new::<bool>() };
+        ast::exprs_mut::<Sites>(&mut ck.program, &mut sites);
+        let cut: usize = segs.len() - n_local;
+        let mut local: Vec<String> = Vec::new();
+        for i in 0..segs.len()
+            invariant 0 <= i && i <= segs.len(),
+        {
+            if i >= cut {
+                local.push(segs[i].clone());
+            }
+        }
+        let mut renamed: ast::Program = p.clone();
+        let mut r: Renamer = Renamer { unit: prefix(segs.as_slice(), cut), local: local, kind: kind, to: String::from(to), methods: sites.out };
+        refs::walk::<Renamer>(&mut renamed, &mut r);
+        match checked(&renamed) {
+            None => {},
+            Some(ck2) => { let after: table::Table<String> = identities(&ck2); let olds: Vec<String> = sorted_values(&before); if !same(olds.as_slice(), sorted_values(&after).as_slice()) { let mut moved: Vec<String> = Vec::new(); let total: usize = after.len(); for n in 0..total invariant 0 <= n && n <= total, { match after.nth(n) { None => {}, Some(a) => { if !types::has(olds.as_slice(), after.items[a].as_str()) { moved.push(after.key(n)); } }, } } return Err(types::cat7("renaming `", def, "` to `", to, "` would change what other names refer to (", encode_terms::join(moved.as_slice(), ", ").as_str(), ")")); } },
+        }
+        *p = renamed;
+        Ok(())
+    }
+
+    #[summary("Renames the unit at segs to to (its last segment): the mod and every path written through it, in every unit. As for a definition, every identity must stay as it was; a path that only looked like one through the unit (a local type of the same name) then fails the commit's check or this comparison, and nothing is renamed. ck is the checked program before the rename")]
+    #[effects(alloc)]
+    fn rename_unit(p: &mut ast::Program, ck: &body::Checked, segs: &[String], to: &str) -> Result<(), String> {
+        if segs.len() == 0 {
+            return Ok(());
+        }
+        let def: String = refs::join_path(segs);
+        let mut new_path: Vec<String> = prefix(segs, segs.len() - 1);
+        new_path.push(String::from(to));
+        if found(&find_mod(p.mods.as_slice(), new_path.as_slice())) {
+            return Err(types::cat3("unit `", refs::join_path(new_path.as_slice()).as_str(), "` exists"));
+        }
+        let before: table::Table<String> = identities(ck);
+        let mut renamed: ast::Program = p.clone();
+        let mut r: UnitRenamer = UnitRenamer { unit: copy(segs), to: String::from(to) };
+        refs::walk::<UnitRenamer>(&mut renamed, &mut r);
+        match find_mod(renamed.mods.as_slice(), segs) {
+            None => {},
+            Some(f) => { let mut m: ast::Mod = f.m; m.name.name = String::from(to); set_mod(&mut renamed.mods, f.at.as_slice(), 0, m); },
+        }
+        match checked(&renamed) {
+            None => {},
+            Some(ck2) => { let after: table::Table<String> = identities(&ck2); if !same(sorted_values(&before).as_slice(), sorted_values(&after).as_slice()) { return Err(types::cat5("renaming unit `", def.as_str(), "` to `", to, "` would change what other names refer to")); } },
+        }
+        *p = renamed;
+        Ok(())
+    }
+
+    #[summary("Whether the two lists hold the same texts in the same order")]
+    #[effects(pure)]
+    fn same(a: &[String], b: &[String]) -> bool {
+        if a.len() != b.len() {
+            return false;
+        }
+        for i in 0..a.len()
+            invariant 0 <= i && i <= a.len(),
+        {
+            if a[i] != b[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Splits a :: path whose segments must all be identifiers (unit names become file names, so ../x must never get through). what says what the path names in the error of op k")]
+    #[effects(alloc)]
+    fn segments(k: usize, what: &str, path: &str) -> Result<Vec<String>, String> {
+        let segs: Vec<String> = refs::split_path(path);
+        for i in 0..segs.len()
+            invariant 0 <= i && i <= segs.len(),
+        {
+            if !is_ident(segs[i].as_str()) {
+                return Err(op_msg(k, types::cat5(what, " `", path, "` is not a valid path (each `::` segment must be an identifier, not a keyword)", "").as_str()));
+            }
+        }
+        Ok(segs)
+    }
+
+    #[summary("Writes m in place of the unit at the positions at[k..]")]
+    #[effects(alloc)]
+    fn set_mod(mods: &mut Vec<ast::Mod>, at: &[usize], k: usize, m: ast::Mod) -> ()
+        decreases at.len() - k,
+    {
+        if k >= at.len() || at[k] >= mods.len() {
+            return;
+        }
+        if k + 1 == at.len() {
+            mods[at[k]] = m;
+            return;
+        }
+        set_mod(&mut mods[at[k]].mods, at, k + 1, m);
+    }
+
+    #[summary("Sets the n-th segment (from 1) to to")]
+    #[effects(alloc)]
+    fn set_seg(segs: &mut Vec<String>, n: usize, to: &str) -> () {
+        if n > 0 && n <= segs.len() {
+            segs[n - 1] = String::from(to);
+        }
+    }
+
+    #[summary("The site of a path as a number: 0 Call, 1 Type, 2 Struct, 3 Variant, 4 Bound")]
+    #[effects(pure)]
+    fn site_code(s: &refs::Site) -> u8 {
+        match s {
+            refs::Site::Call => 0,
+            refs::Site::Type => 1,
+            refs::Site::Struct => 2,
+            refs::Site::Variant => 3,
+            refs::Site::Bound => 4,
+        }
+    }
+
+    #[summary("The values of the table, sorted")]
+    #[effects(alloc)]
+    fn sorted_values(t: &table::Table<String>) -> Vec<String> {
+        let mut vals: Vec<String> = Vec::new();
+        let total: usize = t.len();
+        for n in 0..total
+            invariant 0 <= n && n <= total,
+        {
+            match t.nth(n) {
+                None => {},
+                Some(at) => vals.push(t.items[at].clone()),
+            }
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(vals.as_slice());
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..ord.len()
+            invariant 0 <= i && i <= ord.len(),
+        {
+            if ord[i] < vals.len() {
+                out.push(vals[ord[i]].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Whether a directory entry is a source file, as Rust's Path::extension reads its name: it ends in .bmb and has something before that")]
+    #[effects(pure)]
+    fn source_name(name: &str) -> (r: bool)
+        ensures r ==> name.len() > 4,
+    {
+        name.len() > 4 && std::str::ends_with(name, ".bmb")
+    }
+
+    #[summary("The directory of a workspace's files")]
+    #[effects(alloc)]
+    fn src_dir(root: &str) -> String {
+        cache::within(root, "src")
+    }
+
+    #[summary("Whether segs begins with the segments of prefix")]
+    #[effects(pure)]
+    fn starts(segs: &[String], prefix: &[String]) -> bool {
+        if prefix.len() > segs.len() {
+            return false;
+        }
+        for i in 0..prefix.len()
+            invariant 0 <= i && i <= prefix.len(),
+        {
+            if segs[i] != prefix[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The attribute #[summary(\"..\")]")]
+    #[effects(alloc)]
+    fn summary_attr(summary: &str) -> ast::Attr {
+        let sp: source::Span = source::Span { file: 0, lo: 0, hi: 0 };
+        let mut args: Vec<ast::AttrArg> = Vec::new();
+        args.push(ast::AttrArg::Str(String::from(summary), sp));
+        ast::Attr { name: ast::Ident { name: String::from("summary"), span: sp }, args: args, span: sp }
+    }
+
+    #[summary("What an operation changes, as the check against the standard library reads it (ADR-0092 §1): the unit or the definition, a trait impl's address without its <; nothing for expect")]
+    #[effects(alloc)]
+    fn target(op: &Op) -> String {
+        match op {
+            Op::Unit(up, us) => up.clone(),
+            Op::Put(pu, pc) => pu.clone(),
+            Op::Remove(rd) => unbracketed(rd.as_str()),
+            Op::RemoveUnit(rp) => rp.clone(),
+            Op::Rename(nd, nt) => unbracketed(nd.as_str()),
+            Op::Expect(ed, ei) => String::new(),
+            Op::Move(md, mt) => unbracketed(md.as_str()),
+        }
+    }
+
+    #[summary("The text member key of an operation's object, or the error of op k that it is missing or no text")]
+    #[effects(alloc)]
+    fn text_field(it: &json::Value, k: usize, key: &str) -> Result<String, String> {
+        match json::get_str(it, key) {
+            None => Err(op_msg(k, types::cat3("missing string field `", key, "`").as_str())),
+            Some(s) => Ok(s),
+        }
+    }
+
+    #[summary("The full paths of the trait declarations")]
+    #[effects(alloc)]
+    fn trait_paths(p: &ast::Program) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            trait_walk(&p.mods[i], "", &mut out, 100000);
+        }
+        out
+    }
+
+    #[summary("The traits of unit m and of the units inside it. prefix is the path of the unit around m with its ::")]
+    #[effects(alloc)]
+    fn trait_walk(m: &ast::Mod, prefix: &str, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        for i in 0..m.mods.len()
+            invariant 0 <= i && i <= m.mods.len(),
+        {
+            trait_walk(&m.mods[i], types::cat2(mp.as_str(), "::").as_str(), out, f - 1);
+        }
+        for j in 0..m.traits.len()
+            invariant 0 <= j && j <= m.traits.len(),
+        {
+            out.push(types::cat3(mp.as_str(), "::", m.traits[j].name.name.as_str()));
+        }
+    }
+
+    #[summary("s without the < it begins with")]
+    #[effects(alloc)]
+    fn unbracketed(s: &str) -> String {
+        let mut i: usize = 0;
+        while i < s.len() && s.as_bytes()[i] == 60
+            decreases s.len() - i,
+        {
+            i = i + 1;
+        }
+        lexer::cut(s, i, s.len())
+    }
+
+    #[summary("The type of an impl T { } with no function, which writes nothing (ADR-0074 §4)")]
+    #[effects(alloc)]
+    fn unfilled(item: &Item) -> Option<String> {
+        match item {
+            Item::Fn(f) => None,
+            Item::Type(t) => None,
+            Item::Impl(i) => { if i.fns.len() == 0 { Some(i.ty.name.clone()) } else { None } },
+            Item::Trait(tr) => None,
+            Item::TraitImpl(ti) => None,
+            Item::Use(u) => None,
+            Item::Const(c) => None,
+        }
+    }
+
+    #[summary("Whether one of the units is named name")]
+    #[effects(pure)]
+    fn unit_named(mods: &[ast::Mod], name: &str) -> bool {
+        for i in 0..mods.len()
+            invariant 0 <= i && i <= mods.len(),
+        {
+            if mods[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("p with the library units it names and the diagnostics of adding them, for a check outside a source map of its own: the library's files get ids after every file p's units come from")]
+    #[effects(alloc)]
+    #[uses(source::room, source::small)]
+    fn with_std(p: &ast::Program) -> Std {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut next: u32 = 0;
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len(),
+        {
+            if p.mods[i].span.file >= next && p.mods[i].span.file < 4294967295 {
+                next = p.mods[i].span.file + 1;
+            }
+        }
+        for k in 0..next
+            invariant 0 <= k && k <= next,
+        {
+            if sm.files.len() < 4294967295 {
+                let mut name: String = String::from("<file ");
+                std::num::push_u64(&mut name, k as u64);
+                name.push_str(">");
+                sm.add(name, String::new());
+            }
+        }
+        let mut q: ast::Program = p.clone();
+        let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        stdlib::add(&mut sm, &mut q, &mut d);
+        Std { program: q, diags: d }
+    }
+
+    #[summary("Writes text to a new file at path, removing whatever was there first (a planted link is removed, not followed). The error is the system's text")]
+    #[effects(alloc, io)]
+    fn write_new(path: &str, text: &str) -> Result<(), String> {
+        match std::fs::remove_file(path) {
+            Ok(u) => {},
+            Err(e) => { if e.code != 2 { return Err(e.message); } },
+        }
+        match std::fs::write_new(path, text.as_bytes()) {
+            Ok(u2) => Ok(()),
+            Err(e2) => Err(e2.message),
+        }
+    }
+
+    #[summary("Writes the normal-form files and removes files of units that no longer exist. Every unit name must be an identifier (it becomes a file name). New contents go to temporary files first and are renamed into place only when all of them were written, so a failed write leaves the old files untouched; stale files are removed last")]
+    #[effects(alloc, io, nondet)]
+    fn write_units(root: &str, units: &[fmt::Unit]) -> Result<(), String> {
+        for a in 0..units.len()
+            invariant 0 <= a && a <= units.len(),
+        {
+            if !is_ident(units[a].name.as_str()) {
+                return Err(types::cat3("unit name `", units[a].name.as_str(), "` is not an identifier"));
+            }
+        }
+        let dir: String = src_dir(root);
+        match refuse_symlink(dir.as_str()) {
+            Ok(u) => {},
+            Err(why) => { return Err(why); },
+        }
+        match std::fs::create_dir_all(dir.as_str()) {
+            Ok(u1) => {},
+            Err(e1) => { return Err(types::cat4("cannot create ", dir.as_str(), ": ", e1.message.as_str())); },
+        }
+        let mut written: Vec<String> = Vec::new();
+        for b in 0..units.len()
+            invariant 0 <= b && b <= units.len(),
+        {
+            let t: String = cache::within(dir.as_str(), types::cat3(".", units[b].name.as_str(), ".bmb.tmp").as_str());
+            match write_new(t.as_str(), units[b].text.as_str()) {
+                Ok(u2) => {},
+                Err(e2) => { match std::fs::remove_file(t.as_str()) { Ok(u3) => {}, Err(e3) => {}, } for w in 0..written.len() invariant 0 <= w && w <= written.len(), { match std::fs::remove_file(written[w].as_str()) { Ok(u4) => {}, Err(e4) => {}, } } return Err(types::cat4("cannot write ", t.as_str(), ": ", e2.as_str())); },
+            }
+            written.push(t);
+        }
+        for c in 0..units.len()
+            invariant 0 <= c && c <= units.len(),
+        {
+            if c < written.len() {
+                let p: String = cache::within(dir.as_str(), types::cat2(units[c].name.as_str(), ".bmb").as_str());
+                match std::fs::rename(written[c].as_str(), p.as_str()) {
+                    Ok(u5) => {},
+                    Err(e5) => { return Err(types::cat7("cannot rename ", written[c].as_str(), " to ", p.as_str(), ": ", e5.message.as_str(), "")); },
+                }
+            }
+        }
+        let names: Vec<String> = match std::fs::read_dir(dir.as_str()) {
+            Ok(ns) => ns,
+            Err(e6) => { return Err(e6.message); },
+        };
+        for d in 0..names.len()
+            invariant 0 <= d && d <= names.len(),
+        {
+            if source_name(names[d].as_str()) {
+                let stem: String = lexer::cut(names[d].as_str(), 0, names[d].len() - 4);
+                let mut kept: bool = false;
+                for x in 0..units.len()
+                    invariant 0 <= x && x <= units.len(),
+                {
+                    if units[x].name == stem {
+                        kept = true;
+                    }
+                }
+                if !kept {
+                    let stale: String = cache::within(dir.as_str(), names[d].as_str());
+                    match std::fs::remove_file(stale.as_str()) {
+                        Ok(u7) => {},
+                        Err(e7) => { return Err(types::cat4("cannot remove ", stale.as_str(), ": ", e7.message.as_str())); },
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}

@@ -9,6 +9,15 @@
     "json_ref": {
       "rustc": "tests/port/json_ref.rs"
     },
+    "json_tree": {
+      "bmb": [
+        "selfhost/json.bmb",
+        "tests/port/json_tree.bmb"
+      ]
+    },
+    "json_tree_ref": {
+      "rustc": "tests/port/json_tree_ref.rs"
+    },
     "std_num": {
       "bmb": "tests/run/std_num.bmb"
     },
@@ -100,6 +109,37 @@
       "inputs": {
         "stdin": [
           "tests/port/json_edge.txt"
+        ]
+      }
+    },
+    {
+      "name": "json-tree",
+      "component": "C0",
+      "a": [
+        "{build:json_tree_ref}"
+      ],
+      "b": [
+        "{build:json_tree}"
+      ],
+      "inputs": {
+        "stdin": [
+          "tests/port/json_tree.txt",
+          "tests/port/json_edge.txt"
+        ]
+      }
+    },
+    {
+      "name": "json-tree-lines",
+      "component": "C0",
+      "a": [
+        "{build:json_tree_ref}"
+      ],
+      "b": [
+        "{build:json_tree}"
+      ],
+      "inputs": {
+        "stdin_lines_of": [
+          "*.jsonl"
         ]
       }
     },
@@ -4587,6 +4627,49 @@
       "b": [
         "sh",
         "{root}/tests/port/query/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "apply",
+      "component": "C11",
+      "a": [
+        "python3",
+        "{root}/tests/port/apply/each.py",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/apply/each.py",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/run/*.bmb",
+          "tests/check/ok/*.bmb",
+          "tests/port/prove/*.bmb",
+          "lib/std/json.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "apply-ends",
+      "component": "C11",
+      "a": [
+        "sh",
+        "{root}/tests/port/apply/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/apply/ends.sh",
         "{build:stage1}"
       ],
       "inputs": {

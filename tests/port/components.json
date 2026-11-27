@@ -14,11 +14,12 @@
       "port": [
         "selfhost/diag.bmb",
         "selfhost/source.bmb",
-        "selfhost/sha256.bmb"
+        "selfhost/sha256.bmb",
+        "selfhost/json.bmb"
       ],
       "pin": {
         "stage0": "9e00338551231684ea1b0d00a0cdba031b0e622d261591d301a5bfbb1efb18c2",
-        "port": "89c3fd2948decaac283ff8622d088e0ec0273ffb894d0761277189902f92d098"
+        "port": "776c1a28651602b7cbbdf7c873fd3f7a6c972956003be8b70c429d81c3072636"
       },
       "ledger": {
         "session_tokens": null,
@@ -33,7 +34,8 @@
           "The normal form drops comments. The explanations were moved into the `#[summary]` of the items: left as is",
           "There are no tuples, so `line_col` returns the struct `Pos`: left as is",
           "The ratio of this row is against `diag`·`source` (852 lines of stage0), which have port files. `sha256`·`json` are replaced by `lib/std` (687·861 lines against 82·311 lines) and are not counted in the port lines. The driver `selfhost/main.bmb` grows with every phase, so it enters the port list of C13 at P11",
-          "`sha256` (`selfhost/sha256.bmb`): 107 lines of stage0 became 174 lines, 6 definitions. The state and the word schedule are `Vec<u32>` with the length written in the contract (`h.len() == 8`), and the constant `K` is `k(i)`, which reads an array literal inside the function by index (premise `i < 64`). `rotate_right`·`wrapping_add`·bit operations of `u32` are built in and stay as they are. 1 failure on the first run of `bmb verify`: appending a hexadecimal digit as the piece `&s[a..a + 1]` of the text `\"0123456789abcdef\"` (character boundary E0820, not true for an arbitrary `&str`) was changed to `char::from_u32`"
+          "`sha256` (`selfhost/sha256.bmb`): 107 lines of stage0 became 174 lines, 6 definitions. The state and the word schedule are `Vec<u32>` with the length written in the contract (`h.len() == 8`), and the constant `K` is `k(i)`, which reads an array literal inside the function by index (premise `i < 64`). `rotate_right`·`wrapping_add`·bit operations of `u32` are built in and stay as they are. 1 failure on the first run of `bmb verify`: appending a hexadecimal digit as the piece `&s[a..a + 1]` of the text `\"0123456789abcdef\"` (character boundary E0820, not true for an arbitrary `&str`) was changed to `char::from_u32`",
+          "`json` (`selfhost/json.bmb`): stage0's value tree (398 lines with its tests, 310 without) became 468 lines, 19 definitions and 98 obligations, all proved after two fixes of the first run (E0803: the reader's index plus one without a bound, now `json::fwd`, which stops at the largest index; E0808: a loop that moved through `fwd` did not decrease its measure, so the loops that know `i < len` add one themselves). `lib/std/json.bmb` is another design (a tape of nodes over the text) and is left as it is; it still writes strings for both (`std::json::push_string`). `Value::get` returns a reference in stage0; a reference cannot be returned (E0403), so `json::get` returns a copy and `json::get_str` reads a text member without one. A local cannot hold `&[u8]` or `&str` (E0403, E0409), so `parse` and `lit` hand the bytes on as an argument (`parse_bytes`, `lit_bytes`). The depth of a value is the measure of `json::value` (`256 - d`); a loop over elements counts down from the length of the text, which it cannot reach. `hex4` reads four bytes as stage0 does through `str::from_utf8` and `u32::from_str_radix`: a `+` before the digits is taken and a fourth byte inside a character is an error in the words of Rust's `Utf8Error`; `std::json` refuses the first, so `json_tree.txt` is not an input of the cases over `std::json`. Compared by `json-tree` and `json-tree-lines` with two test programs (`tests/port/json_tree.bmb`, `tests/port/json_tree_ref.rs`)"
         ]
       }
     },
@@ -456,13 +458,26 @@
       "stage0": [
         "workspace.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/workspace.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
-        "gate_runs": null,
-        "undecided_runs": null,
-        "friction": []
+        "gate_runs": 3,
+        "undecided_runs": 0,
+        "friction": [
+          "`workspace` (`selfhost/workspace.bmb`): reading a workspace directory, the seven operations of a transaction (`unit`, `put`, `remove`, `remove_unit`, `rename`, `expect`, `move`), the commit that is rejected as a whole, `write_units`, and the reader of operations over the JSON value tree of C0 (`selfhost/json.bmb`). `plan_files`, `relative_sources` and `parse_files` of the same stage0 file (the file and AST editing surfaces of the MCP server) are not ported: no ported command reaches them. The driver has `apply` and `import`, and `main::read_files` reads a directory among the files as stage0's does, for every command",
+          "A reference cannot be returned (E0403), so stage0's `find_mod`, which hands out `&mut Mod`, is `workspace::find_mod`: the positions down to the unit and a copy of it, written back by `set_mod` once changed. A unit is copied once per operation: left as is",
+          "There is no `Vec::retain`, `remove` or `insert`: each `retain` is a function that builds the list of what stays (`keep_fns`, `keep_types`, `keep_traits`, `keep_consts`, `keep_impls`, `keep_mods`, `keep_trait_impls`); where stage0 compares lengths before and after, the port compares the length of the new list: left as is",
+          "Two `&mut` to fields of one struct cannot be passed to one call (E0410), so the state of a transaction (source map, diagnostics, program, problems) is four locals of `plan` passed to each operation's function, and `continue` in stage0's loop over the operations is `return` in those functions",
+          "The three rewrites of `rename` and `move` are structs with an `impl` of `refs::Rewrite` (`Renamer`, `UnitRenamer`, `Mover`, `Qualifier`), and the collector of method call positions one of `ast::ExprFn` (`Sites`); `refs::walk_fn` was added for the moved function. Enums have no `==`, so the kind of a target, the site of a path and the kind of a declaration are numbers (`site_code`, `decl_code`): left as is",
+          "stage0's maps and sets (`BTreeMap` of hashes and identities, `BTreeSet` of positions and names) are `table::Table` under the path or under `body::span_key`; the identities are compared as sorted lists (`sorted_values`). The units to write are `Vec<fmt::Unit>` in name order, as `fmt::format_units` gives them",
+          "`parser.bmb` is pinned, so stage0's `parser::is_ident` is `workspace::is_ident` over `parser::reserved`: left as is",
+          "`Path::join`, `extension` and `file_stem` are written out for the names a workspace has (`cache::within`; a source file is a name that ends in `.bmb` with something before it, `workspace::source_name`, whose `ensures` gives the length the stem is cut at). `std::fs::read_dir` gives the names sorted, so the order in which stale files are removed is fixed where stage0's is the system's; a file name that is not UTF-8 is not compared",
+          "First diagnostics from `bmb check`: E0414 twice (a key moved into a list under an `if`: cloned), E0303 twice (a name with another type elsewhere in the function), E0410 (above), E0403 and E0409 (a `&str` local holding a literal), E0103 (`old` is a keyword and cannot name a local)",
+          "Proof gate: 85 definitions and 634 obligations in `workspace`; the whole port is 2,952 definitions and 25,798 obligations. One definition failed in the first run (E0803 in `write_units`: `len - 4` of a name that `source_name` accepted, fixed by its `ensures`); no undecided obligation in three runs"
+        ]
       }
     },
     {

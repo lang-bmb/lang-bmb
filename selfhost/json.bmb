@@ -1,0 +1,468 @@
+#[summary("The JSON value tree (RFC 8259): reading text into it and writing it back (port of stage0 compiler/src/json.rs). Read by transactions. Numbers keep their source text and the members of an object their source order")]
+mod json {
+    #[summary("One member of an object")]
+    struct Member { key: String, value: Value }
+
+    #[summary("Where the reader is: the index of the next byte")]
+    struct P { i: usize }
+
+    #[summary("A value. A number is its source text; the members of an object are in source order")]
+    enum Value { Null, Bool(bool), Num(String), Str(String), Array(Vec<Value>), Object(Vec<Member>) }
+
+    #[summary("The number as an i64, as Rust's parse reads the text; None for another value or a number that is not an i64")]
+    #[effects(pure)]
+    fn as_i64(v: &Value) -> Option<i64> {
+        match v {
+            Value::Null => None,
+            Value::Bool(b) => None,
+            Value::Num(n) => std::num::parse_i64(n.as_str()),
+            Value::Str(s) => None,
+            Value::Array(xs) => None,
+            Value::Object(kv) => None,
+        }
+    }
+
+    #[summary("The text of a string value; None for another value")]
+    #[effects(alloc)]
+    fn as_str(v: &Value) -> Option<String> {
+        match v {
+            Value::Null => None,
+            Value::Bool(b) => None,
+            Value::Num(n) => None,
+            Value::Str(s) => Some(s.clone()),
+            Value::Array(xs) => None,
+            Value::Object(kv) => None,
+        }
+    }
+
+    #[summary("The byte at i, 256 past the end")]
+    #[effects(pure)]
+    fn at(b: &[u8], i: usize) -> u32 {
+        if i < b.len() {
+            b[i] as u32
+        } else {
+            256
+        }
+    }
+
+    #[summary("Moves over a run of digits; whether there was one")]
+    #[effects(pure)]
+    fn digits(b: &[u8], p: &mut P) -> bool {
+        let from: usize = p.i;
+        while p.i < b.len() && b[p.i] >= 48 && b[p.i] <= 57
+            decreases b.len() - p.i,
+        {
+            p.i = p.i + 1;
+        }
+        p.i > from
+    }
+
+    #[summary("The error of the reader at byte i")]
+    #[effects(alloc)]
+    fn err(i: usize, what: &str) -> String {
+        let mut s: String = String::from("invalid JSON at byte ");
+        std::num::push_u64(&mut s, i as u64);
+        s.push_str(": ");
+        s.push_str(what);
+        s
+    }
+
+    #[summary("Moves the reader n bytes on (it stops at the largest index: every caller has read the bytes it moves over)")]
+    #[effects(pure)]
+    fn fwd(p: &mut P, n: usize) -> () {
+        p.i = p.i.saturating_add(n);
+    }
+
+    #[summary("The value of the first member of an object named key; None when v is no object or has no such member (a copy: a reference cannot be returned)")]
+    #[effects(alloc)]
+    fn get(v: &Value, key: &str) -> Option<Value> {
+        match v {
+            Value::Null => None,
+            Value::Bool(b) => None,
+            Value::Num(n) => None,
+            Value::Str(s) => None,
+            Value::Array(xs) => None,
+            Value::Object(kv) => { for i in 0..kv.len() invariant 0 <= i && i <= kv.len(), { if kv[i].key.as_str() == key { return Some(kv[i].value.clone()); } } None },
+        }
+    }
+
+    #[summary("The text of the string member key of an object (stage0's get and as_str together, without the copy of the value)")]
+    #[effects(alloc)]
+    fn get_str(v: &Value, key: &str) -> Option<String> {
+        match v {
+            Value::Null => None,
+            Value::Bool(b) => None,
+            Value::Num(n) => None,
+            Value::Str(s) => None,
+            Value::Array(xs) => None,
+            Value::Object(kv) => { for i in 0..kv.len() invariant 0 <= i && i <= kv.len(), { if kv[i].key.as_str() == key { return as_str(&kv[i].value); } } None },
+        }
+    }
+
+    #[summary("The four bytes of a \\u escape as a number, as stage0 reads them: the bytes as text (an error in Rust's words when the fourth byte is inside a character), then Rust's u32::from_str_radix, which takes a + before the digits. These errors do not name the byte")]
+    #[effects(alloc)]
+    fn hex4(b: &[u8], p: &mut P) -> Result<u32, String> {
+        if p.i > b.len() || b.len() - p.i < 4 {
+            return Err(String::from("truncated \\u escape"));
+        }
+        let i: usize = p.i;
+        let mut k: usize = 0;
+        while k < 4
+            invariant i + 4 <= b.len(),
+            decreases 4 - k,
+        {
+            let c: u8 = b[i + k];
+            let mut n: usize = 1;
+            if c >= 240 {
+                n = 4;
+            } else if c >= 224 {
+                n = 3;
+            } else if c >= 192 {
+                n = 2;
+            } else if c >= 128 {
+                let mut bad: String = String::from("invalid utf-8 sequence of 1 bytes from index ");
+                std::num::push_u64(&mut bad, k as u64);
+                return Err(bad);
+            }
+            if k + n > 4 {
+                let mut cut: String = String::from("incomplete utf-8 byte sequence from index ");
+                std::num::push_u64(&mut cut, k as u64);
+                return Err(cut);
+            }
+            k = k + n;
+        }
+        let mut h: Vec<u8> = Vec::new();
+        h.push(b[i]);
+        h.push(b[i + 1]);
+        h.push(b[i + 2]);
+        h.push(b[i + 3]);
+        fwd(p, 4);
+        match std::num::parse_u64_hex_bytes(h.as_slice()) {
+            None => Err(String::from("bad \\u escape")),
+            Some(v) => { if v <= 1114111 { Ok(v as u32) } else { Err(String::from("bad \\u escape")) } },
+        }
+    }
+
+    #[summary("Whether word is at the reader's place")]
+    #[effects(pure)]
+    fn lit(b: &[u8], i: usize, word: &str) -> bool {
+        lit_bytes(b, i, word.as_bytes())
+    }
+
+    #[summary("Whether the bytes w are at i")]
+    #[effects(pure)]
+    fn lit_bytes(b: &[u8], i: usize, w: &[u8]) -> bool {
+        if i > b.len() || b.len() - i < w.len() {
+            return false;
+        }
+        for k in 0..w.len()
+            invariant 0 <= k && k <= w.len(),
+        {
+            if b[i + k] != w[k] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Moves over a number (RFC 8259 §6): -? then 0 or digits not led by 0, then . digits, then e or E, a sign and digits. false when the text there is not one")]
+    #[effects(pure)]
+    fn number(b: &[u8], p: &mut P) -> bool {
+        if at(b, p.i) == 45 {
+            fwd(p, 1);
+        }
+        if at(b, p.i) == 48 {
+            fwd(p, 1);
+        } else if !digits(b, p) {
+            return false;
+        }
+        if at(b, p.i) == 46 {
+            fwd(p, 1);
+            if !digits(b, p) {
+                return false;
+            }
+        }
+        if at(b, p.i) == 101 || at(b, p.i) == 69 {
+            fwd(p, 1);
+            if at(b, p.i) == 43 || at(b, p.i) == 45 {
+                fwd(p, 1);
+            }
+            if !digits(b, p) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("Reads text as one value with whitespace around it. The error is stage0's message")]
+    #[effects(alloc)]
+    fn parse(s: &str) -> Result<Value, String> {
+        parse_bytes(s, s.as_bytes())
+    }
+
+    #[summary("parse, with the bytes of the text")]
+    #[effects(alloc)]
+    fn parse_bytes(s: &str, b: &[u8]) -> Result<Value, String> {
+        let mut p: P = P { i: 0 };
+        ws(b, &mut p);
+        match value(s, b, &mut p, 0) {
+            Ok(v) => { ws(b, &mut p); if p.i != b.len() { let mut e: String = String::from("trailing characters at byte "); std::num::push_u64(&mut e, p.i as u64); return Err(e); } Ok(v) },
+            Err(why) => Err(why),
+        }
+    }
+
+    #[summary("Reads a string, the reader at its opening quote. A run of plain bytes is copied whole; a control character in it is an error (RFC 8259 §7); a high surrogate takes its low half")]
+    #[effects(alloc)]
+    fn string(s: &str, b: &[u8], p: &mut P) -> Result<String, String> {
+        fwd(p, 1);
+        let mut out: String = String::new();
+        let mut left: usize = b.len();
+        while left > 0
+            decreases left,
+        {
+            left = left - 1;
+            let c: u32 = at(b, p.i);
+            if c == 256 {
+                return Err(err(p.i, "unterminated string"));
+            }
+            if c == 34 {
+                fwd(p, 1);
+                return Ok(out);
+            }
+            if c == 92 {
+                fwd(p, 1);
+                let e: u32 = at(b, p.i);
+                if e == 256 {
+                    return Err(err(p.i, "bad escape"));
+                }
+                fwd(p, 1);
+                if e == 34 {
+                    out.push('"');
+                } else if e == 92 {
+                    out.push('\\');
+                } else if e == 47 {
+                    out.push('/');
+                } else if e == 98 {
+                    out.push('\u{8}');
+                } else if e == 102 {
+                    out.push('\u{c}');
+                } else if e == 110 {
+                    out.push('\n');
+                } else if e == 114 {
+                    out.push('\r');
+                } else if e == 116 {
+                    out.push('\t');
+                } else if e == 117 {
+                    let mut cp: u32 = 0;
+                    match hex4(b, p) {
+                        Ok(h1) => { cp = h1; },
+                        Err(w1) => { return Err(w1); },
+                    }
+                    if cp >= 55296 && cp < 56320 {
+                        if !lit(b, p.i, "\\u") {
+                            return Err(err(p.i, "lone surrogate"));
+                        }
+                        fwd(p, 2);
+                        let mut lo: u32 = 0;
+                        match hex4(b, p) {
+                            Ok(h2) => { lo = h2; },
+                            Err(w2) => { return Err(w2); },
+                        }
+                        if !(lo >= 56320 && lo < 57344) {
+                            return Err(err(p.i, "lone surrogate"));
+                        }
+                        cp = 65536 + (cp - 55296 << 10) + (lo - 56320);
+                    }
+                    match char::from_u32(cp) {
+                        None => { return Err(err(p.i, "lone surrogate")); },
+                        Some(ch) => out.push(ch),
+                    }
+                } else {
+                    return Err(err(p.i, "bad escape"));
+                }
+            } else {
+                let start: usize = p.i;
+                let mut control: bool = false;
+                while p.i < b.len() && b[p.i] != 34 && b[p.i] != 92
+                    invariant start <= p.i,
+                    decreases b.len() - p.i,
+                {
+                    if b[p.i] < 32 {
+                        control = true;
+                    }
+                    p.i = p.i + 1;
+                }
+                if control {
+                    return Err(err(p.i, "control character in a string"));
+                }
+                if p.i <= s.len() && s.is_char_boundary(start) && s.is_char_boundary(p.i) {
+                    out.push_str(&s[start..p.i]);
+                }
+            }
+        }
+        Err(err(p.i, "unterminated string"))
+    }
+
+    #[summary("The text of a value without whitespace, strings by the rules of diag::json_str")]
+    #[effects(alloc)]
+    fn to_json(v: &Value) -> String {
+        let mut out: String = String::new();
+        write(&mut out, v, 1000000000);
+        out
+    }
+
+    #[summary("Reads one value. d is the number of arrays and objects open around it: one more than 256 deep is an error instead of a deep recursion")]
+    #[effects(alloc)]
+    fn value(s: &str, b: &[u8], p: &mut P, d: usize) -> Result<Value, String>
+        requires d <= 256,
+        decreases 256 - d,
+    {
+        let c: u32 = at(b, p.i);
+        if (c == 91 || c == 123) && d >= 256 {
+            return Err(err(p.i, "nesting deeper than 256"));
+        }
+        if c == 256 {
+            return Err(err(p.i, "unexpected end"));
+        }
+        if c == 110 {
+            if lit(b, p.i, "null") {
+                fwd(p, 4);
+                return Ok(Value::Null);
+            }
+            return Err(err(p.i, "unexpected token"));
+        }
+        if c == 116 {
+            if lit(b, p.i, "true") {
+                fwd(p, 4);
+                return Ok(Value::Bool(true));
+            }
+            return Err(err(p.i, "unexpected token"));
+        }
+        if c == 102 {
+            if lit(b, p.i, "false") {
+                fwd(p, 5);
+                return Ok(Value::Bool(false));
+            }
+            return Err(err(p.i, "unexpected token"));
+        }
+        if c == 34 {
+            return match string(s, b, p) { Ok(text) => Ok(Value::Str(text)), Err(w0) => Err(w0), };
+        }
+        if c == 91 {
+            fwd(p, 1);
+            let mut xs: Vec<Value> = Vec::new();
+            ws(b, p);
+            if at(b, p.i) == 93 {
+                fwd(p, 1);
+                return Ok(Value::Array(xs));
+            }
+            let mut left: usize = b.len();
+            while left > 0
+                decreases left,
+            {
+                left = left - 1;
+                ws(b, p);
+                match value(s, b, p, d + 1) {
+                    Ok(x) => xs.push(x),
+                    Err(w1) => { return Err(w1); },
+                }
+                ws(b, p);
+                let sep: u32 = at(b, p.i);
+                if sep == 44 {
+                    fwd(p, 1);
+                } else if sep == 93 {
+                    fwd(p, 1);
+                    return Ok(Value::Array(xs));
+                } else {
+                    return Err(err(p.i, "expected `,` or `]`"));
+                }
+            }
+            return Err(err(p.i, "unexpected end"));
+        }
+        if c == 123 {
+            fwd(p, 1);
+            let mut kv: Vec<Member> = Vec::new();
+            ws(b, p);
+            if at(b, p.i) == 125 {
+                fwd(p, 1);
+                return Ok(Value::Object(kv));
+            }
+            let mut more: usize = b.len();
+            while more > 0
+                decreases more,
+            {
+                more = more - 1;
+                ws(b, p);
+                if at(b, p.i) != 34 {
+                    return Err(err(p.i, "expected a key"));
+                }
+                let mut key: String = String::new();
+                match string(s, b, p) {
+                    Ok(k) => { key = k; },
+                    Err(w2) => { return Err(w2); },
+                }
+                ws(b, p);
+                if at(b, p.i) != 58 {
+                    return Err(err(p.i, "expected `:`"));
+                }
+                fwd(p, 1);
+                ws(b, p);
+                match value(s, b, p, d + 1) {
+                    Ok(y) => kv.push(Member { key: key, value: y }),
+                    Err(w3) => { return Err(w3); },
+                }
+                ws(b, p);
+                let end: u32 = at(b, p.i);
+                if end == 44 {
+                    fwd(p, 1);
+                } else if end == 125 {
+                    fwd(p, 1);
+                    return Ok(Value::Object(kv));
+                } else {
+                    return Err(err(p.i, "expected `,` or `}`"));
+                }
+            }
+            return Err(err(p.i, "unexpected end"));
+        }
+        if c == 45 || c >= 48 && c <= 57 {
+            let start: usize = p.i;
+            if number(b, p) {
+                let mut num: String = String::new();
+                if start <= p.i && p.i <= s.len() && s.is_char_boundary(start) && s.is_char_boundary(p.i) {
+                    num.push_str(&s[start..p.i]);
+                }
+                return Ok(Value::Num(num));
+            }
+            return Err(err(p.i, "malformed number"));
+        }
+        Err(err(p.i, "unexpected character"))
+    }
+
+    #[summary("Appends the text of v. f is fuel above the depth of the value")]
+    #[effects(alloc)]
+    fn write(out: &mut String, v: &Value, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match v {
+            Value::Null => out.push_str("null"),
+            Value::Bool(b) => { if *b { out.push_str("true"); } else { out.push_str("false"); } },
+            Value::Num(n) => out.push_str(n.as_str()),
+            Value::Str(s) => std::json::push_string(out, s.as_str()),
+            Value::Array(xs) => { out.push_str("["); for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { if i > 0 { out.push_str(","); } write(out, &xs[i], f - 1); } out.push_str("]"); },
+            Value::Object(kv) => { out.push_str("{"); for j in 0..kv.len() invariant 0 <= j && j <= kv.len(), { if j > 0 { out.push_str(","); } std::json::push_string(out, kv[j].key.as_str()); out.push_str(":"); write(out, &kv[j].value, f - 1); } out.push_str("}"); },
+        }
+    }
+
+    #[summary("Moves over whitespace: space, tab, line feed, carriage return")]
+    #[effects(pure)]
+    fn ws(b: &[u8], p: &mut P) -> () {
+        while p.i < b.len() && (b[p.i] == 32 || b[p.i] == 9 || b[p.i] == 10 || b[p.i] == 13)
+            decreases b.len() - p.i,
+        {
+            p.i = p.i + 1;
+        }
+    }
+}

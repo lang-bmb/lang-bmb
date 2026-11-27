@@ -19,6 +19,7 @@ lib/std/str.bmb
 lib/std/utf8.bmb
 selfhost/big.bmb
 selfhost/codegen_text.bmb
+selfhost/json.bmb
 selfhost/sha256.bmb
 selfhost/source.bmb
 selfhost/std_units.bmb

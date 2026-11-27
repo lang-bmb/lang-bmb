@@ -476,4 +476,15 @@ mod refs {
             module::<R>(&mut w, r, &mut p.mods[i], none.as_slice(), 1000000000);
         }
     }
+
+    #[summary("Walks one function of unit with visitor r")]
+    #[effects(alloc)]
+    fn walk_fn<R: Rewrite>(d: &mut ast::FnDef, unit: &[String], r: &mut R) -> () {
+        let mut here: Vec<String> = Vec::new();
+        for i in 0..unit.len() {
+            here.push(unit[i].clone());
+        }
+        let mut w: Walker = Walker { unit: here, tparams: Vec::new() };
+        function::<R>(&mut w, r, d);
+    }
 }

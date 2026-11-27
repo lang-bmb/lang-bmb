@@ -4,6 +4,8 @@
     "sha256": 0.4,
     "json-lines": 0.0,
     "json-edges": 0.0,
+    "json-tree": 0.0,
+    "json-tree-lines": 0.0,
     "integers": 0.0,
     "codes": 0.0,
     "codes-md": 0.0,
@@ -161,6 +163,8 @@
     "query-paths-together": 26.5,
     "query-proved": 36.7,
     "query-fake-models": 1.8,
-    "query-ends": 3.3
+    "query-ends": 3.3,
+    "apply": 105.5,
+    "apply-ends": 13.0
   }
 }

@@ -1,5 +1,36 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), import and apply (the workspace and its transactions; every command reads a workspace directory among its files), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
+    #[summary("The line apply ends with: whether the transaction was committed, the definitions whose text changed or was added and those removed")]
+    #[effects(alloc)]
+    fn commit_line(c: &workspace::Commit) -> String {
+        let mut out: String = String::from("{\"committed\":");
+        if c.ok {
+            out.push_str("true");
+        } else {
+            out.push_str("false");
+        }
+        out.push_str(",\"changed\":[");
+        for i in 0..c.changed.len()
+            invariant 0 <= i && i <= c.changed.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(&mut out, c.changed[i].as_str());
+        }
+        out.push_str("],\"removed\":[");
+        for j in 0..c.removed.len()
+            invariant 0 <= j && j <= c.removed.len(),
+        {
+            if j > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(&mut out, c.removed[j].as_str());
+        }
+        out.push_str("]}");
+        out
+    }
+
     #[effects(alloc, io, nondet)]
     fn main() -> () {
         let args: Vec<String> = std::env::args();
@@ -438,6 +469,47 @@ mod main {
             }
             return;
         }
+        if args.len() == 4 && args[1] == "apply" {
+            let mut ops_text: String = String::new();
+            if args[3] == "-" {
+                let mut input: Vec<u8> = Vec::new();
+                let mut read: bool = true;
+                match std::io::read_to_end(&mut input) {
+                    Ok(got) => {},
+                    Err(e_in) => { read = false; },
+                }
+                match String::from_utf8(input) {
+                    Ok(text_in) => { ops_text = text_in; },
+                    Err(not_text) => { read = false; },
+                }
+                if !read {
+                    eprint_str("bmb: cannot read stdin\n");
+                    std::process::exit(2);
+                }
+            } else {
+                match std::fs::read_to_string(args[3].as_str()) {
+                    Ok(text_of) => { ops_text = text_of; },
+                    Err(e_ops) => { eprint_str("bmb: cannot read "); eprint_str(args[3].as_str()); eprint_str(": "); eprint_str(e_ops.message.as_str()); eprint_str("\n"); std::process::exit(2); },
+                }
+            }
+            let ops: Vec<workspace::Op> = match workspace::parse_ops(ops_text.as_str()) {
+                Ok(read_ops) => read_ops,
+                Err(ops_why) => { eprint_str("bmb: "); eprint_str(ops_why.as_str()); eprint_str("\n"); std::process::exit(2); },
+            };
+            match workspace::commit(args[2].as_str(), ops.as_slice()) {
+                Ok(tx) => { print_str(tx.diagnostics.as_str()); print_str(commit_line(&tx).as_str()); print_str("\n"); if !tx.ok { std::process::exit(1); } },
+                Err(commit_why) => { eprint_str("bmb: "); eprint_str(commit_why.as_str()); eprint_str("\n"); std::process::exit(2); },
+            }
+            return;
+        }
+        if args.len() > 3 && args[1] == "import" {
+            let imported: Vec<lib::Input> = read_files(args.as_slice(), 3);
+            match workspace::normal_units(imported.as_slice()) {
+                Ok(import_units) => { match workspace::write_units(args[2].as_str(), import_units.as_slice()) { Ok(import_done) => {}, Err(import_why) => { eprint_str("bmb: "); eprint_str(import_why.as_str()); eprint_str("\n"); std::process::exit(2); }, } },
+                Err(import_diags) => { print_str(import_diags.as_str()); std::process::exit(1); },
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -447,11 +519,11 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | import DIR FILE.. | apply DIR OPS.json | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
         std::process::exit(2);
     }
 
-    #[summary("Reads the files of the arguments. If one cannot be read, writes that with the system's reason to standard error and exit code 2")]
+    #[summary("Reads the files of the arguments; a directory among them is read as a workspace (the .bmb files of its src/, or its own, in name order). If one cannot be read, writes that with the system's reason to standard error and exit code 2")]
     #[effects(alloc, io, nondet)]
     fn read_files(args: &[String], from: usize) -> Vec<lib::Input> {
         let mut files: Vec<lib::Input> = Vec::new();
@@ -459,9 +531,16 @@ mod main {
         while i < args.len()
             decreases args.len() - i,
         {
-            match std::fs::read_to_string(args[i].as_str()) {
-                Ok(text) => files.push(lib::Input { name: args[i].clone(), text: text }),
-                Err(e) => { eprint_str("bmb: cannot read "); eprint_str(args[i].as_str()); eprint_str(": "); eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(2); },
+            if workspace::is_dir(args[i].as_str()) {
+                match workspace::read_dir_sources(args[i].as_str()) {
+                    Ok(found) => { for j in 0..found.len() invariant 0 <= j && j <= found.len(), { files.push(found[j].clone()); } },
+                    Err(why) => { eprint_str("bmb: "); eprint_str(why.as_str()); eprint_str("\n"); std::process::exit(2); },
+                }
+            } else {
+                match std::fs::read_to_string(args[i].as_str()) {
+                    Ok(text) => files.push(lib::Input { name: args[i].clone(), text: text }),
+                    Err(e) => { eprint_str("bmb: cannot read "); eprint_str(args[i].as_str()); eprint_str(": "); eprint_str(e.message.as_str()); eprint_str("\n"); std::process::exit(2); },
+                }
             }
             i = i + 1;
         }

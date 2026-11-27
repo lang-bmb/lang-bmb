@@ -1,0 +1,70 @@
+#[summary("Differential test of the port's JSON value tree (selfhost/json.bmb): reads each line of standard input and writes what tests/port/json_tree_ref.rs writes with stage0's json: the error, or the value written back and, when there is one, the value as an i64, its text as a string and its member a")]
+mod app {
+    #[effects(alloc, io)]
+    fn line(t: &str) -> () {
+        match json::parse(t) {
+            Ok(v) => {
+                let mut out: String = json::to_json(&v);
+                out.push_str("\n");
+                match json::as_i64(&v) {
+                    None => {}
+                    Some(n) => {
+                        out.push_str("  i64 ");
+                        std::num::push_i64(&mut out, n);
+                        out.push_str("\n");
+                    }
+                }
+                match json::as_str(&v) {
+                    None => {}
+                    Some(s) => {
+                        out.push_str("  str ");
+                        std::json::push_string(&mut out, s.as_str());
+                        out.push_str("\n");
+                    }
+                }
+                match json::get(&v, "a") {
+                    None => {}
+                    Some(a) => {
+                        out.push_str("  a ");
+                        out.push_str(json::to_json(&a).as_str());
+                        out.push_str("\n");
+                    }
+                }
+                print_str(out.as_str());
+            }
+            Err(why) => {
+                print_str("error: ");
+                print_str(why.as_str());
+                print_str("\n");
+            }
+        }
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let mut left: usize = 1000000000;
+        while left > 0
+            decreases left,
+        {
+            let mut buf: String = String::new();
+            match std::io::read_line(&mut buf) {
+                Ok(got) => {
+                    if got == 0 {
+                        left = 0;
+                    } else {
+                        let n: usize = buf.len();
+                        if n > 0 && buf.as_bytes()[n - 1] == 10 && buf.is_char_boundary(n - 1) {
+                            line(&buf[0..n - 1]);
+                        } else {
+                            line(buf.as_str());
+                        }
+                        left = left - 1;
+                    }
+                }
+                Err(e) => {
+                    left = 0;
+                }
+            }
+        }
+    }
+}
