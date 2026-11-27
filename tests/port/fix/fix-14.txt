@@ -1,0 +1,23 @@
+#[summary("g")]
+mod g {
+    struct Cell<T: Copy> { v: T }
+
+    impl<T: Copy> Cell<T> {
+        #[effects(pure)]
+        fn new(v: T) -> Cell<T> {
+            Cell { v: v }
+        }
+    }
+
+    #[effects(pure)]
+    fn pick<A: Copy, B: Copy>(a: A, b: B) -> B {
+        b
+    }
+
+    #[effects(pure)]
+    fn go(x: u64) -> bool {
+        let c: Cell<bool> = Cell::new(true);
+        let y: u64 = pick(c, x);
+        pick(y, c.v)
+    }
+}

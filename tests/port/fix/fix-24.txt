@@ -1,0 +1,48 @@
+#[summary("e")]
+mod e {
+    #[effects(pure)]
+    fn sum(a: &[u64]) -> u64 {
+        let mut i = 0;
+        let mut s: u64 = 0;
+        while i < a.len()
+            invariant i <= a.len(),
+            decreases a.len() - i,
+        {
+            s = s.wrapping_add(a[i]);
+            i = i + 1;
+        }
+        s
+    }
+
+    #[effects(alloc)]
+    fn build(n: u32) -> Vec<u32> {
+        let mut v = Vec::new();
+        let k = 3;
+        v.push(n);
+        take(k);
+        v
+    }
+
+    #[effects(pure)]
+    fn take(x: u8) -> u8 {
+        x
+    }
+
+    struct Bag<T> { items: Vec<T>, n: u64 }
+
+    #[effects(pure)]
+    fn id<T>(x: T) -> T { x }
+
+    #[effects(alloc)]
+    fn passed() -> usize {
+        let v = Vec::new();
+        let w: Vec<i16> = id::<Vec<i16>>(v);
+        w.len()
+    }
+
+    #[effects(alloc)]
+    fn bag<T>(n: u64) -> Bag<T> {
+        let items = Vec::new();
+        Bag { items: items, n: n }
+    }
+}

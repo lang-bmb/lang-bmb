@@ -176,7 +176,7 @@ mod lint {
         {
             listed.push(only[i].clone());
         }
-        let opts: prove::Opts = prove::Opts { only: Some(listed), bounded: false, seed: 0, rlimit: rlimit, query: advisory, who: solver::Asker::Refutations, stop: true };
+        let opts: prove::Opts = prove::Opts { only: Some(listed), bounded: false, seed: 0, rlimit: rlimit, query: advisory, who: solver::Asker::Refutations, stop: true, jobs: Vec::new() };
         let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
         let o: prove::Outcome = prove::run(changed, &opts, store, z3, &mut diags);
         clean(o.statuses.as_slice(), diags.items.as_slice(), spans, only)
@@ -218,7 +218,7 @@ mod lint {
                 }
             }
         } else {
-            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false };
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: gate, query: gate, who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
             let pg0: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
             let mut incr: Option<incremental::Session> = match cache_dir {
                 None => None,

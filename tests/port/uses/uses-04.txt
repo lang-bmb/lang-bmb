@@ -1,0 +1,26 @@
+#[summary("lemma")]
+mod l {
+    spec fn upto(a: &[i64], n: usize, r: i64) -> bool
+        decreases n,
+    {
+        if n == 0 { false } else { a[n - 1] == r || upto(a, n - 1, r) }
+    }
+
+    spec fn ok(a: &[i64], n: usize, r: i64) -> bool {
+        n <= a.len() && upto(a, n, r)
+    }
+
+    spec fn found(a: &[i64], n: usize, r: i64) -> bool {
+        !(forall|i: usize| i < n ==> #[trigger] a[i] != r)
+    }
+
+    proof fn index(a: &[i64], n: usize, r: i64)
+        requires ok(a, n, r),
+        ensures found(a, n, r),
+        decreases n,
+    {
+        if a[n - 1] != r {
+            index(a, n - 1, r);
+        }
+    }
+}

@@ -1,0 +1,15 @@
+#[summary("t")]
+mod m {
+    #[effects(pure)]
+    fn read(a: &[i64]) -> usize { a.len() }
+
+    #[effects(pure)]
+    fn write(a: &mut [i64]) -> () {}
+
+    #[effects(alloc)]
+    fn f(r: &Vec<i64>) -> usize {
+        let mut v: Vec<i64> = Vec::new();
+        write(&mut v);
+        read(&v) + read(r)
+    }
+}

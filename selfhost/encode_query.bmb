@@ -33,6 +33,9 @@ mod encode_query {
     #[summary("The instances ground_instances made, and whether every application got its own")]
     struct Instances { text: String, complete: bool }
 
+    #[summary("One contract comparison (stage0 RefineJob): the definition refiner against decl, as a trait impl function's contract against its trait's (ADR-0046 §4): decl's requires imply each of the refiner's, and decl's requires with the refiner's ensures imply each of decl's ensures. tsub gives decl's type parameters by the refiner's, by position. With own_domain the ensures obligations assume the refiner's own requires in place of decl's: both sides' ensures compared on the refiner's domain")]
+    struct Job { refiner: String, decl: String, tsub: types::Subst, own_domain: bool }
+
     #[summary("A bit-vector leaf (stage0 BvLeaf with its width and value): kind 0 is a code operand constant name, signed when its stated value is the two's complement form (v is then the value under it); 1 is a conversion `((_ int2bv w) v)`; 2 is a numeral `(_ bvN w)`")]
     struct Leaf { kind: u8, name: String, signed: bool, w: u64, v: encode_terms::Sexp }
 
@@ -1057,6 +1060,19 @@ mod encode_query {
         }
     }
 
+    #[summary("The position of the comparison that definition path refines in, if it has one")]
+    #[effects(pure)]
+    fn job_at(jobs: &[Job], path: &str) -> Option<usize> {
+        for i in 0..jobs.len()
+            invariant 0 <= i && i <= jobs.len(),
+        {
+            if jobs[i].refiner.as_str() == path {
+                return Some(i);
+            }
+        }
+        None
+    }
+
     #[summary("e as a bit-vector leaf (stage0 Congr::leaf): an operand constant with its width and stated value, a conversion, a numeral")]
     #[effects(alloc)]
     fn leaf(cx: &Congr, e: &encode_terms::Sexp) -> Option<Leaf> {
@@ -1603,6 +1619,34 @@ mod encode_query {
             }
         }
         Some(types::cat4(cx.prefix.as_str(), kept.as_str(), defs.as_str(), cx.decls.as_str()))
+    }
+
+    #[summary("Definition path encoded for a contract comparison (the encoding part of stage0 verify_pass under contract_refinements): the refiner's parameters on entry, the definitions its context reveals, and the obligations of the comparison; no body is encoded. The other arguments are those of encoded")]
+    #[effects(alloc)]
+    fn refinement(pg: &encode_spec::Prog, path: &str, def: &encode_spec::Def, sig: &types::FnSig, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], trust: &Option<encode_exec::Trust>, job: &Job, seed: u64, query: u64, rlimit: u64, bounded: bool) -> Encoded {
+        let mut head: String = header(seed, query);
+        if bounded {
+            head.push_str("\n; bounded search |x| <= 8, lengths <= 4");
+        }
+        let prefix: String = types::cat3(head.as_str(), "\n", encode_decls::sort_decls(sig).as_str());
+        let share: u64 = if rlimit / 100 >= 1 {
+            rlimit / 100
+        } else {
+            1
+        };
+        let limit: String = types::cat3("(set-option :rlimit ", encode_terms::dec(share).as_str(), ")");
+        let rv: Revealed = revealed_axioms(pg, path, def);
+        let mut ex: encode_exec::Exec = encode_exec::new_exec(pg, path, def.unit.as_str());
+        ex.trust = trust.clone();
+        ex.entry_params(&def.d, pg);
+        let at: u8 = if job.own_domain {
+            2
+        } else {
+            1
+        };
+        ex.refines(&def.d, job.decl.as_str(), &job.tsub, at, pg);
+        let cx: Ctx = Ctx { header: head, prefix: prefix, decls: encode_terms::join(ex.enc.fr.decls.as_slice(), "\n"), limit: limit, axioms: rv.axioms, parts: rv.parts, valid: ex.valid_defs.clone(), sds: to_decls(sds), dts: to_dts(dts) };
+        Encoded { cx: cx, obls: ex.enc.obls, inputs: ex.inputs, trivial: ex.enc.trivial }
     }
 
     #[summary("The definitions of axioms that text reaches, in the full query's forms (stage0 relevant_axioms, ADR-0064)")]

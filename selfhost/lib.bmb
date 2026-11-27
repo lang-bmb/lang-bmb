@@ -121,6 +121,34 @@ mod lib {
         Outcome { ok: !diags.has_errors(), text: diags.to_jsonl(&sm) }
     }
 
+    #[summary("bmb dump runtime (stage0 codegen::runtime_texts as the driver prints it): the code generator's constant IR texts by name, as JSONL, in stage0's order")]
+    #[effects(alloc)]
+    fn dump_runtime() -> String {
+        let mut out: String = String::new();
+        push_runtime(&mut out, "head", codegen_text::head().as_str());
+        push_runtime(&mut out, "head_rest", codegen_text::head_rest().as_str());
+        push_runtime(&mut out, "heap_runtime", codegen_text::heap_runtime().as_str());
+        push_runtime(&mut out, "vec_runtime", codegen_text::vec_runtime().as_str());
+        push_runtime(&mut out, "print_f64", codegen_text::print_f64().as_str());
+        push_runtime(&mut out, "text_cmp", codegen_text::text_cmp().as_str());
+        push_runtime(&mut out, "text_grow", codegen_text::text_grow().as_str());
+        push_runtime(&mut out, "text_utf8", codegen_text::text_utf8().as_str());
+        push_runtime(&mut out, "sys_args", codegen_text::sys_args().as_str());
+        push_runtime(&mut out, "sys_child", codegen_text::sys_child().as_str());
+        push_runtime(&mut out, "sys_clock", codegen_text::sys_clock().as_str());
+        push_runtime(&mut out, "sys_cpath", codegen_text::sys_cpath().as_str());
+        push_runtime(&mut out, "sys_dirs", codegen_text::sys_dirs().as_str());
+        push_runtime(&mut out, "sys_eprint", codegen_text::sys_eprint().as_str());
+        push_runtime(&mut out, "sys_exit", codegen_text::sys_exit().as_str());
+        push_runtime(&mut out, "sys_fs", codegen_text::sys_fs().as_str());
+        push_runtime(&mut out, "sys_io_common", codegen_text::sys_io_common().as_str());
+        push_runtime(&mut out, "sys_meta", codegen_text::sys_meta().as_str());
+        push_runtime(&mut out, "sys_proc", codegen_text::sys_proc().as_str());
+        push_runtime(&mut out, "sys_run", codegen_text::sys_run().as_str());
+        push_runtime(&mut out, "sys_stdin", codegen_text::sys_stdin().as_str());
+        out
+    }
+
     #[summary("The stage between the parser and the checker's body check, as text (stage0 lib::dump_stage): on a syntax error, diagnostics only, like dump parse. Otherwise the diagnostics so far, a --- line, the text of that stage. For now std (the normal form of the program with the library units it names added)")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
@@ -259,7 +287,7 @@ mod lib {
             None => None,
             Some(dir) => Some(cache::load(dir.as_str())),
         };
-        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,
@@ -803,6 +831,16 @@ mod lib {
         }
     }
 
+    #[summary("One row of bmb dump runtime: the name as it is and the text as a JSON string")]
+    #[effects(alloc)]
+    fn push_runtime(out: &mut String, name: &str, text: &str) -> () {
+        out.push_str("{\"name\":\"");
+        out.push_str(name);
+        out.push_str("\",\"text\":");
+        std::json::push_string(out, text);
+        out.push_str("}\n");
+    }
+
     #[summary("Adds type x by its text to shapes: left as is if the same text exists")]
     #[effects(alloc)]
     fn push_shape(shapes: &mut table::Table<ast::TypeKind>, x: &ast::TypeKind) -> () {
@@ -989,6 +1027,34 @@ mod lib {
         out.push_str("]");
     }
 
+    #[summary("bmb reads (stage0 reads_sources): each definition's proof key as rows and each data type's digest, as JSONL. When the program does not check, its diagnostics and ok is false")]
+    #[effects(alloc, io, nondet)]
+    fn reads(files: &[Input]) -> Outcome {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: Front = frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Outcome { ok: false, text: diags.to_jsonl(&sm) };
+        }
+        let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+        Outcome { ok: true, text: incremental::reads(&fe.ck, &pg) }
+    }
+
+    #[summary("One row of bmb doctor: the tool, the version required, and the version found (status ok) or why it is not usable (status error)")]
+    #[effects(alloc)]
+    fn tool_row(tool: &str, want: &str, res: &Result<String, String>) -> String {
+        let mut out: String = String::from("{\"tool\":");
+        std::json::push_string(&mut out, tool);
+        out.push_str(",\"required\":");
+        std::json::push_string(&mut out, want);
+        match res {
+            Ok(v) => { out.push_str(",\"status\":\"ok\",\"detail\":"); std::json::push_string(&mut out, v.as_str()); },
+            Err(e) => { out.push_str(",\"status\":\"error\",\"detail\":"); std::json::push_string(&mut out, e.as_str()); },
+        }
+        out.push_str("}\n");
+        out
+    }
+
     #[summary("Index of the given file that declares the top-level unit of this name (its span's file), if a unit has the name")]
     #[effects(pure)]
     fn unit_file(p: &ast::Program, name: &str) -> Option<usize> {
@@ -1127,7 +1193,7 @@ mod lib {
         {
             wanted.push(only[i].clone());
         }
-        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,
@@ -1171,5 +1237,30 @@ mod lib {
             }
         }
         Proved { ok: ok, output: output, scripts: out.scripts, hits: hits, misses: misses, missing: missing, cache_error: cache_error, incr: incr_stats, incr_error: incr_error }
+    }
+
+    #[summary("A report for the command line (stage0 with_written): its summary row also says whether the changed files were written, since `changed` lists them either way. A report whose last line is no summary row stays as it is")]
+    #[effects(alloc)]
+    fn with_written(report: &str, written: bool) -> String {
+        if report.len() < 2 || !encode_terms::starts_at(report, report.len() - 2, "}\n") {
+            return String::from(report);
+        }
+        let mut last: usize = report.len() - 1;
+        while last > 0 && report.as_bytes()[last - 1] != 10
+            invariant last < report.len(),
+            decreases last,
+        {
+            last = last - 1;
+        }
+        if !encode_terms::starts_at(report, last, "{\"summary\":true") {
+            return String::from(report);
+        }
+        let mut out: String = lexer::cut(report, 0, report.len() - 2);
+        if written {
+            out.push_str(",\"written\":true}\n");
+        } else {
+            out.push_str(",\"written\":false}\n");
+        }
+        out
     }
 }

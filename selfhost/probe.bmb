@@ -415,7 +415,7 @@ mod probe {
     #[summary("Proves the definitions only name of checked program ck without a cache (stage0 verify_only); the diagnostics of the proof are added to diags")]
     #[effects(alloc, io, nondet)]
     fn prove_only(ck: &body::Checked, only: &[String], bounded: bool, diags: &mut diag::Diags) -> prove::Outcome {
-        let opts: prove::Opts = prove::Opts { only: Some(workspace::copy(only)), bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: Some(workspace::copy(only)), bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut store: Option<cache::ProofCache> = None;
         let mut incr: Option<incremental::Session> = None;

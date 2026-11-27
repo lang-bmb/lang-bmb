@@ -3,8 +3,8 @@
 # with standard input and output as wholes, where the sessions of this
 # directory talk to it line by line.
 # - the arguments: none, a flag it does not know, a flag after the
-#   directory, two directories (each is the usage, whose words are each
-#   compiler's own: only the exit code is shown), a flag where the
+#   directory, two directories (each is the usage text, which the case
+#   `usage` compares: only the exit code is shown), a flag where the
 #   directory is expected (it is the directory), every flag at once, a flag
 #   twice, the empty directory name (the directory of the run);
 # - the input: every request written at once, lines that end in a carriage

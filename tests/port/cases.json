@@ -3513,6 +3513,673 @@
       }
     },
     {
+      "name": "usage",
+      "component": "C13",
+      "a": [
+        "sh",
+        "{root}/tests/port/cli/usage.sh",
+        "{bmb}",
+        "{root}/tests/port/sat/lint.bmb"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/cli/usage.sh",
+        "{build:stage1}",
+        "{root}/tests/port/sat/lint.bmb"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "doctor",
+      "component": "C13",
+      "a": [
+        "sh",
+        "{root}/tests/port/cli/doctor.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/cli/doctor.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "dump-runtime",
+      "component": "C8",
+      "a": [
+        "{bmb}",
+        "dump",
+        "runtime"
+      ],
+      "b": [
+        "{build:stage1}",
+        "dump",
+        "runtime"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "reads",
+      "component": "C9",
+      "a": [
+        "{bmb}",
+        "reads",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "reads",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/incr/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "reads-together",
+      "component": "C9",
+      "a": [
+        "{bmb}",
+        "reads",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "reads",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "reads-port",
+      "component": "C9",
+      "a": [
+        "{bmb}",
+        "reads",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "reads",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 100
+      }
+    },
+    {
+      "name": "fix",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "fix",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fix",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/fix/*.txt",
+          "tests/port/lint/*.txt",
+          "tests/check/err/*.bmb",
+          "tests/check/ok/*.bmb",
+          "tests/lint/*.bmb",
+          "tests/port/parser/err-*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/decls/*.txt",
+          "tests/port/lower/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fix-print",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "fix",
+        "--print",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fix",
+        "--print",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/fix/*.txt",
+          "tests/port/lint/*.txt",
+          "tests/check/err/*.bmb",
+          "tests/lint/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fix-confirm",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "fix",
+        "--confirm",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fix",
+        "--confirm",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/fix/*.txt",
+          "tests/port/lint/*.txt",
+          "tests/run/escapes.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/verify/fail/assumed_values.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fix-together",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "fix",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "fix",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 100
+      }
+    },
+    {
+      "name": "fix-write",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/fix/write.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/fix/write.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/fix/*.txt",
+          "tests/port/lint/*.txt",
+          "tests/check/err/*.bmb",
+          "tests/run/escapes.bmb",
+          "tests/port/prove/trust.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "fix-induction",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/fix/induction.py",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/fix/induction.py",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "fix-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/fix/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/fix/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "uses",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "uses",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "uses",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/uses/*.txt",
+          "tests/port/sat/lint.bmb",
+          "tests/port/prove/trust.bmb",
+          "tests/verify/fail/contracts.bmb",
+          "tests/verify/fail/loops.bmb",
+          "tests/verify/pass/traits.bmb",
+          "tests/verify/fail/proofs.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "uses-write",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/uses/write.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/uses/write.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/uses/*.txt",
+          "tests/port/sat/lint.bmb",
+          "tests/verify/fail/contracts.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "uses-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/uses/ends.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/uses/ends.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "probe",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/probe/each.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/probe/each.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/*/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-cross",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/cross.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/cross.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken-versions",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/versions.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/versions.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-mutants",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/weaken/mutants.py",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/weaken/mutants.py",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken-readers",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/readers.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/readers.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken-ends",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/ends.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/ends.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken-escapes",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/weaken/escapes.sh",
+        "{bmb}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/weaken/escapes.sh",
+        "{build:stage1}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "weaken-fake-unknown",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/ensures/old.bmb",
+          "tests/weaken/requires/old.bmb",
+          "tests/weaken/spec/old.bmb",
+          "tests/weaken/opaque/old.bmb",
+          "tests/weaken/undecided/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-fake-models",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/ensures/old.bmb",
+          "tests/weaken/requires/old.bmb",
+          "tests/weaken/spec/old.bmb",
+          "tests/weaken/opaque/old.bmb",
+          "tests/weaken/undecided/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-fake-retry",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown unknown unsat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/ensures/old.bmb",
+          "tests/weaken/requires/old.bmb",
+          "tests/weaken/spec/old.bmb",
+          "tests/weaken/opaque/old.bmb",
+          "tests/weaken/undecided/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-fake-limits",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "canceled timeout unsat sat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/ensures/old.bmb",
+          "tests/weaken/requires/old.bmb",
+          "tests/weaken/spec/old.bmb",
+          "tests/weaken/opaque/old.bmb",
+          "tests/weaken/undecided/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "weaken-fake-broken",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "sat error unsat unknown die unsat",
+        "sh",
+        "{root}/tests/port/weaken/pair.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/weaken/ensures/old.bmb",
+          "tests/weaken/requires/old.bmb",
+          "tests/weaken/spec/old.bmb",
+          "tests/weaken/opaque/old.bmb",
+          "tests/weaken/undecided/old.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
       "name": "sat-ends",
       "component": "C10",
       "a": [

@@ -1,0 +1,12 @@
+#[summary("c")]
+mod c {
+    #[effects(pure)]
+    fn at(i: usize) -> usize {
+        i
+    }
+
+    #[effects(pure)]
+    fn f(a: &mut [u64]) {
+        a[at(0)] += 1;
+    }
+}

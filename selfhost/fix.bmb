@@ -1,0 +1,1091 @@
+#[summary("bmb fix (port of stage0 lib.rs fix_sources_opts and induct.rs): applies the mechanical fixes, round by round, until none applies, and with --induction the induction lemma drafts the gate proves. A fix is the replacement a diagnostic carries; on a program that checks also the canonical `for` of a counting `while`, method call form, lossless conversions, the #[uses] entries the default context already holds, and the hash of each #[rationale(..)] that carries none")]
+mod fix {
+    #[summary("An application of a unit's spec fn (a row of stage0 apps): its name and its arguments")]
+    struct App { name: String, args: Vec<ast::Expr> }
+
+    #[summary("One replacement applied (stage0 AppliedFix): the round from 1, the file, the position in the text before that round (line from 1, column in characters), the diagnostic's code and the replacement")]
+    struct Applied { round: usize, file: String, line: u32, col: u32, code: String, replacement: String }
+
+    #[summary("A variable and the expression that takes its place")]
+    struct Bind { name: String, value: ast::Expr }
+
+    #[summary("A replacement a round may apply: the file, the bytes lo..hi it replaces, the diagnostic's code and the new text")]
+    struct Cand { file: u32, lo: u32, hi: u32, code: String, text: String }
+
+    #[summary("One induction lemma draft (stage0 Draft), two insertions in one file: the function it is for and the lemma's path, where the `proof fn` goes (the start of the function's first line) with its text and a blank line after it, and where the call goes (the start of the line of the function's result) with its text")]
+    struct Draft { def: String, lemma: String, file: usize, lemma_at: u32, lemma_text: String, call_at: u32, call_text: String }
+
+    #[summary("A replacement in the layout of the text around it: where the replaced bytes end and the text put there")]
+    struct Laid { hi: usize, text: String }
+
+    #[summary("The result of bmb fix (stage0 FixOutput): every input file with its fixed text in input order, the replacements applied, the rounds that applied one, the diagnostics of the fixed program (front end only) as JSONL and whether it checks. trap is set when a position was not in its file's text, where stage0 ends on a failed check of its own")]
+    struct Output { files: Vec<lib::Input>, applied: Vec<Applied>, rounds: usize, diagnostics: String, ok: bool, trap: bool }
+
+    #[summary("The texts after an induction draft, and the fixes it applied (stage0 InductionStep)")]
+    struct Step { files: Vec<lib::Input>, fixes: Vec<Applied> }
+
+    #[summary("The text with a draft written in (stage0 Draft::apply): the call first, the later position, so that the earlier one stays where it is")]
+    #[effects(alloc)]
+    fn apply_draft(d: &Draft, text: &str, bad: &mut bool) -> String {
+        let with_call: String = splice(text, d.call_at as usize, d.call_at as usize, d.call_text.as_str(), bad);
+        splice(with_call.as_str(), d.lemma_at as usize, d.lemma_at as usize, d.lemma_text.as_str(), bad)
+    }
+
+    #[summary("The applications of the unit's spec fns in e, outside quantifiers, in order (stage0 apps): a call of one name, or of the unit's name and one more, then those in its arguments. f is the remaining depth")]
+    #[effects(alloc)]
+    fn apps(e: &ast::Expr, unit: &str, out: &mut Vec<App>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => {},
+            ast::ExprKind::Float(_) => {},
+            ast::ExprKind::ByteLit(_) => {},
+            ast::ExprKind::ByteStr(_) => {},
+            ast::ExprKind::StrLit(_) => {},
+            ast::ExprKind::CharLit(_) => {},
+            ast::ExprKind::Bool(_) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(_) => {},
+            ast::ExprKind::Call(c) => { if c.path.len() == 1 { out.push(App { name: c.path[0].name.clone(), args: c.args.clone() }); } else if c.path.len() == 2 && c.path[0].name.as_str() == unit { out.push(App { name: c.path[1].name.clone(), args: c.args.clone() }); } apps_all(c.args.as_slice(), unit, out, f - 1); },
+            ast::ExprKind::Method(me) => { apps(&*me.recv, unit, out, f - 1); apps_all(me.args.as_slice(), unit, out, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { apps(&**ib, unit, out, f - 1); apps(&**ii, unit, out, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => apps(&**ux, unit, out, f - 1),
+            ast::ExprKind::Binary(bo, bx, by) => { apps(&**bx, unit, out, f - 1); apps(&**by, unit, out, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => apps(&**rx, unit, out, f - 1),
+            ast::ExprKind::If(_) => {},
+            ast::ExprKind::Block(_) => {},
+            ast::ExprKind::Array(_) => {},
+            ast::ExprKind::Repeat(_) => {},
+            ast::ExprKind::Old(_) => {},
+            ast::ExprKind::Quant(_) => {},
+            ast::ExprKind::Trigger(tx) => apps(&**tx, unit, out, f - 1),
+            ast::ExprKind::Closure(_) => {},
+            ast::ExprKind::StructLit(_) => {},
+            ast::ExprKind::Path(_) => {},
+            ast::ExprKind::Deref(dx) => apps(&**dx, unit, out, f - 1),
+            ast::ExprKind::Field(fx, fnm) => apps(&**fx, unit, out, f - 1),
+            ast::ExprKind::Match(_) => {},
+            ast::ExprKind::Return(_) => {},
+            ast::ExprKind::Try(_) => {},
+            ast::ExprKind::Loop(_) => {},
+            ast::ExprKind::Break(_) => {},
+            ast::ExprKind::Continue(_) => {},
+            ast::ExprKind::Range(_) => {},
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("apps over each of xs in order")]
+    #[effects(alloc)]
+    fn apps_all(xs: &[ast::Expr], unit: &str, out: &mut Vec<App>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            apps(&xs[i], unit, out, f - 1);
+        }
+    }
+
+    #[summary("Whether every character of text[a..b] is white space (Rust's trim().is_empty() of that piece); true for an empty piece")]
+    #[effects(pure)]
+    fn blank(text: &str, a: usize, b: usize) -> bool {
+        let end: usize = if b < text.len() {
+            b
+        } else {
+            text.len()
+        };
+        let mut i: usize = a;
+        while i < end
+            decreases end - i,
+        {
+            let c: u8 = text.as_bytes()[i];
+            let mut next: usize = i + 1;
+            if c < 128 {
+                if !(c >= 9 && c <= 13 || c == 32) {
+                    return false;
+                }
+            } else {
+                match std::str::decode_utf8(text, i) {
+                    None => { return false; },
+                    Some(dc) => { if !unicode::whitespace(u32::from(dc.ch)) { return false; } if dc.next > i && dc.next <= text.len() { next = dc.next; } },
+                }
+            }
+            i = next;
+        }
+        true
+    }
+
+    #[summary("Whether the body of spec fn d applies d itself (stage0 calls_itself): in its result, read through `if`, blocks and operators")]
+    #[effects(alloc)]
+    fn calls_itself(d: &ast::FnDef) -> bool {
+        match &d.body.tail {
+            None => false,
+            Some(t) => in_expr(&**t, d.name.name.as_str(), 1000000000),
+        }
+    }
+
+    #[summary("The fixes of a program that checks beyond its diagnostics (the canonical rewrites of stage0 fix_sources_opts): the `for` of counting `while` loops, method call form, lossless conversions, #[uses] entries the default context holds, and the hash of each rationale that carries none; with confirm also of each whose hash is no longer current")]
+    #[effects(alloc)]
+    fn canonical(fe: &lib::Front, texts: &[lib::Input], confirm: bool, trap: &mut bool) -> Vec<diag::Diag> {
+        let mut out: Vec<diag::Diag> = lint_syntax::canonical_loops(&fe.ck.program, texts, trap);
+        ast::append::<diag::Diag>(&mut out, lint_syntax::method_calls(&fe.source, &fe.ck, texts));
+        ast::append::<diag::Diag>(&mut out, lint_syntax::conversions(&fe.source, texts));
+        let walked: Vec<codegen::Def> = lint::defs_of(&fe.ck);
+        let low: lowered::Tables = lowered::tables(&fe.ck);
+        let context: table::Table<Vec<String>> = encode_decls::default_contexts(&fe.ck.program, &low);
+        ast::append::<diag::Diag>(&mut out, lint_syntax::default_uses(walked.as_slice(), &context, &fe.ck.b.c.fns, texts, trap));
+        let rs: Vec<diag::Diag> = lint_syntax::unconfirmed_rationales(walked.as_slice(), &fe.ck.b.c.fns);
+        for i in 0..rs.len()
+            invariant 0 <= i && i <= rs.len(),
+        {
+            if confirm || rs[i].message == "unconfirmed rationale: it carries no hash yet" {
+                out.push(rs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Adds the replacements of the diagnostics ds that a round may apply (the filter of stage0 fix_sources_opts): one that names a file of the program (the library is not written), whose span lies in the text on character boundaries, and whose text differs from what is there")]
+    #[effects(alloc)]
+    fn collect(out: &mut Vec<Cand>, ds: &[diag::Diag], texts: &[lib::Input]) -> () {
+        for i in 0..ds.len()
+            invariant 0 <= i && i <= ds.len(),
+        {
+            match &ds[i].fix {
+                None => {},
+                Some(fx) => { match &fx.replacement { None => {}, Some(r) => { let fi: usize = ds[i].span.file as usize; let lo: usize = ds[i].span.lo as usize; let hi: usize = ds[i].span.hi as usize; if fi < texts.len() && lo <= hi && hi <= texts[fi].text.len() && texts[fi].text.is_char_boundary(lo) && texts[fi].text.is_char_boundary(hi) && lexer::cut(texts[fi].text.as_str(), lo, hi).as_str() != r.as_str() { out.push(Cand { file: ds[i].span.file, lo: ds[i].span.lo, hi: ds[i].span.hi, code: ds[i].code.clone(), text: r.clone() }); } }, } },
+            }
+        }
+    }
+
+    #[summary("The parameter spec fn r descends on (stage0 descent): the first unsigned integer parameter of the name that `decreases` alone names")]
+    #[effects(alloc)]
+    fn descent(r: &ast::FnDef) -> Option<usize> {
+        let name: String = match &r.measure {
+            None => { return None; },
+            Some(m) => match var_name(m) { None => { return None; }, Some(n) => n, },
+        };
+        for i in 0..r.params.len()
+            invariant 0 <= i && i <= r.params.len(),
+        {
+            if r.params[i].name.name == name && unsigned(&r.params[i].ty.kind) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[summary("The draft that takes recursive predicate r, which descends on its parameter at, to predicate q (the texts of stage0 drafts): the `proof fn` in the indentation of the function with a blank line after it, and the call in a `proof` block in the indentation of the result")]
+    #[effects(alloc)]
+    fn draft_of(r: &ast::FnDef, at: usize, q: &str, lemma: &str, path: &str, args: &[ast::Expr], def: &str, file: usize, lemma_at: u32, indent: &str, call_at: u32, call_indent: &str) -> Draft {
+        let mut names: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+        let mut below: Vec<String> = Vec::new();
+        for k in 0..r.params.len()
+            invariant 0 <= k && k <= r.params.len(),
+        {
+            names.push(r.params[k].name.name.clone());
+            params.push(types::cat3(r.params[k].name.name.as_str(), ": ", fmt::type_str(&r.params[k].ty).as_str()));
+            if k == at {
+                below.push(types::cat2(r.params[k].name.name.as_str(), " - 1"));
+            } else {
+                below.push(r.params[k].name.name.clone());
+            }
+        }
+        let rn: String = r.name.name.clone();
+        let pn: String = if at < names.len() {
+            names[at].clone()
+        } else {
+            String::new()
+        };
+        let all: String = encode_terms::join(names.as_slice(), ", ");
+        let less: String = encode_terms::join(below.as_slice(), ", ");
+        let mut lines: Vec<String> = Vec::new();
+        lines.push(types::cat5("proof fn ", lemma, "(", encode_terms::join(params.as_slice(), ", ").as_str(), ")"));
+        lines.push(types::cat5("    requires ", rn.as_str(), "(", all.as_str(), "),"));
+        lines.push(types::cat5("    ensures ", q, "(", all.as_str(), "),"));
+        lines.push(types::cat3("    decreases ", pn.as_str(), ","));
+        lines.push(String::from("{"));
+        lines.push(types::cat3(types::cat4("    if ", pn.as_str(), " > 0 && ", rn.as_str()).as_str(), types::cat3("(", less.as_str(), ")").as_str(), " {"));
+        lines.push(types::cat5("        ", lemma, "(", less.as_str(), ");"));
+        lines.push(String::from("    }"));
+        lines.push(String::from("}"));
+        let mut lemma_text: String = String::new();
+        for l in 0..lines.len()
+            invariant 0 <= l && l <= lines.len(),
+        {
+            lemma_text.push_str(indent);
+            lemma_text.push_str(lines[l].as_str());
+            lemma_text.push_str("\n");
+        }
+        lemma_text.push_str("\n");
+        let mut shown: Vec<String> = Vec::new();
+        for a in 0..args.len()
+            invariant 0 <= a && a <= args.len(),
+        {
+            shown.push(fmt::expr_text(&args[a]));
+        }
+        let mut call_text: String = types::cat2(call_indent, "proof {\n");
+        call_text.push_str(call_indent);
+        call_text.push_str("    ");
+        call_text.push_str(lemma);
+        call_text.push_str("(");
+        call_text.push_str(encode_terms::join(shown.as_slice(), ", ").as_str());
+        call_text.push_str(");\n");
+        call_text.push_str(call_indent);
+        call_text.push_str("}\n");
+        Draft { def: String::from(def), lemma: String::from(path), file: file, lemma_at: lemma_at, lemma_text: lemma_text, call_at: call_at, call_text: call_text }
+    }
+
+    #[summary("The drafts for def (`unit::name`, an executable function of a top-level unit), in the order they are tried (stage0 drafts): postconditions in order, the applications each reaches in order, the unit's recursive predicates in order. A postcondition, read through the definitions of the spec fns it names, applies some Q; a recursive R of the same unit with the same parameter types, a bool result and `decreases p` for an unsigned parameter p gives the `proof fn R_gives_Q` and its call before the function's result, with the result's name replaced by the result")]
+    #[effects(alloc)]
+    fn drafts(p: &ast::Program, texts: &[lib::Input], def: &str) -> Vec<Draft> {
+        let mut out: Vec<Draft> = Vec::new();
+        let cut: usize = match std::str::find(def, "::") {
+            None => { return out; },
+            Some(c) => c,
+        };
+        let unit: String = lexer::cut(def, 0, cut);
+        let name: String = lexer::cut(def, cut.saturating_add(2), def.len());
+        let mut mi: usize = p.mods.len();
+        for i in 0..p.mods.len()
+            invariant 0 <= i && i <= p.mods.len() && mi <= p.mods.len(),
+        {
+            if mi == p.mods.len() && p.mods[i].name.name == unit {
+                mi = i;
+            }
+        }
+        if mi >= p.mods.len() {
+            return out;
+        }
+        drafts_in(&p.mods[mi], texts, def, unit.as_str(), name.as_str())
+    }
+
+    #[summary("Adds the draft of each recursive predicate of unit m that can give the predicate at qi, applied to args (the innermost loop of stage0 drafts): the same parameter types, a descent, and a lemma name that neither the unit nor an earlier draft holds")]
+    #[effects(alloc)]
+    fn drafts_for(m: &ast::Mod, qi: usize, args: &[ast::Expr], def: &str, unit: &str, file: usize, lemma_at: u32, indent: &str, call_at: u32, call_indent: &str, out: &mut Vec<Draft>) -> () {
+        if qi >= m.fns.len() {
+            return;
+        }
+        let q: String = m.fns[qi].name.name.clone();
+        for r in 0..m.fns.len()
+            invariant 0 <= r && r <= m.fns.len(),
+        {
+            if predicate(&m.fns[r]) && calls_itself(&m.fns[r]) {
+                match descent(&m.fns[r]) {
+                    None => {},
+                    Some(at) => { let lemma: String = types::cat3(m.fns[r].name.name.as_str(), "_gives_", q.as_str()); let path: String = types::cat3(unit, "::", lemma.as_str()); if same_params(&m.fns[r], &m.fns[qi]) && !names_fn(m, lemma.as_str()) && !has_lemma(out.as_slice(), path.as_str()) { out.push(draft_of(&m.fns[r], at, q.as_str(), lemma.as_str(), path.as_str(), args, def, file, lemma_at, indent, call_at, call_indent)); } },
+                }
+            }
+        }
+    }
+
+    #[summary("The drafts for the function name of unit m (the body of stage0 drafts)")]
+    #[effects(alloc)]
+    fn drafts_in(m: &ast::Mod, texts: &[lib::Input], def: &str, unit: &str, name: &str) -> Vec<Draft> {
+        let mut out: Vec<Draft> = Vec::new();
+        let mut fi: usize = m.fns.len();
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len() && fi <= m.fns.len(),
+        {
+            if fi == m.fns.len() && m.fns[i].name.name.as_str() == name && mutate::is_exec(&m.fns[i]) && m.fns[i].generics.len() == 0 {
+                fi = i;
+            }
+        }
+        if fi >= m.fns.len() {
+            return out;
+        }
+        let file: usize = m.fns[fi].span.file as usize;
+        if file >= texts.len() {
+            return out;
+        }
+        let tail: ast::Expr = match &m.fns[fi].body.tail {
+            None => { return out; },
+            Some(t) => methodize::unboxed(t),
+        };
+        match var_name(&tail) {
+            None => { return out; },
+            Some(tn) => {},
+        }
+        let mut result: Vec<Bind> = Vec::new();
+        match &m.fns[fi].ret.name {
+            None => {},
+            Some(rn) => result.push(Bind { name: rn.name.clone(), value: tail.clone() }),
+        }
+        let mut first: u32 = m.fns[fi].span.lo;
+        for a in 0..m.fns[fi].attrs.len()
+            invariant 0 <= a && a <= m.fns[fi].attrs.len(),
+        {
+            if m.fns[fi].attrs[a].span.lo < first {
+                first = m.fns[fi].attrs[a].span.lo;
+            }
+        }
+        let lemma_at: usize = line_start(texts[file].text.as_str(), first as usize);
+        let call_at: usize = line_start(texts[file].text.as_str(), tail.span.lo as usize);
+        if !blank(texts[file].text.as_str(), lemma_at, first as usize) || !blank(texts[file].text.as_str(), call_at, tail.span.lo as usize) {
+            return out;
+        }
+        if lemma_at > first as usize || call_at > tail.span.lo as usize {
+            return out;
+        }
+        let indent: String = lexer::cut(texts[file].text.as_str(), lemma_at, first as usize);
+        let call_indent: String = lexer::cut(texts[file].text.as_str(), call_at, tail.span.lo as usize);
+        let lemma_pos: u32 = first - (first as usize - lemma_at) as u32;
+        let call_pos: u32 = tail.span.lo - (tail.span.lo as usize - call_at) as u32;
+        for c in 0..m.fns[fi].post.len()
+            invariant 0 <= c && c <= m.fns[fi].post.len(),
+        {
+            let mut reached: Vec<App> = Vec::new();
+            reach(&m.fns[fi].post[c], m, 4, &mut reached);
+            for q in 0..reached.len()
+                invariant 0 <= q && q <= reached.len(),
+            {
+                match predicate_named(m, reached[q].name.as_str()) {
+                    None => {},
+                    Some(qi) => { if qi < m.fns.len() && !calls_itself(&m.fns[qi]) { match subst_all(reached[q].args.as_slice(), result.as_slice(), 1000000000) { None => {}, Some(args) => drafts_for(m, qi, args.as_slice(), def, unit, file, lemma_pos, indent.as_str(), call_pos, call_indent.as_str(), &mut out), } } },
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("Whether an earlier draft has the lemma at path")]
+    #[effects(pure)]
+    fn has_lemma(ds: &[Draft], path: &str) -> bool {
+        for i in 0..ds.len()
+            invariant 0 <= i && i <= ds.len(),
+        {
+            if ds[i].lemma.as_str() == path {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether the texts of files are those of one of the versions seen (names are the same in every version)")]
+    #[effects(pure)]
+    fn has_texts(seen: &[Vec<lib::Input>], files: &[lib::Input]) -> bool {
+        for i in 0..seen.len()
+            invariant 0 <= i && i <= seen.len(),
+        {
+            let mut same: bool = seen[i].len() == files.len();
+            for j in 0..files.len()
+                invariant 0 <= j && j <= files.len(),
+            {
+                if j < seen[i].len() && seen[i][j].text != files[j].text {
+                    same = false;
+                }
+            }
+            if same {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Whether e applies the function name (the in_expr of stage0 calls_itself): among its applications outside quantifiers, or in the condition and the results of an `if`, the result of a block, or the operands of an operator. f is the remaining depth")]
+    #[effects(alloc)]
+    fn in_expr(e: &ast::Expr, name: &str, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        let mut found: Vec<App> = Vec::new();
+        apps(e, "", &mut found, 1000000000);
+        for i in 0..found.len()
+            invariant 0 <= i && i <= found.len(),
+        {
+            if found[i].name.as_str() == name {
+                return true;
+            }
+        }
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => false,
+            ast::ExprKind::Float(_) => false,
+            ast::ExprKind::ByteLit(_) => false,
+            ast::ExprKind::ByteStr(_) => false,
+            ast::ExprKind::StrLit(_) => false,
+            ast::ExprKind::CharLit(_) => false,
+            ast::ExprKind::Bool(_) => false,
+            ast::ExprKind::Unit => false,
+            ast::ExprKind::Var(_) => false,
+            ast::ExprKind::Call(_) => false,
+            ast::ExprKind::Method(_) => false,
+            ast::ExprKind::Index(_, _) => false,
+            ast::ExprKind::Unary(uo, ux) => in_expr(&**ux, name, f - 1),
+            ast::ExprKind::Binary(bo, bx, by) => in_expr(&**bx, name, f - 1) || in_expr(&**by, name, f - 1),
+            ast::ExprKind::Ref(_, _) => false,
+            ast::ExprKind::If(fi) => in_expr(&*fi.cond, name, f - 1) || in_tail(&fi.then.tail, name, f - 1) || in_tail(&fi.els, name, f - 1),
+            ast::ExprKind::Block(b) => in_tail(&b.tail, name, f - 1),
+            ast::ExprKind::Array(_) => false,
+            ast::ExprKind::Repeat(_) => false,
+            ast::ExprKind::Old(_) => false,
+            ast::ExprKind::Quant(_) => false,
+            ast::ExprKind::Trigger(_) => false,
+            ast::ExprKind::Closure(_) => false,
+            ast::ExprKind::StructLit(_) => false,
+            ast::ExprKind::Path(_) => false,
+            ast::ExprKind::Deref(_) => false,
+            ast::ExprKind::Field(_, _) => false,
+            ast::ExprKind::Match(_) => false,
+            ast::ExprKind::Return(_) => false,
+            ast::ExprKind::Try(_) => false,
+            ast::ExprKind::Loop(_) => false,
+            ast::ExprKind::Break(_) => false,
+            ast::ExprKind::Continue(_) => false,
+            ast::ExprKind::Range(_) => false,
+            ast::ExprKind::Error => false,
+        }
+    }
+
+    #[summary("in_expr of an expression that may be missing")]
+    #[effects(alloc)]
+    fn in_tail(o: &Option<Box<ast::Expr>>, name: &str, f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        match o {
+            None => false,
+            Some(x) => in_expr(&**x, name, f - 1),
+        }
+    }
+
+    #[summary("The first induction lemma draft the gate proves (stage0 induction_step, ADR-0135): for each function of the program the gate does not prove, in the order of its report, its drafts in order; one is kept when the lemma and the function are both proved with it written in. The texts with it, and the lemma and the call as applied fixes under the code of the diagnostic they answer, E0811")]
+    #[effects(alloc, io, nondet)]
+    fn induction_step(texts: &[lib::Input], fe: &lib::Front, sm: &source::SourceMap, diags: &diag::Diags, round: usize, bad: &mut bool) -> Option<Step> {
+        let none: Vec<String> = Vec::new();
+        let sts: Vec<prove::Status> = statuses(&fe.ck, diags, none.as_slice());
+        for s in 0..sts.len()
+            invariant 0 <= s && s <= sts.len(),
+        {
+            if sts[s].failed != 0 {
+                let ds: Vec<Draft> = drafts(&fe.source, texts, sts[s].path.as_str());
+                for d in 0..ds.len()
+                    invariant 0 <= d && d <= ds.len(),
+                {
+                    let file: usize = ds[d].file;
+                    if file < texts.len() && file < 4294967295 {
+                        let mut next: Vec<lib::Input> = lint_syntax::copy_files(texts);
+                        if file < next.len() {
+                            next[file].text = apply_draft(&ds[d], texts[file].text.as_str(), bad);
+                        }
+                        if proves_both(next.as_slice(), ds[d].def.as_str(), ds[d].lemma.as_str()) {
+                            let lp: source::Pos = sm.line_col(file as u32, ds[d].lemma_at);
+                            let cp: source::Pos = sm.line_col(file as u32, ds[d].call_at);
+                            let mut fixes: Vec<Applied> = Vec::new();
+                            fixes.push(Applied { round: round, file: texts[file].name.clone(), line: lp.line, col: lp.col, code: String::from("E0811"), replacement: ds[d].lemma_text.clone() });
+                            fixes.push(Applied { round: round, file: texts[file].name.clone(), line: cp.line, col: cp.col, code: String::from("E0811"), replacement: ds[d].call_text.clone() });
+                            return Some(Step { files: next, fixes: fixes });
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[summary("The replacements a round applies, in order (the sort, the removal of repeats and the choice of stage0 fix_sources_opts): the candidates by file, start, end, code and text; one equal to the one before it in all but its code goes; then each is kept unless it starts before the end of the last one kept in its file, or both are insertions at one point")]
+    #[effects(alloc)]
+    fn kept_of(cands: &[Cand]) -> Vec<Cand> {
+        let mut keys: Vec<String> = Vec::new();
+        for i in 0..cands.len()
+            invariant 0 <= i && i <= cands.len(),
+        {
+            let mut k: String = padded(cands[i].file as u64);
+            k.push_str(padded(cands[i].lo as u64).as_str());
+            k.push_str(padded(cands[i].hi as u64).as_str());
+            k.push_str(cands[i].code.as_str());
+            k.push_str(cands[i].text.as_str());
+            keys.push(k);
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(keys.as_slice());
+        let mut sorted: Vec<Cand> = Vec::new();
+        for j in 0..ord.len()
+            invariant 0 <= j && j <= ord.len(),
+        {
+            if ord[j] < cands.len() {
+                let c: Cand = cands[ord[j]].clone();
+                let repeat: bool = sorted.len() > 0 && sorted[sorted.len() - 1].file == c.file && sorted[sorted.len() - 1].lo == c.lo && sorted[sorted.len() - 1].hi == c.hi && sorted[sorted.len() - 1].text == c.text;
+                if !repeat {
+                    sorted.push(c.clone());
+                }
+            }
+        }
+        let mut kept: Vec<Cand> = Vec::new();
+        for n in 0..sorted.len()
+            invariant 0 <= n && n <= sorted.len(),
+        {
+            let over: bool = kept.len() > 0 && kept[kept.len() - 1].file == sorted[n].file && (sorted[n].lo < kept[kept.len() - 1].hi || sorted[n].lo == sorted[n].hi && kept[kept.len() - 1].lo == kept[kept.len() - 1].hi && sorted[n].lo == kept[kept.len() - 1].lo);
+            if !over {
+                kept.push(sorted[n].clone());
+            }
+        }
+        kept
+    }
+
+    #[summary("A replacement in the layout of the text around it (stage0 layout): a deletion that leaves its line blank takes the line; the only entry of a `<..>` list goes with its closing bracket and the first of several with the comma after it; a deletion after a space, `(`, `&` or `<`, or at the start of its line, takes the spaces after it; and a line of an insertion that has no indentation of its own gets the line's")]
+    #[effects(alloc)]
+    fn layout(text: &str, lo: usize, hi: usize, r: &str) -> Laid {
+        if lo > hi || hi > text.len() {
+            return Laid { hi: hi, text: String::from(r) };
+        }
+        let ls: usize = line_start(text, lo);
+        if r.len() == 0 {
+            let le: usize = line_end(text, hi);
+            if lo > ls && blank(text, ls, lo) && blank(text, hi, le) && le < text.len() {
+                return Laid { hi: le + 1, text: String::new() };
+            }
+            let before: u8 = if lo > 0 {
+                text.as_bytes()[lo - 1]
+            } else {
+                0
+            };
+            if before == 60 {
+                let rest: usize = spaces_end(text, hi);
+                if rest < text.len() && text.as_bytes()[rest] == 62 {
+                    return Laid { hi: rest + 1, text: String::new() };
+                }
+                if rest < text.len() && text.as_bytes()[rest] == 44 {
+                    return Laid { hi: spaces_end(text, rest + 1), text: String::new() };
+                }
+            }
+            if before == 32 || before == 40 || before == 38 || before == 60 || lo == ls {
+                return Laid { hi: spaces_end(text, hi), text: String::new() };
+            }
+            return Laid { hi: hi, text: String::new() };
+        }
+        if !encode_query::has(r, "\n") {
+            return Laid { hi: hi, text: String::from(r) };
+        }
+        let stop: usize = spaces_end(text, ls);
+        let indent: String = if stop < lo {
+            lexer::cut(text, ls, stop)
+        } else {
+            lexer::cut(text, ls, lo)
+        };
+        let mut out: String = String::new();
+        let mut start: usize = 0;
+        let mut i: usize = 0;
+        while i <= r.len()
+            invariant start <= i,
+            decreases r.len() + 1 - i,
+        {
+            if i == r.len() || r.as_bytes()[i] == 10 {
+                if start > 0 {
+                    out.push_str("\n");
+                    if i > start && r.as_bytes()[start] != 32 {
+                        out.push_str(indent.as_str());
+                    }
+                }
+                out.push_str(lexer::cut(r, start, i).as_str());
+                start = i + 1;
+            }
+            i = i + 1;
+        }
+        Laid { hi: hi, text: out }
+    }
+
+    #[summary("The start of a deletion (stage0 layout_start): of its line, when layout took the line; one before, when layout took a whole `<..>` list, so that the `<` goes too")]
+    #[effects(pure)]
+    fn layout_start(text: &str, lo: usize, hi: usize, r: &str) -> usize {
+        let ls: usize = line_start(text, lo);
+        if r.len() == 0 && lo > ls && blank(text, ls, lo) && hi > 0 && hi <= text.len() && text.as_bytes()[hi - 1] == 10 {
+            ls
+        } else if lo > 0 && lo <= text.len() && text.as_bytes()[lo - 1] == 60 && hi > 0 && hi <= text.len() && text.as_bytes()[hi - 1] == 62 {
+            lo - 1
+        } else {
+            lo
+        }
+    }
+
+    #[summary("The position of the line feed at or after at, the length of the text without one")]
+    #[effects(pure)]
+    fn line_end(text: &str, at: usize) -> usize {
+        let mut e: usize = at;
+        while e < text.len() && text.as_bytes()[e] != 10
+            decreases text.len() - e,
+        {
+            e = e + 1;
+        }
+        if e > text.len() {
+            text.len()
+        } else {
+            e
+        }
+    }
+
+    #[summary("The start of the line that holds position at: after the last line feed before it")]
+    #[effects(pure)]
+    fn line_start(text: &str, at: usize) -> usize {
+        let mut s: usize = if at < text.len() {
+            at
+        } else {
+            text.len()
+        };
+        while s > 0 && text.as_bytes()[s - 1] != 10
+            invariant s <= text.len(),
+            decreases s,
+        {
+            s = s - 1;
+        }
+        s
+    }
+
+    #[summary("Whether unit m has a function of this name")]
+    #[effects(pure)]
+    fn names_fn(m: &ast::Mod, name: &str) -> bool {
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            if m.fns[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("The result of a run that ends with texts (stage0 fix_output): the diagnostics of the front end over them, and whether the program checks")]
+    #[effects(alloc)]
+    fn output(texts: Vec<lib::Input>, applied: Vec<Applied>, rounds: usize, diags: &diag::Diags, sm: &source::SourceMap, trap: bool) -> Output {
+        Output { files: texts, applied: applied, rounds: rounds, diagnostics: diags.to_jsonl(sm), ok: !diags.has_errors(), trap: trap }
+    }
+
+    #[summary("n in 20 decimal digits, so that texts order as the numbers do")]
+    #[effects(alloc)]
+    fn padded(n: u64) -> String {
+        let mut digits: String = String::new();
+        std::num::push_u64(&mut digits, n);
+        let mut out: String = String::new();
+        let mut k: usize = digits.len();
+        while k < 20
+            decreases 20 - k,
+        {
+            out.push_str("0");
+            k = k + 1;
+        }
+        out.push_str(digits.as_str());
+        out
+    }
+
+    #[summary("A spec fn of plain shape (stage0 predicate): no generics, a bool result, a body that is one expression")]
+    #[effects(pure)]
+    fn predicate(d: &ast::FnDef) -> bool {
+        let tail: bool = match &d.body.tail {
+            None => false,
+            Some(t) => true,
+        };
+        body::is_spec(d.kind) && d.generics.len() == 0 && body::is_bool(&d.ret.ty.kind) && d.body.stmts.len() == 0 && tail
+    }
+
+    #[summary("The first function of unit m with this name that is a predicate")]
+    #[effects(pure)]
+    fn predicate_named(m: &ast::Mod, name: &str) -> Option<usize> {
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            if m.fns[i].name.name.as_str() == name && predicate(&m.fns[i]) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[summary("Whether the gate proves both definitions of the files, def and lemma (the test of stage0 induction_step): the program checks, and proving those two alone gives each the status verified")]
+    #[effects(alloc, io, nondet)]
+    fn proves_both(files: &[lib::Input], def: &str, lemma: &str) -> bool {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return false;
+        }
+        let mut both: Vec<String> = Vec::new();
+        both.push(String::from(def));
+        both.push(String::from(lemma));
+        let only: Vec<String> = body::sorted_set(both.as_slice());
+        let sts: Vec<prove::Status> = statuses(&fe.ck, &diags, only.as_slice());
+        let mut def_ok: bool = false;
+        let mut lemma_ok: bool = false;
+        for i in 0..sts.len()
+            invariant 0 <= i && i <= sts.len(),
+        {
+            if sts[i].failed == 0 && sts[i].path.as_str() == def {
+                def_ok = true;
+            }
+            if sts[i].failed == 0 && sts[i].path.as_str() == lemma {
+                lemma_ok = true;
+            }
+        }
+        def_ok && lemma_ok
+    }
+
+    #[summary("The applications e makes and, through the bodies of the unit's predicates that do not call themselves, those they make, with the arguments in the terms of e (stage0 reach). depth is how many definitions deep it reads")]
+    #[effects(alloc)]
+    fn reach(e: &ast::Expr, m: &ast::Mod, depth: usize, out: &mut Vec<App>) -> ()
+        decreases depth,
+    {
+        let mut here: Vec<App> = Vec::new();
+        apps(e, m.name.name.as_str(), &mut here, 1000000000);
+        for i in 0..here.len()
+            invariant 0 <= i && i <= here.len(),
+        {
+            out.push(here[i].clone());
+            match predicate_named(m, here[i].name.as_str()) {
+                None => {},
+                Some(g) => { if depth > 0 && g < m.fns.len() && !calls_itself(&m.fns[g]) && m.fns[g].params.len() == here[i].args.len() { let mut map: Vec<Bind> = Vec::new(); for k in 0..m.fns[g].params.len() invariant 0 <= k && k <= m.fns[g].params.len(), { if k < here[i].args.len() { map.push(Bind { name: m.fns[g].params[k].name.name.clone(), value: here[i].args[k].clone() }); } } match &m.fns[g].body.tail { None => {}, Some(t) => { match subst(&**t, map.as_slice(), 1000000000) { None => {}, Some(inner) => reach(&inner, m, depth - 1, out), } }, } } },
+            }
+        }
+    }
+
+    #[summary("The report of bmb fix as JSONL (stage0 FixOutput::report): one row per applied replacement, the remaining diagnostics, then a summary row with the rounds, the replacements applied, the files whose text changed in input order, the remaining diagnostics and whether the program checks")]
+    #[effects(alloc)]
+    fn report(out: &Output, original: &[lib::Input]) -> String {
+        let mut text: String = String::new();
+        for i in 0..out.applied.len()
+            invariant 0 <= i && i <= out.applied.len(),
+        {
+            text.push_str("{\"round\":");
+            std::num::push_u64(&mut text, out.applied[i].round as u64);
+            text.push_str(",\"file\":");
+            std::json::push_string(&mut text, out.applied[i].file.as_str());
+            text.push_str(",\"line\":");
+            std::num::push_u64(&mut text, out.applied[i].line as u64);
+            text.push_str(",\"col\":");
+            std::num::push_u64(&mut text, out.applied[i].col as u64);
+            text.push_str(",\"code\":");
+            std::json::push_string(&mut text, out.applied[i].code.as_str());
+            text.push_str(",\"replacement\":");
+            std::json::push_string(&mut text, out.applied[i].replacement.as_str());
+            text.push_str("}\n");
+        }
+        text.push_str(out.diagnostics.as_str());
+        let mut remaining: u64 = 0;
+        for b in 0..out.diagnostics.len()
+            invariant 0 <= b && b <= out.diagnostics.len(),
+        {
+            if out.diagnostics.as_bytes()[b] == 10 {
+                remaining = remaining.saturating_add(1);
+            }
+        }
+        if out.diagnostics.len() > 0 && out.diagnostics.as_bytes()[out.diagnostics.len() - 1] != 10 {
+            remaining = remaining.saturating_add(1);
+        }
+        text.push_str("{\"summary\":true,\"rounds\":");
+        std::num::push_u64(&mut text, out.rounds as u64);
+        text.push_str(",\"applied\":");
+        std::num::push_u64(&mut text, out.applied.len() as u64);
+        text.push_str(",\"changed\":[");
+        let mut n: usize = 0;
+        for j in 0..out.files.len()
+            invariant 0 <= j && j <= out.files.len(),
+        {
+            if j < original.len() && out.files[j].text != original[j].text {
+                if n > 0 {
+                    text.push_str(",");
+                }
+                std::json::push_string(&mut text, out.files[j].name.as_str());
+                n = n.saturating_add(1);
+            }
+        }
+        text.push_str("],\"remaining\":");
+        std::num::push_u64(&mut text, remaining);
+        if out.ok {
+            text.push_str(",\"ok\":true}\n");
+        } else {
+            text.push_str(",\"ok\":false}\n");
+        }
+        text
+    }
+
+    #[summary("bmb fix (stage0 fix_sources_opts): each round checks the program, takes the replacements in order and keeps each one that does not overlap one already kept, applies them from the last to the first in the layout of the text around them, and checks again. It stops when no replacement changes the text, when a text repeats, or after 16 rounds. With induction, once no mechanical fix is left and the program checks, the first induction lemma draft the gate proves is one more round. The result depends only on the input")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], confirm: bool, induction: bool) -> Output {
+        let mut texts: Vec<lib::Input> = lint_syntax::copy_files(files);
+        let mut applied: Vec<Applied> = Vec::new();
+        let mut rounds: usize = 0;
+        let mut seen: Vec<Vec<lib::Input>> = Vec::new();
+        seen.push(lint_syntax::copy_files(files));
+        let mut fuel: usize = 64;
+        while fuel > 0
+            invariant rounds <= 64 - fuel,
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+            let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+            let fe: lib::Front = lib::frontend(texts.as_slice(), &mut sm, &mut diags);
+            if rounds >= 16 {
+                return output(texts, applied, rounds, &diags, &sm, false);
+            }
+            let mut trap: bool = false;
+            let canon: Vec<diag::Diag> = if diags.has_errors() {
+                Vec::new()
+            } else {
+                canonical(&fe, texts.as_slice(), confirm, &mut trap)
+            };
+            let mut cands: Vec<Cand> = Vec::new();
+            collect(&mut cands, diags.items.as_slice(), texts.as_slice());
+            collect(&mut cands, diags.aliases.as_slice(), texts.as_slice());
+            collect(&mut cands, canon.as_slice(), texts.as_slice());
+            let kept: Vec<Cand> = kept_of(cands.as_slice());
+            if trap {
+                return output(texts, applied, rounds, &diags, &sm, true);
+            }
+            if kept.len() == 0 {
+                let stepped: Option<Step> = if induction && !diags.has_errors() {
+                    induction_step(texts.as_slice(), &fe, &sm, &diags, rounds + 1, &mut trap)
+                } else {
+                    None
+                };
+                match stepped {
+                    None => { return output(texts, applied, rounds, &diags, &sm, trap); },
+                    Some(st) => { if trap || has_texts(seen.as_slice(), st.files.as_slice()) { return output(texts, applied, rounds, &diags, &sm, trap); } seen.push(lint_syntax::copy_files(st.files.as_slice())); rounds = rounds + 1; ast::append::<Applied>(&mut applied, st.fixes); texts = st.files; },
+                }
+            } else {
+                rounds = rounds + 1;
+                let mut next: Vec<lib::Input> = lint_syntax::copy_files(texts.as_slice());
+                let mut k: usize = kept.len();
+                while k > 0
+                    invariant k <= kept.len(),
+                    decreases k,
+                {
+                    k = k - 1;
+                    let fi: usize = kept[k].file as usize;
+                    if fi < texts.len() && fi < next.len() {
+                        let laid: Laid = layout(texts[fi].text.as_str(), kept[k].lo as usize, kept[k].hi as usize, kept[k].text.as_str());
+                        let from: usize = layout_start(texts[fi].text.as_str(), kept[k].lo as usize, laid.hi, laid.text.as_str());
+                        let spliced: String = splice(next[fi].text.as_str(), from, laid.hi, laid.text.as_str(), &mut trap);
+                        next[fi].text = spliced;
+                    }
+                }
+                for a in 0..kept.len()
+                    invariant 0 <= a && a <= kept.len(),
+                {
+                    let pos: source::Pos = sm.line_col(kept[a].file, kept[a].lo);
+                    let name: String = if (kept[a].file as usize) < texts.len() {
+                        texts[kept[a].file as usize].name.clone()
+                    } else {
+                        String::new()
+                    };
+                    applied.push(Applied { round: rounds, file: name, line: pos.line, col: pos.col, code: kept[a].code.clone(), replacement: kept[a].text.clone() });
+                }
+                if trap {
+                    return output(next, applied, rounds, &diags, &sm, true);
+                }
+                if has_texts(seen.as_slice(), next.as_slice()) {
+                    let mut sm2: source::SourceMap = source::SourceMap { files: Vec::new() };
+                    let mut diags2: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+                    let fe2: lib::Front = lib::frontend(next.as_slice(), &mut sm2, &mut diags2);
+                    return output(next, applied, rounds, &diags2, &sm2, false);
+                }
+                seen.push(lint_syntax::copy_files(next.as_slice()));
+                texts = next;
+            }
+        }
+        Output { files: texts, applied: applied, rounds: rounds, diagnostics: String::new(), ok: false, trap: true }
+    }
+
+    #[summary("Whether two predicates have the same parameter types, in order, by their normal form")]
+    #[effects(alloc)]
+    fn same_params(a: &ast::FnDef, b: &ast::FnDef) -> bool {
+        if a.params.len() != b.params.len() {
+            return false;
+        }
+        for i in 0..a.params.len()
+            invariant 0 <= i && i <= a.params.len(),
+        {
+            if i < b.params.len() && fmt::type_str(&a.params[i].ty) != fmt::type_str(&b.params[i].ty) {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The position of the first byte at or after at that is no space; at itself past the end of the text")]
+    #[effects(pure)]
+    fn spaces_end(text: &str, at: usize) -> usize {
+        let mut e: usize = at;
+        while e < text.len() && text.as_bytes()[e] == 32
+            decreases text.len() - e,
+        {
+            e = e + 1;
+        }
+        e
+    }
+
+    #[summary("text with the bytes lo..hi replaced by r (Rust's replace_range). bad is set, and the text stays, when the range is not in the text on character boundaries, where stage0 ends on a failed check")]
+    #[effects(alloc)]
+    fn splice(text: &str, lo: usize, hi: usize, r: &str, bad: &mut bool) -> String {
+        if lo <= hi && hi <= text.len() && text.is_char_boundary(lo) && text.is_char_boundary(hi) {
+            let mut out: String = lexer::cut(text, 0, lo);
+            out.push_str(r);
+            out.push_str(lexer::cut(text, hi, text.len()).as_str());
+            out
+        } else {
+            *bad = true;
+            String::from(text)
+        }
+    }
+
+    #[summary("The proof status of each definition of checked program ck, or of those of only when it names some, as `bmb verify` without a cache gives it (the statuses behind the rows stage0 induction_step reads). The diagnostics of the proofs are not kept")]
+    #[effects(alloc, io, nondet)]
+    fn statuses(ck: &body::Checked, diags: &diag::Diags, only: &[String]) -> Vec<prove::Status> {
+        let mut ds: diag::Diags = diags.clone();
+        let mut wanted: Vec<String> = Vec::new();
+        for i in 0..only.len()
+            invariant 0 <= i && i <= only.len(),
+        {
+            wanted.push(only[i].clone());
+        }
+        let opts: prove::Opts = prove::Opts { only: if only.len() == 0 { None } else { Some(wanted) }, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
+        let pg: encode_spec::Prog = encode_spec::prog_of(ck);
+        let mut store: Option<cache::ProofCache> = None;
+        let mut incr: Option<incremental::Session> = None;
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let out: prove::Outcome = prove::run_cached(ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut ds);
+        out.statuses
+    }
+
+    #[summary("e with each variable of m replaced, all at once (stage0 subst). None for an expression this does not read (a block, a `match`, a closure, text): the draft is not written then. The names a quantifier binds hide the outer ones. f is the remaining depth")]
+    #[effects(alloc)]
+    fn subst(e: &ast::Expr, m: &[Bind], f: usize) -> Option<ast::Expr>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(iv, ir) => Some(e.clone()),
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(bl) => Some(e.clone()),
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(cl) => Some(e.clone()),
+            ast::ExprKind::Bool(bv) => Some(e.clone()),
+            ast::ExprKind::Unit => Some(e.clone()),
+            ast::ExprKind::Var(id) => { for i in 0..m.len() invariant 0 <= i && i <= m.len(), { if m[i].name == id.name { return Some(m[i].value.clone()); } } Some(e.clone()) },
+            ast::ExprKind::Call(c) => match subst_all(c.args.as_slice(), m, f - 1) { None => None, Some(cargs) => Some(ast::Expr { kind: ast::ExprKind::Call(ast::Call { path: c.path.clone(), targs: c.targs.clone(), args: cargs, method: c.method }), span: e.span }), },
+            ast::ExprKind::Method(me) => match subst(&*me.recv, m, f - 1) { None => None, Some(mrecv) => match subst_all(me.args.as_slice(), m, f - 1) { None => None, Some(margs) => Some(ast::Expr { kind: ast::ExprKind::Method(ast::Method { recv: Box::new(mrecv), name: me.name.clone(), args: margs }), span: e.span }), }, },
+            ast::ExprKind::Index(ib, ii) => match subst(&**ib, m, f - 1) { None => None, Some(sb) => match subst(&**ii, m, f - 1) { None => None, Some(si) => Some(ast::Expr { kind: ast::ExprKind::Index(Box::new(sb), Box::new(si)), span: e.span }), }, },
+            ast::ExprKind::Unary(uo, ux) => match subst(&**ux, m, f - 1) { None => None, Some(su) => Some(ast::Expr { kind: ast::ExprKind::Unary(*uo, Box::new(su)), span: e.span }), },
+            ast::ExprKind::Binary(bo, bx, by) => match subst(&**bx, m, f - 1) { None => None, Some(sx) => match subst(&**by, m, f - 1) { None => None, Some(sy) => Some(ast::Expr { kind: ast::ExprKind::Binary(*bo, Box::new(sx), Box::new(sy)), span: e.span }), }, },
+            ast::ExprKind::Ref(rm, rx) => match subst(&**rx, m, f - 1) { None => None, Some(sr) => Some(ast::Expr { kind: ast::ExprKind::Ref(*rm, Box::new(sr)), span: e.span }), },
+            ast::ExprKind::If(_) => None,
+            ast::ExprKind::Block(_) => None,
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(qu) => { let mut inner: Vec<Bind> = Vec::new(); for j in 0..m.len() invariant 0 <= j && j <= m.len(), { let mut bound: bool = false; for b in 0..qu.binders.len() invariant 0 <= b && b <= qu.binders.len(), { if qu.binders[b].name.name == m[j].name { bound = true; } } if !bound { inner.push(m[j].clone()); } } match subst(&*qu.body, inner.as_slice(), f - 1) { None => None, Some(sq) => Some(ast::Expr { kind: ast::ExprKind::Quant(ast::Quant { q: qu.q, binders: qu.binders.clone(), body: Box::new(sq) }), span: e.span }), } },
+            ast::ExprKind::Trigger(tx) => match subst(&**tx, m, f - 1) { None => None, Some(st) => Some(ast::Expr { kind: ast::ExprKind::Trigger(Box::new(st)), span: e.span }), },
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(pp) => Some(e.clone()),
+            ast::ExprKind::Deref(dx) => match subst(&**dx, m, f - 1) { None => None, Some(sd) => Some(ast::Expr { kind: ast::ExprKind::Deref(Box::new(sd)), span: e.span }), },
+            ast::ExprKind::Field(fx, fnm) => match subst(&**fx, m, f - 1) { None => None, Some(sf) => Some(ast::Expr { kind: ast::ExprKind::Field(Box::new(sf), fnm.clone()), span: e.span }), },
+            ast::ExprKind::Match(_) => None,
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(_) => None,
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+
+    #[summary("subst of each of xs; None when one of them is not read")]
+    #[effects(alloc)]
+    fn subst_all(xs: &[ast::Expr], m: &[Bind], f: usize) -> Option<Vec<ast::Expr>>
+        decreases f,
+    {
+        if f == 0 {
+            return None;
+        }
+        let mut out: Vec<ast::Expr> = Vec::new();
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            match subst(&xs[i], m, f - 1) {
+                None => { return None; },
+                Some(x) => out.push(x),
+            }
+        }
+        Some(out)
+    }
+
+    #[summary("Whether a type is an unsigned integer")]
+    #[effects(pure)]
+    fn unsigned(t: &ast::TypeKind) -> bool {
+        match t {
+            ast::TypeKind::Int(it) => !body::signed(*it),
+            ast::TypeKind::F64 => false,
+            ast::TypeKind::Bool => false,
+            ast::TypeKind::Unit => false,
+            ast::TypeKind::Char => false,
+            ast::TypeKind::String => false,
+            ast::TypeKind::Str => false,
+            ast::TypeKind::Array(_, _) => false,
+            ast::TypeKind::ArrayN(_, _) => false,
+            ast::TypeKind::Slice(_) => false,
+            ast::TypeKind::Ref(_, _) => false,
+            ast::TypeKind::Named(_, _) => false,
+            ast::TypeKind::Vec(_) => false,
+            ast::TypeKind::Box(_) => false,
+            ast::TypeKind::Param(_) => false,
+            ast::TypeKind::Never => false,
+            ast::TypeKind::Error => false,
+        }
+    }
+
+    #[summary("The name of an expression that is a variable")]
+    #[effects(alloc)]
+    fn var_name(e: &ast::Expr) -> Option<String> {
+        match &e.kind {
+            ast::ExprKind::Int(_, _) => None,
+            ast::ExprKind::Float(_) => None,
+            ast::ExprKind::ByteLit(_) => None,
+            ast::ExprKind::ByteStr(_) => None,
+            ast::ExprKind::StrLit(_) => None,
+            ast::ExprKind::CharLit(_) => None,
+            ast::ExprKind::Bool(_) => None,
+            ast::ExprKind::Unit => None,
+            ast::ExprKind::Var(id) => Some(id.name.clone()),
+            ast::ExprKind::Call(_) => None,
+            ast::ExprKind::Method(_) => None,
+            ast::ExprKind::Index(_, _) => None,
+            ast::ExprKind::Unary(_, _) => None,
+            ast::ExprKind::Binary(_, _, _) => None,
+            ast::ExprKind::Ref(_, _) => None,
+            ast::ExprKind::If(_) => None,
+            ast::ExprKind::Block(_) => None,
+            ast::ExprKind::Array(_) => None,
+            ast::ExprKind::Repeat(_) => None,
+            ast::ExprKind::Old(_) => None,
+            ast::ExprKind::Quant(_) => None,
+            ast::ExprKind::Trigger(_) => None,
+            ast::ExprKind::Closure(_) => None,
+            ast::ExprKind::StructLit(_) => None,
+            ast::ExprKind::Path(_) => None,
+            ast::ExprKind::Deref(_) => None,
+            ast::ExprKind::Field(_, _) => None,
+            ast::ExprKind::Match(_) => None,
+            ast::ExprKind::Return(_) => None,
+            ast::ExprKind::Try(_) => None,
+            ast::ExprKind::Loop(_) => None,
+            ast::ExprKind::Break(_) => None,
+            ast::ExprKind::Continue(_) => None,
+            ast::ExprKind::Range(_) => None,
+            ast::ExprKind::Error => None,
+        }
+    }
+}

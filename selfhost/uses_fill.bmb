@@ -283,6 +283,19 @@ mod uses_fill {
         i
     }
 
+    #[summary("Whether the search left no definition unproved (stage0 UsesOutput::ok): no row is not_found")]
+    #[effects(pure)]
+    fn ok(out: &Output) -> bool {
+        for i in 0..out.rows.len()
+            invariant 0 <= i && i <= out.rows.len(),
+        {
+            if out.rows[i].status == 2 {
+                return false;
+            }
+        }
+        true
+    }
+
     #[summary("The current entries of the definition at path; none when it is not a definition of the program")]
     #[effects(alloc)]
     fn original_of(targets: &table::Table<Target>, path: &str) -> Vec<String> {
@@ -421,7 +434,7 @@ mod uses_fill {
         text
     }
 
-    #[summary("Checks and proves the files (stage0 run): what the verification said of each definition with a proof status, None when the program does not check. The proof cache and the per-definition session are shared between the runs of one search: the session is made on the first run (over the cache of dir; without a directory there is none, and every definition is encoded again) and keyed again for each later version of the program, so a definition unchanged since an earlier run is not encoded again")]
+    #[summary("Checks and proves the files (stage0 run): what the verification said of each definition with a proof status, None when the program does not check. The proof cache and the per-definition session are shared between the runs of one search: the session is made on the first run (over the cache of dir, or empty and in memory only without a directory) and keyed again for each later version of the program, so a definition unchanged since an earlier run is not encoded again")]
     #[effects(alloc, io, nondet)]
     fn run(files: &[lib::Input], proofs: &mut Option<cache::ProofCache>, defs: &mut Option<incremental::Session>, dir: &Option<String>, z3: &mut toolchain::Z3, bounded: bool) -> Option<table::Table<Seen>> {
         let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
@@ -431,7 +444,7 @@ mod uses_fill {
             return None;
         }
         let whole: Option<Vec<String>> = None;
-        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: None, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
         let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
         if is_session(defs) {
             match defs {
@@ -440,7 +453,7 @@ mod uses_fill {
             }
         } else {
             match dir {
-                None => {},
+                None => { *defs = Some(incremental::in_memory(&fe.ck, &pg.pr, bounded)); },
                 Some(d) => { *defs = Some(incremental::new(d.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &whole, bounded, false)); },
             }
         }

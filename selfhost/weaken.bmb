@@ -1,0 +1,2112 @@
+#[summary("Contract weakening between two versions of a program, bmb weaken OLD NEW (port of stage0 compiler/src/weaken.rs). Executable functions and proof fns are matched by path, then by identity, then by the identity of the program without its contracts, the last two only where the hash is unique on both sides. A matched pair is compared by the prover's refinement obligations in both directions, in one program that holds both versions: the old units under private names, with every old item whose identity the new version also has shared with it. Verdicts: same, refined, compatible, weakened, undecided, signature, added, removed; every refuted clause carries the solver's counterexample")]
+mod weaken {
+    #[summary("The old program's references, rewritten to the aligned program's paths (stage0 Align): the old tables, the old trait paths, and what to_path reads")]
+    struct Align { fns: table::Table<types::FnSig>, adts: table::Table<types::Adt>, traits: Vec<String>, conv: table::Table<String>, share: table::Table<String>, units: table::Table<String> }
+
+    impl refs::Rewrite for Align {
+        #[effects(alloc)]
+        fn decl(self: &mut Align, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut Align, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut Align, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            match resolve(&self.fns, &self.adts, self.traits.as_slice(), segs.as_slice(), &site, unit, tparams) {
+                None => {},
+                Some(fd) => { let target: String = to_path(fd.path.as_str(), &self.conv, &self.share, &self.units, self.traits.as_slice()); let mut out: Vec<String> = split_on(target.as_str()); for k in fd.n..segs.len() invariant fd.n <= k, { if k < segs.len() { out.push(segs[k].clone()); } } *segs = out; },
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut Align, name: &mut String) -> () {}
+    }
+
+    #[summary("The two versions as one program (stage0 Aligned): its files; each compared old definition's path there; the private names of the old units; the changed impl functions of shared types by old path, where they are; every old function's path there")]
+    struct Aligned { files: Vec<lib::Input>, at: table::Table<String>, units: table::Table<String>, moved: table::Table<String>, paths: table::Table<String> }
+
+    #[summary("A comparison that needs the solver (stage0 Ask): the row, the two paths, and for a reader its reveal set")]
+    struct Ask { k: usize, o: String, n: String, reader: bool, uses: Vec<String> }
+
+    #[summary("A pair's row without the solver, and its paths when it needs it")]
+    struct Base { row: Row, need: bool, o: String, n: String }
+
+    #[summary("A clause of a row (stage0 Clause): its text, the counterexample or the reason, and the spec fns seen only by name")]
+    struct Clause { clause: String, detail: String, opaque: Vec<String> }
+
+    #[summary("A compared definition of one version (stage0 Def): the definition, its unit, its identity, and its contract as a caller's proof sees it, by full paths: the qualified surface without its name and #[uses]")]
+    struct Def { d: ast::FnDef, unit: String, id: String, contract: String }
+
+    #[summary("What a path names and how many of its segments name it")]
+    struct Found { path: String, n: usize }
+
+    #[summary("An impl function of an old type: the type's path, the function's, and whether the block has type parameters")]
+    struct ImplFn { ty: String, f: String, generic: bool }
+
+    #[summary("An impl T function made a function of T's unit (stage0 ImplToFree): Self is T, the receiver self is this")]
+    struct ImplToFree { ty: String, this: String }
+
+    impl refs::Rewrite for ImplToFree {
+        #[effects(alloc)]
+        fn decl(self: &mut ImplToFree, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut ImplToFree, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut ImplToFree, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {
+            if segs.len() > 0 && segs[0] == "Self" {
+                segs[0] = self.ty.clone();
+            }
+        }
+
+        #[effects(alloc)]
+        fn var(self: &mut ImplToFree, name: &mut String) -> () {
+            if name.as_str() == "self" {
+                *name = self.this.clone();
+            }
+        }
+    }
+
+    #[summary("The result of a comparison (stage0 WeakenOutput): the rows, the W0908 diagnostics as JSONL, and the obligations asked")]
+    struct Output { rows: Vec<Row>, diagnostics: String, queries: usize }
+
+    #[summary("A matched pair of definitions, or one without a partner, and how it was matched")]
+    struct Pair { prev: Option<String>, new: Option<String>, how: Option<String> }
+
+    #[summary("Writes method calls as the calls by path they resolved to")]
+    struct Plain { n: usize }
+
+    impl ast::ExprFn for Plain {
+        #[effects(alloc)]
+        fn expr(self: &mut Plain, e: &mut ast::Expr) -> () {
+            match &mut e.kind {
+                ast::ExprKind::Int(_, _) => {},
+                ast::ExprKind::Float(_) => {},
+                ast::ExprKind::ByteLit(_) => {},
+                ast::ExprKind::ByteStr(_) => {},
+                ast::ExprKind::StrLit(_) => {},
+                ast::ExprKind::CharLit(_) => {},
+                ast::ExprKind::Bool(_) => {},
+                ast::ExprKind::Unit => {},
+                ast::ExprKind::Var(_) => {},
+                ast::ExprKind::Call(c) => { c.method = None; },
+                ast::ExprKind::Method(_) => {},
+                ast::ExprKind::Index(_, _) => {},
+                ast::ExprKind::Unary(_, _) => {},
+                ast::ExprKind::Binary(_, _, _) => {},
+                ast::ExprKind::Ref(_, _) => {},
+                ast::ExprKind::If(_) => {},
+                ast::ExprKind::Block(_) => {},
+                ast::ExprKind::Array(_) => {},
+                ast::ExprKind::Repeat(_) => {},
+                ast::ExprKind::Old(_) => {},
+                ast::ExprKind::Quant(_) => {},
+                ast::ExprKind::Trigger(_) => {},
+                ast::ExprKind::Closure(_) => {},
+                ast::ExprKind::StructLit(_) => {},
+                ast::ExprKind::Path(_) => {},
+                ast::ExprKind::Deref(_) => {},
+                ast::ExprKind::Field(_, _) => {},
+                ast::ExprKind::Match(_) => {},
+                ast::ExprKind::Return(_) => {},
+                ast::ExprKind::Try(_) => {},
+                ast::ExprKind::Loop(_) => {},
+                ast::ExprKind::Break(_) => {},
+                ast::ExprKind::Continue(_) => {},
+                ast::ExprKind::Range(_) => {},
+                ast::ExprKind::Error => {},
+            }
+        }
+    }
+
+    #[summary("A proof that reads a definition's contract (stage0 Reader): the definition and the spec fns the reading proof's #[uses] reveals, by full paths")]
+    struct Reader { def: String, uses: Vec<String> }
+
+    #[summary("One row of the report (stage0 Row). verdict: 0 same, 1 refined, 2 compatible, 3 weakened, 4 undecided, 5 signature, 6 added, 7 removed. requires, ensures and effects: 0 none, 1 same, 2 weaker, 3 stronger, 4 incomparable, 5 undecided. reader says whether the row is a reader's, with its uses and the revealed spec fns the two contracts reach")]
+    struct Row { def: Option<String>, prev: Option<String>, matched: Option<String>, verdict: u8, req: u8, ens: u8, effects: u8, lost: Vec<Clause>, gained: Vec<Clause>, undecided: Vec<Clause>, why: Option<String>, reader: bool, uses: Vec<String>, revealed: Vec<String> }
+
+    #[summary("The variables a function reads (stage0 Vars)")]
+    struct Vars { names: Vec<String> }
+
+    impl refs::Rewrite for Vars {
+        #[effects(alloc)]
+        fn decl(self: &mut Vars, unit: &[String], kind: refs::DeclKind, owner: &[String], name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn method(self: &mut Vars, call: source::Span, name: &mut ast::Ident) -> () {}
+
+        #[effects(alloc)]
+        fn path(self: &mut Vars, segs: &mut Vec<String>, site: refs::Site, unit: &[String], tparams: &[String]) -> () {}
+
+        #[effects(alloc)]
+        fn var(self: &mut Vars, name: &mut String) -> () {
+            self.names.push(name.clone());
+        }
+    }
+
+    #[summary("Builds the aligned program (stage0 align): the old program without the items it shares with the new version and without `main`, its method calls written by path, the changed impl functions of a shared type made functions of their unit (`T__f`, with Self written T and the receiver renamed), every reference rewritten to where its target is, and its units under private names (`old_u`), as files after the new version's")]
+    #[effects(alloc)]
+    fn align(prev: &body::Checked, io: &mut identity::Ids, opr: &mut fmt::Printer, new_files: &[lib::Input], new: &body::Checked, inw: &mut identity::Ids, npr: &mut fmt::Printer, compared: &[String]) -> Aligned {
+        let share: table::Table<String> = shared(&prev.b.c.fns, io, opr, inw, npr, &new.b.c.fns, compared);
+        let mut taken: Vec<String> = Vec::new();
+        for i in 0..prev.program.mods.len()
+            invariant 0 <= i && i <= prev.program.mods.len(),
+        {
+            taken.push(prev.program.mods[i].name.name.clone());
+        }
+        for j in 0..new.program.mods.len()
+            invariant 0 <= j && j <= new.program.mods.len(),
+        {
+            taken.push(new.program.mods[j].name.name.clone());
+        }
+        let mut units: table::Table<String> = table::new::<String>();
+        let mut given: Vec<String> = Vec::new();
+        for m in 0..prev.program.mods.len()
+            invariant 0 <= m && m <= prev.program.mods.len(),
+        {
+            let mut pu: String = types::cat2("old_", prev.program.mods[m].name.name.as_str());
+            let mut fuel: usize = taken.len().saturating_add(given.len()).saturating_add(1);
+            while fuel > 0 && (types::has(taken.as_slice(), pu.as_str()) || types::has(given.as_slice(), pu.as_str()))
+                decreases fuel,
+            {
+                fuel = fuel - 1;
+                pu = types::cat2("old_", pu.as_str());
+            }
+            if !units.has(prev.program.mods[m].name.name.as_str()) {
+                given.push(pu.clone());
+            }
+            units.insert(prev.program.mods[m].name.name.as_str(), pu);
+        }
+        let traits: Vec<String> = workspace::trait_paths(&prev.program);
+        let mut prog: ast::Program = prev.program.clone();
+        let mut plain: Plain = Plain { n: 0 };
+        ast::exprs_mut::<Plain>(&mut prog, &mut plain);
+        let mut conv: table::Table<String> = table::new::<String>();
+        let count: usize = prog.mods.len();
+        for p in 0..count
+            invariant prog.mods.len() == count,
+        {
+            prune(&mut prog.mods[p], "", &share, &mut conv, 1000000);
+        }
+        let mut a: Align = Align { fns: prev.b.c.fns.clone(), adts: prev.b.c.adts.clone(), traits: traits.clone(), conv: conv.clone(), share: share.clone(), units: units.clone() };
+        refs::walk::<Align>(&mut prog, &mut a);
+        let walked: usize = prog.mods.len();
+        for q in 0..walked
+            invariant prog.mods.len() == walked,
+        {
+            match units.find(prog.mods[q].name.name.as_str()) {
+                None => {},
+                Some(u) => { prog.mods[q].name.name = units.items[u].clone(); },
+            }
+        }
+        let mut files: Vec<lib::Input> = lint_syntax::copy_files(new_files);
+        let texts: Vec<fmt::Unit> = fmt::format_units(&prog);
+        for t in 0..texts.len()
+            invariant 0 <= t && t <= texts.len(),
+        {
+            files.push(lib::Input { name: types::cat3("<old>/", texts[t].name.as_str(), ".bmb"), text: texts[t].text.clone() });
+        }
+        let mut at: table::Table<String> = table::new::<String>();
+        for c in 0..compared.len()
+            invariant 0 <= c && c <= compared.len(),
+        {
+            at.insert(compared[c].as_str(), to_path(compared[c].as_str(), &conv, &share, &units, traits.as_slice()));
+        }
+        let mut moved: table::Table<String> = table::new::<String>();
+        for v in 0..conv.len()
+            invariant 0 <= v,
+        {
+            match conv.nth(v) {
+                None => {},
+                Some(cv) => moved.insert(conv.key(v).as_str(), private(conv.items[cv].as_str(), &units)),
+            }
+        }
+        let mut paths: table::Table<String> = table::new::<String>();
+        for f in 0..prev.b.c.fns.len()
+            invariant 0 <= f,
+        {
+            match prev.b.c.fns.nth(f) {
+                None => {},
+                Some(fa) => { if !prev.b.c.fns.items[fa].builtin { let fp: String = prev.b.c.fns.key(f); paths.insert(fp.as_str(), to_path(fp.as_str(), &conv, &share, &units, traits.as_slice())); } },
+            }
+        }
+        Aligned { files: files, at: at, units: units, moved: moved, paths: paths }
+    }
+
+    #[summary("The answers to one side's clauses, by clause position (stage0 answers). A clause the comparison made no obligation for holds trivially; a comparison that did not run (compared false, or no row for path) decides nothing: one answer per clause, and one at least")]
+    #[effects(alloc)]
+    fn answers(results: &[prove::Refined], path: &str, compared: bool, clauses: &[ast::Expr]) -> Vec<prove::Answer> {
+        let mut out: Vec<prove::Answer> = Vec::new();
+        let mut at: usize = results.len();
+        for i in 0..results.len()
+            invariant 0 <= i && i <= results.len() && at <= results.len(),
+        {
+            if at == results.len() && results[i].path.as_str() == path {
+                at = i;
+            }
+        }
+        if !compared || at >= results.len() {
+            let n: usize = if clauses.len() > 1 {
+                clauses.len()
+            } else {
+                1
+            };
+            for k in 0..n
+                invariant 0 <= k && k <= n,
+            {
+                out.push(prove::Answer { span: source::Span { file: 0, lo: 0, hi: 0 }, kind: 2, text: String::from("not compared"), opaque: Vec::new() });
+            }
+            return out;
+        }
+        for c in 0..clauses.len()
+            invariant 0 <= c && c <= clauses.len(),
+        {
+            let mut hit: Option<prove::Answer> = None;
+            for j in 0..results[at].answers.len()
+                invariant 0 <= j && j <= results[at].answers.len(),
+            {
+                if is_open(&hit) && prove::same_span(results[at].answers[j].span, clauses[c].span) {
+                    hit = Some(results[at].answers[j].clone());
+                }
+            }
+            match hit {
+                None => out.push(prove::Answer { span: clauses[c].span, kind: 0, text: String::new(), opaque: Vec::new() }),
+                Some(h) => out.push(h),
+            }
+        }
+        out
+    }
+
+    #[summary("Where a compared old definition is in the aligned program")]
+    #[effects(alloc)]
+    fn at_of(al: &Aligned, o: &str) -> String {
+        match al.at.find(o) {
+            None => String::new(),
+            Some(x) => al.at.items[x].clone(),
+        }
+    }
+
+    #[summary("Every old item the aligned program holds keeps its identity there (stage0 audit): the alignment changed no meaning. The reason with the first that does not")]
+    #[effects(alloc)]
+    fn audit(io: &mut identity::Ids, opr: &mut fmt::Printer, ic: &mut identity::Ids, cpr: &mut fmt::Printer, al: &Aligned) -> Option<String> {
+        for n in 0..io.ents.len()
+            invariant 0 <= n,
+        {
+            let k: String = io.ents.key(n);
+            let p: String = identity::path_of(k.as_str());
+            if k.len() >= 2 && !encode_terms::starts_at(p.as_str(), 0, "<") {
+                match std::str::find(p.as_str(), "::") {
+                    None => {},
+                    Some(cut) => { let u: String = lexer::cut(p.as_str(), 0, cut); let rest: String = lexer::cut(p.as_str(), cut.saturating_add(2), p.len()); let q: String = match al.moved.find(p.as_str()) { None => match al.units.find(u.as_str()) { None => types::cat3(u.as_str(), "::", rest.as_str()), Some(pu) => types::cat3(al.units.items[pu].as_str(), "::", rest.as_str()), }, Some(m) => al.moved.items[m].clone(), }; let ak: String = types::cat2(lexer::cut(k.as_str(), 0, 2).as_str(), q.as_str()); match ic.get(cpr, ak.as_str()) { None => {}, Some(a) => { let same: bool = match io.get(opr, k.as_str()) { None => false, Some(h) => h.id == a.id, }; if !same { return Some(types::cat3("aligning the versions changed the meaning of `", p.as_str(), "`")); } }, } },
+                }
+            }
+        }
+        None
+    }
+
+    #[summary("The row of a matched pair without the solver")]
+    #[effects(alloc)]
+    fn base_of(o: &str, n: &str, how: &Option<String>, od: &table::Table<Def>, nd: &table::Table<Def>, ofns: &table::Table<types::FnSig>, nfns: &table::Table<types::FnSig>, io: &mut identity::Ids, opr: &mut fmt::Printer, inw: &mut identity::Ids, npr: &mut fmt::Printer) -> Base {
+        let mut row: Row = new_row(Some(String::from(n)), Some(String::from(o)), 0);
+        row.matched = how.clone();
+        let oa: usize = match od.find(o) {
+            None => { return Base { row: row, need: false, o: String::new(), n: String::new() }; },
+            Some(x) => x,
+        };
+        let na: usize = match nd.find(n) {
+            None => { return Base { row: row, need: false, o: String::new(), n: String::new() }; },
+            Some(y) => y,
+        };
+        let os: usize = match ofns.find(o) {
+            None => { return Base { row: row, need: false, o: String::new(), n: String::new() }; },
+            Some(z) => z,
+        };
+        let ns: usize = match nfns.find(n) {
+            None => { return Base { row: row, need: false, o: String::new(), n: String::new() }; },
+            Some(w) => w,
+        };
+        match signature_change(&ofns.items[os], io, opr, &nfns.items[ns], inw, npr) {
+            None => {},
+            Some(why) => { row.verdict = 5; row.why = Some(why); return Base { row: row, need: false, o: String::new(), n: String::new() }; },
+        }
+        let eff: u8 = effects_rel(&ofns.items[os].effect, &nfns.items[ns].effect);
+        row.effects = eff;
+        if eff == 2 {
+            row.lost.push(Clause { clause: String::from("effects pure"), detail: String::new(), opaque: Vec::new() });
+        }
+        let empty: bool = od.items[oa].d.pre.len() == 0 && od.items[oa].d.post.len() == 0 && nd.items[na].d.pre.len() == 0 && nd.items[na].d.post.len() == 0;
+        if od.items[oa].id == nd.items[na].id && od.items[oa].contract == nd.items[na].contract || empty {
+            row.req = 1;
+            row.ens = 1;
+            row.verdict = if eff == 1 {
+                0
+            } else if eff == 2 {
+                3
+            } else {
+                1
+            };
+            return Base { row: row, need: false, o: String::new(), n: String::new() };
+        }
+        Base { row: row, need: true, o: String::from(o), n: String::from(n) }
+    }
+
+    #[summary("Each pair's row without the solver, and whether it needs it (the first loop of stage0 compare): removed and added definitions, a signature that differs, the relation of the effects, and the pairs whose contract is the same by identity and by the definitions it names, or empty on both sides")]
+    #[effects(alloc)]
+    fn bases(pairs: &[Pair], od: &table::Table<Def>, nd: &table::Table<Def>, ofns: &table::Table<types::FnSig>, nfns: &table::Table<types::FnSig>, io: &mut identity::Ids, opr: &mut fmt::Printer, inw: &mut identity::Ids, npr: &mut fmt::Printer) -> Vec<Base> {
+        let mut out: Vec<Base> = Vec::new();
+        for i in 0..pairs.len()
+            invariant 0 <= i && i <= pairs.len(),
+        {
+            match &pairs[i].prev {
+                None => { match &pairs[i].new { None => {}, Some(n0) => out.push(Base { row: new_row(Some(n0.clone()), None, 6), need: false, o: String::new(), n: String::new() }), } },
+                Some(o) => { match &pairs[i].new { None => out.push(Base { row: new_row(None, Some(o.clone()), 7), need: false, o: String::new(), n: String::new() }), Some(n) => out.push(base_of(o.as_str(), n.as_str(), &pairs[i].how, od, nd, ofns, nfns, io, opr, inw, npr)), } },
+            }
+        }
+        out
+    }
+
+    #[summary("The identity of each definition in the program with every requires, ensures and #[uses] removed (stage0 body_ids): what a rename that also changes the contract keeps. Empty when that program does not check")]
+    #[effects(alloc)]
+    fn body_ids(ck: &body::Checked) -> table::Table<String> {
+        let mut out: table::Table<String> = table::new::<String>();
+        let mut q: ast::Program = ck.program.clone();
+        let count: usize = q.mods.len();
+        for i in 0..count
+            invariant q.mods.len() == count,
+        {
+            strip(&mut q.mods[i], 1000000);
+        }
+        let mut d: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let ck2: body::Checked = body::check_resolved(q, &mut d);
+        if d.has_errors() {
+            return out;
+        }
+        let mut w: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut ids: identity::Ids = identity::new(&ck2.program, &ck2.b.c.fns, &ck2.b.c.adts, &mut w);
+        let mut pr: fmt::Printer = fmt::identity(ck2.b.c.fns.clone(), ck2.b.c.adts.clone(), ck2.b.types.clone(), w.traits.clone());
+        let rows: Vec<body::DefRow> = body::defs_of(&ck2.program, &ck2.b.c.fns);
+        for r in 0..rows.len()
+            invariant 0 <= r && r <= rows.len(),
+        {
+            match ids.get(&mut pr, types::cat2("0:", rows[r].path.as_str()).as_str()) {
+                None => {},
+                Some(h) => out.insert(rows[r].path.as_str(), h.id.clone()),
+            }
+        }
+        out
+    }
+
+    #[summary("Whether a spec fn's identity changed between the versions (the changed of stage0 compare): it is of an old unit under its private name, or the aligned program has no definition of that identity among the old version's")]
+    #[effects(alloc)]
+    fn changed(s: &str, private: &table::Table<bool>, ic: &mut identity::Ids, cpr: &mut fmt::Printer, old_ids: &table::Table<bool>) -> bool {
+        let unit: String = match std::str::find(s, "::") {
+            None => String::from(s),
+            Some(c) => lexer::cut(s, 0, c),
+        };
+        if private.has(unit.as_str()) {
+            return true;
+        }
+        match ic.get(cpr, types::cat2("0:", s).as_str()) {
+            None => true,
+            Some(h) => !old_ids.has(h.id.as_str()),
+        }
+    }
+
+    #[summary("Compares the contracts of two versions of a program (stage0 compare; with readers, the reader's comparison of ADR-0065 §3: one row per reader, in order, with the spec fns that reader reveals and no others, the forward direction only, and no W0908 lines). The error is the diagnostics of a version that does not check")]
+    #[effects(alloc, io, nondet)]
+    fn compare(prev: &[lib::Input], new: &[lib::Input], readers: &Option<Vec<Reader>>) -> Result<Output, String> {
+        let mut osm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut odg: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fo: lib::Front = lib::frontend(prev, &mut osm, &mut odg);
+        if odg.has_errors() {
+            return Err(odg.to_jsonl(&osm));
+        }
+        let mut nsm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut ndg: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fnw: lib::Front = lib::frontend(new, &mut nsm, &mut ndg);
+        if ndg.has_errors() {
+            return Err(ndg.to_jsonl(&nsm));
+        }
+        let mut ow: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut io: identity::Ids = identity::new(&fo.ck.program, &fo.ck.b.c.fns, &fo.ck.b.c.adts, &mut ow);
+        let mut opr: fmt::Printer = fmt::identity(fo.ck.b.c.fns.clone(), fo.ck.b.c.adts.clone(), fo.ck.b.types.clone(), ow.traits.clone());
+        let mut nw: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut inw: identity::Ids = identity::new(&fnw.ck.program, &fnw.ck.b.c.fns, &fnw.ck.b.c.adts, &mut nw);
+        let mut npr: fmt::Printer = fmt::identity(fnw.ck.b.c.fns.clone(), fnw.ck.b.c.adts.clone(), fnw.ck.b.types.clone(), nw.traits.clone());
+        let od: table::Table<Def> = defs(&fo.ck, &mut io, &mut opr);
+        let nd: table::Table<Def> = defs(&fnw.ck, &mut inw, &mut npr);
+        let pairs: Vec<Pair> = match_defs(&od, &nd, &body_ids(&fo.ck), &body_ids(&fnw.ck));
+        let base: Vec<Base> = bases(pairs.as_slice(), &od, &nd, &fo.ck.b.c.fns, &fnw.ck.b.c.fns, &mut io, &mut opr, &mut inw, &mut npr);
+        let mut rows: Vec<Row> = Vec::new();
+        let mut asks: Vec<Ask> = Vec::new();
+        let mut reading: bool = false;
+        match readers {
+            None => { for b in 0..base.len() invariant 0 <= b && b <= base.len(), { if base[b].need { asks.push(Ask { k: rows.len(), o: base[b].o.clone(), n: base[b].n.clone(), reader: false, uses: Vec::new() }); } rows.push(base[b].row.clone()); } },
+            Some(rs) => { reading = true; for r in 0..rs.len() invariant 0 <= r && r <= rs.len(), { let mut row: Row = match found_for(base.as_slice(), rs[r].def.as_str()) { None => { let mut made: Row = new_row(Some(rs[r].def.clone()), None, 4); made.why = Some(types::cat3("neither version has an executable function or proof fn `", rs[r].def.as_str(), "`")); made }, Some(f) => { if f < base.len() && base[f].need { asks.push(Ask { k: rows.len(), o: base[f].o.clone(), n: base[f].n.clone(), reader: true, uses: rs[r].uses.clone() }); } if f < base.len() { base[f].row.clone() } else { new_row(None, None, 4) } }, }; row.reader = true; row.uses = rs[r].uses.clone(); rows.push(row); } },
+        }
+        let mut queries: usize = 0;
+        if asks.len() > 0 {
+            queries = solve(&mut rows, asks.as_slice(), reading, &fo.ck, &fnw.ck, new, &od, &nd, &mut io, &mut opr, &mut inw, &mut npr);
+        }
+        if reading {
+            return Ok(Output { rows: rows, diagnostics: String::new(), queries: queries });
+        }
+        let mut keys: Vec<String> = Vec::new();
+        for k in 0..rows.len()
+            invariant 0 <= k && k <= rows.len(),
+        {
+            let first: String = match &rows[k].def {
+                None => match &rows[k].prev { None => String::new(), Some(on) => on.clone(), },
+                Some(dn) => dn.clone(),
+            };
+            let second: String = match &rows[k].prev {
+                None => String::from("0"),
+                Some(on2) => types::cat2("1", on2.as_str()),
+            };
+            keys.push(types::cat3(first.as_str(), "\n", second.as_str()));
+        }
+        let ord: Vec<usize> = std::slice::sort_indices::<String>(keys.as_slice());
+        let mut sorted: Vec<Row> = Vec::new();
+        for s in 0..ord.len()
+            invariant 0 <= s && s <= ord.len(),
+        {
+            if ord[s] < rows.len() {
+                sorted.push(rows[ord[s]].clone());
+            }
+        }
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        for w in 0..sorted.len()
+            invariant 0 <= w && w <= sorted.len(),
+        {
+            if sorted[w].verdict == 3 {
+                match warning(&sorted[w], &nd) {
+                    None => {},
+                    Some(dg) => diags.push(dg),
+                }
+            }
+        }
+        Ok(Output { rows: sorted, diagnostics: diags.to_jsonl(&nsm), queries: queries })
+    }
+
+    #[summary("The spec fns the requires and ensures of definition path name (stage0 contract_specs): what every caller's default context reveals of it (ADR-0095 A1)")]
+    #[effects(alloc)]
+    fn contract_specs(defs: &[codegen::Def], pg: &encode_spec::Prog, fns: &table::Table<types::FnSig>, path: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if defs[i].path.as_str() == path {
+                let mut calls: Vec<lib::CallAt> = Vec::new();
+                lib::calls_in_exprs(defs[i].d.pre.as_slice(), false, &mut calls, 1000000000);
+                lib::calls_in_exprs(defs[i].d.post.as_slice(), false, &mut calls, 1000000000);
+                for c in 0..calls.len()
+                    invariant 0 <= c && c <= calls.len(),
+                {
+                    let r: String = encode_decls::resolve_in(&pg.pr.t, calls[c].path.as_slice(), defs[i].unit.as_str());
+                    if is_spec(fns, r.as_str()) {
+                        out.push(r.clone());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("How many entries of a table of paths are not removed")]
+    #[effects(pure)]
+    fn count_live(t: &table::Table<String>) -> usize {
+        let mut n: usize = 0;
+        for i in 0..t.items.len()
+            invariant 0 <= i && i <= t.items.len(),
+        {
+            if t.items[i].len() > 0 {
+                n = n.saturating_add(1);
+            }
+        }
+        n
+    }
+
+    #[summary("The first definition at path")]
+    #[effects(pure)]
+    fn def_at(defs: &[codegen::Def], path: &str) -> Option<usize> {
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if defs[i].path.as_str() == path {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[summary("The executable functions and proof fns of a checked program outside the library (stage0 defs, with the filter of compare), free and in impl T blocks, by path with their identities: trait impl functions and default bodies refine their trait's contract, which the gate proves")]
+    #[effects(alloc)]
+    fn defs(ck: &body::Checked, ids: &mut identity::Ids, pr: &mut fmt::Printer) -> table::Table<Def> {
+        let mut out: table::Table<Def> = table::new::<Def>();
+        let listed: Vec<codegen::Def> = lint::defs_of(ck);
+        let heads: table::Table<String> = fmt::impl_heads(&ck.b.c.fns);
+        let mut qp: fmt::Printer = fmt::qualifying(ck.b.c.fns.clone(), "");
+        for i in 0..listed.len()
+            invariant 0 <= i && i <= listed.len(),
+        {
+            let path: String = listed[i].path.clone();
+            let plain: bool = match ck.b.c.fns.find(path.as_str()) {
+                None => false,
+                Some(s) => match &ck.b.c.fns.items[s].trait_of { None => true, Some(t) => false, },
+            };
+            if plain && !body::is_spec(listed[i].d.kind) && !encode_terms::starts_at(path.as_str(), 0, "<") && !stdlib::in_std(path.as_str()) {
+                match ids.get(pr, types::cat2("0:", path.as_str()).as_str()) {
+                    None => {},
+                    Some(h) => { let mut g: ast::FnDef = listed[i].d.clone(); g.name.name = String::new(); let contract: String = fmt::caller_text(&mut qp, &heads, &g, listed[i].unit.as_str()); out.insert(path.as_str(), Def { d: listed[i].d.clone(), unit: listed[i].unit.clone(), id: h.id.clone(), contract: contract }); },
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("What a direction's answers say together (stage0 dir): 1 refuted when one is, else 2 undecided when one is, else 0 proved")]
+    #[effects(pure)]
+    fn dir(xs: &[prove::Answer]) -> u8 {
+        let mut out: u8 = 0;
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if xs[i].kind == 1 {
+                out = 1;
+            } else if xs[i].kind == 2 && out == 0 {
+                out = 2;
+            }
+        }
+        out
+    }
+
+    #[summary("Removes a path from a table of paths: its entry is empty from then on")]
+    #[effects(alloc)]
+    fn drop_path(t: &mut table::Table<String>, k: &str) -> () {
+        if t.has(k) {
+            t.insert(k, String::new());
+        }
+    }
+
+    #[summary("The effects of the new version against the old (stage0 effects_rel, ADR-0030 §1, sets ordered by inclusion): more effects promise less. 1 same, 2 weaker, 3 stronger, 4 incomparable")]
+    #[effects(pure)]
+    fn effects_rel(o: &types::Effects, n: &types::Effects) -> u8 {
+        let n_has_o: bool = (!o.alloc || n.alloc) && (!o.io || n.io) && (!o.nondet || n.nondet) && (!o.panic || n.panic);
+        let o_has_n: bool = (!n.alloc || o.alloc) && (!n.io || o.io) && (!n.nondet || o.nondet) && (!n.panic || o.panic);
+        if n_has_o && o_has_n {
+            1
+        } else if n_has_o {
+            2
+        } else if o_has_n {
+            3
+        } else {
+            4
+        }
+    }
+
+    #[summary("The row a reader's definition is found by (the lookup of stage0 compare): the first whose new path it is, else the first removed one whose old path it is")]
+    #[effects(pure)]
+    fn found_for(base: &[Base], def: &str) -> Option<usize> {
+        for i in 0..base.len()
+            invariant 0 <= i && i <= base.len(),
+        {
+            if text_is(&base[i].row.def, def) {
+                return Some(i);
+            }
+        }
+        for j in 0..base.len()
+            invariant 0 <= j && j <= base.len(),
+        {
+            if !is_text(&base[j].row.def) && text_is(&base[j].row.prev, def) {
+                return Some(j);
+            }
+        }
+        None
+    }
+
+    #[summary("A spec fn the prover named from unit, by its full path in the version it is from (the full of stage0 compare): back are the old units by their private names")]
+    #[effects(alloc)]
+    fn full(name: &str, unit: &str, back: &table::Table<String>) -> String {
+        let q: String = if workspace::contains(name, "::") {
+            String::from(name)
+        } else {
+            types::cat3(unit, "::", name)
+        };
+        match std::str::find(q.as_str(), "::") {
+            None => q,
+            Some(c) => match back.find(lexer::cut(q.as_str(), 0, c).as_str()) { None => q.clone(), Some(b) => types::cat3(back.items[b].as_str(), "::", lexer::cut(q.as_str(), c.saturating_add(2), q.len()).as_str()), },
+        }
+    }
+
+    #[summary("The paths left by their hash, in path order within a hash")]
+    #[effects(alloc)]
+    fn groups(left: &table::Table<bool>, h: &table::Table<String>) -> table::Table<Vec<String>> {
+        let mut g: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for i in 0..left.len()
+            invariant 0 <= i,
+        {
+            match left.nth(i) {
+                None => {},
+                Some(l) => { if left.items[l] { let p: String = left.key(i); match h.find(p.as_str()) { None => {}, Some(x) => { let mut list: Vec<String> = match g.find(h.items[x].as_str()) { None => Vec::new(), Some(y) => g.items[y].clone(), }; list.push(p.clone()); g.insert(h.items[x].as_str(), list); }, } } },
+            }
+        }
+        g
+    }
+
+    #[summary("Whether a definition refines in one of the jobs")]
+    #[effects(pure)]
+    fn has_job(jobs: &[encode_query::Job], path: &str) -> bool {
+        match encode_query::job_at(jobs, path) {
+            None => false,
+            Some(j) => true,
+        }
+    }
+
+    #[summary("Whether a function has a parameter of this name")]
+    #[effects(pure)]
+    fn has_param(d: &ast::FnDef, name: &str) -> bool {
+        for i in 0..d.params.len()
+            invariant 0 <= i && i <= d.params.len(),
+        {
+            if d.params[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("The first n of segs joined by `::`")]
+    #[effects(alloc)]
+    fn head(segs: &[String], n: usize) -> String {
+        let mut out: String = String::new();
+        for i in 0..segs.len()
+            invariant 0 <= i && i <= segs.len(),
+        {
+            if i < n {
+                if i > 0 {
+                    out.push_str("::");
+                }
+                out.push_str(segs[i].as_str());
+            }
+        }
+        out
+    }
+
+    #[summary("Whether a key is named by a trait's path (the in_trait of stage0 shared): a trait, a trait impl's function, a trait's method")]
+    #[effects(alloc)]
+    fn in_trait(key: &str, t: &table::Table<types::FnSig>) -> bool {
+        let k: u8 = kind_of(key);
+        if k == 2 {
+            return true;
+        }
+        if k == 1 {
+            return false;
+        }
+        let p: String = identity::path_of(key);
+        if encode_terms::starts_at(p.as_str(), 0, "<") {
+            return true;
+        }
+        match t.find(p.as_str()) {
+            None => false,
+            Some(at) => match &t.items[at].trait_of { None => false, Some(tr) => true, },
+        }
+    }
+
+    #[summary("Whether a definition path is a function of the program that is no built-in")]
+    #[effects(pure)]
+    fn is_fn(fns: &table::Table<types::FnSig>, p: &str) -> bool {
+        match fns.find(p) {
+            None => false,
+            Some(at) => !fns.items[at].builtin,
+        }
+    }
+
+    #[summary("Whether a reveal list is held")]
+    #[effects(pure)]
+    fn is_list(o: &Option<Vec<String>>) -> bool {
+        match o {
+            None => false,
+            Some(l) => true,
+        }
+    }
+
+    #[summary("Whether a table of paths holds k and it is not removed")]
+    #[effects(pure)]
+    fn is_live(t: &table::Table<String>, k: &str) -> bool {
+        match t.find(k) {
+            None => false,
+            Some(at) => t.items[at].len() > 0,
+        }
+    }
+
+    #[summary("Whether no answer is held")]
+    #[effects(pure)]
+    fn is_open(o: &Option<prove::Answer>) -> bool {
+        match o {
+            None => true,
+            Some(a) => false,
+        }
+    }
+
+    #[summary("Whether path is a spec fn of the tables")]
+    #[effects(pure)]
+    fn is_spec(fns: &table::Table<types::FnSig>, p: &str) -> bool {
+        match fns.find(p) {
+            None => false,
+            Some(at) => body::is_spec(fns.items[at].kind),
+        }
+    }
+
+    #[summary("Whether a text is held")]
+    #[effects(pure)]
+    fn is_text(o: &Option<String>) -> bool {
+        match o {
+            None => false,
+            Some(s) => true,
+        }
+    }
+
+    #[summary("Whether a key is an item of the tables (the item of stage0 shared): a definition that has a signature; every type and trait")]
+    #[effects(alloc)]
+    fn item(key: &str, t: &table::Table<types::FnSig>) -> bool {
+        kind_of(key) != 0 || t.has(identity::path_of(key).as_str())
+    }
+
+    #[summary("A pair's row after its comparison (the end of the loop of stage0 compare): the clauses of the forward direction (the new requires the old ones must imply, the old ensures the new ones must imply) and of the backward one, the relations of requires and ensures, and the verdict: weakened when a forward clause is refuted or the effect got weaker; else undecided when a forward clause is; else refined when a backward clause is refuted or the effect got stronger; else same when the backward direction is proved, and compatible otherwise. fo and fnw are the two definitions in the aligned program, of and nf in their own versions")]
+    #[effects(alloc)]
+    fn judged(was: &Row, results: &[prove::Refined], n: &str, oc: &str, backward: bool, fo: &codegen::Def, fnw: &codegen::Def, of: &ast::FnDef, nf: &ast::FnDef, back: &table::Table<String>) -> Row {
+        let mut row: Row = was.clone();
+        let fwd_req: Vec<prove::Answer> = answers(results, n, true, fnw.d.pre.as_slice());
+        let fwd_ens: Vec<prove::Answer> = answers(results, n, true, fo.d.post.as_slice());
+        let back_req: Vec<prove::Answer> = answers(results, oc, backward, fo.d.pre.as_slice());
+        let back_ens: Vec<prove::Answer> = answers(results, oc, backward, fnw.d.post.as_slice());
+        put(&mut row, fwd_req.as_slice(), nf.pre.as_slice(), "new requires", true, fnw.unit.as_str(), back);
+        put(&mut row, fwd_ens.as_slice(), of.post.as_slice(), "old ensures", true, fnw.unit.as_str(), back);
+        if backward {
+            put(&mut row, back_req.as_slice(), of.pre.as_slice(), "old requires", false, fo.unit.as_str(), back);
+            put(&mut row, back_ens.as_slice(), nf.post.as_slice(), "new ensures", false, fo.unit.as_str(), back);
+        }
+        let fr: u8 = dir(fwd_req.as_slice());
+        let fe: u8 = dir(fwd_ens.as_slice());
+        let br: u8 = dir(back_req.as_slice());
+        let be: u8 = dir(back_ens.as_slice());
+        row.req = relation(fr, br, true);
+        row.ens = relation(fe, be, false);
+        let eff: u8 = if row.effects == 0 {
+            1
+        } else {
+            row.effects
+        };
+        row.verdict = if fr == 1 || fe == 1 || eff == 2 {
+            3
+        } else if fr == 2 || fe == 2 {
+            4
+        } else if br == 1 || be == 1 || eff == 3 {
+            1
+        } else if br == 0 && be == 0 {
+            0
+        } else {
+            2
+        };
+        row
+    }
+
+    #[summary("The kind of a key of the identities as its digit: 0 a definition, 1 a type, 2 a trait")]
+    #[effects(pure)]
+    fn kind_of(key: &str) -> u8 {
+        if key.len() > 0 && key.as_bytes()[0] == 49 {
+            1
+        } else if key.len() > 0 && key.as_bytes()[0] == 50 {
+            2
+        } else {
+            0
+        }
+    }
+
+    #[summary("The entry of k in a table of paths, when it is not removed")]
+    #[effects(alloc)]
+    fn live(t: &table::Table<String>, k: &str) -> Option<String> {
+        match t.find(k) {
+            None => None,
+            Some(at) => { if t.items[at].len() > 0 { Some(t.items[at].clone()) } else { None } },
+        }
+    }
+
+    #[summary("Matches the definitions left by a hash unique on both sides (the by of stage0 match_defs): oh and nh give the hash of a path, when it has one; the groups are taken in the order of the hashes")]
+    #[effects(alloc)]
+    fn match_by(how: &str, od: &table::Table<Def>, nd: &table::Table<Def>, oh: &table::Table<String>, nh: &table::Table<String>, old_left: &mut table::Table<bool>, new_left: &mut table::Table<bool>, out: &mut Vec<Pair>) -> () {
+        let go: table::Table<Vec<String>> = groups(old_left, oh);
+        let gn: table::Table<Vec<String>> = groups(new_left, nh);
+        for i in 0..go.len()
+            invariant 0 <= i,
+        {
+            match go.nth(i) {
+                None => {},
+                Some(g) => { match gn.find(go.key(i).as_str()) { None => {}, Some(h) => { if go.items[g].len() == 1 && gn.items[h].len() == 1 { let o: String = go.items[g][0].clone(); let n: String = gn.items[h][0].clone(); let same: bool = match od.find(o.as_str()) { None => false, Some(x) => match nd.find(n.as_str()) { None => false, Some(y) => same_kind(&od.items[x].d, &nd.items[y].d), }, }; if same { old_left.insert(o.as_str(), false); new_left.insert(n.as_str(), false); out.push(Pair { prev: Some(o.clone()), new: Some(n.clone()), how: Some(String::from(how)) }); } } }, } },
+            }
+        }
+    }
+
+    #[summary("Matches the definitions of the two versions (stage0 match_defs): by path where the kinds agree; then the rest by identity, then by the identity without contracts, each only where the hash is unique on both sides and the kinds agree; then the old ones left, then the new ones left")]
+    #[effects(alloc)]
+    fn match_defs(od: &table::Table<Def>, nd: &table::Table<Def>, ob: &table::Table<String>, nb: &table::Table<String>) -> Vec<Pair> {
+        let mut out: Vec<Pair> = Vec::new();
+        let mut old_left: table::Table<bool> = table::new::<bool>();
+        for i in 0..od.len()
+            invariant 0 <= i,
+        {
+            old_left.insert(od.key(i).as_str(), true);
+        }
+        let mut new_left: table::Table<bool> = table::new::<bool>();
+        for j in 0..nd.len()
+            invariant 0 <= j,
+        {
+            let p: String = nd.key(j);
+            let same: bool = match od.find(p.as_str()) {
+                None => false,
+                Some(o) => match nd.find(p.as_str()) { None => false, Some(n) => same_kind(&od.items[o].d, &nd.items[n].d), },
+            };
+            if same {
+                old_left.insert(p.as_str(), false);
+                out.push(Pair { prev: Some(p.clone()), new: Some(p.clone()), how: Some(String::from("path")) });
+            } else {
+                new_left.insert(p.as_str(), true);
+            }
+        }
+        let mut oid: table::Table<String> = table::new::<String>();
+        for a in 0..od.len()
+            invariant 0 <= a,
+        {
+            match od.nth(a) {
+                None => {},
+                Some(x) => oid.insert(od.key(a).as_str(), od.items[x].id.clone()),
+            }
+        }
+        let mut nid: table::Table<String> = table::new::<String>();
+        for b in 0..nd.len()
+            invariant 0 <= b,
+        {
+            match nd.nth(b) {
+                None => {},
+                Some(y) => nid.insert(nd.key(b).as_str(), nd.items[y].id.clone()),
+            }
+        }
+        match_by("id", od, nd, &oid, &nid, &mut old_left, &mut new_left, &mut out);
+        match_by("body", od, nd, ob, nb, &mut old_left, &mut new_left, &mut out);
+        for c in 0..old_left.len()
+            invariant 0 <= c,
+        {
+            match old_left.nth(c) {
+                None => {},
+                Some(ol) => { if old_left.items[ol] { out.push(Pair { prev: Some(old_left.key(c)), new: None, how: None }); } },
+            }
+        }
+        for e in 0..new_left.len()
+            invariant 0 <= e,
+        {
+            match new_left.nth(e) {
+                None => {},
+                Some(nl) => { if new_left.items[nl] { out.push(Pair { prev: None, new: Some(new_left.key(e)), how: None }); } },
+            }
+        }
+        out
+    }
+
+    #[summary("A row with its paths and verdict and nothing else (stage0 Row::new)")]
+    #[effects(alloc)]
+    fn new_row(def: Option<String>, prev: Option<String>, verdict: u8) -> Row {
+        Row { def: def, prev: prev, matched: None, verdict: verdict, req: 0, ens: 0, effects: 0, lost: Vec::new(), gained: Vec::new(), undecided: Vec::new(), why: None, reader: false, uses: Vec::new(), revealed: Vec::new() }
+    }
+
+    #[summary("Whether the report leaves nothing to answer for (stage0 WeakenOutput::ok): no contract got weaker and every comparison was decided")]
+    #[effects(pure)]
+    fn ok(out: &Output) -> bool {
+        for i in 0..out.rows.len()
+            invariant 0 <= i && i <= out.rows.len(),
+        {
+            if out.rows[i].verdict == 3 || out.rows[i].verdict == 4 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("One round of comparisons (the body of the loop of stage0 compare): each side of each pair reveals what the comparison needs, the forward jobs and, unless for a reader, the backward ones are proved, and each pair's row is written from the answers. Gives the obligations asked")]
+    #[effects(alloc, io, nondet)]
+    fn one_round(rows: &mut Vec<Row>, asks: &[Ask], round: &[usize], lists: &[Option<Vec<String>>], reading: bool, fc: &body::Checked, al: &Aligned, od: &table::Table<Def>, nd: &table::Table<Def>, back: &table::Table<String>) -> usize {
+        let mut ck: body::Checked = fc.clone();
+        let mut jobs: Vec<encode_query::Job> = Vec::new();
+        let count: usize = ck.program.mods.len();
+        for i in 0..round.len()
+            invariant 0 <= i && i <= round.len() && ck.program.mods.len() == count,
+        {
+            if round[i] < asks.len() && round[i] < lists.len() {
+                let oc: String = at_of(al, asks[round[i]].o.as_str());
+                let list: Vec<String> = match &lists[round[i]] {
+                    None => Vec::new(),
+                    Some(l) => l.clone(),
+                };
+                for m in 0..count
+                    invariant ck.program.mods.len() == count,
+                {
+                    let did: bool = set_uses(&mut ck.program.mods[m], "", asks[round[i]].n.as_str(), list.as_slice(), 1000000);
+                }
+                for m2 in 0..count
+                    invariant ck.program.mods.len() == count,
+                {
+                    let did2: bool = set_uses(&mut ck.program.mods[m2], "", oc.as_str(), list.as_slice(), 1000000);
+                }
+                jobs.push(encode_query::Job { refiner: asks[round[i]].n.clone(), decl: oc.clone(), tsub: tsub(&fc.b.c.fns, oc.as_str(), asks[round[i]].n.as_str()), own_domain: false });
+            }
+        }
+        if !reading {
+            for j in 0..round.len()
+                invariant 0 <= j && j <= round.len(),
+            {
+                if round[j] < asks.len() {
+                    let oc2: String = at_of(al, asks[round[j]].o.as_str());
+                    if !has_job(jobs.as_slice(), oc2.as_str()) {
+                        jobs.push(encode_query::Job { refiner: oc2.clone(), decl: asks[round[j]].n.clone(), tsub: tsub(&fc.b.c.fns, asks[round[j]].n.as_str(), oc2.as_str()), own_domain: true });
+                    }
+                }
+            }
+        }
+        let pg: encode_spec::Prog = encode_spec::prog_of(&ck);
+        let results: Vec<prove::Refined> = prove::refinements(&ck, &pg, jobs.as_slice());
+        let mut queries: usize = 0;
+        for q in 0..results.len()
+            invariant 0 <= q && q <= results.len(),
+        {
+            queries = queries.saturating_add(results[q].answers.len());
+        }
+        let defs: Vec<codegen::Def> = lint::defs_of(&ck);
+        for k in 0..round.len()
+            invariant 0 <= k && k <= round.len(),
+        {
+            if round[k] < asks.len() && asks[round[k]].k < rows.len() {
+                let oc3: String = at_of(al, asks[round[k]].o.as_str());
+                let backward: bool = match encode_query::job_at(jobs.as_slice(), oc3.as_str()) {
+                    None => false,
+                    Some(jb) => jb < jobs.len() && jobs[jb].decl == asks[round[k]].n,
+                };
+                match def_at(defs.as_slice(), oc3.as_str()) {
+                    None => {},
+                    Some(fo) => { match def_at(defs.as_slice(), asks[round[k]].n.as_str()) { None => {}, Some(fnw) => { match od.find(asks[round[k]].o.as_str()) { None => {}, Some(oa) => { match nd.find(asks[round[k]].n.as_str()) { None => {}, Some(na) => { if fo < defs.len() && fnw < defs.len() { let row: Row = judged(&rows[asks[round[k]].k], results.as_slice(), asks[round[k]].n.as_str(), oc3.as_str(), backward, &defs[fo], &defs[fnw], &od.items[oa].d, &nd.items[na].d, back); rows[asks[round[k]].k] = row; } }, } }, } }, } },
+                }
+            }
+        }
+        queries
+    }
+
+    #[summary("The readers of bmb weaken --readers FILE (stage0 parse_readers): one JSON object per line, `{\"def\":\"u::f\",\"uses\":[\"u::p\",..]}`; a line of white space is skipped. The error names the line, from 1")]
+    #[effects(alloc)]
+    fn parse_readers(text: &str) -> Result<Vec<Reader>, String> {
+        let mut out: Vec<Reader> = Vec::new();
+        let lines: Vec<String> = cache::lines_of(text);
+        for k in 0..lines.len()
+            invariant 0 <= k && k <= lines.len(),
+        {
+            if !fix::blank(lines[k].as_str(), 0, lines[k].len()) {
+                let at: String = types::cat3("readers line ", encode_terms::dec((k as u64).saturating_add(1)).as_str(), ": ");
+                let v: json::Value = match json::parse(lines[k].as_str()) {
+                    Ok(read) => read,
+                    Err(e) => { return Err(types::cat2(at.as_str(), e.as_str())); },
+                };
+                let def: String = match json::get_str(&v, "def") {
+                    None => { return Err(types::cat2(at.as_str(), "no string `def`")); },
+                    Some(d) => d,
+                };
+                let mut uses: Vec<String> = Vec::new();
+                match json::get(&v, "uses") {
+                    None => {},
+                    Some(u) => { match &u { json::Value::Null => { return Err(types::cat2(at.as_str(), "`uses` is not an array")); }, json::Value::Bool(b) => { return Err(types::cat2(at.as_str(), "`uses` is not an array")); }, json::Value::Num(nm) => { return Err(types::cat2(at.as_str(), "`uses` is not an array")); }, json::Value::Str(st) => { return Err(types::cat2(at.as_str(), "`uses` is not an array")); }, json::Value::Array(xs) => { for x in 0..xs.len() invariant 0 <= x && x <= xs.len(), { match json::as_str(&xs[x]) { None => { return Err(types::cat2(at.as_str(), "`uses` holds a non-string")); }, Some(s) => uses.push(s), } } }, json::Value::Object(ms) => { return Err(types::cat2(at.as_str(), "`uses` is not an array")); }, } },
+                }
+                out.push(Reader { def: def, uses: uses });
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("A path of the old version under the private name of its unit (the private of stage0 align)")]
+    #[effects(alloc)]
+    fn private(p: &str, units: &table::Table<String>) -> String {
+        match std::str::find(p, "::") {
+            None => String::from(p),
+            Some(c) => { let u: String = lexer::cut(p, 0, c); let rest: String = lexer::cut(p, c.saturating_add(2), p.len()); match units.find(u.as_str()) { None => types::cat3(u.as_str(), "::", rest.as_str()), Some(a) => types::cat3(units.items[a].as_str(), "::", rest.as_str()), } },
+        }
+    }
+
+    #[summary("Drops the shared items of unit m and of the units in it, and `main`, which the new version has (the prune of stage0 align). A shared trait goes with its impls. The changed impl functions of a shared type become functions of their unit, `T__f` (conv: old path to that path), with Self written T and the receiver self renamed to a name the function does not read. f is the remaining depth")]
+    #[effects(alloc)]
+    fn prune(m: &mut ast::Mod, prefix: &str, share: &table::Table<String>, conv: &mut table::Table<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let mut fns: Vec<ast::FnDef> = Vec::new();
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len(),
+        {
+            if !is_live(share, types::cat3(mp.as_str(), "::", m.fns[i].name.name.as_str()).as_str()) && !(mutate::is_exec(&m.fns[i]) && m.fns[i].name.name == "main") {
+                fns.push(m.fns[i].clone());
+            }
+        }
+        let mut tys: Vec<ast::TypeDef> = Vec::new();
+        for j in 0..m.types.len()
+            invariant 0 <= j && j <= m.types.len(),
+        {
+            if !is_live(share, types::cat3(mp.as_str(), "::", m.types[j].name.name.as_str()).as_str()) {
+                tys.push(m.types[j].clone());
+            }
+        }
+        let mut traits: Vec<ast::TraitDef> = Vec::new();
+        for k in 0..m.traits.len()
+            invariant 0 <= k && k <= m.traits.len(),
+        {
+            if !is_live(share, types::cat3(mp.as_str(), "::", m.traits[k].name.name.as_str()).as_str()) {
+                traits.push(m.traits[k].clone());
+            }
+        }
+        let mut tis: Vec<ast::TraitImpl> = Vec::new();
+        for l in 0..m.trait_impls.len()
+            invariant 0 <= l && l <= m.trait_impls.len(),
+        {
+            let mut names: Vec<String> = Vec::new();
+            for s in 0..m.trait_impls[l].trait_path.len()
+                invariant 0 <= s && s <= m.trait_impls[l].trait_path.len(),
+            {
+                names.push(m.trait_impls[l].trait_path[s].name.clone());
+            }
+            let tr: String = if names.len() == 1 {
+                types::cat3(mp.as_str(), "::", names[0].as_str())
+            } else {
+                encode_terms::join(names.as_slice(), "::")
+            };
+            if !is_live(share, tr.as_str()) {
+                tis.push(m.trait_impls[l].clone());
+            }
+        }
+        let unit: Vec<String> = split_on(mp.as_str());
+        let mut kept: Vec<ast::Impl> = Vec::new();
+        for b in 0..m.impls.len()
+            invariant 0 <= b && b <= m.impls.len(),
+        {
+            let ty: String = m.impls[b].ty.name.clone();
+            if !is_live(share, types::cat3(mp.as_str(), "::", ty.as_str()).as_str()) {
+                kept.push(m.impls[b].clone());
+            } else {
+                for c in 0..m.impls[b].fns.len()
+                    invariant 0 <= c && c <= m.impls[b].fns.len(),
+                {
+                    let path: String = types::cat5(mp.as_str(), "::", ty.as_str(), "::", m.impls[b].fns[c].name.name.as_str());
+                    if !is_live(share, path.as_str()) {
+                        let mut g: ast::FnDef = m.impls[b].fns[c].clone();
+                        let mut name: String = types::cat3(ty.as_str(), "__", g.name.name.as_str());
+                        let mut fuel: usize = fns.len().saturating_add(tys.len()).saturating_add(1);
+                        while fuel > 0 && taken(fns.as_slice(), tys.as_slice(), name.as_str())
+                            decreases fuel,
+                        {
+                            fuel = fuel - 1;
+                            name.push_str("_");
+                        }
+                        let mut vars: Vars = Vars { names: Vec::new() };
+                        refs::walk_fn::<Vars>(&mut g, unit.as_slice(), &mut vars);
+                        let mut this: String = String::from("this");
+                        let mut fuel2: usize = vars.names.len().saturating_add(g.params.len()).saturating_add(1);
+                        while fuel2 > 0 && (types::has(vars.names.as_slice(), this.as_str()) || has_param(&g, this.as_str()))
+                            decreases fuel2,
+                        {
+                            fuel2 = fuel2 - 1;
+                            this.push_str("_");
+                        }
+                        let np: usize = g.params.len();
+                        for q in 0..np
+                            invariant g.params.len() == np,
+                        {
+                            if g.params[q].name.name == "self" {
+                                g.params[q].name.name = this.clone();
+                            }
+                        }
+                        let mut itf: ImplToFree = ImplToFree { ty: ty.clone(), this: this.clone() };
+                        refs::walk_fn::<ImplToFree>(&mut g, unit.as_slice(), &mut itf);
+                        g.name.name = name.clone();
+                        conv.insert(path.as_str(), types::cat3(mp.as_str(), "::", name.as_str()));
+                        fns.push(g);
+                    }
+                }
+            }
+        }
+        m.fns = fns;
+        m.types = tys;
+        m.traits = traits;
+        m.trait_impls = tis;
+        m.impls = kept;
+        let inner: String = types::cat2(mp.as_str(), "::");
+        let count: usize = m.mods.len();
+        for z in 0..count
+            invariant m.mods.len() == count,
+        {
+            prune(&mut m.mods[z], inner.as_str(), share, conv, f - 1);
+        }
+    }
+
+    #[summary("Clauses as a JSON array: a refuted one with its counterexample and the spec fns seen only by name, an undecided one with its reason")]
+    #[effects(alloc)]
+    fn push_clauses(out: &mut String, cs: &[Clause], refuted: bool) -> () {
+        out.push_str("[");
+        for i in 0..cs.len()
+            invariant 0 <= i && i <= cs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            out.push_str("{\"clause\":");
+            std::json::push_string(out, cs[i].clause.as_str());
+            if refuted {
+                out.push_str(",\"counterexample\":");
+                std::json::push_string(out, cs[i].detail.as_str());
+                out.push_str(",\"opaque\":");
+                push_strs(out, cs[i].opaque.as_slice());
+            } else {
+                out.push_str(",\"why\":");
+                std::json::push_string(out, cs[i].detail.as_str());
+            }
+            out.push_str("}");
+        }
+        out.push_str("]");
+    }
+
+    #[summary("A text as a JSON string, null for none")]
+    #[effects(alloc)]
+    fn push_opt(out: &mut String, s: &Option<String>) -> () {
+        match s {
+            None => out.push_str("null"),
+            Some(t) => std::json::push_string(out, t.as_str()),
+        }
+    }
+
+    #[summary("Texts as a JSON array of strings")]
+    #[effects(alloc)]
+    fn push_strs(out: &mut String, xs: &[String]) -> () {
+        out.push_str("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, xs[i].as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[summary("Adds the clauses a direction's answers give to a row (the put of stage0 compare): a refuted clause with its counterexample and the spec fns seen only by name, by full path, among the lost ones of the forward direction or the gained ones of the backward; an undecided clause of the forward direction with the reason. Answers and clauses go together by position; kw says which clauses they are")]
+    #[effects(alloc)]
+    fn put(row: &mut Row, xs: &[prove::Answer], cs: &[ast::Expr], kw: &str, fwd: bool, unit: &str, back: &table::Table<String>) -> () {
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i < cs.len() {
+                let text: String = types::cat3(kw, " ", fmt::expr_text(&cs[i]).as_str());
+                if xs[i].kind == 1 {
+                    let mut opaque: Vec<String> = Vec::new();
+                    for o in 0..xs[i].opaque.len()
+                        invariant 0 <= o && o <= xs[i].opaque.len(),
+                    {
+                        opaque.push(full(xs[i].opaque[o].as_str(), unit, back));
+                    }
+                    if fwd {
+                        row.lost.push(Clause { clause: text.clone(), detail: xs[i].text.clone(), opaque: opaque.clone() });
+                    } else {
+                        row.gained.push(Clause { clause: text.clone(), detail: xs[i].text.clone(), opaque: opaque.clone() });
+                    }
+                } else if xs[i].kind == 2 && fwd {
+                    row.undecided.push(Clause { clause: text.clone(), detail: xs[i].text.clone(), opaque: Vec::new() });
+                }
+            }
+        }
+    }
+
+    #[summary("The revealed spec fns of list that the two surfaces reach through revealed bodies (stage0 reached)")]
+    #[effects(alloc)]
+    fn reached(ids: &mut identity::Ids, pr: &mut fmt::Printer, fns: &table::Table<types::FnSig>, a: &str, b: &str, list: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut work: Vec<String> = surface_refs(ids, pr, types::cat2("0:", a).as_str());
+        ast::append::<String>(&mut work, surface_refs(ids, pr, types::cat2("0:", b).as_str()));
+        let mut fuel: usize = 1000000000;
+        while work.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let k: String = match work.pop() {
+                None => String::new(),
+                Some(x) => x,
+            };
+            if kind_of(k.as_str()) == 0 && k.len() >= 2 {
+                let s: String = identity::path_of(k.as_str());
+                if !seen.has(s.as_str()) {
+                    seen.insert(s.as_str(), true);
+                    if is_spec(fns, s.as_str()) && types::has(list, s.as_str()) {
+                        out.push(s.clone());
+                        ast::append::<String>(&mut work, surface_refs(ids, pr, k.as_str()));
+                    }
+                }
+            }
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("The name of a relation in a row, as JSON; null for none")]
+    #[effects(alloc)]
+    fn rel_json(r: u8) -> String {
+        if r == 1 {
+            String::from("\"same\"")
+        } else if r == 2 {
+            String::from("\"weaker\"")
+        } else if r == 3 {
+            String::from("\"stronger\"")
+        } else if r == 4 {
+            String::from("\"incomparable\"")
+        } else if r == 5 {
+            String::from("\"undecided\"")
+        } else {
+            String::from("null")
+        }
+    }
+
+    #[summary("The relation of the new clauses to the old from the two directions (stage0 relation): fwd says whether the old side implies the new clauses, back the other way, each 0 proved, 1 refuted, 2 undecided. For requires, a refuted forward direction is a stronger precondition; for ensures, a weaker postcondition. 1 same, 2 weaker, 3 stronger, 4 incomparable, 5 undecided")]
+    #[effects(pure)]
+    fn relation(fwd: u8, back: u8, req: bool) -> u8 {
+        if fwd == 2 || back == 2 {
+            return 5;
+        }
+        let f_fails: bool = fwd == 1;
+        let b_fails: bool = back == 1;
+        if !f_fails && !b_fails {
+            1
+        } else if f_fails && b_fails {
+            4
+        } else if f_fails && req || b_fails && !req {
+            3
+        } else {
+            2
+        }
+    }
+
+    #[summary("The report as JSONL (stage0 WeakenOutput::report): the rows, the diagnostics, then a summary row with the rows per verdict and the obligations asked")]
+    #[effects(alloc)]
+    fn report(out: &Output) -> String {
+        let mut text: String = String::new();
+        let mut counts: Vec<u64> = Vec::new();
+        while counts.len() < 8
+            invariant counts.len() <= 8,
+            decreases 8 - counts.len(),
+        {
+            counts.push(0);
+        }
+        for i in 0..out.rows.len()
+            invariant 0 <= i && i <= out.rows.len() && counts.len() == 8,
+        {
+            text.push_str(row_json(&out.rows[i]).as_str());
+            text.push_str("\n");
+            let v: usize = out.rows[i].verdict as usize;
+            if v < 8 {
+                counts[v] = counts[v].saturating_add(1);
+            }
+        }
+        text.push_str(out.diagnostics.as_str());
+        text.push_str("{\"summary\":true,\"defs\":");
+        std::num::push_u64(&mut text, out.rows.len() as u64);
+        let names: Vec<String> = encode_terms::split("same,refined,compatible,weakened,undecided,signature,added,removed", 44);
+        for n in 0..names.len()
+            invariant 0 <= n && n <= names.len() && counts.len() == 8,
+        {
+            if n < 8 {
+                text.push_str(",\"");
+                text.push_str(names[n].as_str());
+                text.push_str("\":");
+                std::num::push_u64(&mut text, counts[n]);
+            }
+        }
+        text.push_str(",\"queries\":");
+        std::num::push_u64(&mut text, out.queries as u64);
+        text.push_str("}\n");
+        text
+    }
+
+    #[summary("The definition a path written at site in unit names, as the checker resolves it (stage0 resolve): its full path and how many segments name it (a variant's type leaves the variant after it). None for a type parameter, Self and what names no item of the program")]
+    #[effects(alloc)]
+    fn resolve(fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, traits: &[String], segs: &[String], site: &refs::Site, unit: &[String], tparams: &[String]) -> Option<Found> {
+        if segs.len() == 0 {
+            return None;
+        }
+        if types::has(tparams, segs[0].as_str()) || segs[0] == "Self" {
+            return None;
+        }
+        let n: usize = segs.len();
+        let u: String = encode_terms::join(unit, "::");
+        let local1: String = types::cat3(u.as_str(), "::", segs[0].as_str());
+        let whole: String = encode_terms::join(segs, "::");
+        let named: String = if n == 1 {
+            local1.clone()
+        } else {
+            whole.clone()
+        };
+        match site {
+            refs::Site::Call => target(fns, adts, traits, segs, u.as_str(), true),
+            refs::Site::Type => { if adts.has(named.as_str()) { Some(Found { path: named, n: n }) } else { None } },
+            refs::Site::Struct => { if adts.has(named.as_str()) { Some(Found { path: named, n: n }) } else { None } },
+            refs::Site::Variant => target(fns, adts, traits, segs, u.as_str(), false),
+            refs::Site::Bound => { if types::has(traits, named.as_str()) { Some(Found { path: named, n: n }) } else { None } },
+        }
+    }
+
+    #[summary("The spec fns a comparison reveals (stage0 reveal): both sides' contexts, and every spec fn the two surfaces reach through revealed bodies whose identity changed between the versions; in path order")]
+    #[effects(alloc)]
+    fn reveal(ids: &mut identity::Ids, pr: &mut fmt::Printer, fns: &table::Table<types::FnSig>, defs: &[codegen::Def], pg: &encode_spec::Prog, a: &str, b: &str, private: &table::Table<bool>, old_ids: &table::Table<bool>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            if defs[i].path.as_str() == a || defs[i].path.as_str() == b {
+                ast::append::<String>(&mut out, encode_decls::context_of(defs[i].path.as_str(), &defs[i].d, defs[i].unit.as_str(), &pg.pr));
+            }
+        }
+        let mut seen: table::Table<bool> = table::new::<bool>();
+        let mut work: Vec<String> = surface_refs(ids, pr, types::cat2("0:", a).as_str());
+        ast::append::<String>(&mut work, surface_refs(ids, pr, types::cat2("0:", b).as_str()));
+        for j in 0..out.len()
+            invariant 0 <= j && j <= out.len(),
+        {
+            work.push(types::cat2("0:", out[j].as_str()));
+        }
+        let mut fuel: usize = 1000000000;
+        while work.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let k: String = match work.pop() {
+                None => String::new(),
+                Some(x) => x,
+            };
+            if kind_of(k.as_str()) == 0 && k.len() >= 2 {
+                let s: String = identity::path_of(k.as_str());
+                if !seen.has(s.as_str()) {
+                    seen.insert(s.as_str(), true);
+                    if is_spec(fns, s.as_str()) {
+                        if changed(s.as_str(), private, ids, pr, old_ids) && !types::has(out.as_slice(), s.as_str()) {
+                            out.push(s.clone());
+                        }
+                        if types::has(out.as_slice(), s.as_str()) {
+                            ast::append::<String>(&mut work, surface_refs(ids, pr, k.as_str()));
+                        }
+                    }
+                }
+            }
+        }
+        body::sorted_set(out.as_slice())
+    }
+
+    #[summary("One row as JSON (stage0 Row::json): the paths, how they were matched, the verdict, the relations, the lost and gained clauses with their counterexamples, the undecided ones with their reasons, the reason of the row, and for a reader its uses and the revealed spec fns")]
+    #[effects(alloc)]
+    fn row_json(r: &Row) -> String {
+        let mut out: String = String::from("{\"def\":");
+        push_opt(&mut out, &r.def);
+        out.push_str(",\"old\":");
+        push_opt(&mut out, &r.prev);
+        out.push_str(",\"match\":");
+        push_opt(&mut out, &r.matched);
+        out.push_str(",\"verdict\":\"");
+        let names: Vec<String> = encode_terms::split("same,refined,compatible,weakened,undecided,signature,added,removed", 44);
+        if (r.verdict as usize) < names.len() {
+            out.push_str(names[r.verdict as usize].as_str());
+        }
+        out.push_str("\",\"requires\":");
+        out.push_str(rel_json(r.req).as_str());
+        out.push_str(",\"ensures\":");
+        out.push_str(rel_json(r.ens).as_str());
+        out.push_str(",\"effects\":");
+        out.push_str(rel_json(r.effects).as_str());
+        out.push_str(",\"lost\":");
+        push_clauses(&mut out, r.lost.as_slice(), true);
+        out.push_str(",\"gained\":");
+        push_clauses(&mut out, r.gained.as_slice(), true);
+        out.push_str(",\"undecided\":");
+        push_clauses(&mut out, r.undecided.as_slice(), false);
+        out.push_str(",\"why\":");
+        push_opt(&mut out, &r.why);
+        if r.reader {
+            out.push_str(",\"uses\":");
+            push_strs(&mut out, r.uses.as_slice());
+            out.push_str(",\"revealed\":");
+            push_strs(&mut out, r.revealed.as_slice());
+        }
+        out.push_str("}");
+        out
+    }
+
+    #[summary("Whether two definitions are of the same kind")]
+    #[effects(pure)]
+    fn same_kind(a: &ast::FnDef, b: &ast::FnDef) -> bool {
+        body::is_spec(a.kind) == body::is_spec(b.kind) && body::is_proof(a.kind) == body::is_proof(b.kind)
+    }
+
+    #[summary("Whether the aligned signatures of an old definition and its new one are the same, the old type parameters written as the new ones by position: a type the alignment could not share makes them differ. False when one of them has no signature")]
+    #[effects(alloc)]
+    fn same_types(fns: &table::Table<types::FnSig>, oc: &str, n: &str) -> bool {
+        let so: usize = match fns.find(oc) {
+            None => { return false; },
+            Some(x) => x,
+        };
+        let sn: usize = match fns.find(n) {
+            None => { return false; },
+            Some(y) => y,
+        };
+        let sub: types::Subst = tsub(fns, oc, n);
+        if fns.items[so].params.len() != fns.items[sn].params.len() {
+            return false;
+        }
+        for i in 0..fns.items[so].params.len()
+            invariant 0 <= i && i <= fns.items[so].params.len(),
+        {
+            if i < fns.items[sn].params.len() && types::text(&types::subst(&fns.items[so].params[i], &sub)) != types::text(&fns.items[sn].params[i]) {
+                return false;
+            }
+        }
+        types::text(&types::subst(&fns.items[so].ret, &sub)) == types::text(&fns.items[sn].ret)
+    }
+
+    #[summary("Puts #[uses(list)] in place of the #[uses] of the function at path, free or in an impl T block, of unit m or a unit in it (stage0 def_mut and the attribute compare writes): none for an empty list. Whether the function was found. f is the remaining depth")]
+    #[effects(alloc)]
+    fn set_uses(m: &mut ast::Mod, prefix: &str, path: &str, list: &[String], f: usize) -> bool
+        decreases f,
+    {
+        if f == 0 {
+            return false;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let pre: String = types::cat2(mp.as_str(), "::");
+        if !encode_terms::starts_at(path, 0, pre.as_str()) {
+            return false;
+        }
+        let rest: String = lexer::cut(path, pre.len(), path.len());
+        let mut fi: usize = m.fns.len();
+        for i in 0..m.fns.len()
+            invariant 0 <= i && i <= m.fns.len() && fi <= m.fns.len(),
+        {
+            if fi == m.fns.len() && m.fns[i].name.name == rest {
+                fi = i;
+            }
+        }
+        if fi < m.fns.len() {
+            let g: ast::FnDef = with_uses(&m.fns[fi], list);
+            m.fns[fi] = g;
+            return true;
+        }
+        match std::str::find(rest.as_str(), "::") {
+            None => {},
+            Some(c) => { let ty: String = lexer::cut(rest.as_str(), 0, c); let name: String = lexer::cut(rest.as_str(), c.saturating_add(2), rest.len()); let mut ii: usize = m.impls.len(); for a in 0..m.impls.len() invariant 0 <= a && a <= m.impls.len() && ii <= m.impls.len(), { if ii == m.impls.len() && m.impls[a].ty.name == ty { ii = a; } } if ii < m.impls.len() { let mut ki: usize = m.impls[ii].fns.len(); for b in 0..m.impls[ii].fns.len() invariant 0 <= b && b <= m.impls[ii].fns.len() && ki <= m.impls[ii].fns.len(), { if ki == m.impls[ii].fns.len() && m.impls[ii].fns[b].name.name == name { ki = b; } } if ki < m.impls[ii].fns.len() { let h: ast::FnDef = with_uses(&m.impls[ii].fns[ki], list); m.impls[ii].fns[ki] = h; return true; } } },
+        }
+        let count: usize = m.mods.len();
+        for s in 0..count
+            invariant m.mods.len() == count,
+        {
+            if set_uses(&mut m.mods[s], pre.as_str(), path, list, f - 1) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("Which old items the aligned program shares with the new version (stage0 shared): old path to new path; a removed entry is empty. An old item is shared with the new item of its own path and identity, else with the one new item of its identity unless it is of a trait; a compared definition keeps its old copy; an impl function goes with its type into the shared type's impl, and a changed one of a generic impl unshares the type; and nothing shared refers to an unshared item")]
+    #[effects(alloc)]
+    fn shared(ot: &table::Table<types::FnSig>, io: &mut identity::Ids, opr: &mut fmt::Printer, inw: &mut identity::Ids, npr: &mut fmt::Printer, nt: &table::Table<types::FnSig>, compared: &[String]) -> table::Table<String> {
+        let mut by_id: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..inw.ents.len()
+            invariant 0 <= n,
+        {
+            let k: String = inw.ents.key(n);
+            if k.len() >= 2 && item(k.as_str(), nt) {
+                match inw.get(npr, k.as_str()) {
+                    None => {},
+                    Some(h) => { let slot: String = types::cat2(lexer::cut(k.as_str(), 0, 2).as_str(), h.id.as_str()); let mut list: Vec<String> = match by_id.find(slot.as_str()) { None => Vec::new(), Some(b) => by_id.items[b].clone(), }; list.push(identity::path_of(k.as_str())); by_id.insert(slot.as_str(), list); },
+                }
+            }
+        }
+        let mut share: table::Table<String> = table::new::<String>();
+        let mut keys: table::Table<String> = table::new::<String>();
+        for o in 0..io.ents.len()
+            invariant 0 <= o,
+        {
+            let ok: String = io.ents.key(o);
+            if ok.len() >= 2 && item(ok.as_str(), ot) {
+                let p: String = identity::path_of(ok.as_str());
+                match io.get(opr, ok.as_str()) {
+                    None => {},
+                    Some(oh) => { match by_id.find(types::cat2(lexer::cut(ok.as_str(), 0, 2).as_str(), oh.id.as_str()).as_str()) { None => {}, Some(ns) => { if types::has(by_id.items[ns].as_slice(), p.as_str()) { share.insert(p.as_str(), p.clone()); keys.insert(p.as_str(), ok.clone()); } else if by_id.items[ns].len() == 1 && !in_trait(ok.as_str(), ot) { share.insert(p.as_str(), by_id.items[ns][0].clone()); keys.insert(p.as_str(), ok.clone()); } }, } },
+                }
+            }
+        }
+        for c in 0..compared.len()
+            invariant 0 <= c && c <= compared.len(),
+        {
+            drop_path(&mut share, compared[c].as_str());
+        }
+        let mut impl_fns: Vec<ImplFn> = Vec::new();
+        for f in 0..ot.len()
+            invariant 0 <= f,
+        {
+            match ot.nth(f) {
+                None => {},
+                Some(fa) => { let fp: String = ot.key(f); if ot.items[fa].in_impl && !encode_terms::starts_at(fp.as_str(), 0, "<") && !ot.items[fa].builtin { match lint_syntax::rfind(fp.as_str(), "::") { None => {}, Some(cut) => impl_fns.push(ImplFn { ty: lexer::cut(fp.as_str(), 0, cut), f: fp.clone(), generic: ot.items[fa].impl_generics > 0 }), } } },
+            }
+        }
+        let mut fuel: usize = share.len().saturating_add(2);
+        while fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let before: usize = count_live(&share);
+            for i in 0..impl_fns.len()
+                invariant 0 <= i && i <= impl_fns.len(),
+            {
+                let fine: bool = match live(&share, impl_fns[i].ty.as_str()) {
+                    None => false,
+                    Some(nty) => match live(&share, impl_fns[i].f.as_str()) { None => false, Some(nf) => match lint_syntax::rfind(nf.as_str(), "::") { None => false, Some(cut2) => lexer::cut(nf.as_str(), 0, cut2) == nty, }, },
+                };
+                if !fine {
+                    drop_path(&mut share, impl_fns[i].f.as_str());
+                    if impl_fns[i].generic {
+                        drop_path(&mut share, impl_fns[i].ty.as_str());
+                    }
+                }
+            }
+            let mut gone: Vec<String> = Vec::new();
+            for s in 0..share.len()
+                invariant 0 <= s,
+            {
+                let sp: String = share.key(s);
+                if is_live(&share, sp.as_str()) {
+                    match keys.find(sp.as_str()) {
+                        None => {},
+                        Some(ka) => { let key: String = keys.items[ka].clone(); if io.ents.has(key.as_str()) { let rs: Vec<String> = io.succ(opr, key.as_str()); let mut lost: bool = false; for r in 0..rs.len() invariant 0 <= r && r <= rs.len(), { if !is_live(&share, identity::path_of(rs[r].as_str()).as_str()) { lost = true; } } if lost { gone.push(sp.clone()); } } },
+                    }
+                }
+            }
+            for g in 0..gone.len()
+                invariant 0 <= g && g <= gone.len(),
+            {
+                drop_path(&mut share, gone[g].as_str());
+            }
+            if count_live(&share) == before {
+                fuel = 0;
+            }
+        }
+        share
+    }
+
+    #[summary("How the signatures differ (stage0 signature_change): type parameters, parameters, result, by type identity, so that a renamed type is the same")]
+    #[effects(alloc)]
+    fn signature_change(o: &types::FnSig, io: &mut identity::Ids, opr: &mut fmt::Printer, n: &types::FnSig, inw: &mut identity::Ids, npr: &mut fmt::Printer) -> Option<String> {
+        let mut go: Vec<String> = Vec::new();
+        for i in 0..o.generics.len()
+            invariant 0 <= i && i <= o.generics.len(),
+        {
+            go.push(o.generics[i].name.clone());
+        }
+        let mut gn: Vec<String> = Vec::new();
+        for j in 0..n.generics.len()
+            invariant 0 <= j && j <= n.generics.len(),
+        {
+            gn.push(n.generics[j].name.clone());
+        }
+        if go.len() != gn.len() {
+            return Some(types::cat4("type parameters: ", encode_terms::dec(go.len() as u64).as_str(), " -> ", encode_terms::dec(gn.len() as u64).as_str()));
+        }
+        if o.params.len() != n.params.len() {
+            return Some(types::cat4("parameters: ", encode_terms::dec(o.params.len() as u64).as_str(), " -> ", encode_terms::dec(n.params.len() as u64).as_str()));
+        }
+        for k in 0..o.params.len()
+            invariant 0 <= k && k <= o.params.len(),
+        {
+            if k < n.params.len() && ty_key(&o.params[k], io, opr, go.as_slice(), 100000) != ty_key(&n.params[k], inw, npr, gn.as_slice(), 100000) {
+                let mut why: String = types::cat3("parameter ", encode_terms::dec((k as u64).saturating_add(1)).as_str(), ": `");
+                why.push_str(types::text(&o.params[k]).as_str());
+                why.push_str("` -> `");
+                why.push_str(types::text(&n.params[k]).as_str());
+                why.push_str("`");
+                return Some(why);
+            }
+        }
+        if ty_key(&o.ret, io, opr, go.as_slice(), 100000) != ty_key(&n.ret, inw, npr, gn.as_slice(), 100000) {
+            return Some(types::cat5("result: `", types::text(&o.ret).as_str(), "` -> `", types::text(&n.ret).as_str(), "`"));
+        }
+        None
+    }
+
+    #[summary("The comparisons that need the solver (the second half of stage0 compare): the two versions aligned into one program, which must check and keep every old item's identity, else the rows are undecided with the reason; what each comparison reveals; then round by round, a definition once per round, the refinement obligations of each pair forward and, unless for a reader, backward, and the rows from their answers. Gives the obligations asked")]
+    #[effects(alloc, io, nondet)]
+    fn solve(rows: &mut Vec<Row>, asks: &[Ask], reading: bool, prev: &body::Checked, new: &body::Checked, new_files: &[lib::Input], od: &table::Table<Def>, nd: &table::Table<Def>, io: &mut identity::Ids, opr: &mut fmt::Printer, inw: &mut identity::Ids, npr: &mut fmt::Printer) -> usize {
+        let mut cmp: Vec<String> = Vec::new();
+        for i in 0..asks.len()
+            invariant 0 <= i && i <= asks.len(),
+        {
+            cmp.push(asks[i].o.clone());
+        }
+        let compared: Vec<String> = body::sorted_set(cmp.as_slice());
+        let al: Aligned = align(prev, io, opr, new_files, new, inw, npr, compared.as_slice());
+        let mut csm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut cdg: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fc: lib::Front = lib::frontend(al.files.as_slice(), &mut csm, &mut cdg);
+        let mut cw: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let mut ic: identity::Ids = identity::new(&fc.ck.program, &fc.ck.b.c.fns, &fc.ck.b.c.adts, &mut cw);
+        let mut cpr: fmt::Printer = fmt::identity(fc.ck.b.c.fns.clone(), fc.ck.b.c.adts.clone(), fc.ck.b.types.clone(), cw.traits.clone());
+        let ready: Option<String> = if cdg.has_errors() {
+            let first: String = if cdg.items.len() > 0 {
+                types::cat3(cdg.items[0].code.as_str(), ": ", cdg.items[0].message.as_str())
+            } else {
+                String::new()
+            };
+            Some(types::cat3("the two versions could not be checked as one program (", first.as_str(), ")"))
+        } else {
+            audit(io, opr, &mut ic, &mut cpr, &al)
+        };
+        match ready {
+            None => {},
+            Some(why) => { for a in 0..asks.len() invariant 0 <= a && a <= asks.len(), { if asks[a].k < rows.len() { stay_undecided(rows, asks[a].k, why.as_str()); } } return 0; },
+        }
+        let mut old_ids: table::Table<bool> = table::new::<bool>();
+        for n in 0..io.ents.len()
+            invariant 0 <= n,
+        {
+            let ok: String = io.ents.key(n);
+            match io.get(opr, ok.as_str()) {
+                None => {},
+                Some(h) => old_ids.insert(h.id.as_str(), true),
+            }
+        }
+        let mut private: table::Table<bool> = table::new::<bool>();
+        let mut back: table::Table<String> = table::new::<String>();
+        for u in 0..al.units.len()
+            invariant 0 <= u,
+        {
+            match al.units.nth(u) {
+                None => {},
+                Some(ua) => { private.insert(al.units.items[ua].as_str(), true); back.insert(al.units.items[ua].as_str(), al.units.key(u)); },
+            }
+        }
+        let cdefs: Vec<codegen::Def> = lint::defs_of(&fc.ck);
+        let pgc: encode_spec::Prog = encode_spec::prog_of(&fc.ck);
+        let mut lists: Vec<Option<Vec<String>>> = Vec::new();
+        for i2 in 0..asks.len()
+            invariant 0 <= i2 && i2 <= asks.len() && lists.len() == i2,
+        {
+            let oc: String = match al.at.find(asks[i2].o.as_str()) {
+                None => String::new(),
+                Some(x) => al.at.items[x].clone(),
+            };
+            if !same_types(&fc.ck.b.c.fns, oc.as_str(), asks[i2].n.as_str()) {
+                if asks[i2].k < rows.len() {
+                    stay_undecided(rows, asks[i2].k, types::cat3("a type of `", asks[i2].o.as_str(), "`'s signature could not be shared between the versions").as_str());
+                }
+                lists.push(None);
+            } else if !asks[i2].reader {
+                lists.push(Some(reveal(&mut ic, &mut cpr, &fc.ck.b.c.fns, cdefs.as_slice(), &pgc, asks[i2].n.as_str(), oc.as_str(), &private, &old_ids)));
+            } else {
+                let mut list: Vec<String> = Vec::new();
+                for v in 0..asks[i2].uses.len()
+                    invariant 0 <= v && v <= asks[i2].uses.len(),
+                {
+                    if is_spec(&new.b.c.fns, asks[i2].uses[v].as_str()) {
+                        list.push(asks[i2].uses[v].clone());
+                    }
+                    if is_spec(&prev.b.c.fns, asks[i2].uses[v].as_str()) {
+                        match al.paths.find(asks[i2].uses[v].as_str()) {
+                            None => {},
+                            Some(q) => list.push(al.paths.items[q].clone()),
+                        }
+                    }
+                }
+                ast::append::<String>(&mut list, contract_specs(cdefs.as_slice(), &pgc, &fc.ck.b.c.fns, asks[i2].n.as_str()));
+                ast::append::<String>(&mut list, contract_specs(cdefs.as_slice(), &pgc, &fc.ck.b.c.fns, oc.as_str()));
+                let set: Vec<String> = body::sorted_set(list.as_slice());
+                let seen: Vec<String> = reached(&mut ic, &mut cpr, &fc.ck.b.c.fns, asks[i2].n.as_str(), oc.as_str(), set.as_slice());
+                let mut shown: Vec<String> = Vec::new();
+                for w in 0..seen.len()
+                    invariant 0 <= w && w <= seen.len(),
+                {
+                    shown.push(full(seen[w].as_str(), "", &back));
+                }
+                if asks[i2].k < rows.len() {
+                    rows[asks[i2].k].revealed = body::sorted_set(shown.as_slice());
+                }
+                lists.push(Some(set));
+            }
+        }
+        let mut queries: usize = 0;
+        let mut done: Vec<bool> = Vec::new();
+        for d in 0..asks.len()
+            invariant 0 <= d && d <= asks.len() && done.len() == d,
+        {
+            done.push(false);
+        }
+        let mut fuel: usize = asks.len().saturating_add(1);
+        while fuel > 0
+            invariant done.len() == asks.len() && lists.len() == asks.len(),
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let mut names: Vec<String> = Vec::new();
+            let mut round: Vec<usize> = Vec::new();
+            for r in 0..asks.len()
+                invariant 0 <= r && r <= asks.len() && done.len() == asks.len() && lists.len() == asks.len(),
+            {
+                if !done[r] && is_list(&lists[r]) && !types::has(names.as_slice(), asks[r].n.as_str()) {
+                    names.push(asks[r].n.clone());
+                    round.push(r);
+                    done[r] = true;
+                }
+            }
+            if round.len() == 0 {
+                fuel = 0;
+            } else {
+                queries = queries.saturating_add(one_round(rows, asks, round.as_slice(), lists.as_slice(), reading, &fc.ck, &al, od, nd, &back));
+            }
+        }
+        queries
+    }
+
+    #[summary("The pieces of a path between its `::`")]
+    #[effects(alloc)]
+    fn split_on(s: &str) -> Vec<String> {
+        prove::split_on(s, "::")
+    }
+
+    #[summary("Makes a comparison the solver could not make undecided, with the reason (the undecided of stage0 compare): weakened still when the effect alone weakens the contract")]
+    #[effects(alloc)]
+    fn stay_undecided(rows: &mut Vec<Row>, k: usize, why: &str) -> ()
+        requires k < rows.len(),
+    {
+        rows[k].verdict = if rows[k].effects == 2 {
+            3
+        } else {
+            4
+        };
+        rows[k].req = 5;
+        rows[k].ens = 5;
+        rows[k].why = Some(String::from(why));
+    }
+
+    #[summary("Removes the requires, the ensures and the #[uses] of every function of unit m and of the units in it (the strip of stage0 body_ids): free functions, impl functions, trait impl functions and trait methods. f is the remaining depth")]
+    #[effects(alloc)]
+    fn strip(m: &mut ast::Mod, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let nf: usize = m.fns.len();
+        for i in 0..nf
+            invariant m.fns.len() == nf,
+        {
+            let g: ast::FnDef = stripped(&m.fns[i]);
+            m.fns[i] = g;
+        }
+        let ni: usize = m.impls.len();
+        for a in 0..ni
+            invariant m.impls.len() == ni,
+        {
+            let mut fs: Vec<ast::FnDef> = Vec::new();
+            for b in 0..m.impls[a].fns.len()
+                invariant 0 <= b && b <= m.impls[a].fns.len(),
+            {
+                fs.push(stripped(&m.impls[a].fns[b]));
+            }
+            m.impls[a].fns = fs;
+        }
+        let nt: usize = m.trait_impls.len();
+        for c in 0..nt
+            invariant m.trait_impls.len() == nt,
+        {
+            let mut ts: Vec<ast::FnDef> = Vec::new();
+            for d in 0..m.trait_impls[c].fns.len()
+                invariant 0 <= d && d <= m.trait_impls[c].fns.len(),
+            {
+                ts.push(stripped(&m.trait_impls[c].fns[d]));
+            }
+            m.trait_impls[c].fns = ts;
+        }
+        let nr: usize = m.traits.len();
+        for e in 0..nr
+            invariant m.traits.len() == nr,
+        {
+            let mut ms: Vec<ast::TraitFn> = Vec::new();
+            for h in 0..m.traits[e].fns.len()
+                invariant 0 <= h && h <= m.traits[e].fns.len(),
+            {
+                ms.push(ast::TraitFn { f: stripped(&m.traits[e].fns[h].f), has_body: m.traits[e].fns[h].has_body });
+            }
+            m.traits[e].fns = ms;
+        }
+        let count: usize = m.mods.len();
+        for s in 0..count
+            invariant m.mods.len() == count,
+        {
+            strip(&mut m.mods[s], f - 1);
+        }
+    }
+
+    #[summary("A function without its requires, its ensures and its #[uses]")]
+    #[effects(alloc)]
+    fn stripped(d: &ast::FnDef) -> ast::FnDef {
+        let mut g: ast::FnDef = d.clone();
+        g.pre = Vec::new();
+        g.post = Vec::new();
+        g.attrs = without_uses(d.attrs.as_slice());
+        g
+    }
+
+    #[summary("The items the surface of key refers to (stage0 Ids::surface_refs): a function's text without its body (signature, #[uses], contract), a spec fn's with its body, a type's or a trait's whole text")]
+    #[effects(alloc)]
+    fn surface_refs(ids: &mut identity::Ids, pr: &mut fmt::Printer, key: &str) -> Vec<String> {
+        let at: usize = match ids.ents.find(key) {
+            None => { return Vec::new(); },
+            Some(x) => x,
+        };
+        let mut order: Vec<String> = Vec::new();
+        let mut surface: bool = false;
+        match &ids.ents.items[at].kind {
+            identity::EntKind::Def(d, c) => { surface = !body::is_spec(d.kind); },
+            identity::EntKind::Type(td) => {},
+            identity::EntKind::Trait(t) => { order = identity::method_names(t); },
+        }
+        pr.names.mode = fmt::Mode::Collect;
+        pr.names.seen = Vec::new();
+        let text: String = if surface {
+            ids.print(pr, key, &identity::Part::Iface, order.as_slice())
+        } else {
+            ids.print(pr, key, &identity::Part::Body, order.as_slice())
+        };
+        pr.names.mode = fmt::Mode::Identity;
+        let mut found: Vec<String> = Vec::new();
+        for i in 0..pr.names.seen.len()
+            invariant 0 <= i && i <= pr.names.seen.len(),
+        {
+            if ids.ents.has(pr.names.seen[i].as_str()) {
+                found.push(pr.names.seen[i].clone());
+            }
+        }
+        found
+    }
+
+    #[summary("Whether a function or a type of the unit so far has this name")]
+    #[effects(pure)]
+    fn taken(fns: &[ast::FnDef], tys: &[ast::TypeDef], name: &str) -> bool {
+        for i in 0..fns.len()
+            invariant 0 <= i && i <= fns.len(),
+        {
+            if fns[i].name.name.as_str() == name {
+                return true;
+            }
+        }
+        for j in 0..tys.len()
+            invariant 0 <= j && j <= tys.len(),
+        {
+            if tys[j].name.name.as_str() == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("What a path at a call or a variant names (the last arm of stage0 resolve): a function of the unit by its name (a call only); with two segments of which the first is a type or trait of the unit, its function, or else the type; a function by its full path; or the type before the last segment")]
+    #[effects(alloc)]
+    fn target(fns: &table::Table<types::FnSig>, adts: &table::Table<types::Adt>, traits: &[String], segs: &[String], u: &str, call: bool) -> Option<Found> {
+        let n: usize = segs.len();
+        if n == 0 {
+            return None;
+        }
+        let local1: String = types::cat3(u, "::", segs[0].as_str());
+        if n == 1 {
+            return if call && is_fn(fns, local1.as_str()) { Some(Found { path: local1, n: 1 }) } else { None };
+        }
+        if n == 2 && (adts.has(local1.as_str()) || types::has(traits, local1.as_str())) {
+            let local2: String = types::cat3(local1.as_str(), "::", segs[1].as_str());
+            if is_fn(fns, local2.as_str()) {
+                return Some(Found { path: local2, n: 2 });
+            }
+            return if adts.has(local1.as_str()) { Some(Found { path: local1, n: 1 }) } else { None };
+        }
+        let whole: String = encode_terms::join(segs, "::");
+        if is_fn(fns, whole.as_str()) {
+            return Some(Found { path: whole, n: n });
+        }
+        let before: String = head(segs, n - 1);
+        if adts.has(before.as_str()) {
+            Some(Found { path: before, n: n - 1 })
+        } else {
+            None
+        }
+    }
+
+    #[summary("Whether a text is held and is s")]
+    #[effects(pure)]
+    fn text_is(o: &Option<String>, s: &str) -> bool {
+        match o {
+            None => false,
+            Some(t) => t.as_str() == s,
+        }
+    }
+
+    #[summary("Where an old path is in the aligned program (the to of stage0 align): a moved impl function in its unit under the private name; a shared item at its new path; a method of a shared trait at its own path (traits are shared only under their own path); anything else under the private name of its unit")]
+    #[effects(alloc)]
+    fn to_path(p: &str, conv: &table::Table<String>, share: &table::Table<String>, units: &table::Table<String>, traits: &[String]) -> String {
+        match conv.find(p) {
+            None => {},
+            Some(c) => { return private(conv.items[c].as_str(), units); },
+        }
+        match live(share, p) {
+            None => {},
+            Some(n) => { return n; },
+        }
+        match lint_syntax::rfind(p, "::") {
+            None => {},
+            Some(cut) => { let tr: String = lexer::cut(p, 0, cut); if is_live(share, tr.as_str()) && types::has(traits, tr.as_str()) { return String::from(p); } },
+        }
+        private(p, units)
+    }
+
+    #[summary("The type parameters of from by those of to, by position (the tsub of stage0 compare)")]
+    #[effects(alloc)]
+    fn tsub(fns: &table::Table<types::FnSig>, from: &str, to: &str) -> types::Subst {
+        let mut sub: types::Subst = types::Subst { names: Vec::new(), tys: Vec::new() };
+        match fns.find(from) {
+            None => {},
+            Some(a) => { match fns.find(to) { None => {}, Some(b) => { for i in 0..fns.items[a].generics.len() invariant 0 <= i && i <= fns.items[a].generics.len(), { if i < fns.items[b].generics.len() { sub.names.push(fns.items[a].generics[i].name.clone()); sub.tys.push(ast::TypeKind::Param(fns.items[b].generics[i].name.clone())); } } }, } },
+        }
+        sub
+    }
+
+    #[summary("A type with named types by identity and type parameters by position (stage0 ty_key): equal for two versions exactly when the type is the same up to names. f is the remaining depth")]
+    #[effects(alloc)]
+    fn ty_key(t: &ast::TypeKind, ids: &mut identity::Ids, pr: &mut fmt::Printer, tparams: &[String], f: usize) -> String
+        decreases f,
+    {
+        if f == 0 {
+            return String::new();
+        }
+        match t {
+            ast::TypeKind::Int(_) => types::text(t),
+            ast::TypeKind::F64 => types::text(t),
+            ast::TypeKind::Bool => types::text(t),
+            ast::TypeKind::Unit => types::text(t),
+            ast::TypeKind::Char => types::text(t),
+            ast::TypeKind::String => types::text(t),
+            ast::TypeKind::Str => types::text(t),
+            ast::TypeKind::Array(e, len) => types::cat5("[", ty_key(&e.kind, ids, pr, tparams, f - 1).as_str(), "; ", encode_terms::dec(*len).as_str(), "]"),
+            ast::TypeKind::ArrayN(_, _) => types::text(t),
+            ast::TypeKind::Slice(e) => types::cat3("[", ty_key(&e.kind, ids, pr, tparams, f - 1).as_str(), "]"),
+            ast::TypeKind::Ref(mutable, inner) => { if *mutable { types::cat2("&mut ", ty_key(&inner.kind, ids, pr, tparams, f - 1).as_str()) } else { types::cat2("&", ty_key(&inner.kind, ids, pr, tparams, f - 1).as_str()) } },
+            ast::TypeKind::Named(path, args) => { let whole: String = encode_terms::join(path.as_slice(), "::"); let mut out: String = match ids.get(pr, types::cat2("1:", whole.as_str()).as_str()) { None => whole.clone(), Some(h) => h.id.clone(), }; out.push_str("<"); for i in 0..args.len() invariant 0 <= i && i <= args.len(), { if i > 0 { out.push_str(", "); } out.push_str(ty_key(&args[i].kind, ids, pr, tparams, f - 1).as_str()); } out.push_str(">"); out },
+            ast::TypeKind::Vec(e) => types::cat3("Vec<", ty_key(&e.kind, ids, pr, tparams, f - 1).as_str(), ">"),
+            ast::TypeKind::Box(e) => types::cat3("Box<", ty_key(&e.kind, ids, pr, tparams, f - 1).as_str(), ">"),
+            ast::TypeKind::Param(n) => { let mut at: usize = tparams.len(); for j in 0..tparams.len() invariant 0 <= j && j <= tparams.len() && at <= tparams.len(), { if at == tparams.len() && tparams[j].as_str() == n.as_str() { at = j; } } if at < tparams.len() { types::cat2("'", encode_terms::dec(at as u64).as_str()) } else { types::cat2("'", n.as_str()) } },
+            ast::TypeKind::Never => types::text(t),
+            ast::TypeKind::Error => types::text(t),
+        }
+    }
+
+    #[summary("W0908 for a weakened row, at the new version (the end of stage0 compare): the first lost clause, with its counterexample, the spec fns seen only by name, and how many more there are. None for a row without both paths")]
+    #[effects(alloc)]
+    fn warning(r: &Row, nd: &table::Table<Def>) -> Option<diag::Diag> {
+        let n: String = match &r.def {
+            None => { return None; },
+            Some(x) => x.clone(),
+        };
+        let o: String = match &r.prev {
+            None => { return None; },
+            Some(y) => y.clone(),
+        };
+        let at: usize = nd.find(n.as_str())?;
+        if r.lost.len() == 0 {
+            return None;
+        }
+        let mut span: source::Span = nd.items[at].d.name.span;
+        let mut what: String = String::from("the effect went from `pure` to `io`");
+        if encode_terms::starts_at(r.lost[0].clause.as_str(), 0, "new requires ") {
+            let c: String = lexer::cut(r.lost[0].clause.as_str(), 13, r.lost[0].clause.len());
+            let mut hit: bool = false;
+            for i in 0..nd.items[at].d.pre.len()
+                invariant 0 <= i && i <= nd.items[at].d.pre.len(),
+            {
+                if !hit && fmt::expr_text(&nd.items[at].d.pre[i]) == c {
+                    hit = true;
+                    span = nd.items[at].d.pre[i].span;
+                }
+            }
+            what = types::cat3("precondition `", c.as_str(), "` is not implied by the old preconditions");
+        } else if encode_terms::starts_at(r.lost[0].clause.as_str(), 0, "old ensures ") {
+            let c2: String = lexer::cut(r.lost[0].clause.as_str(), 12, r.lost[0].clause.len());
+            let np: usize = nd.items[at].d.post.len();
+            if np > 0 {
+                span = nd.items[at].d.post[0].span.to(nd.items[at].d.post[np - 1].span);
+            }
+            what = types::cat3("old postcondition `", c2.as_str(), "` is not implied by the new contract");
+        }
+        let mut msg: String = types::cat5("the contract of `", n.as_str(), "` is weaker than the old one (`", o.as_str(), "`): ");
+        msg.push_str(what.as_str());
+        if r.lost[0].detail.len() > 0 && r.lost[0].clause != "effects pure" {
+            msg.push_str("; counterexample: ");
+            msg.push_str(r.lost[0].detail.as_str());
+        }
+        if r.lost[0].opaque.len() > 0 {
+            let mut names: Vec<String> = Vec::new();
+            for j in 0..r.lost[0].opaque.len()
+                invariant 0 <= j && j <= r.lost[0].opaque.len(),
+            {
+                names.push(types::cat3("`", r.lost[0].opaque[j].as_str(), "`"));
+            }
+            msg.push_str(types::cat3(", with ", encode_terms::join(names.as_slice(), ", ").as_str(), " seen only by name (neither version reveals it)").as_str());
+        }
+        if r.lost.len() > 1 {
+            msg.push_str(types::cat3(" (and ", encode_terms::dec((r.lost.len() - 1) as u64).as_str(), " more)").as_str());
+        }
+        Some(diag::fix(diag::new("W0908", span, msg.as_str()), "callers may rely on the old contract: keep it, or change it only by weakening `requires` or strengthening `ensures` (a refinement)", None))
+    }
+
+    #[summary("A function with #[uses(list)] in place of its #[uses], none for an empty list; the attribute stands at the function's name")]
+    #[effects(alloc)]
+    fn with_uses(d: &ast::FnDef, list: &[String]) -> ast::FnDef {
+        let mut g: ast::FnDef = d.clone();
+        let mut attrs: Vec<ast::Attr> = without_uses(d.attrs.as_slice());
+        if list.len() > 0 {
+            let mut args: Vec<ast::AttrArg> = Vec::new();
+            for i in 0..list.len()
+                invariant 0 <= i && i <= list.len(),
+            {
+                args.push(ast::AttrArg::Ident(ast::Ident { name: list[i].clone(), span: d.name.span }));
+            }
+            attrs.push(ast::Attr { name: ast::Ident { name: String::from("uses"), span: d.name.span }, args: args, span: d.name.span });
+        }
+        g.attrs = attrs;
+        g
+    }
+
+    #[summary("The attributes that are no #[uses]")]
+    #[effects(alloc)]
+    fn without_uses(attrs: &[ast::Attr]) -> Vec<ast::Attr> {
+        let mut out: Vec<ast::Attr> = Vec::new();
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name != "uses" {
+                out.push(attrs[i].clone());
+            }
+        }
+        out
+    }
+}

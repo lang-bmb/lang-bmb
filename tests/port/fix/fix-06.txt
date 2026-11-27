@@ -1,0 +1,11 @@
+#[summary("x")]
+mod m {
+    #[effects(pure)]
+    fn f() -> i64 {
+        let mut i: i64 = 5;
+        while i > 0 {
+            i = i - 1;
+        }
+        i
+    }
+}

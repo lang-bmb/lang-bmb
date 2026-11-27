@@ -1,0 +1,8 @@
+#[summary("t")]
+mod m {
+    #[effects(io)]
+    fn f(c: char) -> () {
+        print_bytes("café \"x\"\n");
+        let n: u8 = 'a';
+    }
+}

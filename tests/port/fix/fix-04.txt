@@ -1,0 +1,5 @@
+#[summary("a")]
+mod a {
+    #[effects(pure)]
+    fn f(x: i128) -> i64 { x }
+}

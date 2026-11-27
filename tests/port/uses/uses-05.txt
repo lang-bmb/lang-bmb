@@ -1,0 +1,12 @@
+#[summary("bv")]
+mod b {
+    spec fn low(x: u32) -> u32 { x & 0xff }
+
+    spec fn twice(x: u32) -> u32 { low(low(x)) }
+
+    #[effects(pure)]
+    fn f(x: u32) -> u32 {
+        assert(twice(x) == x & 0xff) by (bit_vector);
+        x
+    }
+}

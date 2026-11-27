@@ -1,0 +1,59 @@
+#[summary("habits with mechanical fixes")]
+mod shapes {
+    #[derive(Clone, Copy)]
+    struct Point { x: i64, y: i64 }
+
+    enum Shape { Dot, Square(i64), Rect(Point, Point) }
+
+    impl Point {
+        #[effects(pure)]
+        fn sum(&self, k: i64) -> i64 {
+            self.x + k
+        }
+    }
+
+    #[effects(pure)]
+    fn full_path(a: i64) -> Option<i64> {
+        Option::Some(a)
+    }
+
+    #[effects(pure)]
+    fn shorthand(x: i64, y: i64) -> Point {
+        Point { x, y }
+    }
+
+    #[effects(pure)]
+    fn update(p: Point) -> Point {
+        Point { x: 1, ..p }
+    }
+
+    #[effects(pure)]
+    fn wildcard(s: Shape) -> i64 {
+        match s {
+            Shape::Dot => 0,
+            _ => 1,
+        }
+    }
+
+    #[effects(pure)]
+    fn if_let(o: Option<i64>) -> i64 {
+        if let Some(v) = o { v } else { 0 }
+    }
+
+    #[effects(pure)]
+    fn method(p: Point, q: &Point) -> i64 {
+        p.sum(1) + q.sum(2)
+    }
+
+    #[effects(pure)]
+    fn destructure(p: Point) -> i64 {
+        let Point { x, y } = p;
+        x + y
+    }
+
+    #[effects(pure)]
+    fn deref_field(p: &mut Point) -> i64 {
+        (*p).x = 1;
+        (*p).y
+    }
+}

@@ -1,0 +1,26 @@
+#[summary("w")]
+mod w {
+    trait Shape {
+        #[effects(pure)]
+        fn area(self: &Self) -> i64;
+    }
+
+    struct Cell<T> where T: Copy { v: T }
+
+    impl<T> Shape for Cell<T>
+    where
+        T: Copy + Shape,
+    {
+        #[effects(pure)]
+        fn area(self: &Cell<T>) -> i64 {
+            Shape::area(&self.v)
+        }
+    }
+
+    #[effects(pure)]
+    fn least<T: Copy, U>(a: T, b: T, u: U) -> T
+        where T: Ord, U: Copy
+    {
+        if a <= b { a } else { b }
+    }
+}

@@ -3,14 +3,20 @@ mod prove {
     #[summary("An answer to a query: kind 0 is unsat, 1 sat, 2 unknown with the solver's reason in text, 3 an error with its text (a limit that ended the query, or a solver that cannot be read)")]
     struct Ans { kind: u8, text: String }
 
+    #[summary("The answer to one obligation of a contract comparison (stage0 ClauseAnswer) at the clause span: kind 0 proved; 1 refuted, with the counterexample as text (inputs, and the result for an ensures clause) and the spec fns the query saw only by name; 2 undecided, with the reason as text")]
+    struct Answer { span: source::Span, kind: u8, text: String, opaque: Vec<String> }
+
     #[summary("What one pass decided for one definition (stage0 DefResult): its status, its diagnostics, the proved obligations inside it, and its script when it was encoded")]
     struct DefResult { status: Status, diags: Vec<diag::Diag>, proven: Vec<encode_spec::Trivial>, script: Option<String> }
 
     #[summary("How a run of the gate is asked: only names the definitions to prove when not all, bounded asks each undecided obligation once more with its inputs bounded (ADR-0108 §1), seed is the solver's random seed in the options of every query (0 but for `bmb stability`), rlimit is the gate's resource limit (the probe's and the search's shares are shares of it), query the resource limit of a full query (the gate's, or the advisory one of the lint), who asks (the limits of its solvers and the reasons of an undecided query), and stop ends the run at the first obligation that fails (stage0 stop_at_failure, for the lint's re-verifications, which only ask whether a definition verifies completely)")]
-    struct Opts { only: Option<Vec<String>>, bounded: bool, seed: u64, rlimit: u64, query: u64, who: solver::Asker, stop: bool }
+    struct Opts { only: Option<Vec<String>>, bounded: bool, seed: u64, rlimit: u64, query: u64, who: solver::Asker, stop: bool, jobs: Vec<encode_query::Job> }
 
     #[summary("What proving found (stage0 Outcome): the status of each definition in path order; the script of each definition that was encoded, as it is sent to the solver before canonical symbols (a is the path, b the script); the obligations proved at every visit, whose runtime checks code generation may drop (DESIGN.md principle 9); while a pass runs, failed holds the obligations that failed at a visit (stage0 failed_keys), which a pass's proven leaves out; and the definitions code generation compiles with every check (ADR-0029 §4): those that are not proved without trusted facts and every definition they call, whose checks are no missing proofs; and per definition proved only with trusted facts, the obligations that failed without them (stage0 assumed_obligations)")]
     struct Outcome { statuses: Vec<Status>, scripts: Vec<encode_terms::Pair>, proven: Vec<encode_spec::Trivial>, failed: Vec<encode_spec::Trivial>, checked: Vec<String>, assumed: table::Table<usize> }
+
+    #[summary("The answers of one refiner of refinements, in the order its obligations were made")]
+    struct Refined { path: String, answers: Vec<Answer> }
 
     #[summary("The status of a definition (stage0 FnStatus): its obligations and how many failed; trust is how the proof stands when none failed (0 proved without trusted facts, 1 assumed with them, 2 an `#[external_body]`, which has no obligations); total is the solver's resource units over all obligations and max the largest single run; backstop counts the queries the wall-clock backstop ended")]
     struct Status { path: String, obligations: usize, failed: usize, trust: u8, total: u64, max: u64, backstop: u64 }
@@ -42,6 +48,53 @@ mod prove {
             Ok(got) => match got { solver::Answer::Unsat => Ans { kind: 0, text: String::new() }, solver::Answer::Sat => Ans { kind: 1, text: String::new() }, solver::Answer::Unknown(why) => Ans { kind: 2, text: why }, },
             Err(e3) => Ans { kind: 3, text: e3 },
         }
+    }
+
+    #[summary("The answer to the obligation code at span after a run (the reading of stage0 contract_refinements): proved when the run proved it; refuted when a diagnostic of that code stands at the span, with the counterexample its message gives after `; counterexample: ` and the names its hint lists as seen only by name; else undecided, with the reason of the first diagnostic at the span, or of the first solver error of the run, from `solver could not decide` on and without an unconfirmed model, or `not decided`")]
+    #[effects(alloc)]
+    fn answer_of(o: &Outcome, ds: &[diag::Diag], code: &str, span: source::Span) -> Answer {
+        for i in 0..o.proven.len()
+            invariant 0 <= i && i <= o.proven.len(),
+        {
+            if o.proven[i].code.as_str() == code && same_span(o.proven[i].span, span) {
+                return Answer { span: span, kind: 0, text: String::new(), opaque: Vec::new() };
+            }
+        }
+        for j in 0..ds.len()
+            invariant 0 <= j && j <= ds.len(),
+        {
+            if same_span(ds[j].span, span) && ds[j].code.as_str() == code {
+                let cex: String = match std::str::find(ds[j].message.as_str(), "; counterexample: ") {
+                    None => String::new(),
+                    Some(c) => lexer::cut(ds[j].message.as_str(), c.saturating_add(18), ds[j].message.len()),
+                };
+                let mut opaque: Vec<String> = Vec::new();
+                match &ds[j].fix {
+                    None => {},
+                    Some(fx) => { if encode_terms::starts_at(fx.message.as_str(), 0, "the proof sees ") { match encode_query::find(fx.message.as_str(), " only by name", 15) { None => {}, Some(e) => { let listed: Vec<String> = split_on(lexer::cut(fx.message.as_str(), 15, e).as_str(), ", "); for q in 0..listed.len() invariant 0 <= q && q <= listed.len(), { opaque.push(unticked(listed[q].as_str())); } }, } } },
+                }
+                return Answer { span: span, kind: 1, text: cex, opaque: opaque };
+            }
+        }
+        let mut why: String = String::from("not decided");
+        let mut found: bool = false;
+        for a in 0..ds.len()
+            invariant 0 <= a && a <= ds.len(),
+        {
+            if !found && same_span(ds[a].span, span) {
+                found = true;
+                why = reason(ds[a].message.as_str());
+            }
+        }
+        for b in 0..ds.len()
+            invariant 0 <= b && b <= ds.len(),
+        {
+            if !found && ds[b].code == "E0812" {
+                found = true;
+                why = reason(ds[b].message.as_str());
+            }
+        }
+        Answer { span: span, kind: 2, text: why, opaque: Vec::new() }
     }
 
     #[summary("The solver's answer to a query: `(reset)`, then each of parts, then check-sat (the chain of stage0 verify_pass). The first command that fails is the answer")]
@@ -188,7 +241,7 @@ mod prove {
                 Err(why) => { let exact: String = model::f64_interpreted(answered.as_str()); let mut ps7: Vec<String> = Vec::new(); ps7.push(exact.clone()); let a7: Ans = asked(sol, ps7.as_slice()); if a7.kind == 1 { model::f64_model_check(sol, exact.as_str()) } else if a7.kind == 0 { Err(String::from("it holds with IEEE 754 arithmetic, which only `by (bit_vector)` uses")) } else { Err(why) } },
             };
             match confirmed {
-                Ok(u1) => { let cex: String = model::counterexample(sol, shown.as_slice(), &pg.pr.t, names); let hidden: Vec<encode_terms::Pair> = hidden_pairs(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); if cex.len() > 0 && hidden.len() > 0 { let mut ticked: Vec<String> = Vec::new(); for h in 0..hidden.len() invariant 0 <= h && h <= hidden.len(), { ticked.push(types::cat3("`", hidden[h].a.as_str(), "`")); } msg.push_str(types::cat3("; counterexample with ", encode_terms::join(ticked.as_slice(), ", ").as_str(), " unknown: ").as_str()); msg.push_str(cex.as_str()); let inst: String = match encode_query::retry_script(cx, pg, pl.q.as_str()) { None => String::new(), Some(r9) => r9.inst.clone(), }; let assumed: Vec<String> = model::assumed(sol, answered.as_str(), inst.as_str(), hidden.as_slice(), shown.as_slice()); if assumed.len() > 0 { msg.push_str(", assuming "); msg.push_str(encode_terms::join(assumed.as_slice(), ", ").as_str()); } } else if cex.len() > 0 { msg.push_str("; counterexample: "); msg.push_str(cex.as_str()); } if bounded_found { msg.push_str(" (found by the search within |integers| <= 8, lengths <= 4, after the solver could not decide)"); } let hint: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); let d: diag::Diag = with_hint(diag::new(o.code.as_str(), o.span, msg.as_str()), hint.as_slice(), false); let plain: bool = no_fix(&d); if plain && o.code == "E0820" { diags.push(diag::fix(d, "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it", None)); } else if plain && cex.len() == 0 { diags.push(diag::fix(d, model::no_inputs_help(o.code.as_str()).as_str(), None)); } else { diags.push(d); } },
+                Ok(u1) => { let cex: String = model::counterexample(sol, shown.as_slice(), &pg.pr.t, names); let hidden: Vec<encode_terms::Pair> = hidden_pairs(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); if cex.len() > 0 && hidden.len() > 0 && opts.jobs.len() == 0 { let mut ticked: Vec<String> = Vec::new(); for h in 0..hidden.len() invariant 0 <= h && h <= hidden.len(), { ticked.push(types::cat3("`", hidden[h].a.as_str(), "`")); } msg.push_str(types::cat3("; counterexample with ", encode_terms::join(ticked.as_slice(), ", ").as_str(), " unknown: ").as_str()); msg.push_str(cex.as_str()); let inst: String = match encode_query::retry_script(cx, pg, pl.q.as_str()) { None => String::new(), Some(r9) => r9.inst.clone(), }; let assumed: Vec<String> = model::assumed(sol, answered.as_str(), inst.as_str(), hidden.as_slice(), shown.as_slice()); if assumed.len() > 0 { msg.push_str(", assuming "); msg.push_str(encode_terms::join(assumed.as_slice(), ", ").as_str()); } } else if cex.len() > 0 { msg.push_str("; counterexample: "); msg.push_str(cex.as_str()); } if bounded_found { msg.push_str(" (found by the search within |integers| <= 8, lengths <= 4, after the solver could not decide)"); } let hint: Vec<String> = hidden_predicates(pg, cx.axioms.as_slice(), types::cat2(pl.q.as_str(), pl.relevant.as_str()).as_str(), unit); let d: diag::Diag = with_hint(diag::new(o.code.as_str(), o.span, msg.as_str()), hint.as_slice(), false); let plain: bool = no_fix(&d); if plain && o.code == "E0820" { diags.push(diag::fix(d, "check `s.is_char_boundary(a) && s.is_char_boundary(b) && a <= b` before `&s[a..b]`, or require it", None)); } else if plain && cex.len() == 0 { diags.push(diag::fix(d, model::no_inputs_help(o.code.as_str()).as_str(), None)); } else { diags.push(d); } },
                 Err(why2) => diags.push(f64_undecided(o, path, why2.as_str())),
             }
             return v;
@@ -286,9 +339,17 @@ mod prove {
             None => { return false; },
             Some(x) => x,
         };
-        let e: encode_query::Encoded = match encode_query::encoded(pg, path, &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, opts.seed, opts.query, opts.rlimit, opts.bounded) {
+        let job: Option<usize> = encode_query::job_at(opts.jobs.as_slice(), path);
+        if opts.jobs.len() > 0 && is_none(&job) {
+            return false;
+        }
+        let made: Option<encode_query::Encoded> = match job {
+            None => encode_query::encoded(pg, path, &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, opts.seed, opts.query, opts.rlimit, opts.bounded),
+            Some(j) => { if j < opts.jobs.len() { Some(encode_query::refinement(pg, path, &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds, dts, trust, &opts.jobs[j], opts.seed, opts.query, opts.rlimit, opts.bounded)) } else { None } },
+        };
+        let e: encode_query::Encoded = match made {
             None => { return false; },
-            Some(made) => made,
+            Some(enc) => enc,
         };
         if !reusable(held) {
             let_go(held);
@@ -619,6 +680,54 @@ mod prove {
         out
     }
 
+    #[summary("The reason of an undecided obligation as a comparison shows it: the message from `solver could not decide` on, when it says so, up to an unconfirmed counterexample")]
+    #[effects(alloc)]
+    fn reason(m: &str) -> String {
+        let from: usize = match std::str::find(m, "solver could not decide") {
+            None => 0,
+            Some(k) => k,
+        };
+        let rest: String = lexer::cut(m, from, m.len());
+        match std::str::find(rest.as_str(), "; unconfirmed counterexample") {
+            None => rest,
+            Some(e) => lexer::cut(rest.as_str(), 0, e),
+        }
+    }
+
+    #[summary("The contract comparisons jobs (stage0 contract_refinements), each by the prover's own encoding: the refiner's parameters on entry, the spec fns its #[uses] reveals, every obligation on a reset solver with the pinned limit and the ground-instance retry. No body is encoded. Per refiner, in path order, each obligation's span and answer in the order made: requires obligations at the refiner's clauses, ensures obligations at decl's. A refiner that is an instance, an `#[external_body]` or no definition has no row")]
+    #[effects(alloc, io, nondet)]
+    fn refinements(ck: &body::Checked, pg: &encode_spec::Prog, jobs: &[encode_query::Job]) -> Vec<Refined> {
+        let mut names: Vec<String> = Vec::new();
+        let mut kept: Vec<encode_query::Job> = Vec::new();
+        for i in 0..jobs.len()
+            invariant 0 <= i && i <= jobs.len(),
+        {
+            names.push(jobs[i].refiner.clone());
+            kept.push(jobs[i].clone());
+        }
+        let only: Vec<String> = body::sorted_set(names.as_slice());
+        let opts: Opts = Opts { only: Some(only.clone()), bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: kept };
+        let mut store: Option<cache::ProofCache> = None;
+        let mut incr: Option<incremental::Session> = None;
+        let mut z3: toolchain::Z3 = toolchain::new();
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let o: Outcome = run_cached(ck, pg, &opts, &mut store, &mut incr, &mut z3, &mut diags);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(pg);
+        let dts: Vec<encode_decls::Decl> = encode_decls::datatypes(&pg.pr.t, pg.pr.inst_types.as_slice());
+        let none: Option<encode_exec::Trust> = None;
+        let mut out: Vec<Refined> = Vec::new();
+        for n in 0..only.len()
+            invariant 0 <= n && n <= only.len(),
+        {
+            let path: String = only[n].clone();
+            match pg.defs.find(path.as_str()) {
+                None => {},
+                Some(at) => { match pg.pr.t.fns.find(path.as_str()) { None => {}, Some(sig) => { match encode_query::job_at(opts.jobs.as_slice(), path.as_str()) { None => {}, Some(j) => { if j < opts.jobs.len() && !pg.defs.items[at].inst && !types::has(ck.b.external.as_slice(), path.as_str()) { let e: encode_query::Encoded = encode_query::refinement(pg, path.as_str(), &pg.defs.items[at], &pg.pr.t.fns.items[sig], sds.as_slice(), dts.as_slice(), &none, &opts.jobs[j], opts.seed, opts.query, opts.rlimit, opts.bounded); let mut answers: Vec<Answer> = Vec::new(); for k in 0..e.obls.len() invariant 0 <= k && k <= e.obls.len(), { answers.push(answer_of(&o, diags.items.as_slice(), e.obls[k].code.as_str(), e.obls[k].span)); } out.push(Refined { path: path.clone(), answers: answers }); } }, } }, } },
+            }
+        }
+        out
+    }
+
     #[summary("Stores a proof under key, when there is a cache")]
     #[effects(alloc)]
     fn remember(store: &mut Option<cache::ProofCache>, key: &str, total: u64, max: u64, stages: u8) -> () {
@@ -672,6 +781,12 @@ mod prove {
             }
         }
         out
+    }
+
+    #[summary("Whether two spans are the same place")]
+    #[effects(pure)]
+    fn same_span(a: source::Span, b: source::Span) -> bool {
+        a.file == b.file && a.lo == b.lo && a.hi == b.hi
     }
 
     #[summary("text with the items the lowering of function values made by the names a reader knows (stage0 Tables::shown). names maps a made path to its name. A method `<made as tr>::m` of a closure (its name ends in a brace) is the closure for `call`, its `requires` for `pre`, its `ensures` for `post`; of a function item it is `<name as tr>::m` with the trait by its name too. Then the bare paths, longest first so that one is not a prefix of another, where no identifier character follows")]
@@ -762,6 +877,28 @@ mod prove {
                 Some(slot) => { if slot < out.items.len() { out.items[slot].diags.push(d[x].clone()); } },
             }
         }
+        out
+    }
+
+    #[summary("The pieces of s between the occurrences of sep, which is not empty (Rust's split with a text): one piece more than there are occurrences")]
+    #[effects(alloc)]
+    fn split_on(s: &str, sep: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut start: usize = 0;
+        let mut i: usize = 0;
+        while i < s.len() && sep.len() > 0
+            invariant start <= i,
+            decreases s.len() - i,
+        {
+            if encode_terms::starts_at(s, i, sep) {
+                out.push(lexer::cut(s, start, i));
+                i = i + sep.len();
+                start = i;
+            } else {
+                i = i + 1;
+            }
+        }
+        out.push(lexer::cut(s, start, s.len()));
         out
     }
 
@@ -1003,6 +1140,25 @@ mod prove {
     #[summary("The discipline of the verdict (ADR-0153, P1): an obligation is proved only by an answer of kind 0, unsat")]
     spec fn unsat_only(v: &Verdict) -> bool {
         v.proved ==> v.by == 0
+    }
+
+    #[summary("s without the backticks at its ends (Rust's trim_matches('`'))")]
+    #[effects(alloc)]
+    fn unticked(s: &str) -> String {
+        let mut a: usize = 0;
+        while a < s.len() && s.as_bytes()[a] == 96
+            decreases s.len() - a,
+        {
+            a = a + 1;
+        }
+        let mut b: usize = s.len();
+        while b > a && s.as_bytes()[b - 1] == 96
+            invariant b <= s.len(),
+            decreases b,
+        {
+            b = b - 1;
+        }
+        lexer::cut(s, a, b)
     }
 
     #[summary("Attaches the deterministic hints that apply to a failed obligation (stage0 with_hint): the spec fns it sees only by name, and nonlinear arithmetic")]

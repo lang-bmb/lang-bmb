@@ -1,0 +1,11 @@
+#[summary("habits")]
+mod m {
+    pub fn add(mut x: i64, y: i64) -> i64 {
+        x + y
+    }
+
+    #[effects(pure)]
+    fn first<'a>(a: &'a [i64]) -> i64 {
+        0
+    }
+}

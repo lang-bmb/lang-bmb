@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint (every check, alone or with others under --select, with the caches), mutate (every body mutation of the lint as a program), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), import and apply (the workspace and its transactions; every command reads a workspace directory among its files), ast (the syntax tree as a JSON document), mcp (the MCP server over standard input and output, with every flag of stage0), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint (every check, alone or with others under --select, with the caches), mutate (every body mutation of the lint as a program), examples, stability, fix (the mechanical fixes and, with --induction, the induction lemma drafts the gate proves), uses (the search for a minimal #[uses] list), probe (candidate loop invariants), reads (each definition's proof key as rows), weaken (the contracts of two versions compared, and the reader's comparison), doctor, dump runtime, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), import and apply (the workspace and its transactions; every command reads a workspace directory among its files), ast (the syntax tree as a JSON document), mcp (the MCP server over standard input and output, with every flag of stage0), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[summary("The line apply ends with: whether the transaction was committed, the definitions whose text changed or was added and those removed")]
     #[effects(alloc)]
@@ -29,6 +29,15 @@ mod main {
         }
         out.push_str("]}");
         out
+    }
+
+    #[summary("Whether a result is no error")]
+    #[effects(pure)]
+    fn is_ok(r: &Result<String, String>) -> bool {
+        match r {
+            Ok(v) => true,
+            Err(e) => false,
+        }
     }
 
     #[effects(alloc, io, nondet)]
@@ -119,7 +128,7 @@ mod main {
                 pos = pos + 1;
             }
             if pos + 1 >= args.len() {
-                eprint_str("usage: stage1 emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+                eprint_str(usage().as_str());
                 std::process::exit(2);
             }
             let out_path: String = args[pos + 1].clone();
@@ -272,7 +281,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 1 && args[1] == "examples" {
+        if args.len() > 2 && args[1] == "examples" {
             let mut count: usize = 3;
             let mut at: usize = 2;
             if args.len() > 3 && args[2] == "--count" {
@@ -294,7 +303,7 @@ mod main {
                 std::process::exit(2);
             }
             if sep == at || sep + 1 >= args.len() {
-                eprint_str("usage: stage1 examples [--count N] DEF.. -- FILE..\n");
+                eprint_str(usage().as_str());
                 std::process::exit(2);
             }
             let mut defs: Vec<String> = Vec::new();
@@ -311,7 +320,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 1 && args[1] == "lint" {
+        if args.len() > 2 && args[1] == "lint" {
             let mut cache_dir: Option<String> = None;
             let mut select: Vec<String> = lint::default_codes();
             let mut at: usize = 2;
@@ -344,7 +353,7 @@ mod main {
                 }
             }
             if at >= args.len() {
-                eprint_str("usage: stage1 lint [--cache DIR] [--select CODES] FILE..\n");
+                eprint_str(usage().as_str());
                 std::process::exit(2);
             }
             let linted: Vec<lib::Input> = read_files(args.as_slice(), at);
@@ -359,7 +368,7 @@ mod main {
             }
             return;
         }
-        if args.len() > 1 && args[1] == "mutate" {
+        if args.len() > 2 && args[1] == "mutate" {
             let mut mutated: Vec<String> = Vec::new();
             let mut at: usize = 2;
             while at < args.len() && args.len() - at > 1 && args[at] == "--def"
@@ -369,7 +378,7 @@ mod main {
                 at = at + 2;
             }
             if mutated.len() == 0 || at >= args.len() {
-                eprint_str("usage: stage1 mutate --def PATH [--def PATH].. FILE..\n");
+                eprint_str(usage().as_str());
                 std::process::exit(2);
             }
             let sources: Vec<lib::Input> = read_files(args.as_slice(), at);
@@ -407,7 +416,7 @@ mod main {
             }
             at = wf.next;
             if at >= args.len() {
-                eprint_str("usage: stage1 map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE..\n");
+                eprint_str(usage().as_str());
                 std::process::exit(2);
             }
             let mut level: String = String::from("all");
@@ -567,6 +576,176 @@ mod main {
                 return;
             }
         }
+        if args.len() > 1 && args[1] == "doctor" {
+            let z3: Result<String, String> = toolchain::check_z3_uncached();
+            let llvm: Result<String, String> = toolchain::check_llvm();
+            print_str(lib::tool_row("z3", toolchain::z3_version().as_str(), &z3).as_str());
+            print_str(lib::tool_row("llvm", toolchain::llvm_major().as_str(), &llvm).as_str());
+            if !is_ok(&z3) || !is_ok(&llvm) {
+                std::process::exit(1);
+            }
+            return;
+        }
+        if args.len() == 3 && args[1] == "dump" && args[2] == "runtime" {
+            print_str(lib::dump_runtime().as_str());
+            return;
+        }
+        if args.len() > 2 && args[1] == "reads" {
+            let keyed: Vec<lib::Input> = read_files(args.as_slice(), 2);
+            let rr: lib::Outcome = lib::reads(keyed.as_slice());
+            print_str(rr.text.as_str());
+            if !rr.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        if args.len() > 2 && args[1] == "uses" {
+            let mut write: bool = false;
+            let mut uses_cache: Option<String> = None;
+            let mut at: usize = 2;
+            while at < args.len()
+                decreases args.len() - at,
+            {
+                if args[at] == "--write" {
+                    write = true;
+                    at = at + 1;
+                } else if args[at] == "--cache" && args.len() - at > 2 {
+                    uses_cache = Some(args[at + 1].clone());
+                    at = at + 2;
+                } else {
+                    break;
+                }
+            }
+            if at >= args.len() {
+                eprint_str(usage().as_str());
+                std::process::exit(2);
+            }
+            let searched: Vec<lib::Input> = read_files(args.as_slice(), at);
+            match uses_fill::fill_uses_limited(searched.as_slice(), &uses_cache, 32, false) {
+                Ok(filled) => { print_str(lib::with_written(uses_fill::report(&filled, searched.as_slice()).as_str(), write).as_str()); if write { write_changed(searched.as_slice(), filled.files.as_slice()); } if !uses_fill::ok(&filled) { std::process::exit(1); } },
+                Err(uses_diags) => { print_str(uses_diags.as_str()); std::process::exit(1); },
+            }
+            return;
+        }
+        if args.len() > 2 && args[1] == "probe" {
+            let mut probed: Option<String> = None;
+            let mut loop_at: usize = 0;
+            let mut cands: Vec<String> = Vec::new();
+            let mut at: usize = 2;
+            while at < args.len() && args.len() - at >= 2
+                decreases args.len() - at,
+            {
+                if args[at] == "--def" {
+                    probed = Some(args[at + 1].clone());
+                } else if args[at] == "--loop" {
+                    match map::parse_usize(args[at + 1].as_str()) {
+                        None => { eprint_str(usage().as_str()); std::process::exit(2); },
+                        Some(k) => { loop_at = k; },
+                    }
+                } else if args[at] == "--candidate" {
+                    cands.push(args[at + 1].clone());
+                } else {
+                    break;
+                }
+                at = at + 2;
+            }
+            let probe_def: String = match probed {
+                None => { eprint_str(usage().as_str()); std::process::exit(2); },
+                Some(pd) => pd,
+            };
+            if at >= args.len() || cands.len() == 0 {
+                eprint_str(usage().as_str());
+                std::process::exit(2);
+            }
+            let sources: Vec<lib::Input> = read_files(args.as_slice(), at);
+            match probe::probe(sources.as_slice(), probe_def.as_str(), loop_at, cands.as_slice(), false) {
+                Ok(answer) => print_str(answer.as_str()),
+                Err(probe_why) => { print_str(probe_why.as_str()); print_str("\n"); std::process::exit(1); },
+            }
+            return;
+        }
+        if args.len() > 2 && args[1] == "fix" {
+            let mut write: bool = false;
+            let mut print_text: bool = false;
+            let mut confirm: bool = false;
+            let mut induction: bool = false;
+            let mut at: usize = 2;
+            while at < args.len()
+                decreases args.len() - at,
+            {
+                if args[at] == "--write" {
+                    write = true;
+                } else if args[at] == "--print" {
+                    print_text = true;
+                } else if args[at] == "--confirm" {
+                    confirm = true;
+                } else if args[at] == "--induction" {
+                    induction = true;
+                } else {
+                    break;
+                }
+                at = at + 1;
+            }
+            if at >= args.len() || write && print_text {
+                eprint_str(usage().as_str());
+                std::process::exit(2);
+            }
+            let broken: Vec<lib::Input> = read_files(args.as_slice(), at);
+            let fixed: fix::Output = fix::run(broken.as_slice(), confirm, induction);
+            if fixed.trap {
+                eprint_str("stage1: fix: a position is not in its file's text\n");
+                std::process::exit(101);
+            }
+            if print_text {
+                for t in 0..fixed.files.len()
+                    invariant 0 <= t && t <= fixed.files.len(),
+                {
+                    if t > 0 {
+                        print_str("\n");
+                    }
+                    print_str(fixed.files[t].text.as_str());
+                }
+            } else {
+                print_str(lib::with_written(fix::report(&fixed, broken.as_slice()).as_str(), write).as_str());
+            }
+            if write {
+                write_changed(broken.as_slice(), fixed.files.as_slice());
+            }
+            if !fixed.ok {
+                std::process::exit(1);
+            }
+            return;
+        }
+        if args.len() == 4 && args[1] == "weaken" || args.len() == 6 && args[1] == "weaken" && args[2] == "--readers" {
+            let mut readers: Option<Vec<weaken::Reader>> = None;
+            let mut first: usize = 2;
+            if args.len() == 6 {
+                first = 4;
+                let listed: String = match std::fs::read_to_string(args[3].as_str()) {
+                    Ok(readers_text) => readers_text,
+                    Err(e_readers) => { eprint_str("bmb: cannot read "); eprint_str(args[3].as_str()); eprint_str(": "); eprint_str(e_readers.message.as_str()); eprint_str("\n"); std::process::exit(2); },
+                };
+                match weaken::parse_readers(listed.as_str()) {
+                    Ok(parsed_readers) => { readers = Some(parsed_readers); },
+                    Err(readers_why) => { eprint_str("bmb: "); eprint_str(readers_why.as_str()); eprint_str("\n"); std::process::exit(2); },
+                }
+            }
+            let before: Option<Vec<lib::Input>> = read_one(args[first].as_str());
+            let after: Option<Vec<lib::Input>> = read_one(args[first + 1].as_str());
+            let old_files: Vec<lib::Input> = match before {
+                None => { std::process::exit(2); },
+                Some(of) => of,
+            };
+            let new_files: Vec<lib::Input> = match after {
+                None => { std::process::exit(2); },
+                Some(nf) => nf,
+            };
+            match weaken::compare(old_files.as_slice(), new_files.as_slice(), &readers) {
+                Ok(compared) => { print_str(weaken::report(&compared).as_str()); if !weaken::ok(&compared) { std::process::exit(1); } },
+                Err(weaken_diags) => { print_str(weaken_diags.as_str()); std::process::exit(1); },
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -576,7 +755,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | lint [--cache DIR] [--select CODES] FILE.. | mutate --def PATH [--def PATH].. FILE.. | examples [--count N] DEF.. -- FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | import DIR FILE.. | apply DIR OPS.json | ast FILE.. | mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--undecided-info] [--probe-tool] [--bounded|--bounded-16k] [--rename-ops] DIR | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+        eprint_str(usage().as_str());
         std::process::exit(2);
     }
 
@@ -602,6 +781,24 @@ mod main {
             i = i + 1;
         }
         files
+    }
+
+    #[summary("Reads one argument as read_files reads it, a file or a workspace directory. If it cannot be read, writes that to standard error and gives nothing (stage0's weaken reads both versions before it ends for either)")]
+    #[effects(alloc, io, nondet)]
+    fn read_one(path: &str) -> Option<Vec<lib::Input>> {
+        let mut files: Vec<lib::Input> = Vec::new();
+        if workspace::is_dir(path) {
+            match workspace::read_dir_sources(path) {
+                Ok(found) => { for j in 0..found.len() invariant 0 <= j && j <= found.len(), { files.push(found[j].clone()); } },
+                Err(why) => { eprint_str("bmb: "); eprint_str(why.as_str()); eprint_str("\n"); return None; },
+            }
+        } else {
+            match std::fs::read_to_string(path) {
+                Ok(text) => files.push(lib::Input { name: String::from(path), text: text }),
+                Err(e) => { eprint_str("bmb: cannot read "); eprint_str(path); eprint_str(": "); eprint_str(e.message.as_str()); eprint_str("\n"); return None; },
+            }
+        }
+        Some(files)
     }
 
     #[summary("Removes the first argument that is flag and gives whether there was one (stage0's position and remove)")]
@@ -646,6 +843,24 @@ mod main {
         }
         *args = out;
         Some(value)
+    }
+
+    #[summary("The usage text of the command line with its line end (stage0 USAGE as eprintln writes it)")]
+    #[effects(alloc)]
+    fn usage() -> String {
+        String::from("usage:\n  bmb check <file.bmb>...   check sources; diagnostics as JSONL on stdout\n  bmb verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH]... <file.bmb>...\n                            check and prove; diagnostics and per-definition status as JSONL;\n                            --def proves only the named definitions (the whole program is\n                            still checked; each gets its whole-program status);\n                            --cache keeps proved obligations in DIR and skips them next time,\n                            and reuses unchanged definitions without encoding them;\n                            --stats writes what the caches did as one JSON line to FILE\n                            (definitions encoded, reused, lowered, IR reused, proof cache\n                            hits and misses, damaged cache lines; emit-llvm and build take\n                            it too, and add the runtime checks the IR keeps);\n                            --audit proves each definition the cache would reuse anyway and\n                            compares (script as the solver receives it, status, proved\n                            obligations); --stats then lists the differences (audit_mismatches);\n                            --bounded-search asks each undecided obligation once more with the\n                            inputs bounded (|integers| <= 8, lengths <= 4, ADR-0108): a model is\n                            a counterexample, none is the E0811 field `bounded`\n  bmb stability [--seeds N] <file.bmb>...\n                            prove under solver seeds 0..N (default 5); per-definition verdicts\n                            and rlimit as JSONL; fails if a verdict depends on the seed\n  bmb emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] <file.bmb>... -o OUT.ll\n                            LLVM IR; unproved obligations keep runtime checks;\n                            --all-checks skips the proof and keeps every check;\n                            --audit as for verify, also for the IR the cache would reuse\n  bmb build [--cache DIR] [--stats FILE] [--audit] <file.bmb>... -o OUT\n                            check, prove (all obligations) and build an executable\n  bmb fmt [--check] <file.bmb>...\n                            print the normal form (ADR-0019); --check fails unless each file\n                            is the normal form of the units it declares\n  bmb fix [--write|--print] [--confirm] [--induction] <file.bmb>...\n                            apply mechanical fixes (diagnostic replacements, and on a program\n                            that checks the canonical `for` of counting `while` loops, W0907,\n                            and the hash of each `#[rationale(..)]` that carries none;\n                            --confirm also rewrites the hashes that are no longer current, W1001)\n                            and re-check until none applies; JSONL report of applied fixes,\n                            remaining diagnostics\n                            and a summary; --write rewrites changed files in place, --print\n                            prints the fixed text instead of the report; fails if errors remain;\n                            --induction also runs the prover: for a function it does not\n                            prove, the `proof fn` from a recursive predicate to a predicate\n                            of the same parameters that a postcondition reaches, and its\n                            call, written only when the gate proves both (ADR-0135)\n  bmb uses [--write] [--cache DIR] <file.bmb>...\n                            for each definition that fails to prove, find a minimal #[uses(..)]\n                            list from its current entries and the hidden predicates its\n                            diagnostics name; JSONL row per definition (status proved, unchanged\n                            or not_found, with the attribute replacement) and a summary;\n                            --write rewrites changed files; fails if a definition stays unproved;\n                            --cache uses and updates the caches in DIR as `verify --cache` does\n  bmb lint [--cache DIR] [--select CODES] <file.bmb>...\n                            contract lint (warnings W09xx as JSONL, then a summary): preconditions\n                            that cannot hold together, preconditions the function's proof does\n                            not need, postconditions no caller's proof uses, body mutations the\n                            specification does not distinguish; re-verifications and mutants are\n                            capped; the summary also gives the rlimit and undecided count of the\n                            W0901 and W0905 satisfiability checks; fails only if the program does\n                            not check or the gate cannot run; --cache uses and updates the caches\n                            in DIR as `verify --cache` does; --select W0901,W0905 runs only the\n                            listed checks; W0918 (postconditions that allow two results for one\n                            input, with the witness) runs only when --select names it\n  bmb probe --def PATH [--loop K] --candidate EXPR [--candidate EXPR].. <file.bmb>...\n                            candidate invariants for loop K (from 0, source order) of PATH,\n                            tried without changing the files (ADR-0109): per candidate its first\n                            answer on entry and kept by the body, then the largest subset that\n                            is inductive together (Houdini) and whether PATH proves with it\n  bmb examples [--count N] DEF.. -- <file.bmb>...\n                            examples of each named function's contract, from `requires` and\n                            `ensures` alone (the body is not read, the program is checked, not\n                            proved), as JSONL in a fixed order: per input (N of them, default 3,\n                            each different from the earlier ones, small values first) a row\n                            `allowed` (input and a result the contract allows), a second\n                            `allowed` row when it allows another result for that input, and a\n                            row `rejected` (a result it rejects for that input); then `rejected`\n                            rows at other inputs while fewer than N are shown, then up to N rows\n                            `excluded` (inputs `requires` rejects), then a summary row (rows per\n                            kind, undecided queries, rlimit); `after` holds the values behind\n                            `&mut` parameters; values are models of the gate's encoding, printed\n                            as counterexamples are, lengths at most 4; a query that is not\n                            decided by the solver is asked again at written small inputs, and\n                            if still not decided shows nothing and is counted; the spec fns\n                            a contract names are read by their definitions, in `#[uses]` or\n                            not; a definition whose values cannot be shown in full gets only\n                            a summary row with `reason`\n  bmb mutate --def PATH [--def PATH].. <file.bmb>...\n                            every W0904 body mutation of the named functions, unproved, as\n                            JSONL rows with the changed unit's normal form, then a summary\n  bmb weaken OLD NEW        compare the contracts of two versions (each a file or a workspace):\n                            per definition same, refined, compatible, weakened, undecided,\n                            signature, added or removed, by SMT implication with counterexamples;\n                            W0908 for each weakened contract, then a summary; fails if a\n                            contract got weaker or a comparison was not decided\n  bmb weaken --readers FILE OLD NEW\n                            the same comparison for each reader in FILE (JSONL lines\n                            {\"def\",\"uses\"}), revealing only the spec fns that reader reveals,\n                            forward direction only; one row per reader, in order\n  bmb reads <file.bmb>...   each definition's proof key as rows (the read set of its proof:\n                            own text, callee contracts, revealed spec fns, declarations, types)\n                            and each type's digest, as JSONL\n  bmb hash <file.bmb>...    nameless identities and hashes (id, body, iface) as JSONL\n  bmb map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] <file.bmb>...\n                            standard maps as JSONL (ADR-0020); the window flags as for query\n  bmb query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS]\n            <units|overview|surface|edges|slice|find|contracts|status|impact|duplicates|effects|effect|tests|text> [args] -- <file.bmb>...\n                            read queries as JSONL (ADR-0020); --cache as for verify (only\n                            the L1 rows, `surface` and `status` prove);\n                            units, status, duplicates, effects, effect E and tests take paths\n                            (units, definitions, types) and answer for what those hold alone\n                            (status and tests then prove only that; duplicates: the groups a\n                            named definition is in; effects with one definition: what it\n                            reaches); edges DEF [out|in|both] [DEPTH] [KIND,..] follows only\n                            the edges of the listed kinds (calls, contract, uses, writes ..);\n                            text PATTERN [PATH..] lists the lines of the normal form that\n                            hold PATTERN as written (path, line, the text around it; ADR-0146);\n                            overview [PATH..] lists units with counts in place of their\n                            definitions; --budget, --offset and --limit print a window of\n                            the response (ADR-0127): the rows from the offset, whole rows\n                            within the budget, and a last `truncated` row (rows shown, rows\n                            and bytes of the whole response, `next`) when rows are left out\n  bmb import DIR <file.bmb>...\n                            create or replace workspace DIR from files, in normal form\n  bmb apply DIR OPS.json    commit a transaction (JSON array of unit/put/remove/remove_unit/\n                            rename/expect/move ops)\n                            to workspace DIR; rejected as a whole on any structural or type error\n  bmb mcp [--write-tool] [--compact] [--tool-docs] [--file-tools] [--ast-tools] [--item-docs] [--stats] [--bounded|--bounded-16k] [--rename-ops] DIR\n                            MCP server (stdio) for workspace DIR: query, map, verify, build, tx_*;\n                            --write-tool also offers `write` (unit, definitions, removals,\n                            commit and proof in one call); --compact shows results in the\n                            compact agent view (surfaces as Rust-shaped text without hashes\n                            or positions, verified definitions as a count); --tool-docs gives\n                            tool descriptions that document the tools on their own (what\n                            each query returns, `write` as the only way to write);\n                            --file-tools offers `read_file` and `edit_file` (a unified diff,\n                            committed and proved in one call); --ast-tools offers `read_ast`\n                            and `edit_ast` (a JSON Patch on the JSON syntax tree, committed and\n                            proved in one call) and gives positions as pointers into the tree;\n                            --bounded gives `query` and `map` results as windows of at most\n                            32768 bytes with `offset` and `limit` arguments (ADR-0127);\n                            --bounded-16k is the same at 16384 bytes (the default is\n                            measured); --rename-ops offers `tx_rename` and\n                            `tx_expect`, and `rename` and `expect` lists in `write` (checked\n                            and applied before the items; a write may only rename)\n  bmb ast <file.bmb>...     the syntax tree as one JSON document (the JSON AST edit surface's,\n                            keyed by unit; positions are not part of it)\n  bmb dump tokens <file.bmb>...\n                            the lexer's tokens as JSONL (file, span, kind, normal text, value)\n  bmb dump parse <file.bmb>...\n                            the parsed program in normal form, before any check\n  bmb dump std|lower|decls <file.bmb>...\n                            the stages before the checker's bodies: diagnostics so far, `---`,\n                            then the program with the library units it names (std), after\n                            function values and constants are lowered (lower, with the names\n                            made and each constant's value), or the declarations the checker\n                            collects as JSONL (decls)\n  bmb dump types|moves <file.bmb>...\n                            what the checker's bodies compute: diagnostics, `---`, then the\n                            resolved program and per definition its locals, the type of every\n                            expression, type arguments, call edges, effects and recursion\n                            (types), or where each function drops its owned values (moves)\n  bmb dump texts <file.bmb>...\n                            the qualified texts the incremental keys read, when the program\n                            checks: per definition its qualified normal form and the surface\n                            a caller reads, then every item's qualified hash\n  bmb dump lowered <file.bmb>...\n                            the tables the code generator reads (text as bytes, a `char` as\n                            a `u32`): signatures, data types, locals, the type of every\n                            expression, the spans that are text, and each type's fields or\n                            variants\n  bmb dump layout <file.bmb>...\n                            how the code generator lays the types out, when the program\n                            checks: each type's LLVM types, size and alignment, what the\n                            module's head depends on, and the LLVM type definitions\n  bmb dump smt-decls <file.bmb>...\n                            what the proof encoder derives before it reads a body, when the\n                            program checks, with no solver: the spec fn instances, each\n                            function's sorts and SMT functions, the datatype declarations,\n                            which values are text, and each definition's default context\n  bmb dump smt <file.bmb>...\n                            what the proof encoder builds of each definition, when the\n                            program checks, with no solver: the declarations of spec fns,\n                            each definition's proof context and what it reveals, a spec fn's\n                            definition as the queries take it and its termination obligations\n  bmb dump smt-queries <file.bmb>...\n                            what `verify --emit-smt` writes of each definition before the\n                            solver's first answer, with no solver: its script and legend,\n                            then every form its reach points may be asked in\n  bmb dump runtime          the code generator's constant IR texts by name, as JSONL\n  bmb codes [--md]          list diagnostic codes as JSONL (or the Markdown reference page)\n\nAny <file.bmb> argument may also be a workspace directory (its src/*.bmb).\n  bmb doctor                check the pinned toolchain (z3, LLVM) as JSONL\n")
+    }
+
+    #[summary("Writes each file of fixed whose text differs from the one read, in input order (the --write of stage0's fix and uses). If one cannot be written, writes that to standard error and exit code 2")]
+    #[effects(alloc, io)]
+    fn write_changed(original: &[lib::Input], fixed: &[lib::Input]) -> () {
+        for i in 0..fixed.len()
+            invariant 0 <= i && i <= fixed.len(),
+        {
+            if i < original.len() && fixed[i].text != original[i].text {
+                write_or_exit(fixed[i].name.as_str(), fixed[i].text.as_str());
+            }
+        }
     }
 
     #[summary("Writes text to the file path. If it cannot be written, writes to standard error and exit code 2")]

@@ -1,0 +1,5 @@
+#[summary("b")]
+mod b {
+    #[effects(io)]
+    fn main() -> () { print_i64(a::f(7i64)); }
+}

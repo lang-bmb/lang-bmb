@@ -1,0 +1,12 @@
+#[summary("p")]
+mod p {
+    spec fn small(x: i64) -> bool { x < 100 && x > 0 }
+
+    #[effects(pure)]
+    #[uses(small)]
+    fn inc(x: i64) -> i64
+        requires small(x),
+    {
+        x + 1
+    }
+}

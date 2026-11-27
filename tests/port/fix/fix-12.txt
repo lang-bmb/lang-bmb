@@ -1,0 +1,25 @@
+#[summary("t")]
+mod d {
+    struct P { x: i64 }
+
+    spec fn small(p: P) -> bool { p.x < 100 }
+
+    spec fn moved(p: P, q: P) -> bool { p.x <= q.x }
+
+    impl P {
+        #[effects(pure)]
+        #[uses(small, moved)]
+        fn bump(self: &mut P) -> ()
+            requires small(*self),
+            ensures moved(old(self), self),
+        {
+            self.x = self.x + 1;
+        }
+    }
+
+    #[effects(pure)]
+    fn copy(r: &P) -> i64 {
+        let p: P = r;
+        p.x
+    }
+}

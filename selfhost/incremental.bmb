@@ -18,6 +18,9 @@ mod incremental {
     #[summary("A stored fragment (stage0 IrHit): its IR, its runtime checks and its dependencies")]
     struct IrHit { ir: String, checks: u32, deps: IrDeps }
 
+    #[summary("One row of a definition's proof key that is not the same for every definition (stage0 KeyRead): what it is (`self` the definition's qualified text, `component` its recursive component, `callee` an executable callee's contract, `spec` a revealed spec fn's text, `names` a spec fn named only, `decl` a spec fn's SMT declaration, `type` a data type's declaration, `invariant` a type invariant's predicate text), the definition or type it is about, and a digest of the row (empty for `names`)")]
+    struct KeyRead { kind: String, path: String, digest: String }
+
     #[summary("The lines read for one slot (kind and definition path) and not checked yet, in file order")]
     struct Lines { kind: String, path: String, raws: Vec<Raw> }
 
@@ -89,6 +92,15 @@ mod incremental {
     #[effects(pure)]
     fn audit(s: &Session) -> bool {
         s.audit
+    }
+
+    #[summary("The digest of the qualified text with its body of definition r (stage0 hash_of's body hash); of the empty text for a path that is no definition")]
+    #[effects(alloc)]
+    fn body_hash(pr: &mut fmt::Printer, heads: &table::Table<String>, by_path: &table::Table<encode_decls::Def>, r: &str) -> String {
+        match by_path.find(r) {
+            None => sha256::hex(String::new().as_bytes()),
+            Some(bi) => sha256::hex(fmt::qualified_text(pr, heads, &by_path.items[bi].d, by_path.items[bi].unit.as_str(), true).as_bytes()),
+        }
     }
 
     #[summary("The digest of the caller text of definition r (stage0 hash_of's caller hash), each computed once into memo")]
@@ -320,6 +332,14 @@ mod incremental {
             }
         }
         out
+    }
+
+    #[summary("A session that starts empty and keeps its entries in memory only (stage0 Session::in_memory): a tool that verifies a program several times with small edits reuses the unchanged definitions between its own runs by keying the session again. It names no directory and is never saved")]
+    #[effects(alloc, io, nondet)]
+    fn in_memory(ck: &body::Checked, pr: &encode_decls::Prepared, bounded: bool) -> Session {
+        let whole: Option<Vec<String>> = None;
+        let keys: table::Table<String> = keys(ck, pr, &whole, bounded);
+        Session { dir: String::new(), id: compiler_id(), store: Store { entries: table::new::<Entry>(), pending: table::new::<Lines>(), changed: false, damaged: 0 }, audit: false, keys: keys, ir_keys: table::new::<String>(), adts: table::new::<AdtKey>(), stats: no_stats() }
     }
 
     #[summary("The IR key of definition path (or of its instance key with type arguments targs) lowered with the proved obligations rel (stage0 ir_key): the definition's key and rel, and for an instance its key and the data types its type arguments name, closed over their fields and payloads, by their key lines in path order")]
@@ -1232,6 +1252,12 @@ mod incremental {
         Some(ast::TypeKind::Named(segs, args))
     }
 
+    #[summary("Adds a row to the rows of a proof key")]
+    #[effects(alloc)]
+    fn push_read(out: &mut Vec<KeyRead>, kind: &str, path: &str, digest: String) -> () {
+        out.push(KeyRead { kind: String::from(kind), path: String::from(path), digest: digest });
+    }
+
     #[summary("Stores slot (kind, path) (stage0 Store::put): the lines of a lazy load not checked yet for it are checked first; the store changes when the entry is new or differs")]
     #[effects(alloc)]
     fn put(st: &mut Store, kind: &str, path: &str, key: &str, payload: &str) -> () {
@@ -1275,6 +1301,80 @@ mod incremental {
         }
     }
 
+    #[summary("bmb reads (stage0 proof_reads and the rows of lib::reads_sources): each definition's proof key as a row in path order (its kind, the key, what another definition's key takes of it as a callee and, for a spec fn, of its declaration, what its #[uses] reveals, and the rows of the key that differ between definitions), then each data type's digest in path order, as JSONL")]
+    #[effects(alloc, io, nondet)]
+    fn reads(ck: &body::Checked, pg: &encode_spec::Prog) -> String {
+        let listed: Vec<codegen::Def> = lint::defs_of(ck);
+        let mut own: table::Table<encode_decls::Def> = table::new::<encode_decls::Def>();
+        for i in 0..listed.len()
+            invariant 0 <= i && i <= listed.len(),
+        {
+            own.insert(listed[i].path.as_str(), encode_decls::Def { unit: listed[i].unit.clone(), d: listed[i].d.clone() });
+        }
+        let mut by_path: table::Table<encode_decls::Def> = own.clone();
+        let mut decls: table::Table<encode_decls::Def> = table::new::<encode_decls::Def>();
+        for m in 0..ck.program.mods.len()
+            invariant 0 <= m && m <= ck.program.mods.len(),
+        {
+            encode_decls::trait_decls(&ck.program.mods[m], "", &mut decls, 100000);
+        }
+        for n in 0..decls.len()
+            invariant 0 <= n,
+        {
+            match decls.nth(n) {
+                None => {},
+                Some(at) => by_path.insert(decls.key(n).as_str(), decls.items[at].clone()),
+            }
+        }
+        let mut kinds: table::Table<ast::FnKind> = table::new::<ast::FnKind>();
+        for n2 in 0..by_path.len()
+            invariant 0 <= n2,
+        {
+            match by_path.nth(n2) {
+                None => {},
+                Some(at2) => kinds.insert(by_path.key(n2).as_str(), by_path.items[at2].d.kind),
+            }
+        }
+        let heads: table::Table<String> = fmt::impl_heads(&ck.b.c.fns);
+        let mut pr: fmt::Printer = fmt::qualifying(ck.b.c.fns.clone(), "");
+        let mut texts: table::Table<String> = table::new::<String>();
+        let mut callers: table::Table<String> = table::new::<String>();
+        let mut memo: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        let whole: Option<Vec<String>> = None;
+        let proof_keys: table::Table<String> = keys(ck, &pg.pr, &whole, false);
+        let sds: Vec<encode_spec::SpecDecl> = encode_spec::spec_decls(pg);
+        let mut decl_of: table::Table<String> = table::new::<String>();
+        for s in 0..sds.len()
+            invariant 0 <= s && s <= sds.len(),
+        {
+            decl_of.insert(sds[s].path.as_str(), sha256::hex(sds[s].decl.as_bytes()));
+        }
+        let mut sorted: Vec<String> = Vec::new();
+        for n3 in 0..own.len()
+            invariant 0 <= n3,
+        {
+            sorted.push(own.key(n3));
+        }
+        let mut out: String = String::new();
+        for n4 in 0..sorted.len()
+            invariant 0 <= n4 && n4 <= sorted.len(),
+        {
+            match own.find(sorted[n4].as_str()) {
+                None => {},
+                Some(at4) => { let key: String = match proof_keys.find(sorted[n4].as_str()) { None => String::new(), Some(k) => proof_keys.items[k].clone(), }; out.push_str(reads_row(ck, pg, &mut pr, &heads, &by_path, &kinds, &decl_of, sorted.as_slice(), &mut texts, &mut callers, &mut memo, sorted[n4].as_str(), &own.items[at4], key.as_str()).as_str()); },
+            }
+        }
+        for n5 in 0..ck.b.c.adts.len()
+            invariant 0 <= n5,
+        {
+            match ck.b.c.adts.nth(n5) {
+                None => {},
+                Some(at5) => { out.push_str("{\"type\":"); std::json::push_string(&mut out, ck.b.c.adts.key(n5).as_str()); out.push_str(",\"digest\":\""); out.push_str(sha256::hex(adt_line(&ck.b.c.adts.items[at5]).as_bytes()).as_str()); out.push_str("\"}\n"); },
+            }
+        }
+        out
+    }
+
     #[summary("The definitions the text of r names (stage0 reads of Session::keys), each computed once into memo; none for a path that is no definition")]
     #[effects(alloc)]
     fn reads_of(ck: &body::Checked, pr: &mut fmt::Printer, heads: &table::Table<String>, by_path: &table::Table<encode_decls::Def>, kinds: &table::Table<ast::FnKind>, texts: &mut table::Table<String>, memo: &mut table::Table<Vec<String>>, r: &str) -> Vec<String> {
@@ -1288,6 +1388,213 @@ mod incremental {
             out = named_defs(ck, kinds, t.as_str());
         }
         memo.insert(r, out.clone());
+        out
+    }
+
+    #[summary("The row of bmb reads for the definition def at path, whose proof key is key (the rows stage0 Session::keys collects for proof_reads): `self` and `component`; for each definition its qualified text names (and the trait method a trait impl's function refines, and every impl's function of a trait method named) `callee` with the digest of its caller text, `spec` with that of its whole text when #[uses] reveals it or it is in the component, or `names`; `spec` for each spec fn #[uses] reveals that the text does not name; `decl` for each spec fn the text reaches that has a declaration; `type` for each data type a reached text names, closed over fields and payloads, and after it `invariant` and `decl` of its invariant's predicate. sorted are the paths of the program's definitions in order")]
+    #[effects(alloc)]
+    fn reads_row(ck: &body::Checked, pg: &encode_spec::Prog, pr: &mut fmt::Printer, heads: &table::Table<String>, by_path: &table::Table<encode_decls::Def>, kinds: &table::Table<ast::FnKind>, decl_of: &table::Table<String>, sorted: &[String], texts: &mut table::Table<String>, callers: &mut table::Table<String>, memo: &mut table::Table<Vec<String>>, path: &str, def: &encode_decls::Def, key: &str) -> String {
+        let unit: String = def.unit.clone();
+        let qual: String = fmt::qualified_text(pr, heads, &def.d, unit.as_str(), true);
+        let refines: Vec<String> = match encode_decls::refinement_of(&pg.pr.t, path) {
+            None => Vec::new(),
+            Some(rf) => { let mut one: Vec<String> = Vec::new(); one.push(rf.base.clone()); one },
+        };
+        let mut named: Vec<String> = Vec::new();
+        let ws: Vec<String> = words(qual.as_str());
+        for w in 0..ws.len()
+            invariant 0 <= w && w <= ws.len(),
+        {
+            if encode_query::has(ws[w].as_str(), "::") && ws[w].as_str() != path && kinds.has(ws[w].as_str()) {
+                named.push(ws[w].clone());
+            }
+        }
+        for r0 in 0..refines.len()
+            invariant 0 <= r0 && r0 <= refines.len(),
+        {
+            named.push(refines[r0].clone());
+        }
+        let mut refs: Vec<String> = Vec::new();
+        for k in 0..named.len()
+            invariant 0 <= k && k <= named.len(),
+        {
+            if named[k].as_str() != path {
+                refs.push(named[k].clone());
+            }
+            let more: Vec<String> = impls_of(ck, kinds, named[k].as_str());
+            for k2 in 0..more.len()
+                invariant 0 <= k2 && k2 <= more.len(),
+            {
+                if more[k2].as_str() != path {
+                    refs.push(more[k2].clone());
+                }
+            }
+        }
+        let sorted_refs: Vec<String> = body::sorted_set(refs.as_slice());
+        let ctx: Vec<String> = encode_decls::context_of(path, &def.d, unit.as_str(), &pg.pr);
+        let mut revealed: Vec<String> = Vec::new();
+        for u in 0..ctx.len()
+            invariant 0 <= u && u <= ctx.len(),
+        {
+            revealed.push(ctx[u].clone());
+            let impls: Vec<String> = impls_of(ck, kinds, ctx[u].as_str());
+            ast::append::<String>(&mut revealed, impls);
+        }
+        let uses: Vec<String> = body::sorted_set(revealed.as_slice());
+        let mut comp: Vec<String> = Vec::new();
+        match ck.b.recursive.find(path) {
+            None => {},
+            Some(c0) => { let id: usize = ck.b.recursive.items[c0]; for q in 0..sorted.len() invariant 0 <= q && q <= sorted.len(), { match ck.b.recursive.find(sorted[q].as_str()) { None => {}, Some(cq) => { if ck.b.recursive.items[cq] == id { comp.push(sorted[q].clone()); } }, } } },
+        }
+        let mut read: Vec<KeyRead> = Vec::new();
+        push_read(&mut read, "self", path, sha256::hex(qual.as_bytes()));
+        push_read(&mut read, "component", path, sha256::hex(encode_terms::join(comp.as_slice(), " ").as_bytes()));
+        for r in 0..sorted_refs.len()
+            invariant 0 <= r && r <= sorted_refs.len(),
+        {
+            match kinds.find(sorted_refs[r].as_str()) {
+                None => {},
+                Some(ka) => { if !body::is_spec(kinds.items[ka]) { let h: String = caller_hash(pr, heads, by_path, callers, sorted_refs[r].as_str()); push_read(&mut read, "callee", sorted_refs[r].as_str(), h); } else if types::has(uses.as_slice(), sorted_refs[r].as_str()) || types::has(comp.as_slice(), sorted_refs[r].as_str()) { let bh: String = body_hash(pr, heads, by_path, sorted_refs[r].as_str()); push_read(&mut read, "spec", sorted_refs[r].as_str(), bh); } else { push_read(&mut read, "names", sorted_refs[r].as_str(), String::new()); } },
+            }
+        }
+        for u2 in 0..uses.len()
+            invariant 0 <= u2 && u2 <= uses.len(),
+        {
+            if !types::has(sorted_refs.as_slice(), uses[u2].as_str()) {
+                match kinds.find(uses[u2].as_str()) {
+                    None => {},
+                    Some(kb) => { if body::is_spec(kinds.items[kb]) { let bh2: String = body_hash(pr, heads, by_path, uses[u2].as_str()); push_read(&mut read, "spec", uses[u2].as_str(), bh2); } },
+                }
+            }
+        }
+        let mut reach: table::Table<bool> = table::new::<bool>();
+        let mut todo: Vec<String> = Vec::new();
+        let first: Vec<String> = named_defs(ck, kinds, qual.as_str());
+        for a in 0..first.len()
+            invariant 0 <= a && a <= first.len(),
+        {
+            if !reach.has(first[a].as_str()) {
+                reach.insert(first[a].as_str(), true);
+                todo.push(first[a].clone());
+            }
+        }
+        if !reach.has(path) {
+            reach.insert(path, true);
+            todo.push(String::from(path));
+        }
+        for r1 in 0..refines.len()
+            invariant 0 <= r1 && r1 <= refines.len(),
+        {
+            if !reach.has(refines[r1].as_str()) {
+                reach.insert(refines[r1].as_str(), true);
+                todo.push(refines[r1].clone());
+            }
+        }
+        let mut fuel: usize = 1000000000;
+        while todo.len() > 0 && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            let x: String = match todo.pop() {
+                None => String::new(),
+                Some(y) => y,
+            };
+            let next: Vec<String> = reads_of(ck, pr, heads, by_path, kinds, texts, memo, x.as_str());
+            for b in 0..next.len()
+                invariant 0 <= b && b <= next.len(),
+            {
+                if !reach.has(next[b].as_str()) {
+                    reach.insert(next[b].as_str(), true);
+                    todo.push(next[b].clone());
+                }
+            }
+        }
+        for n in 0..reach.len()
+            invariant 0 <= n,
+        {
+            let rk: String = reach.key(n);
+            match decl_of.find(rk.as_str()) {
+                None => {},
+                Some(da) => push_read(&mut read, "decl", rk.as_str(), decl_of.items[da].clone()),
+            }
+        }
+        let mut tys: table::Table<bool> = table::new::<bool>();
+        let mut tytodo: Vec<String> = Vec::new();
+        type_words(ck, qual.as_str(), unit.as_str(), &mut tys, &mut tytodo);
+        for n3 in 0..reach.len()
+            invariant 0 <= n3,
+        {
+            let r3: String = reach.key(n3);
+            match by_path.find(r3.as_str()) {
+                None => {},
+                Some(ba) => { let t3: String = text_of(pr, heads, by_path, texts, r3.as_str()); let u3: String = by_path.items[ba].unit.clone(); type_words(ck, t3.as_str(), u3.as_str(), &mut tys, &mut tytodo); },
+            }
+        }
+        let mut fuel2: usize = 1000000000;
+        while tytodo.len() > 0 && fuel2 > 0
+            decreases fuel2,
+        {
+            fuel2 = fuel2 - 1;
+            let ty: String = match tytodo.pop() {
+                None => String::new(),
+                Some(z) => z,
+            };
+            match ck.b.c.adts.find(ty.as_str()) {
+                None => {},
+                Some(ta) => { let rs: Vec<String> = adt_refs(&ck.b.c.adts.items[ta]); for c in 0..rs.len() invariant 0 <= c && c <= rs.len(), { if ck.b.c.adts.has(rs[c].as_str()) && !tys.has(rs[c].as_str()) { tys.insert(rs[c].as_str(), true); tytodo.push(rs[c].clone()); } } },
+            }
+        }
+        for n4 in 0..tys.len()
+            invariant 0 <= n4,
+        {
+            let tk: String = tys.key(n4);
+            match ck.b.c.adts.find(tk.as_str()) {
+                None => {},
+                Some(tb4) => { push_read(&mut read, "type", tk.as_str(), sha256::hex(adt_line(&ck.b.c.adts.items[tb4]).as_bytes())); match &ck.b.c.adts.items[tb4].inv { None => {}, Some(inv) => { if by_path.has(inv.as_str()) { let ih: String = body_hash(pr, heads, by_path, inv.as_str()); push_read(&mut read, "invariant", inv.as_str(), ih); match decl_of.find(inv.as_str()) { None => {}, Some(di) => push_read(&mut read, "decl", inv.as_str(), decl_of.items[di].clone()), } } }, } },
+            }
+        }
+        let mut out: String = String::from("{\"def\":");
+        std::json::push_string(&mut out, path);
+        out.push_str(",\"kind\":\"");
+        match def.d.kind {
+            ast::FnKind::Exec => out.push_str("fn"),
+            ast::FnKind::Spec => out.push_str("spec fn"),
+            ast::FnKind::Proof => out.push_str("proof fn"),
+        }
+        out.push_str("\",\"key\":\"");
+        out.push_str(key);
+        out.push_str("\",\"contract\":\"");
+        out.push_str(caller_hash(pr, heads, by_path, callers, path).as_str());
+        out.push_str("\",\"decl\":");
+        match decl_of.find(path) {
+            None => out.push_str("null"),
+            Some(dp) => { out.push_str("\""); out.push_str(decl_of.items[dp].as_str()); out.push_str("\""); },
+        }
+        out.push_str(",\"uses\":[");
+        for ui in 0..uses.len()
+            invariant 0 <= ui && ui <= uses.len(),
+        {
+            if ui > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(&mut out, uses[ui].as_str());
+        }
+        out.push_str("],\"reads\":[");
+        for e in 0..read.len()
+            invariant 0 <= e && e <= read.len(),
+        {
+            if e > 0 {
+                out.push_str(",");
+            }
+            out.push_str("{\"kind\":\"");
+            out.push_str(read[e].kind.as_str());
+            out.push_str("\",\"path\":");
+            std::json::push_string(&mut out, read[e].path.as_str());
+            out.push_str(",\"digest\":\"");
+            out.push_str(read[e].digest.as_str());
+            out.push_str("\"}");
+        }
+        out.push_str("]}\n");
         out
     }
 

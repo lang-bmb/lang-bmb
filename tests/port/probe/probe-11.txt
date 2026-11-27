@@ -1,0 +1,18 @@
+#[summary("t")]
+mod lp {
+    #[effects(pure)]
+    fn sum(n: u64) -> (r: u64)
+        requires n < 1000,
+        ensures r <= 1000 * n,
+    {
+        let mut s: u64 = 0;
+        let mut i: u64 = 0;
+        while i < n
+            decreases n - i,
+        {
+            s = s + i;
+            i = i + 1;
+        }
+        s
+    }
+}

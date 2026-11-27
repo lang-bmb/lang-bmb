@@ -1,0 +1,19 @@
+#[summary("conversion habits")]
+mod conv {
+    #[effects(pure)]
+    fn cast(x: u64, a: &[i64], k: i64) -> i64 {
+        x as i64 + a.len() as i64 + a[k as usize] + (k + 1) as i64
+    }
+
+    #[effects(pure)]
+    fn from(x: u64) -> i64 { i64::from(x) }
+
+    #[effects(pure)]
+    fn expects(x: u64) -> i64 { i64::try_from(x).expect("fits") }
+
+    #[effects(pure)]
+    fn bare(x: u64) -> i64 { i64::try_from(x) }
+
+    #[effects(pure)]
+    fn flag(b: bool) -> i64 { b as i64 }
+}

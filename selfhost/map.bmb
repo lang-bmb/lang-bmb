@@ -876,7 +876,7 @@ mod map {
             None => None,
             Some(dir) => Some(cache::load(dir.as_str())),
         };
-        let opts: prove::Opts = prove::Opts { only: only, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+        let opts: prove::Opts = prove::Opts { only: only, bounded: bounded, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
         let pg: encode_spec::Prog = encode_spec::prog_of(ck);
         let mut incr: Option<incremental::Session> = match cache_dir {
             None => None,

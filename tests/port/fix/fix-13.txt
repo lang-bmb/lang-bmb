@@ -1,0 +1,26 @@
+#[summary("g")]
+mod geo {
+    struct Point { x: i64, y: i64 }
+
+    #[effects(pure)]
+    fn origin() -> Point {
+        Point { x: 0, y: 0 }
+    }
+}
+
+#[summary("a")]
+mod app {
+    use geo::Point;
+    use geo::origin;
+
+    #[effects(pure)]
+    fn x_of(p: Point) -> i64 {
+        p.x
+    }
+
+    #[effects(pure)]
+    fn go() -> i64 {
+        let p: Point = origin();
+        x_of(p)
+    }
+}

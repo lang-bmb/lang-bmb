@@ -1,0 +1,15 @@
+#[summary("a")]
+mod a {
+    spec fn small(x: i64) -> bool { x < 100 && x > 0 }
+
+    spec fn tiny(x: i64) -> bool { small(x) }
+}
+
+#[summary("b")]
+mod b {
+    #[effects(pure)] fn inc(x: i64) -> i64
+        requires a::tiny(x),
+    {
+        x + 1
+    }
+}

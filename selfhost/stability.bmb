@@ -47,7 +47,7 @@ mod stability {
         {
             let mut store: Option<cache::ProofCache> = None;
             let mut seen: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
-            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: seed, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: seed, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false, jobs: Vec::new() };
             let out: prove::Outcome = prove::run(&fe.ck, &opts, &mut store, &mut z3, &mut seen);
             runs.push(Run { statuses: out.statuses });
             seed = seed + 1;

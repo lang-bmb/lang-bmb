@@ -1,0 +1,5 @@
+#[summary("t")]
+mod m {
+    #[effects(pure)]
+    fn f() -> i64 { 0x10 + 0o17 + 0b1_01 + 5i64 + 0xfi64 }
+}
