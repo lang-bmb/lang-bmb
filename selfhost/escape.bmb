@@ -1,0 +1,204 @@
+#[summary("Escapes and their rationales in a checked program (port of stage0 compiler/src/escape.rs, ADR-0029 §1, §3): where they are, the hash a rationale is bound to, and whether the hash it carries is still that one. The rewriting of a rationale with another hash (stage0 with_hash) is not ported yet")]
+mod escape {
+    #[summary("The escapes of one definition (stage0 DefEscapes): the number of its `assume` statements, whether it is #[external_body], and its rationales")]
+    struct DefEscapes { assumes: usize, external: bool, rationales: Vec<Rationale> }
+
+    #[summary("What the hashes of rationales read (stage0 Hashes): the definitions with a body, at maps a path to its definition, and heads are the impl heads of the qualified text")]
+    struct Hashes { defs: Vec<codegen::Def>, at: table::Table<usize>, heads: table::Table<String> }
+
+    #[summary("One #[rationale(..)] (stage0 Rationale): where it is, its kind, and the hash it carries")]
+    struct Rationale { span: source::Span, kind: Option<String>, hash: Option<String> }
+
+    #[summary("The escapes in block b (block of stage0 of): an `assume` with its rationale; the initializer of a `let`, the value of an assignment, the bodies of loops and `proof` blocks and the expression statements are entered")]
+    #[effects(alloc)]
+    fn block(b: &ast::Block, out: &mut DefEscapes, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..b.stmts.len()
+            invariant 0 <= i && i <= b.stmts.len(),
+        {
+            match &b.stmts[i] {
+                ast::Stmt::Let(l) => expr(&l.init, out, f - 1),
+                ast::Stmt::Assign(a) => expr(&a.value, out, f - 1),
+                ast::Stmt::While(w) => block(&w.body, out, f - 1),
+                ast::Stmt::For(x) => block(&x.body, out, f - 1),
+                ast::Stmt::Assert(at) => {},
+                ast::Stmt::Assume(am) => { out.assumes = out.assumes.saturating_add(1); match &am.rationale { None => {}, Some(r) => out.rationales.push(rationale(r)), } },
+                ast::Stmt::Proof(p) => block(&p.body, out, f - 1),
+                ast::Stmt::LetFields(lf) => {},
+                ast::Stmt::Expr(e) => expr(e, out, f - 1),
+            }
+        }
+        match &b.tail {
+            None => {},
+            Some(t) => expr(&**t, out, f - 1),
+        }
+    }
+
+    #[summary("Whether every rationale of e carries hash (stage0 confirmed, for a definition that has rationales)")]
+    #[effects(pure)]
+    fn confirmed(e: &DefEscapes, hash: &str) -> bool {
+        for i in 0..e.rationales.len()
+            invariant 0 <= i && i <= e.rationales.len(),
+        {
+            let same: bool = match &e.rationales[i].hash {
+                None => false,
+                Some(h) => h.as_str() == hash,
+            };
+            if !same {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[summary("The escapes in expression e (expr of stage0 of): blocks, the bodies of `loop`, the branches of `if` and the arms of `match` are entered, nothing else")]
+    #[effects(alloc)]
+    fn expr(e: &ast::Expr, out: &mut DefEscapes, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match &e.kind {
+            ast::ExprKind::Int(xv, xr) => {},
+            ast::ExprKind::Float(xf) => {},
+            ast::ExprKind::ByteLit(xb) => {},
+            ast::ExprKind::ByteStr(xbs) => {},
+            ast::ExprKind::StrLit(xs) => {},
+            ast::ExprKind::CharLit(xc) => {},
+            ast::ExprKind::Bool(xbo) => {},
+            ast::ExprKind::Unit => {},
+            ast::ExprKind::Var(var) => {},
+            ast::ExprKind::Call(c) => {},
+            ast::ExprKind::Method(m) => {},
+            ast::ExprKind::Index(ib, ii) => {},
+            ast::ExprKind::Unary(uo, ux) => {},
+            ast::ExprKind::Binary(bo, bl, br) => {},
+            ast::ExprKind::Ref(rm, rx) => {},
+            ast::ExprKind::If(ife) => { block(&ife.then, out, f - 1); match &ife.els { None => {}, Some(el) => expr(&**el, out, f - 1), } },
+            ast::ExprKind::Block(blk) => block(blk, out, f - 1),
+            ast::ExprKind::Array(arr) => {},
+            ast::ExprKind::Repeat(rp) => {},
+            ast::ExprKind::Old(ox) => {},
+            ast::ExprKind::Quant(qu) => {},
+            ast::ExprKind::Trigger(tx) => {},
+            ast::ExprKind::Closure(clo) => {},
+            ast::ExprKind::StructLit(sl) => {},
+            ast::ExprKind::Path(pa) => {},
+            ast::ExprKind::Deref(dx) => {},
+            ast::ExprKind::Field(fb, fname) => {},
+            ast::ExprKind::Match(ma) => { for i in 0..ma.arms.len() invariant 0 <= i && i <= ma.arms.len(), { expr(&ma.arms[i].body, out, f - 1); } },
+            ast::ExprKind::Return(ret) => {},
+            ast::ExprKind::Try(trx) => {},
+            ast::ExprKind::Loop(lo) => block(&lo.body, out, f - 1),
+            ast::ExprKind::Break(br2) => {},
+            ast::ExprKind::Continue(cl) => {},
+            ast::ExprKind::Range(ra) => {},
+            ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("The hash every rationale of the definition at path is bound to (stage0 Hashes::of, ADR-0029 §3): of the definition's qualified normal form, which leaves rationales out, and the whole text of each `spec fn` it names, in path order; 16 hex digits of a SHA-256. None when the program has no such definition. pr is the printer of qualified texts (fmt::qualifying)")]
+    #[effects(alloc)]
+    fn hash_of(h: &Hashes, pr: &mut fmt::Printer, fns: &table::Table<types::FnSig>, path: &str) -> Option<String> {
+        let k: usize = match h.at.find(path) {
+            None => { return None; },
+            Some(a) => h.at.items[a],
+        };
+        if k >= h.defs.len() {
+            return None;
+        }
+        let own: String = fmt::qualified_text(pr, &h.heads, &h.defs[k].d, h.defs[k].unit.as_str(), true);
+        let words: Vec<String> = body::sorted_set(words_of(own.as_str()).as_slice());
+        let mut text: String = own.clone();
+        for i in 0..words.len()
+            invariant 0 <= i && i <= words.len(),
+        {
+            let named: bool = words[i].as_str() != path && (match fns.find(words[i].as_str()) { None => false, Some(s) => body::is_spec(fns.items[s].kind) && !fns.items[s].builtin, });
+            if named {
+                match h.at.find(words[i].as_str()) {
+                    None => {},
+                    Some(g) => { let n: usize = h.at.items[g]; if n < h.defs.len() { text.push_str("\n"); text.push_str(words[i].as_str()); text.push_str("\n"); let other: String = fmt::qualified_text(pr, &h.heads, &h.defs[n].d, h.defs[n].unit.as_str(), true); text.push_str(other.as_str()); } },
+                }
+            }
+        }
+        let full: String = identity::sha(text.as_str());
+        Some(lexer::cut(full.as_str(), 7, 23))
+    }
+
+    #[summary("What the hashes of the rationales of a program read (stage0 Hashes::new): defs are its definitions with a body, a later one of the same path in place of an earlier one")]
+    #[effects(alloc)]
+    fn hashes(defs: &[codegen::Def], fns: &table::Table<types::FnSig>) -> Hashes {
+        let mut at: table::Table<usize> = table::new::<usize>();
+        let mut own: Vec<codegen::Def> = Vec::new();
+        for i in 0..defs.len()
+            invariant 0 <= i && i <= defs.len(),
+        {
+            at.insert(defs[i].path.as_str(), i);
+            own.push(defs[i].clone());
+        }
+        Hashes { defs: own, at: at, heads: fmt::impl_heads(fns) }
+    }
+
+    #[summary("The escapes of definition d (stage0 of): its `assume` statements with their rationales, #[external_body], and its own #[rationale(..)], which comes first")]
+    #[effects(alloc)]
+    fn of(d: &ast::FnDef) -> DefEscapes {
+        let mut out: DefEscapes = DefEscapes { assumes: 0, external: false, rationales: Vec::new() };
+        let mut own: bool = false;
+        for i in 0..d.attrs.len()
+            invariant 0 <= i && i <= d.attrs.len(),
+        {
+            if d.attrs[i].name.name == "external_body" {
+                out.external = true;
+            }
+            if !own && d.attrs[i].name.name == "rationale" {
+                own = true;
+                out.rationales.push(rationale(&d.attrs[i]));
+            }
+        }
+        block(&d.body, &mut out, 1000000000);
+        out
+    }
+
+    #[summary("The rationale attribute a read (stage0 rationale): `kind = K` with a name and `hash = \"..\"` with a string, the last of each")]
+    #[effects(alloc)]
+    fn rationale(a: &ast::Attr) -> Rationale {
+        let mut kind: Option<String> = None;
+        let mut hash: Option<String> = None;
+        for i in 0..a.args.len()
+            invariant 0 <= i && i <= a.args.len(),
+        {
+            match &a.args[i] {
+                ast::AttrArg::Ident(id) => {},
+                ast::AttrArg::Str(s, sp) => {},
+                ast::AttrArg::Pair(k, v) => { match &**v { ast::AttrArg::Ident(vi) => { if k.name == "kind" { kind = Some(vi.name.clone()); } }, ast::AttrArg::Str(vs, vsp) => { if k.name == "hash" { hash = Some(vs.clone()); } }, ast::AttrArg::Pair(vk, vv) => {}, } },
+            }
+        }
+        Rationale { span: a.span, kind: kind, hash: hash }
+    }
+
+    #[summary("The words of text: the longest runs of letters and digits (Unicode), `_` and `:` (the split of stage0 Hashes::of)")]
+    #[effects(alloc)]
+    fn words_of(text: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut from: usize = 0;
+        let mut i: usize = 0;
+        while i < text.len()
+            invariant from <= i,
+            decreases text.len() - i,
+        {
+            match std::str::decode_utf8(text, i) {
+                None => { i = text.len(); },
+                Some(dc) => { if dc.next <= i { i = text.len(); } else { let c: u32 = u32::from(dc.ch); if !(unicode::alphanumeric(c) || c == 95 || c == 58) { if from < i { out.push(lexer::cut(text, from, i)); } from = dc.next; } i = dc.next; } },
+            }
+        }
+        if from < text.len() {
+            out.push(lexer::cut(text, from, text.len()));
+        }
+        out
+    }
+}

@@ -25,7 +25,7 @@ cargo run -- reads a.bmb         # one row per definition with its proof key (th
 cargo run -- doctor              # checks the pinned Z3 and LLVM versions (scripts/toolchain.env)
 ../scripts/setup.sh              # installs the pinned versions (in a new cloud session the start hook runs it automatically)
 ../scripts/check.sh              # verification gate: fmt, checks of things that go stale (scripts/fresh.sh: generated documents, surface fingerprint, fast health), clippy, build, then the test executables and the script checks concurrently (scripts/gate_jobs.py), and at the end a check of the files the run left behind. Only one runs at a time (scripts/with_gate_lock.sh). Judge by the exit code
-cargo run -- map all a.bmb        # standard map L0 to L2 (JSONL, ADR-0020; types, `impl` functions and `types` edges are in ADR-0026 §6)
+cargo run -- map all a.bmb        # standard map L0 to L2 (JSONL, ADR-0020; types, `impl` functions and `types` edges are in ADR-0026 §6). Compared with the port: the three levels, `--cache DIR` and the window flags `--budget`, `--offset` and `--limit`
 cargo run -- query slice u::f -- a.bmb  # read queries: units surface edges slice find contracts status impact duplicates effects tests
 cargo run -- query status m1 m2::f -- ws  # scope arguments: units, status, duplicates, effects, effect E and tests take paths (unit, definition, type) and answer only for what is under them. edges DEF out 64 calls follows only edges of that kind (see "Query scope" below)
 cargo run -- query --cache .bmb-cache status -- ws  # map and query also take --cache DIR (it affects only L1, surface and status, which prove; the output is the same bytes)

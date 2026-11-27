@@ -9,8 +9,8 @@ mod prove {
     #[summary("How a run of the gate is asked: only names the definitions to prove when not all, bounded asks each undecided obligation once more with its inputs bounded (ADR-0108 §1), seed is the solver's random seed in the options of every query (0 but for `bmb stability`), rlimit is the gate's resource limit (the probe's and the search's shares are shares of it), query the resource limit of a full query (the gate's, or the advisory one of the lint), who asks (the limits of its solvers and the reasons of an undecided query), and stop ends the run at the first obligation that fails (stage0 stop_at_failure, for the lint's re-verifications, which only ask whether a definition verifies completely)")]
     struct Opts { only: Option<Vec<String>>, bounded: bool, seed: u64, rlimit: u64, query: u64, who: solver::Asker, stop: bool }
 
-    #[summary("What proving found (stage0 Outcome): the status of each definition in path order; the script of each definition that was encoded, as it is sent to the solver before canonical symbols (a is the path, b the script); the obligations proved at every visit, whose runtime checks code generation may drop (DESIGN.md principle 9); while a pass runs, failed holds the obligations that failed at a visit (stage0 failed_keys), which a pass's proven leaves out; and the definitions code generation compiles with every check (ADR-0029 §4): those that are not proved without trusted facts and every definition they call, whose checks are no missing proofs")]
-    struct Outcome { statuses: Vec<Status>, scripts: Vec<encode_terms::Pair>, proven: Vec<encode_spec::Trivial>, failed: Vec<encode_spec::Trivial>, checked: Vec<String> }
+    #[summary("What proving found (stage0 Outcome): the status of each definition in path order; the script of each definition that was encoded, as it is sent to the solver before canonical symbols (a is the path, b the script); the obligations proved at every visit, whose runtime checks code generation may drop (DESIGN.md principle 9); while a pass runs, failed holds the obligations that failed at a visit (stage0 failed_keys), which a pass's proven leaves out; and the definitions code generation compiles with every check (ADR-0029 §4): those that are not proved without trusted facts and every definition they call, whose checks are no missing proofs; and per definition proved only with trusted facts, the obligations that failed without them (stage0 assumed_obligations)")]
+    struct Outcome { statuses: Vec<Status>, scripts: Vec<encode_terms::Pair>, proven: Vec<encode_spec::Trivial>, failed: Vec<encode_spec::Trivial>, checked: Vec<String>, assumed: table::Table<usize> }
 
     #[summary("The status of a definition (stage0 FnStatus): its obligations and how many failed; trust is how the proof stands when none failed (0 proved without trusted facts, 1 assumed with them, 2 an `#[external_body]`, which has no obligations); total is the solver's resource units over all obligations and max the largest single run; backstop counts the queries the wall-clock backstop ended")]
     struct Status { path: String, obligations: usize, failed: usize, trust: u8, total: u64, max: u64, backstop: u64 }
@@ -600,7 +600,7 @@ mod prove {
     #[summary("One pass over the program's definitions (stage0 verify_pass), in path order: an instance is proved through its generic definition, an `#[external_body]` is checked and not proved (ADR-0029 §2), and every other definition that has obligations is encoded and each obligation decided on a reset solver that holds only the definition's base, so no result depends on another's (ADR-0017 §5). One solver process serves every definition of a pass; it is started at the first obligation the cache does not hold, replaced when too old to take on another definition, and closed at the end of the pass. trust is the pass of the gate and only the definitions to prove when not all. With opts.stop the pass ends at the first obligation that fails: the rest of that definition and the definitions after it are not asked. A solver that is missing or of another version is E0812 at the first definition's name")]
     #[effects(alloc, io, nondet)]
     fn pass(ck: &body::Checked, pg: &encode_spec::Prog, sds: &[encode_spec::SpecDecl], dts: &[encode_decls::Decl], z3: &mut toolchain::Z3, store: &mut Option<cache::ProofCache>, incr: &mut Option<incremental::Session>, opts: &Opts, only: &Option<Vec<String>>, trust: &Option<encode_exec::Trust>, diags: &mut diag::Diags) -> Outcome {
-        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new() };
+        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new(), assumed: table::new::<usize>() };
         let mut held: Option<solver::Solver> = None;
         let first: source::Span = match pg.defs.nth(0) {
             None => source::Span { file: 0, lo: 0, hi: 0 },
@@ -880,6 +880,7 @@ mod prove {
         let mut no_incr: Option<incremental::Session> = None;
         let mut result: table::Table<DefResult> = split(&a, da.items.as_slice(), &spans, &mut rest);
         let mut trusted_pass: Vec<String> = Vec::new();
+        let mut assumed: table::Table<usize> = table::new::<usize>();
         let mut fuel: usize = pg.defs.len().saturating_mul(2).saturating_add(2);
         let mut going: bool = true;
         while going && fuel > 0
@@ -908,7 +909,7 @@ mod prove {
                 {
                     match rb.nth(n2) {
                         None => {},
-                        Some(at2) => { let p2: String = rb.key(n2); let mut r: DefResult = rb.items[at2].clone(); if r.status.failed == 0 { r.status.trust = 1; } trusted_pass.push(p2.clone()); result.insert(p2.as_str(), r); },
+                        Some(at2) => { let p2: String = rb.key(n2); let mut r: DefResult = rb.items[at2].clone(); if r.status.failed == 0 { r.status.trust = 1; let before: usize = match result.find(p2.as_str()) { None => 0, Some(was) => result.items[was].status.failed, }; assumed.insert(p2.as_str(), before); } trusted_pass.push(p2.clone()); result.insert(p2.as_str(), r); },
                     }
                 }
             }
@@ -967,7 +968,7 @@ mod prove {
                 }
             }
         }
-        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new() };
+        let mut out: Outcome = Outcome { statuses: Vec::new(), scripts: Vec::new(), proven: Vec::new(), failed: Vec::new(), checked: Vec::new(), assumed: table::new::<usize>() };
         let mut checked: Vec<String> = Vec::new();
         for n7 in 0..result.len()
             invariant 0 <= n7,
@@ -978,6 +979,7 @@ mod prove {
             }
         }
         out.checked = calls_closed(&ck.b.calls, checked.as_slice());
+        out.assumed = assumed;
         for i2 in 0..rest.len()
             invariant 0 <= i2 && i2 <= rest.len(),
         {

@@ -1,7 +1,7 @@
 #[summary("Entry points the commands call (port of stage0 compiler/src/lib.rs). Grows with each phase: for now dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, verify, emit-llvm and build")]
 mod lib {
-    #[summary("One call the walk of a body finds (stage0 map::calls_in_expr): the path called, whether it is in specification context, and the position of the call")]
-    struct CallAt { path: Vec<ast::Ident>, ghost: bool, span: source::Span }
+    #[summary("One call the walk of a body finds (stage0 map::calls_in_expr): the path called, the number of its arguments, whether it is in specification context, and the position of the call")]
+    struct CallAt { path: Vec<ast::Ident>, args: usize, ghost: bool, span: source::Span }
 
     #[summary("Result of emit-llvm and build (stage0 LlvmOutput): built is whether the program checks, so that there is a module; ok whether it checks and every definition is proved; output the diagnostics and the status rows; ir the text of the module; todo the reasons for syntax not yet ported (if not empty, ir is not used); checks the runtime checks the module keeps because their obligation is not proved, outside the definitions compiled with every check (ADR-0029 §4); has_main whether the program has an entry point; hits and misses the proof cache's lookups; incr what the per-definition cache did, when the run went through it; cache_error and incr_error why the proof cache or the per-definition cache could not be written back, if it could not")]
     struct Emitted { built: bool, ok: bool, output: String, ir: String, todo: Vec<String>, checks: u32, has_main: bool, hits: usize, misses: usize, incr: Option<incremental::Stats>, cache_error: Option<String>, incr_error: Option<String> }
@@ -68,7 +68,7 @@ mod lib {
             ast::ExprKind::Bool(xbo) => {},
             ast::ExprKind::Unit => {},
             ast::ExprKind::Var(var) => {},
-            ast::ExprKind::Call(c) => { out.push(CallAt { path: c.path.clone(), ghost: ghost, span: e.span }); calls_in_exprs(c.args.as_slice(), ghost, out, f - 1); },
+            ast::ExprKind::Call(c) => { out.push(CallAt { path: c.path.clone(), args: c.args.len(), ghost: ghost, span: e.span }); calls_in_exprs(c.args.as_slice(), ghost, out, f - 1); },
             ast::ExprKind::Method(m) => { calls_in_expr(&*m.recv, ghost, out, f - 1); calls_in_exprs(m.args.as_slice(), ghost, out, f - 1); },
             ast::ExprKind::Index(ib, ii) => { calls_in_expr(&**ib, ghost, out, f - 1); calls_in_expr(&**ii, ghost, out, f - 1); },
             ast::ExprKind::Unary(uo, ux) => calls_in_expr(&**ux, ghost, out, f - 1),

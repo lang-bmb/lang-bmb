@@ -5734,8 +5734,8 @@ mod body {
     #[summary("A call where the variable is used as an argument: position, path of the call, which argument it is")]
     struct CallUse { lo: u32, path: Vec<ast::Ident>, k: usize }
 
-    #[summary("A checked program: the program with method calls resolved to path calls and uses of constants turned into literal trees, the checker's tables, the definitions that may be untrusted, the positions of expressions whose value is text (stage0 Tables::text: from types before the constants' literal trees are built, in key order), and the readable names of the structs and traits the lowering of function values made (stage0 Tables::names)")]
-    struct Checked { program: ast::Program, b: Body, untrusted: Vec<String>, text: Vec<String>, names: table::Table<String> }
+    #[summary("A checked program: the program with method calls resolved to path calls and uses of constants turned into literal trees, the checker's tables, the definitions that may be untrusted, the positions of expressions whose value is text (stage0 Tables::text: from types before the constants' literal trees are built, in key order), the readable names of the structs and traits the lowering of function values made (stage0 Tables::names), and where function values are passed and where the definitions made for them are written (stage0 Tables::passes and Tables::at: the map's edges and locations)")]
+    struct Checked { program: ast::Program, b: Body, untrusted: Vec<String>, text: Vec<String>, names: table::Table<String>, passes: Vec<closures::Pass>, at: table::Table<source::Span> }
 
     #[summary("Visitor that rewrites each use of a const into the literal tree of its value (stage0 consts::literal_tree): records for each node its own position (file source::CONST_VALUES, from next) and type in types")]
     struct ConstTrees { uses: table::Table<ConstUse>, adts: table::Table<types::Adt>, types: table::Table<ast::TypeKind>, next: u32 }
@@ -6614,7 +6614,7 @@ mod body {
         ast::exprs_mut::<ConstTrees>(&mut program, &mut trees);
         b.types = trees.types;
         let untrusted: Vec<String> = b.may_untrusted();
-        Checked { program: program, b: b, untrusted: untrusted, text: text, names: lowered.names }
+        Checked { program: program, b: b, untrusted: untrusted, text: text, names: lowered.names, passes: lowered.passes, at: lowered.at }
     }
 
     #[summary("Checker that has checked the program once. Diagnostics start from those of the preceding stage (base): the check of constants removes the evaluator's diagnostics from there")]

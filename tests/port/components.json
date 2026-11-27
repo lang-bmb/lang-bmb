@@ -166,7 +166,8 @@
         "selfhost/decls.bmb",
         "selfhost/body.bmb",
         "selfhost/moves.bmb",
-        "selfhost/methodize.bmb"
+        "selfhost/methodize.bmb",
+        "selfhost/escape.bmb"
       ],
       "pin": null,
       "ledger": {
@@ -224,13 +225,24 @@
         "map.rs",
         "view.rs"
       ],
-      "port": [],
+      "port": [
+        "selfhost/map.bmb"
+      ],
       "pin": null,
       "ledger": {
         "session_tokens": null,
         "gate_runs": null,
         "undecided_runs": null,
-        "friction": []
+        "friction": [
+          "`map` (`selfhost/map.bmb`): the index and the rows of L0, L1 and L2 with the window flags; the `query` subcommands of the same stage0 file and `view.rs` are not ported, so the ratio of this row is against all of `map.rs`",
+          "stage0's edge set is a `BTreeSet<Edge>` with a derived order over five fields, two of them optional. There is no derived `Ord` and `table::Table` is keyed by text, so an edge is stored under a text key whose byte order is that order (`map::edge_key`: the fields joined by byte 1, an argument position as twenty digits): left as is",
+          "The rows of a level are sorted by path with a stable sort in stage0. The port appends each row to the list of its path in a table and reads the table in key order (`map::add_row`): left as is",
+          "The hashes of a definition are made on first use in stage0 (`OnceCell`). The port asks the identities for them when a level that shows them is written, so `map L2` hashes no definition: left as is",
+          "A struct that holds the identities and the printer that writes their texts cannot be passed as `&mut` to a call that needs both (`ids.get(&mut pr, ..)` is E0410: the same root twice), so the printer is a parameter of its own (`map::Idents`, `escape::Hashes`): left as is",
+          "`fmt.bmb` is pinned, so the three texts stage0's `fmt.rs` gives the map (`surface_parts`, `type_text`, `trait_text`) are in `map.bmb` (`signature`, `type_text`, `trait_text`) over the printer's own methods: left as is",
+          "`body::Checked` gained `passes` and `at` (stage0 `Tables::passes`, `Tables::at`), `prove::Outcome` gained `assumed` (stage0 `assumed_obligations`) and `lib::CallAt` the number of arguments of a call (the `writes` edges). With the two new units, 182 definitions of the port were encoded again and 3,636 of its 24,278 queries asked (12 minutes in one process over the gate's proof cache)",
+          "Proof gate: 52 definitions and 742 obligations in `map`, 8 and 90 in `escape` (C4). One failure in two runs: an index into a `Vec` field checked before a call that takes the struct by `&mut` (E0805: the length is not known after the call), fixed by checking after the call"
+        ]
       }
     },
     {

@@ -142,6 +142,18 @@
     "stability-fake-broken": 4.5,
     "stability-fake-memory": 6.6,
     "stability-solver-old": 0.2,
-    "stability-solver-dead": 0.3
+    "stability-solver-dead": 0.3,
+    "map-l0": 25.5,
+    "map-l0-together": 10.1,
+    "map-l2": 24.1,
+    "map-l2-together": 9.9,
+    "map-l1": 134.7,
+    "map-l1-together": 71.2,
+    "map-all": 45.3,
+    "map-fake-models": 1.5,
+    "map-window": 2.5,
+    "map-window-together": 10.9,
+    "map-ends": 2.4,
+    "map-cache": 32.0
   }
 }

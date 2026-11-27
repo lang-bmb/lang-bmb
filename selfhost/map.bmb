@@ -1,0 +1,1351 @@
+#[summary("The standard maps and the window on a response (port of the index and the map rows of stage0 compiler/src/map.rs, ADR-0020, and of the window of ADR-0127): `bmb map`. The index holds what the maps know of a checked program without proof results (units, definitions, type declarations, edges); the rows of L0 and L2 are written from it, and those of L1 from it and the proof results. The read queries of the same stage0 file are not ported yet: they read this index")]
+mod map {
+    #[summary("One edge of the L2 map (stage0 Edge): from a definition to what it calls, names in a contract, writes through, reads, uses or passes. arg is the argument position of a `writes` edge, targs the type arguments of a call of a generic definition (ADR-0046 §3)")]
+    struct Edge { from: String, to: String, kind: String, arg: Option<usize>, targs: Option<String> }
+
+    #[summary("One definition of an index (stage0 Entry): what the maps know of it without proof results. at is its position in the definitions in walk order (Idents::defs), kind its keyword, display what a reader calls a definition the lowering of function values made, when that differs from path")]
+    struct Entry { path: String, unit: String, at: usize, kind: ast::FnKind, file: String, line: u32, display: Option<String> }
+
+    #[summary("The identities of a program (ADR-0059 §1) as the maps ask for them: the items, the full paths of the traits (for the printer that writes their texts, printer), and the definitions with a body in walk order (stage0 Model::fns)")]
+    struct Idents { ids: identity::Ids, traits: Vec<String>, defs: Vec<codegen::Def> }
+
+    #[summary("Everything the maps need from a checked program except proof results (stage0 Index): units, definitions and type declarations by path, and the edges in their order (the key of an edge is edge_key)")]
+    struct Index { units: table::Table<Unit>, defs: table::Table<Entry>, types: table::Table<TypeEntry>, edges: table::Table<Edge> }
+
+    #[summary("Result of bmb map: ok when the program checks, and text is then the response, otherwise the JSONL of its diagnostics; cache_error and incr_error are why the proof cache or the per-definition cache could not be written back, if one could not (L1 proves)")]
+    struct Mapped { ok: bool, text: String, cache_error: Option<String>, incr_error: Option<String> }
+
+    #[summary("What the L1 rows read besides the index (the proof side of stage0 Model): status maps a path to its place in the proof results, checked holds the definitions compiled with every check, unproved those whose termination is not proved (stage0 Index::nonterminating), effects the transitive effects of each executable definition with a body (the `all` of stage0 Index::effects), uses the targets of the `uses` edges of each definition in edge order, and rationales what the hashes of rationales read")]
+    struct Model { status: table::Table<usize>, checked: table::Table<bool>, unproved: table::Table<bool>, effects: table::Table<types::Effects>, uses: table::Table<Vec<String>>, rationales: escape::Hashes }
+
+    #[summary("One row of a response as a byte range of its text, without the line end")]
+    struct Row { lo: usize, hi: usize }
+
+    #[summary("A type declaration of an index (stage0 TypeEntry, ADR-0026 §6): kind is struct, enum, trait or const (ADR-0052 §7), text the declaration in normal form on one line, id its identity and hash the hash of its nameless text, names the types its fields or payloads name, inv the predicate of its #[invariant(p)] by full path")]
+    struct TypeEntry { path: String, unit: String, kind: String, text: String, id: String, hash: String, file: String, line: u32, display: Option<String>, names: Vec<String>, inv: Option<String>, summary: Option<String> }
+
+    #[summary("One unit of an index (stage0 Unit): its summary, its inner units and its definitions, each list in order")]
+    struct Unit { path: String, summary: String, units: Vec<String>, defs: Vec<String> }
+
+    #[summary("The window flags of map (stage0 Window, ADR-0127): the byte budget, the first row and the largest number of rows")]
+    struct Window { budget: usize, offset: usize, limit: Option<usize> }
+
+    #[summary("What the window flags before a request are (stage0 window_flags): why is the message when a flag's value is no count; otherwise window is the window when there is a flag, and next the position of the first argument after the flags")]
+    struct Windowed { why: Option<String>, window: Option<Window>, next: usize }
+
+    #[summary("Adds edge e to the set")]
+    #[effects(alloc)]
+    fn add_edge(edges: &mut table::Table<Edge>, e: Edge) -> () {
+        let k: String = edge_key(&e);
+        edges.insert(k.as_str(), e);
+    }
+
+    #[summary("Appends row to the rows of path: rows of one path stay in the order they were added (stage0 sorts the rows by path with a stable sort)")]
+    #[effects(alloc)]
+    fn add_row(rows: &mut table::Table<Vec<String>>, path: &str, row: String) -> () {
+        match rows.find(path) {
+            None => { let mut one: Vec<String> = Vec::new(); one.push(row); rows.insert(path, one); },
+            Some(at) => rows.items[at].push(row),
+        }
+    }
+
+    #[summary("A window on a JSONL response (stage0 bound, ADR-0127): the rows from the offset, as many whole rows as fit the budget (the first of them always, so every offset makes progress) and at most the limit. When that is not every row of text, a last row says so: the offset, the rows shown, the rows and bytes of the whole response and, while rows remain, the offset to go on from. A response shown whole is returned as it is")]
+    #[effects(alloc)]
+    fn bound(text: &str, w: &Window) -> String {
+        let rows: Vec<Row> = rows_of(text);
+        let mut out: String = String::new();
+        let mut shown: usize = 0;
+        let mut i: usize = w.offset;
+        while i < rows.len()
+            invariant shown <= i,
+            decreases rows.len() - i,
+        {
+            let full: bool = match &w.limit {
+                None => false,
+                Some(l) => shown >= *l,
+            };
+            let len: usize = rows[i].hi.saturating_sub(rows[i].lo);
+            if full || shown > 0 && out.len().saturating_add(len).saturating_add(1) > w.budget {
+                break;
+            }
+            out.push_str(lexer::cut(text, rows[i].lo, rows[i].hi).as_str());
+            out.push_str("\n");
+            shown = shown + 1;
+            i = i + 1;
+        }
+        if shown == rows.len() {
+            return String::from(text);
+        }
+        out.push_str("{\"truncated\":true,\"offset\":");
+        std::num::push_u64(&mut out, w.offset as u64);
+        out.push_str(",\"shown\":");
+        std::num::push_u64(&mut out, shown as u64);
+        out.push_str(",\"rows\":");
+        std::num::push_u64(&mut out, rows.len() as u64);
+        out.push_str(",\"bytes\":");
+        std::num::push_u64(&mut out, text.len() as u64);
+        let next: usize = w.offset.saturating_add(shown);
+        if next < rows.len() {
+            out.push_str(",\"next\":");
+            std::num::push_u64(&mut out, next as u64);
+            out.push_str(",\"hint\":\"continue from `next` with `offset`, or ask for less: scope paths, `overview`, a smaller depth or edge kinds\"");
+        }
+        out.push_str("}\n");
+        out
+    }
+
+    #[summary("Builds the index of a checked program (stage0 Index::build). idn gives the identities of the type declarations, sm the files and lines")]
+    #[effects(alloc)]
+    fn build(ck: &body::Checked, sm: &source::SourceMap, idn: &mut Idents, pr: &mut fmt::Printer) -> Index {
+        let mut ix: Index = Index { units: table::new::<Unit>(), defs: table::new::<Entry>(), types: table::new::<TypeEntry>(), edges: table::new::<Edge>() };
+        let by_span: table::Table<String> = impl_paths(&ck.b.c.fns);
+        for i in 0..ck.program.mods.len()
+            invariant 0 <= i && i <= ck.program.mods.len(),
+        {
+            walk(&ck.program.mods[i], "", &by_span, &mut ix.units, 100000);
+        }
+        let low: lowered::Tables = lowered::tables(ck);
+        let context: table::Table<Vec<String>> = encode_decls::default_contexts(&ck.program, &low);
+        for d in 0..idn.defs.len()
+            invariant 0 <= d && d <= idn.defs.len(),
+        {
+            def_edges(ck, &context, &idn.defs[d], &mut ix.edges);
+            let entry: Entry = entry_of(ck, sm, &idn.defs[d], d);
+            ix.defs.insert(idn.defs[d].path.as_str(), entry);
+        }
+        pass_edges(ck, idn.defs.as_slice(), &mut ix.edges);
+        for t in 0..ck.program.mods.len()
+            invariant 0 <= t && t <= ck.program.mods.len(),
+        {
+            trait_entries(&ck.program.mods[t], "", ck, sm, idn, pr, &mut ix.types, 100000);
+        }
+        for s in 0..ck.program.mods.len()
+            invariant 0 <= s && s <= ck.program.mods.len(),
+        {
+            type_entries(&ck.program.mods[s], "", ck, sm, idn, pr, &mut ix.types, 100000);
+        }
+        for c in 0..ck.program.mods.len()
+            invariant 0 <= c && c <= ck.program.mods.len(),
+        {
+            const_entries(&ck.program.mods[c], "", ck, sm, &mut ix, 100000);
+        }
+        ix
+    }
+
+    #[summary("The entries of the `const`s of unit m and its inner units (stage0 walk_consts and the loop over it, ADR-0052 §7): the declaration with its evaluated value is the surface and its hash the identity; one reading another is a `reads` edge. A constant the checker has no value table entry for is left out")]
+    #[effects(alloc)]
+    fn const_entries(m: &ast::Mod, prefix: &str, ck: &body::Checked, sm: &source::SourceMap, ix: &mut Index, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        for i in 0..m.consts.len()
+            invariant 0 <= i && i <= m.consts.len(),
+        {
+            let path: String = types::cat2(sub.as_str(), m.consts[i].name.name.as_str());
+            match ck.b.consts.find(path.as_str()) {
+                None => {},
+                Some(at) => { let value: String = match &ck.b.consts.items[at].value { None => String::from("?"), Some(v) => consts::value_text(v), }; let text: String = types::cat7("const ", m.consts[i].name.name.as_str(), ": ", types::text(&ck.b.consts.items[at].ty).as_str(), " = ", value.as_str(), ""); let hash: String = identity::sha(text.as_str()); match ck.b.const_reads.find(path.as_str()) { None => {}, Some(ra) => { for r in 0..ck.b.const_reads.items[ra].len() invariant 0 <= r && r <= ck.b.const_reads.items[ra].len(), { add_edge(&mut ix.edges, plain_edge(path.as_str(), ck.b.const_reads.items[ra][r].as_str(), "reads")); } }, } let mut names: Vec<String> = Vec::new(); named_types(&ck.b.consts.items[at].ty, &ck.b.c.adts, &mut names, 100000); let here: source::Span = m.consts[i].name.span; ix.types.insert(path.as_str(), TypeEntry { path: path.clone(), unit: mp.clone(), kind: String::from("const"), text: text, id: hash.clone(), hash: hash, file: file_name(sm, here.file), line: sm.line_col(here.file, here.lo).line, display: None, names: body::sorted_set(names.as_slice()), inv: None, summary: summary_of(m.consts[i].attrs.as_slice()) }); },
+            }
+        }
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            const_entries(&m.mods[s], sub.as_str(), ck, sm, ix, f - 1);
+        }
+    }
+
+    #[summary("The edges out of definition def (the edge part of the loop of stage0 Index::build): the calls of its contract and of its body as the checker resolves them (a trait call with a known Self names its impl's function, a variant constructor is no call), a `writes` edge per `&mut` parameter an executable call passes, the data types and traits it names (`types`), its #[uses] and its default proof context (`uses`), and the constants it reads (`reads`)")]
+    #[effects(alloc)]
+    fn def_edges(ck: &body::Checked, context: &table::Table<Vec<String>>, def: &codegen::Def, edges: &mut table::Table<Edge>) -> () {
+        let path: String = def.path.clone();
+        let mut calls: Vec<lib::CallAt> = Vec::new();
+        let mut contract: Vec<lib::CallAt> = Vec::new();
+        lib::calls_in_exprs(def.d.pre.as_slice(), true, &mut contract, 1000000000);
+        lib::calls_in_exprs(def.d.post.as_slice(), true, &mut contract, 1000000000);
+        match &def.d.measure {
+            None => {},
+            Some(m) => lib::calls_in_expr(m, true, &mut contract, 1000000000),
+        }
+        lib::calls_in_block(&def.d.body, !body::is_exec(def.d.kind), &mut calls, 1000000000);
+        let mut named: Vec<String> = Vec::new();
+        for i in 0..contract.len()
+            invariant 0 <= i && i <= contract.len(),
+        {
+            let to: String = lib::map_resolve(contract[i].path.as_slice(), def.unit.as_str(), &ck.b.c.fns);
+            trait_named(&ck.b.c.fns, to.as_str(), &mut named);
+            add_edge(edges, Edge { from: path.clone(), to: to, kind: String::from("contract"), arg: None, targs: targs_of(ck, contract[i].span) });
+        }
+        for j in 0..calls.len()
+            invariant 0 <= j && j <= calls.len(),
+        {
+            let written: String = lib::map_resolve(calls[j].path.as_slice(), def.unit.as_str(), &ck.b.c.fns);
+            trait_named(&ck.b.c.fns, written.as_str(), &mut named);
+            let mut target: String = written;
+            match ck.b.targs.find(body::span_key(calls[j].span).as_str()) {
+                None => {},
+                Some(ta) => { match body::dispatch(&ck.b.c.fns, ck.b.c.trait_impls.as_slice(), target.as_str(), ck.b.targs.items[ta].as_slice()) { None => {}, Some(dd) => { target = dd.path.clone(); }, } },
+            }
+            match ck.b.c.fns.find(target.as_str()) {
+                None => {},
+                Some(sa) => { let kind: String = if body::is_proof(ck.b.c.fns.items[sa].kind) { String::from("proof_calls") } else if body::is_spec(def.d.kind) { String::from("spec_calls") } else if calls[j].ghost { String::from("contract") } else { String::from("calls") }; if kind == "calls" { for k in 0..ck.b.c.fns.items[sa].params.len() invariant 0 <= k && k <= ck.b.c.fns.items[sa].params.len(), { if types::is_ref_mut(&ck.b.c.fns.items[sa].params[k]) && k < calls[j].args { add_edge(edges, Edge { from: path.clone(), to: target.clone(), kind: String::from("writes"), arg: Some(k), targs: None }); } } } add_edge(edges, Edge { from: path.clone(), to: target.clone(), kind: kind, arg: None, targs: targs_of(ck, calls[j].span) }); },
+            }
+        }
+        match ck.b.c.fns.find(path.as_str()) {
+            None => {},
+            Some(own) => { for p in 0..ck.b.c.fns.items[own].params.len() invariant 0 <= p && p <= ck.b.c.fns.items[own].params.len(), { named_types(&ck.b.c.fns.items[own].params[p], &ck.b.c.adts, &mut named, 100000); } named_types(&ck.b.c.fns.items[own].ret, &ck.b.c.adts, &mut named, 100000); for g in 0..ck.b.c.fns.items[own].generics.len() invariant 0 <= g && g <= ck.b.c.fns.items[own].generics.len(), { for b in 0..ck.b.c.fns.items[own].generics[g].bounds.len() invariant 0 <= b && b <= ck.b.c.fns.items[own].generics[g].bounds.len(), { if is_path(ck.b.c.fns.items[own].generics[g].bounds[b].as_str()) { let fresh: bool = types::add(&mut named, ck.b.c.fns.items[own].generics[g].bounds[b].as_str()); } } } },
+        }
+        match ck.b.locals.find(path.as_str()) {
+            None => {},
+            Some(la) => { for l in 0..ck.b.locals.items[la].items.len() invariant 0 <= l && l <= ck.b.locals.items[la].items.len(), { named_types(&ck.b.locals.items[la].items[l], &ck.b.c.adts, &mut named, 100000); } },
+        }
+        let mut nodes: Vec<encode_decls::Node> = Vec::new();
+        encode_decls::each_exprs(def.d.pre.as_slice(), &mut nodes, 1000000000);
+        encode_decls::each_exprs(def.d.post.as_slice(), &mut nodes, 1000000000);
+        match &def.d.measure {
+            None => {},
+            Some(dm) => encode_decls::each_expr(dm, &mut nodes, 1000000000),
+        }
+        encode_decls::each_block_expr(&def.d.body, &mut nodes, 1000000000);
+        for n in 0..nodes.len()
+            invariant 0 <= n && n <= nodes.len(),
+        {
+            match ck.b.types.find(body::span_key(nodes[n].span).as_str()) {
+                None => {},
+                Some(ty) => named_types(&ck.b.types.items[ty], &ck.b.c.adts, &mut named, 100000),
+            }
+        }
+        for t in 0..named.len()
+            invariant 0 <= t && t <= named.len(),
+        {
+            add_edge(edges, plain_edge(path.as_str(), named[t].as_str(), "types"));
+        }
+        for a in 0..def.d.attrs.len()
+            invariant 0 <= a && a <= def.d.attrs.len(),
+        {
+            if def.d.attrs[a].name.name == "uses" {
+                for x in 0..def.d.attrs[a].args.len()
+                    invariant 0 <= x && x <= def.d.attrs[a].args.len(),
+                {
+                    match &def.d.attrs[a].args[x] {
+                        ast::AttrArg::Ident(id) => { let used: String = match decls::uses_target(id.name.as_str(), def.unit.as_str(), &ck.b.c.fns) { None => id.name.clone(), Some(full) => full, }; add_edge(edges, plain_edge(path.as_str(), used.as_str(), "uses")); },
+                        ast::AttrArg::Str(st, sp) => {},
+                        ast::AttrArg::Pair(pk, pv) => {},
+                    }
+                }
+            }
+        }
+        match context.find(path.as_str()) {
+            None => {},
+            Some(ca) => { for c in 0..context.items[ca].len() invariant 0 <= c && c <= context.items[ca].len(), { add_edge(edges, plain_edge(path.as_str(), context.items[ca][c].as_str(), "uses")); } },
+        }
+        match ck.b.const_reads.find(path.as_str()) {
+            None => {},
+            Some(ra) => { for r in 0..ck.b.const_reads.items[ra].len() invariant 0 <= r && r <= ck.b.const_reads.items[ra].len(), { add_edge(edges, plain_edge(path.as_str(), ck.b.const_reads.items[ra][r].as_str(), "reads")); } },
+        }
+    }
+
+    #[summary("The transitive effects of each executable definition with a body (the `all` of stage0 def_effects, ADR-0030 §5): its own operations, the declared effects of the built-ins it calls, and, to a fixed point over the `calls` edges, the effects of every callee (one without a body by its declaration)")]
+    #[effects(alloc)]
+    fn def_effects(ck: &body::Checked, edges: &table::Table<Edge>) -> table::Table<types::Effects> {
+        let mut calls: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..edges.len()
+            invariant 0 <= n,
+        {
+            match edges.nth(n) {
+                None => {},
+                Some(at) => { if edges.items[at].kind == "calls" { add_row(&mut calls, edges.items[at].from.as_str(), edges.items[at].to.clone()); } },
+            }
+        }
+        let mut out: table::Table<types::Effects> = table::new::<types::Effects>();
+        for d in 0..ck.b.needs.len()
+            invariant 0 <= d,
+        {
+            match ck.b.needs.nth(d) {
+                None => {},
+                Some(na) => { let p: String = ck.b.needs.key(d); let mut own: types::Effects = ck.b.needs.items[na].own; match calls.find(p.as_str()) { None => {}, Some(ca) => { for c in 0..calls.items[ca].len() invariant 0 <= c && c <= calls.items[ca].len(), { match ck.b.c.fns.find(calls.items[ca][c].as_str()) { None => {}, Some(sg) => { if ck.b.c.fns.items[sg].builtin { own = types::e_union(own, ck.b.c.fns.items[sg].effect); } }, } } }, } out.insert(p.as_str(), own); },
+            }
+        }
+        let mut changed: bool = true;
+        let mut fuel: usize = 1000000000;
+        while changed && fuel > 0
+            decreases fuel,
+        {
+            fuel = fuel - 1;
+            changed = false;
+            for k in 0..out.len()
+                invariant 0 <= k,
+            {
+                match out.nth(k) {
+                    None => {},
+                    Some(oa) => { let q: String = out.key(k); let was: types::Effects = out.items[oa]; let mut all: types::Effects = was; match calls.find(q.as_str()) { None => {}, Some(cb) => { for j in 0..calls.items[cb].len() invariant 0 <= j && j <= calls.items[cb].len(), { all = types::e_union(all, effects_of(ck, &out, calls.items[cb][j].as_str())); } }, } if !types::e_contains(was, all) { if oa < out.items.len() { out.items[oa] = all; } changed = true; } },
+                }
+            }
+        }
+        out
+    }
+
+    #[summary("The keyword of a definition's kind (stage0 Model::def_kind)")]
+    #[effects(alloc)]
+    fn def_kind(k: ast::FnKind) -> String {
+        match k {
+            ast::FnKind::Exec => String::from("fn"),
+            ast::FnKind::Spec => String::from("spec fn"),
+            ast::FnKind::Proof => String::from("proof fn"),
+        }
+    }
+
+    #[summary("The key of an edge in the edge set: the order of the keys is the order stage0 derives for Edge (from, to, kind, arg, targs; an absent arg or targs before a present one). The texts hold no byte 1, the arg is twenty digits")]
+    #[effects(alloc)]
+    fn edge_key(e: &Edge) -> String {
+        let mut k: String = String::new();
+        k.push_str(e.from.as_str());
+        k.push_str("\u{1}");
+        k.push_str(e.to.as_str());
+        k.push_str("\u{1}");
+        k.push_str(e.kind.as_str());
+        k.push_str("\u{1}");
+        match &e.arg {
+            None => k.push_str("0"),
+            Some(a) => { k.push_str("1"); pad20(&mut k, *a as u64); },
+        }
+        match &e.targs {
+            None => k.push_str("0"),
+            Some(t) => { k.push_str("1"); k.push_str(t.as_str()); },
+        }
+        k
+    }
+
+    #[summary("The effects a call of path brings (stage0 def_effects): the transitive effects found so far when it has a body, otherwise its declared ones, none for a path that is no function")]
+    #[effects(pure)]
+    fn effects_of(ck: &body::Checked, found: &table::Table<types::Effects>, path: &str) -> types::Effects {
+        match found.find(path) {
+            None => match ck.b.c.fns.find(path) { None => types::pure(), Some(sg) => ck.b.c.fns.items[sg].effect, },
+            Some(at) => found.items[at],
+        }
+    }
+
+    #[summary("The declared effects of definition d as an L1 row shows them (stage0 Model::effects): spec and proof for those kinds; for an executable one the names of its #[effects(..)] in order, joined by a comma and a space (ADR-0030 §5)")]
+    #[effects(alloc)]
+    fn effects_text(d: &ast::FnDef) -> String {
+        if body::is_spec(d.kind) {
+            return String::from("spec");
+        }
+        if body::is_proof(d.kind) {
+            return String::from("proof");
+        }
+        let mut names: Vec<String> = Vec::new();
+        let mut found: bool = false;
+        for i in 0..d.attrs.len()
+            invariant 0 <= i && i <= d.attrs.len(),
+        {
+            if !found && d.attrs[i].name.name == "effects" {
+                found = true;
+                for x in 0..d.attrs[i].args.len()
+                    invariant 0 <= x && x <= d.attrs[i].args.len(),
+                {
+                    match &d.attrs[i].args[x] {
+                        ast::AttrArg::Ident(id) => names.push(id.name.clone()),
+                        ast::AttrArg::Str(st, sp) => {},
+                        ast::AttrArg::Pair(pk, pv) => {},
+                    }
+                }
+            }
+        }
+        types::join(decls::sorted(names.as_slice()).as_slice(), ", ")
+    }
+
+    #[summary("The index entry of definition def, the at-th in walk order: a definition the lowering of function values made is where the closure, function item or bound it stands for is written (stage0 Tables::at)")]
+    #[effects(alloc)]
+    fn entry_of(ck: &body::Checked, sm: &source::SourceMap, def: &codegen::Def, at: usize) -> Entry {
+        let here: source::Span = located(ck, def.path.as_str(), def.d.name.span);
+        Entry { path: def.path.clone(), unit: def.unit.clone(), at: at, kind: def.d.kind, file: file_name(sm, here.file), line: sm.line_col(here.file, here.lo).line, display: shown(ck, def.path.as_str()) }
+    }
+
+    #[summary("The name of file id (stage0 SourceMap::name): a file made by the compiler is <generated>")]
+    #[effects(alloc)]
+    fn file_name(sm: &source::SourceMap, id: u32) -> String {
+        if id as usize >= sm.files.len() {
+            String::from("<generated>")
+        } else {
+            sm.files[id as usize].name.clone()
+        }
+    }
+
+    #[summary("The first line of every response of the maps (stage0 HEADER)")]
+    #[effects(alloc)]
+    fn header() -> String {
+        String::from("{\"schema\":\"bmb.map\",\"version\":1}\n")
+    }
+
+    #[summary("The identity and the hash of the nameless text of the item at key (ADR-0059 §1), two empty texts when the program has no such item")]
+    #[effects(alloc)]
+    fn ident(idn: &mut Idents, pr: &mut fmt::Printer, key: &str) -> identity::Hashes {
+        match idn.ids.get(pr, key) {
+            None => identity::Hashes { id: String::new(), body: String::new(), iface: String::new(), caller: String::new() },
+            Some(h) => h,
+        }
+    }
+
+    #[summary("The identities of checked program ck, nothing hashed yet, and its definitions in walk order")]
+    #[effects(alloc)]
+    fn idents(ck: &body::Checked) -> Idents {
+        let mut w: identity::Walk = identity::Walk { ctx: table::new::<identity::Ctx>(), fns: table::new::<ast::FnDef>(), blocks: Vec::new(), traits: Vec::new() };
+        let ids: identity::Ids = identity::new(&ck.program, &ck.b.c.fns, &ck.b.c.adts, &mut w);
+        let mut by_span: table::Table<ast::FnDef> = table::new::<ast::FnDef>();
+        for i in 0..ck.program.mods.len()
+            invariant 0 <= i && i <= ck.program.mods.len(),
+        {
+            codegen::fn_defs(&ck.program.mods[i], &mut by_span, 100000);
+        }
+        let rows: Vec<body::DefRow> = body::defs_of(&ck.program, &ck.b.c.fns);
+        let mut defs: Vec<codegen::Def> = Vec::new();
+        for r in 0..rows.len()
+            invariant 0 <= r && r <= rows.len(),
+        {
+            match by_span.find(body::span_key(rows[r].span).as_str()) {
+                None => {},
+                Some(at) => defs.push(codegen::Def { path: rows[r].path.clone(), unit: rows[r].unit.clone(), d: by_span.items[at].clone() }),
+            }
+        }
+        Idents { ids: ids, traits: w.traits, defs: defs }
+    }
+
+    #[summary("The paths of the trait impl functions by the position of the function (the lookup of stage0 walk: the first signature in path order that is in an impl, at that position, with a path that starts with <)")]
+    #[effects(alloc)]
+    fn impl_paths(fns: &table::Table<types::FnSig>) -> table::Table<String> {
+        let mut by_span: table::Table<String> = table::new::<String>();
+        for n in 0..fns.len()
+            invariant 0 <= n,
+        {
+            match fns.nth(n) {
+                None => {},
+                Some(at) => { if fns.items[at].in_impl && std::str::starts_with(fns.items[at].path.as_str(), "<") { let k: String = body::span_key(fns.items[at].span); if !by_span.has(k.as_str()) { by_span.insert(k.as_str(), fns.items[at].path.clone()); } } },
+            }
+        }
+        by_span
+    }
+
+    #[summary("Whether level is one `bmb map` knows: L0, L1, L2 or all")]
+    #[effects(pure)]
+    fn is_level(level: &str) -> bool {
+        level == "L0" || level == "L1" || level == "L2" || level == "all"
+    }
+
+    #[summary("Whether text s holds `::` (a bound that is a trait of the program, not a built-in one)")]
+    #[effects(pure)]
+    fn is_path(s: &str) -> bool {
+        match std::str::find(s, "::") {
+            None => false,
+            Some(at) => true,
+        }
+    }
+
+    #[summary("Whether a count is held")]
+    #[effects(pure)]
+    fn is_set(o: &Option<usize>) -> bool {
+        match o {
+            None => false,
+            Some(x) => true,
+        }
+    }
+
+    #[summary("The L0 rows of the units, definitions and types of the index, by path (stage0 Model::l0_rows): a unit with its summary and lists, a definition or type with its kind and the first twelve digits of the hash of its nameless text")]
+    #[effects(alloc)]
+    fn l0(ix: &Index, idn: &mut Idents, pr: &mut fmt::Printer) -> String {
+        let mut rows: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for u in 0..ix.units.len()
+            invariant 0 <= u,
+        {
+            match ix.units.nth(u) {
+                None => {},
+                Some(ua) => { let mut row: String = String::from("{\"level\":\"L0\",\"kind\":\"unit\",\"path\":"); std::json::push_string(&mut row, ix.units.items[ua].path.as_str()); row.push_str(",\"summary\":"); std::json::push_string(&mut row, ix.units.items[ua].summary.as_str()); row.push_str(",\"units\":"); push_strs(&mut row, ix.units.items[ua].units.as_slice()); row.push_str(",\"defs\":"); push_strs(&mut row, ix.units.items[ua].defs.as_slice()); push_library(&mut row, ix.units.items[ua].path.as_str()); row.push_str("}\n"); add_row(&mut rows, ix.units.items[ua].path.as_str(), row); },
+            }
+        }
+        for d in 0..ix.defs.len()
+            invariant 0 <= d,
+        {
+            match ix.defs.nth(d) {
+                None => {},
+                Some(da) => { let h: identity::Hashes = ident(idn, pr, types::cat2("0:", ix.defs.items[da].path.as_str()).as_str()); let drow: String = l0_row(ix.defs.items[da].path.as_str(), def_kind(ix.defs.items[da].kind).as_str(), h.body.as_str(), &ix.defs.items[da].display); add_row(&mut rows, ix.defs.items[da].path.as_str(), drow); },
+            }
+        }
+        for t in 0..ix.types.len()
+            invariant 0 <= t,
+        {
+            match ix.types.nth(t) {
+                None => {},
+                Some(ta) => { let trow: String = l0_row(ix.types.items[ta].path.as_str(), ix.types.items[ta].kind.as_str(), ix.types.items[ta].hash.as_str(), &ix.types.items[ta].display); add_row(&mut rows, ix.types.items[ta].path.as_str(), trow); },
+            }
+        }
+        let mut out: String = String::new();
+        for r in 0..rows.len()
+            invariant 0 <= r,
+        {
+            match rows.nth(r) {
+                None => {},
+                Some(ra) => { for k in 0..rows.items[ra].len() invariant 0 <= k && k <= rows.items[ra].len(), { out.push_str(rows.items[ra][k].as_str()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("The L0 row of a definition or a type declaration (stage0 l0_def and l0_type): hash is shown to its first nineteen characters (`sha256:` and twelve digits)")]
+    #[effects(alloc)]
+    fn l0_row(path: &str, kind: &str, hash: &str, display: &Option<String>) -> String {
+        let mut row: String = String::from("{\"level\":\"L0\",\"kind\":\"def\",\"path\":");
+        std::json::push_string(&mut row, path);
+        row.push_str(",\"def_kind\":");
+        std::json::push_string(&mut row, kind);
+        row.push_str(",\"hash\":");
+        let short: String = if hash.len() > 19 {
+            lexer::cut(hash, 0, 19)
+        } else {
+            String::from(hash)
+        };
+        std::json::push_string(&mut row, short.as_str());
+        push_display(&mut row, display);
+        push_library(&mut row, path);
+        row.push_str("}\n");
+        row
+    }
+
+    #[summary("The L1 rows of the definitions and types of the index, by path (stage0 Model::map)")]
+    #[effects(alloc)]
+    fn l1(ix: &Index, idn: &mut Idents, pr: &mut fmt::Printer, ck: &body::Checked, m: &Model, proved: &prove::Outcome) -> String {
+        let mut rows: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        let mut qp: fmt::Printer = fmt::qualifying(ck.b.c.fns.clone(), "");
+        for d in 0..ix.defs.len()
+            invariant 0 <= d,
+        {
+            match ix.defs.nth(d) {
+                None => {},
+                Some(da) => { let k: usize = ix.defs.items[da].at; let h: identity::Hashes = ident(idn, pr, types::cat2("0:", ix.defs.items[da].path.as_str()).as_str()); if k < idn.defs.len() { let drow: String = l1_def(&ix.defs.items[da], &idn.defs[k].d, &h, m, proved, ck, &mut qp); add_row(&mut rows, ix.defs.items[da].path.as_str(), drow); } },
+            }
+        }
+        for t in 0..ix.types.len()
+            invariant 0 <= t,
+        {
+            match ix.types.nth(t) {
+                None => {},
+                Some(ta) => { let trow: String = l1_type(&ix.types.items[ta]); add_row(&mut rows, ix.types.items[ta].path.as_str(), trow); },
+            }
+        }
+        let mut out: String = String::new();
+        for r in 0..rows.len()
+            invariant 0 <= r,
+        {
+            match rows.nth(r) {
+                None => {},
+                Some(ra) => { for q in 0..rows.items[ra].len() invariant 0 <= q && q <= rows.items[ra].len(), { out.push_str(rows.items[ra][q].as_str()); } },
+            }
+        }
+        out
+    }
+
+    #[summary("The L1 row of a definition (stage0 Model::l1 with escape_keys, termination_key, effects_required and test_reasons): its surface (signature, contract, declared effects, the definitions it uses), its proof status, its hashes and place, the largest resource units of one obligation, the effects it needs, why it still needs tests (ADR-0030 §4: `io`, `nondet` or `panic` among its effects, termination not proved, an obligation failed, a proof that rests on trusted facts), the escape keys (ADR-0029 §5: trust, escapes, the obligations only trusted facts prove, whether it is compiled with every check, whether its rationales carry the hash they are bound to, and their kinds), and where they apply `termination`, `summary`, `display` and `library`")]
+    #[effects(alloc)]
+    fn l1_def(e: &Entry, d: &ast::FnDef, h: &identity::Hashes, m: &Model, proved: &prove::Outcome, ck: &body::Checked, qp: &mut fmt::Printer) -> String {
+        let mut obligations: usize = 0;
+        let mut failed: usize = 0;
+        let mut max: u64 = 0;
+        let mut trust: u8 = 0;
+        match m.status.find(e.path.as_str()) {
+            None => {},
+            Some(sa) => { let k: usize = m.status.items[sa]; if k < proved.statuses.len() { obligations = proved.statuses[k].obligations; failed = proved.statuses[k].failed; max = proved.statuses[k].max; trust = proved.statuses[k].trust; } },
+        }
+        let exec: bool = body::is_exec(d.kind);
+        let unproved: bool = m.unproved.has(e.path.as_str());
+        let mut row: String = String::from("{\"level\":\"L1\",\"path\":");
+        std::json::push_string(&mut row, e.path.as_str());
+        row.push_str(",\"def_kind\":");
+        std::json::push_string(&mut row, def_kind(d.kind).as_str());
+        row.push_str(",\"signature\":");
+        std::json::push_string(&mut row, signature(d).as_str());
+        let mut pre: Vec<String> = Vec::new();
+        for i in 0..d.pre.len()
+            invariant 0 <= i && i <= d.pre.len(),
+        {
+            pre.push(fmt::expr_text(&d.pre[i]));
+        }
+        row.push_str(",\"requires\":");
+        push_strs(&mut row, pre.as_slice());
+        let mut post: Vec<String> = Vec::new();
+        for j in 0..d.post.len()
+            invariant 0 <= j && j <= d.post.len(),
+        {
+            post.push(fmt::expr_text(&d.post[j]));
+        }
+        row.push_str(",\"ensures\":");
+        push_strs(&mut row, post.as_slice());
+        row.push_str(",\"decreases\":");
+        match &d.measure {
+            None => row.push_str("null"),
+            Some(dm) => std::json::push_string(&mut row, fmt::expr_text(dm).as_str()),
+        }
+        row.push_str(",\"effects\":");
+        std::json::push_string(&mut row, effects_text(d).as_str());
+        row.push_str(",\"uses\":");
+        match m.uses.find(e.path.as_str()) {
+            None => row.push_str("[]"),
+            Some(ua) => push_strs(&mut row, m.uses.items[ua].as_slice()),
+        }
+        row.push_str(",\"status\":");
+        if failed > 0 {
+            row.push_str("\"failed\"");
+        } else if obligations > 0 {
+            row.push_str("\"verified\"");
+        } else {
+            row.push_str("\"none\"");
+        }
+        row.push_str(",\"obligations\":");
+        std::num::push_u64(&mut row, obligations as u64);
+        row.push_str(",\"failed\":");
+        std::num::push_u64(&mut row, failed as u64);
+        row.push_str(",\"body\":");
+        std::json::push_string(&mut row, h.body.as_str());
+        row.push_str(",\"iface\":");
+        std::json::push_string(&mut row, h.iface.as_str());
+        row.push_str(",\"id\":");
+        std::json::push_string(&mut row, h.id.as_str());
+        row.push_str(",\"file\":");
+        std::json::push_string(&mut row, e.file.as_str());
+        row.push_str(",\"line\":");
+        std::num::push_u64(&mut row, e.line as u64);
+        row.push_str(",\"rlimit_max\":");
+        std::num::push_u64(&mut row, max);
+        let mut required: Vec<String> = Vec::new();
+        let mut reasons: Vec<String> = Vec::new();
+        match m.effects.find(e.path.as_str()) {
+            None => {},
+            Some(ea) => { let all: types::Effects = m.effects.items[ea]; if all.alloc { required.push(String::from("alloc")); } if all.io { required.push(String::from("io")); } if all.nondet { required.push(String::from("nondet")); } if all.panic { required.push(String::from("panic")); } if exec { if all.io { reasons.push(String::from("io")); } if all.nondet { reasons.push(String::from("nondet")); } if all.panic { reasons.push(String::from("panic")); } } },
+        }
+        if exec {
+            if unproved {
+                reasons.push(String::from("nonterminating"));
+            }
+            if failed > 0 {
+                reasons.push(String::from("unproved"));
+            } else if trust != 0 {
+                reasons.push(String::from("trust"));
+            }
+        }
+        row.push_str(",\"effects_required\":");
+        push_strs(&mut row, required.as_slice());
+        row.push_str(",\"test_reasons\":");
+        push_strs(&mut row, reasons.as_slice());
+        row.push_str(",\"trust\":");
+        if failed > 0 {
+            row.push_str("\"failed\"");
+        } else if trust == 1 {
+            row.push_str("\"assumed\"");
+        } else if trust == 2 {
+            row.push_str("\"external\"");
+        } else {
+            row.push_str("\"proved\"");
+        }
+        let es: escape::DefEscapes = escape::of(d);
+        let mut count: usize = es.assumes;
+        if es.external {
+            count = count.saturating_add(1);
+        }
+        row.push_str(",\"escapes\":");
+        std::num::push_u64(&mut row, count as u64);
+        row.push_str(",\"assumed_obligations\":");
+        match proved.assumed.find(e.path.as_str()) {
+            None => row.push_str("0"),
+            Some(aa) => std::num::push_u64(&mut row, proved.assumed.items[aa] as u64),
+        }
+        if exec && m.checked.has(e.path.as_str()) {
+            row.push_str(",\"checked\":true");
+        } else {
+            row.push_str(",\"checked\":false");
+        }
+        row.push_str(",\"rationale\":");
+        if es.rationales.len() == 0 {
+            row.push_str("\"none\"");
+        } else {
+            let bound: bool = match escape::hash_of(&m.rationales, qp, &ck.b.c.fns, e.path.as_str()) {
+                None => false,
+                Some(hash) => escape::confirmed(&es, hash.as_str()),
+            };
+            if bound {
+                row.push_str("\"confirmed\"");
+            } else {
+                row.push_str("\"unconfirmed\"");
+            }
+        }
+        let mut kinds: Vec<String> = Vec::new();
+        for r in 0..es.rationales.len()
+            invariant 0 <= r && r <= es.rationales.len(),
+        {
+            match &es.rationales[r].kind {
+                None => {},
+                Some(rk) => kinds.push(rk.clone()),
+            }
+        }
+        row.push_str(",\"rationale_kinds\":");
+        push_strs(&mut row, body::sorted_set(kinds.as_slice()).as_slice());
+        if unproved {
+            row.push_str(",\"termination\":\"unproved\"");
+        }
+        push_summary(&mut row, &summary_of(d.attrs.as_slice()));
+        push_display(&mut row, &e.display);
+        push_library(&mut row, e.path.as_str());
+        row.push_str("}\n");
+        row
+    }
+
+    #[summary("The L1 row of a type declaration (stage0 l1_type): its declaration is its surface (ADR-0026 §6)")]
+    #[effects(alloc)]
+    fn l1_type(t: &TypeEntry) -> String {
+        let mut row: String = String::from("{\"level\":\"L1\",\"path\":");
+        std::json::push_string(&mut row, t.path.as_str());
+        row.push_str(",\"def_kind\":");
+        std::json::push_string(&mut row, t.kind.as_str());
+        row.push_str(",\"signature\":");
+        std::json::push_string(&mut row, t.text.as_str());
+        row.push_str(",\"body\":");
+        std::json::push_string(&mut row, t.hash.as_str());
+        row.push_str(",\"iface\":");
+        std::json::push_string(&mut row, t.hash.as_str());
+        row.push_str(",\"id\":");
+        std::json::push_string(&mut row, t.id.as_str());
+        row.push_str(",\"file\":");
+        std::json::push_string(&mut row, t.file.as_str());
+        row.push_str(",\"line\":");
+        std::num::push_u64(&mut row, t.line as u64);
+        push_summary(&mut row, &t.summary);
+        push_display(&mut row, &t.display);
+        push_library(&mut row, t.path.as_str());
+        row.push_str("}\n");
+        row
+    }
+
+    #[summary("The L2 rows: every edge of the index in order (stage0 Model::l2)")]
+    #[effects(alloc)]
+    fn l2(ix: &Index) -> String {
+        let mut out: String = String::new();
+        for n in 0..ix.edges.len()
+            invariant 0 <= n,
+        {
+            match ix.edges.nth(n) {
+                None => {},
+                Some(at) => { out.push_str("{\"level\":\"L2\",\"from\":"); std::json::push_string(&mut out, ix.edges.items[at].from.as_str()); out.push_str(",\"to\":"); std::json::push_string(&mut out, ix.edges.items[at].to.as_str()); out.push_str(",\"kind\":"); std::json::push_string(&mut out, ix.edges.items[at].kind.as_str()); match &ix.edges.items[at].arg { None => {}, Some(a) => { out.push_str(",\"arg\":"); std::num::push_u64(&mut out, *a as u64); }, } match &ix.edges.items[at].targs { None => {}, Some(ts) => { out.push_str(",\"type_args\":"); std::json::push_string(&mut out, ts.as_str()); }, } out.push_str("}\n"); },
+            }
+        }
+        out
+    }
+
+    #[summary("Where the definition or type at path is: where the closure, function item or bound it stands for is written when the lowering of function values made it (stage0 Tables::at), otherwise span")]
+    #[effects(pure)]
+    fn located(ck: &body::Checked, path: &str, span: source::Span) -> source::Span {
+        match ck.at.find(path) {
+            None => span,
+            Some(k) => ck.at.items[k],
+        }
+    }
+
+    #[summary("What the L1 rows read of the proof results proved and of the checked program (stage0 Model::with and the proof-free tables of Index::build)")]
+    #[effects(alloc)]
+    fn model(ix: &Index, ck: &body::Checked, defs: &[codegen::Def], proved: &prove::Outcome) -> Model {
+        let mut status: table::Table<usize> = table::new::<usize>();
+        for i in 0..proved.statuses.len()
+            invariant 0 <= i && i <= proved.statuses.len(),
+        {
+            status.insert(proved.statuses[i].path.as_str(), i);
+        }
+        let mut checked: table::Table<bool> = table::new::<bool>();
+        for c in 0..proved.checked.len()
+            invariant 0 <= c && c <= proved.checked.len(),
+        {
+            checked.insert(proved.checked[c].as_str(), true);
+        }
+        let open: Vec<String> = prove::nonterminating(ck);
+        let mut unproved: table::Table<bool> = table::new::<bool>();
+        for u in 0..open.len()
+            invariant 0 <= u && u <= open.len(),
+        {
+            unproved.insert(open[u].as_str(), true);
+        }
+        let mut uses: table::Table<Vec<String>> = table::new::<Vec<String>>();
+        for n in 0..ix.edges.len()
+            invariant 0 <= n,
+        {
+            match ix.edges.nth(n) {
+                None => {},
+                Some(at) => { if ix.edges.items[at].kind == "uses" { add_row(&mut uses, ix.edges.items[at].from.as_str(), ix.edges.items[at].to.clone()); } },
+            }
+        }
+        Model { status: status, checked: checked, unproved: unproved, effects: def_effects(ck, &ix.edges), uses: uses, rationales: escape::hashes(defs, &ck.b.c.fns) }
+    }
+
+    #[summary("The data types type t names, by full path, declared ones only (stage0 named_types): each added to out once")]
+    #[effects(alloc)]
+    fn named_types(t: &ast::TypeKind, adts: &table::Table<types::Adt>, out: &mut Vec<String>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        match t {
+            ast::TypeKind::Int(it) => {},
+            ast::TypeKind::F64 => {},
+            ast::TypeKind::Bool => {},
+            ast::TypeKind::Unit => {},
+            ast::TypeKind::Char => {},
+            ast::TypeKind::String => {},
+            ast::TypeKind::Str => {},
+            ast::TypeKind::Array(ae, an) => named_types(&ae.kind, adts, out, f - 1),
+            ast::TypeKind::ArrayN(ne, nn) => {},
+            ast::TypeKind::Slice(se) => named_types(&se.kind, adts, out, f - 1),
+            ast::TypeKind::Ref(rm, ri) => named_types(&ri.kind, adts, out, f - 1),
+            ast::TypeKind::Named(path, args) => { let p: String = types::join(path.as_slice(), "::"); if adts.has(p.as_str()) { let fresh: bool = types::add(out, p.as_str()); } for i in 0..args.len() invariant 0 <= i && i <= args.len(), { named_types(&args[i].kind, adts, out, f - 1); } },
+            ast::TypeKind::Vec(ve) => named_types(&ve.kind, adts, out, f - 1),
+            ast::TypeKind::Box(be) => named_types(&be.kind, adts, out, f - 1),
+            ast::TypeKind::Param(pn) => {},
+            ast::TypeKind::Never => {},
+            ast::TypeKind::Error => {},
+        }
+    }
+
+    #[summary("The attributes without the `summary` ones (a summary is no part of a declaration's text)")]
+    #[effects(alloc)]
+    fn no_summary(attrs: &[ast::Attr]) -> Vec<ast::Attr> {
+        let mut out: Vec<ast::Attr> = Vec::new();
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name != "summary" {
+                out.push(attrs[i].clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Writes n as a twenty-digit decimal number to out: the order of the texts is the order of the numbers")]
+    #[effects(alloc)]
+    fn pad20(out: &mut String, n: u64) -> () {
+        let mut lim: u64 = 10000000000000000000;
+        while lim > n && lim > 1
+            invariant lim <= 10000000000000000000,
+            decreases lim,
+        {
+            out.push_str("0");
+            lim = lim / 10;
+        }
+        std::num::push_u64(out, n);
+    }
+
+    #[summary("The value of a window flag as Rust reads a usize: an optional `+`, then decimal digits whose value fits 64 bits")]
+    #[effects(alloc)]
+    fn parse_usize(s: &str) -> Option<usize> {
+        let from: usize = if encode_terms::starts_at(s, 0, "+") {
+            1
+        } else {
+            0
+        };
+        if from >= s.len() {
+            return None;
+        }
+        let mut n: u64 = 0;
+        for i in from..s.len()
+            invariant from <= i && i <= s.len(),
+        {
+            let b: u8 = s.as_bytes()[i];
+            if b < 48 || b > 57 {
+                return None;
+            }
+            let d: u64 = (b - 48) as u64;
+            if n > 1844674407370955161 || n == 1844674407370955161 && d > 5 {
+                return None;
+            }
+            n = n * 10 + d;
+        }
+        Some(n as usize)
+    }
+
+    #[summary("The `passes` edges (stage0 Index::build): a function value passed is an edge from the definition whose body holds the argument (the innermost: the first in walk order among the smallest) to the closure's `call` or the function item")]
+    #[effects(alloc)]
+    fn pass_edges(ck: &body::Checked, defs: &[codegen::Def], edges: &mut table::Table<Edge>) -> () {
+        for p in 0..ck.passes.len()
+            invariant 0 <= p && p <= ck.passes.len(),
+        {
+            let sp: source::Span = ck.passes[p].span;
+            let mut best: Option<usize> = None;
+            let mut size: u32 = 0;
+            for d in 0..defs.len()
+                invariant 0 <= d && d <= defs.len(),
+            {
+                let b: source::Span = defs[d].d.body.span;
+                if b.file == sp.file && b.lo <= sp.lo && sp.hi <= b.hi {
+                    let width: u32 = b.hi.wrapping_sub(b.lo);
+                    let better: bool = match best {
+                        None => true,
+                        Some(k) => width < size,
+                    };
+                    if better {
+                        best = Some(d);
+                        size = width;
+                    }
+                }
+            }
+            match best {
+                None => {},
+                Some(from) => { if from < defs.len() { add_edge(edges, plain_edge(defs[from].path.as_str(), ck.passes[p].what.as_str(), "passes")); } },
+            }
+        }
+    }
+
+    #[summary("An edge with no argument position and no type arguments")]
+    #[effects(alloc)]
+    fn plain_edge(from: &str, to: &str, kind: &str) -> Edge {
+        Edge { from: String::from(from), to: String::from(to), kind: String::from(kind), arg: None, targs: None }
+    }
+
+    #[summary("Appends the `display` key of a row, when the definition has one (stage0 display_key)")]
+    #[effects(alloc)]
+    fn push_display(row: &mut String, display: &Option<String>) -> () {
+        match display {
+            None => {},
+            Some(d) => { row.push_str(",\"display\":"); std::json::push_string(row, d.as_str()); },
+        }
+    }
+
+    #[summary("Appends `\"library\":\"std\"` to a row of the standard library (stage0 library_key, ADR-0092 §1: a key added only where it applies)")]
+    #[effects(alloc)]
+    fn push_library(row: &mut String, path: &str) -> () {
+        if stdlib::in_std(path) {
+            row.push_str(",\"library\":\"std\"");
+        }
+    }
+
+    #[summary("Appends xs as a JSON array of strings (stage0 strs)")]
+    #[effects(alloc)]
+    fn push_strs(out: &mut String, xs: &[String]) -> () {
+        out.push_str("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(out, xs[i].as_str());
+        }
+        out.push_str("]");
+    }
+
+    #[summary("Appends the `summary` key of an L1 row, when the definition has one (stage0 summary_key)")]
+    #[effects(alloc)]
+    fn push_summary(row: &mut String, summary: &Option<String>) -> () {
+        match summary {
+            None => {},
+            Some(s) => { row.push_str(",\"summary\":"); std::json::push_string(row, s.as_str()); },
+        }
+    }
+
+    #[summary("The rows of a response as Rust's lines gives them: the text between line feeds, a carriage return before a line feed left out, and no row after the last line feed")]
+    #[effects(alloc)]
+    fn rows_of(text: &str) -> Vec<Row> {
+        let mut rows: Vec<Row> = Vec::new();
+        let mut lo: usize = 0;
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len() && lo <= i,
+        {
+            if text.as_bytes()[i] == 10 {
+                let hi: usize = if i > lo && text.as_bytes()[i - 1] == 13 {
+                    i - 1
+                } else {
+                    i
+                };
+                rows.push(Row { lo: lo, hi: hi });
+                lo = i + 1;
+            }
+        }
+        if lo < text.len() {
+            rows.push(Row { lo: lo, hi: text.len() });
+        }
+        rows
+    }
+
+    #[summary("bmb map (stage0 lib::map_request_cached, map_answer and Model::map): reads the files as one program and checks it; when it checks, the header and the rows of the level: L0, L1, L2, or all three for all. If there are errors the text is their JSONL and ok is false. L1 shows proof results, so for L1 and all the program is proved, through the caches in cache_dir when there is one (as bmb verify --cache does); the diagnostics of the proof are not shown")]
+    #[effects(alloc, io, nondet)]
+    fn run(files: &[lib::Input], level: &str, cache_dir: &Option<String>) -> Mapped {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let fe: lib::Front = lib::frontend(files, &mut sm, &mut diags);
+        if diags.has_errors() {
+            return Mapped { ok: false, text: diags.to_jsonl(&sm), cache_error: None, incr_error: None };
+        }
+        let mut idn: Idents = idents(&fe.ck);
+        let mut pr: fmt::Printer = fmt::identity(fe.ck.b.c.fns.clone(), fe.ck.b.c.adts.clone(), fe.ck.b.types.clone(), idn.traits.clone());
+        let ix: Index = build(&fe.ck, &sm, &mut idn, &mut pr);
+        let mut out: String = header();
+        let mut cache_error: Option<String> = None;
+        let mut incr_error: Option<String> = None;
+        if level == "L0" || level == "all" {
+            out.push_str(l0(&ix, &mut idn, &mut pr).as_str());
+        }
+        if level == "L1" || level == "all" {
+            let mut store: Option<cache::ProofCache> = match cache_dir {
+                None => None,
+                Some(dir) => Some(cache::load(dir.as_str())),
+            };
+            let opts: prove::Opts = prove::Opts { only: None, bounded: false, seed: 0, rlimit: solver::rlimit(), query: solver::rlimit(), who: solver::Asker::Gate, stop: false };
+            let pg: encode_spec::Prog = encode_spec::prog_of(&fe.ck);
+            let mut incr: Option<incremental::Session> = match cache_dir {
+                None => None,
+                Some(dir0) => Some(incremental::new(dir0.as_str(), incremental::compiler_id().as_str(), &fe.ck, &pg.pr, &opts.only, false, false)),
+            };
+            let mut z3: toolchain::Z3 = toolchain::new();
+            let mut unseen: diag::Diags = diag::Diags { items: diags.items.clone(), aliases: Vec::new() };
+            let proved: prove::Outcome = prove::run_cached(&fe.ck, &pg, &opts, &mut store, &mut incr, &mut z3, &mut unseen);
+            match &store {
+                None => {},
+                Some(c) => { match cache_dir { None => {}, Some(dir2) => { match cache::save(c, dir2.as_str()) { Ok(u) => {}, Err(why) => { cache_error = Some(why); }, } }, } },
+            }
+            incr_error = incremental::save_slot(&mut incr);
+            let m: Model = model(&ix, &fe.ck, idn.defs.as_slice(), &proved);
+            out.push_str(l1(&ix, &mut idn, &mut pr, &fe.ck, &m, &proved).as_str());
+        }
+        if level == "L2" || level == "all" {
+            out.push_str(l2(&ix).as_str());
+        }
+        Mapped { ok: true, text: out, cache_error: cache_error, incr_error: incr_error }
+    }
+
+    #[summary("What a reader calls the item at path when the lowering of function values made it and that differs from path (stage0 Tables::shown)")]
+    #[effects(alloc)]
+    fn shown(ck: &body::Checked, path: &str) -> Option<String> {
+        let s: String = prove::shown(&ck.names, path);
+        if s == path {
+            None
+        } else {
+            Some(s)
+        }
+    }
+
+    #[summary("The signature of definition d on one line (the first part of stage0 fmt::surface_parts): keyword, name, type parameters, parameters, and the result unless it is a `proof fn`, which writes none (ADR-0062 §1)")]
+    #[effects(alloc)]
+    fn signature(d: &ast::FnDef) -> String {
+        let mut s: String = def_kind(d.kind);
+        s.push_str(" ");
+        s.push_str(d.name.name.as_str());
+        s.push_str(fmt::generics_str(d.generics.as_slice()).as_str());
+        s.push_str("(");
+        s.push_str(fmt::params_str(d.params.as_slice()).as_str());
+        s.push_str(")");
+        if !body::is_proof(d.kind) {
+            s.push_str(" -> ");
+            s.push_str(fmt::ret_str(&d.ret).as_str());
+        }
+        s
+    }
+
+    #[summary("The text of the #[summary(\"..\")] of a definition or type (stage0 summary_of, ADR-0117): the first argument of the first attribute of that name, when it is a string")]
+    #[effects(alloc)]
+    fn summary_of(attrs: &[ast::Attr]) -> Option<String> {
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name == "summary" {
+                if attrs[i].args.len() == 0 {
+                    return None;
+                }
+                return match &attrs[i].args[0] { ast::AttrArg::Ident(id) => None, ast::AttrArg::Str(s, sp) => Some(s.clone()), ast::AttrArg::Pair(pk, pv) => None, };
+            }
+        }
+        None
+    }
+
+    #[summary("The type arguments of the generic call at span as an edge shows them (ADR-0046 §3), when the checker recorded some")]
+    #[effects(alloc)]
+    fn targs_of(ck: &body::Checked, span: source::Span) -> Option<String> {
+        match ck.b.targs.find(body::span_key(span).as_str()) {
+            None => None,
+            Some(at) => { let mut names: Vec<String> = Vec::new(); for i in 0..ck.b.targs.items[at].len() invariant 0 <= i && i <= ck.b.targs.items[at].len(), { names.push(types::text(&ck.b.targs.items[at][i])); } Some(types::join(names.as_slice(), ", ")) },
+        }
+    }
+
+    #[summary("The entries of the traits of unit m and its inner units (stage0 walk_traits and the loop over it)")]
+    #[effects(alloc)]
+    fn trait_entries(m: &ast::Mod, prefix: &str, ck: &body::Checked, sm: &source::SourceMap, idn: &mut Idents, pr: &mut fmt::Printer, out: &mut table::Table<TypeEntry>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            trait_entries(&m.mods[s], sub.as_str(), ck, sm, idn, pr, out, f - 1);
+        }
+        for i in 0..m.traits.len()
+            invariant 0 <= i && i <= m.traits.len(),
+        {
+            let path: String = types::cat2(sub.as_str(), m.traits[i].name.name.as_str());
+            let here: source::Span = located(ck, path.as_str(), m.traits[i].name.span);
+            let h: identity::Hashes = ident(idn, pr, types::cat2("2:", path.as_str()).as_str());
+            out.insert(path.as_str(), TypeEntry { path: path.clone(), unit: mp.clone(), kind: String::from("trait"), text: trait_text(&m.traits[i]), id: h.id, hash: h.body, file: file_name(sm, here.file), line: sm.line_col(here.file, here.lo).line, display: shown(ck, path.as_str()), names: Vec::new(), inv: None, summary: summary_of(m.traits[i].attrs.as_slice()) });
+        }
+    }
+
+    #[summary("Adds to named the trait the function at path is a method of, when it is one (stage0 Index::build: a call of a trait method names the trait)")]
+    #[effects(alloc)]
+    fn trait_named(fns: &table::Table<types::FnSig>, path: &str, named: &mut Vec<String>) -> () {
+        match fns.find(path) {
+            None => {},
+            Some(at) => { match &fns.items[at].trait_of { None => {}, Some(tr) => { let fresh: bool = types::add(named, tr.as_str()); }, } },
+        }
+    }
+
+    #[summary("A trait declaration in normal form on one line (stage0 fmt::trait_text, map L1 `signature`): without summaries, each line without the blanks around it, the lines that are not empty joined by one space")]
+    #[effects(alloc)]
+    fn trait_text(t: &ast::TraitDef) -> String {
+        let mut fns: Vec<ast::TraitFn> = Vec::new();
+        for k in 0..t.fns.len()
+            invariant 0 <= k && k <= t.fns.len(),
+        {
+            let mut tf: ast::TraitFn = t.fns[k].clone();
+            tf.f.attrs = no_summary(t.fns[k].f.attrs.as_slice());
+            fns.push(tf);
+        }
+        let bare: ast::TraitDef = ast::TraitDef { name: t.name.clone(), attrs: no_summary(t.attrs.as_slice()), fns: fns, span: t.span };
+        let mut pr: fmt::Printer = fmt::plain();
+        pr.trait_def(&bare, 0, 1000000000);
+        let text: String = pr.out.clone();
+        let mut out: String = String::new();
+        let mut from: usize = 0;
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len() && from <= i,
+        {
+            if text.as_bytes()[i] == 10 {
+                let line: String = fmt::trim(lexer::cut(text.as_str(), from, i).as_str());
+                if line.len() > 0 {
+                    if out.len() > 0 {
+                        out.push_str(" ");
+                    }
+                    out.push_str(line.as_str());
+                }
+                from = i + 1;
+            }
+        }
+        if from < text.len() {
+            let last: String = fmt::trim(lexer::cut(text.as_str(), from, text.len()).as_str());
+            if last.len() > 0 {
+                if out.len() > 0 {
+                    out.push_str(" ");
+                }
+                out.push_str(last.as_str());
+            }
+        }
+        out
+    }
+
+    #[summary("The entries of the structs and enums of unit m and its inner units (stage0 walk_types and the loop over it): names are the types the fields or payloads name")]
+    #[effects(alloc)]
+    fn type_entries(m: &ast::Mod, prefix: &str, ck: &body::Checked, sm: &source::SourceMap, idn: &mut Idents, pr: &mut fmt::Printer, out: &mut table::Table<TypeEntry>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            type_entries(&m.mods[s], sub.as_str(), ck, sm, idn, pr, out, f - 1);
+        }
+        for i in 0..m.types.len()
+            invariant 0 <= i && i <= m.types.len(),
+        {
+            let path: String = types::cat2(sub.as_str(), m.types[i].name.name.as_str());
+            let here: source::Span = located(ck, path.as_str(), m.types[i].name.span);
+            let mut names: Vec<String> = Vec::new();
+            let mut inv: Option<String> = None;
+            match ck.b.c.adts.find(path.as_str()) {
+                None => {},
+                Some(at) => { inv = ck.b.c.adts.items[at].inv.clone(); match &ck.b.c.adts.items[at].kind { types::AdtKind::Struct(fs) => { for a in 0..fs.len() invariant 0 <= a && a <= fs.len(), { named_types(&fs[a].ty, &ck.b.c.adts, &mut names, 100000); } }, types::AdtKind::Enum(vs) => { for v in 0..vs.len() invariant 0 <= v && v <= vs.len(), { for q in 0..vs[v].tys.len() invariant 0 <= q && q <= vs[v].tys.len(), { named_types(&vs[v].tys[q], &ck.b.c.adts, &mut names, 100000); } } }, } },
+            }
+            let kind: String = match &m.types[i].kind {
+                ast::TypeDefKind::Struct(sf) => String::from("struct"),
+                ast::TypeDefKind::Enum(ev) => String::from("enum"),
+            };
+            let h: identity::Hashes = ident(idn, pr, types::cat2("1:", path.as_str()).as_str());
+            out.insert(path.as_str(), TypeEntry { path: path.clone(), unit: mp.clone(), kind: kind, text: type_text(&m.types[i]), id: h.id, hash: h.body, file: file_name(sm, here.file), line: sm.line_col(here.file, here.lo).line, display: shown(ck, path.as_str()), names: body::sorted_set(names.as_slice()), inv: inv, summary: summary_of(m.types[i].attrs.as_slice()) });
+        }
+    }
+
+    #[summary("A type declaration in normal form on one line (stage0 fmt::type_text, map L1 `signature`): without its summary; an attribute (#[invariant(p)], ADR-0060 §3) goes before the declaration on the same line")]
+    #[effects(alloc)]
+    fn type_text(t: &ast::TypeDef) -> String {
+        let mut bare: ast::TypeDef = t.clone();
+        bare.attrs = no_summary(t.attrs.as_slice());
+        let mut pr: fmt::Printer = fmt::plain();
+        pr.type_def(&bare, 0);
+        let text: String = parser::trim_end(pr.out.as_str());
+        let mut out: String = String::new();
+        let mut from: usize = 0;
+        for i in 0..text.len()
+            invariant 0 <= i && i <= text.len() && from <= i,
+        {
+            if text.as_bytes()[i] == 10 {
+                out.push_str(lexer::cut(text.as_str(), from, i).as_str());
+                out.push_str(" ");
+                from = i + 1;
+            }
+        }
+        out.push_str(lexer::cut(text.as_str(), from, text.len()).as_str());
+        out
+    }
+
+    #[summary("The summary of a unit (stage0 walk): the first argument of the first `summary` attribute whose first argument is a string, empty text if none")]
+    #[effects(alloc)]
+    fn unit_summary(attrs: &[ast::Attr]) -> String {
+        for i in 0..attrs.len()
+            invariant 0 <= i && i <= attrs.len(),
+        {
+            if attrs[i].name.name == "summary" && attrs[i].args.len() > 0 {
+                match &attrs[i].args[0] {
+                    ast::AttrArg::Ident(id) => {},
+                    ast::AttrArg::Str(s, sp) => { return s.clone(); },
+                    ast::AttrArg::Pair(pk, pv) => {},
+                }
+            }
+        }
+        String::new()
+    }
+
+    #[summary("The units of unit m and its inner units (stage0 walk): per unit its summary, its inner units in order, and in order its definitions: functions, `impl` functions (unit::T::f), types, constants, traits, the default methods of traits (unit::Trait::f) and the functions of trait impls by the path the checker gave them (ADR-0026 §6)")]
+    #[effects(alloc)]
+    fn walk(m: &ast::Mod, prefix: &str, by_span: &table::Table<String>, units: &mut table::Table<Unit>, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        let mp: String = types::cat2(prefix, m.name.name.as_str());
+        let sub: String = types::cat2(mp.as_str(), "::");
+        let mut inner: Vec<String> = Vec::new();
+        for s in 0..m.mods.len()
+            invariant 0 <= s && s <= m.mods.len(),
+        {
+            inner.push(types::cat2(sub.as_str(), m.mods[s].name.name.as_str()));
+        }
+        let mut defs: Vec<String> = Vec::new();
+        for a in 0..m.fns.len()
+            invariant 0 <= a && a <= m.fns.len(),
+        {
+            defs.push(types::cat2(sub.as_str(), m.fns[a].name.name.as_str()));
+        }
+        for b in 0..m.impls.len()
+            invariant 0 <= b && b <= m.impls.len(),
+        {
+            for j in 0..m.impls[b].fns.len()
+                invariant 0 <= j && j <= m.impls[b].fns.len(),
+            {
+                defs.push(types::cat4(sub.as_str(), m.impls[b].ty.name.as_str(), "::", m.impls[b].fns[j].name.name.as_str()));
+            }
+        }
+        for c in 0..m.types.len()
+            invariant 0 <= c && c <= m.types.len(),
+        {
+            defs.push(types::cat2(sub.as_str(), m.types[c].name.name.as_str()));
+        }
+        for d in 0..m.consts.len()
+            invariant 0 <= d && d <= m.consts.len(),
+        {
+            defs.push(types::cat2(sub.as_str(), m.consts[d].name.name.as_str()));
+        }
+        for e in 0..m.traits.len()
+            invariant 0 <= e && e <= m.traits.len(),
+        {
+            defs.push(types::cat2(sub.as_str(), m.traits[e].name.name.as_str()));
+        }
+        for g in 0..m.traits.len()
+            invariant 0 <= g && g <= m.traits.len(),
+        {
+            for k in 0..m.traits[g].fns.len()
+                invariant 0 <= k && k <= m.traits[g].fns.len(),
+            {
+                if m.traits[g].fns[k].has_body {
+                    defs.push(types::cat4(sub.as_str(), m.traits[g].name.name.as_str(), "::", m.traits[g].fns[k].f.name.name.as_str()));
+                }
+            }
+        }
+        for h in 0..m.trait_impls.len()
+            invariant 0 <= h && h <= m.trait_impls.len(),
+        {
+            for l in 0..m.trait_impls[h].fns.len()
+                invariant 0 <= l && l <= m.trait_impls[h].fns.len(),
+            {
+                match by_span.find(body::span_key(m.trait_impls[h].fns[l].span).as_str()) {
+                    None => {},
+                    Some(at) => defs.push(by_span.items[at].clone()),
+                }
+            }
+        }
+        units.insert(mp.as_str(), Unit { path: mp.clone(), summary: unit_summary(m.attrs.as_slice()), units: decls::sorted(inner.as_slice()), defs: decls::sorted(defs.as_slice()) });
+        for n in 0..m.mods.len()
+            invariant 0 <= n && n <= m.mods.len(),
+        {
+            walk(&m.mods[n], sub.as_str(), by_span, units, f - 1);
+        }
+    }
+
+    #[summary("The window flags of `map` from position from of the arguments (stage0 window_flags), in any order before the request: `--budget BYTES`, `--offset ROWS`, `--limit ROWS`, each with a value after it. No window when there is none: the response is then printed whole")]
+    #[effects(alloc)]
+    fn window_flags(args: &[String], from: usize) -> Windowed {
+        let mut budget: Option<usize> = None;
+        let mut offset: Option<usize> = None;
+        let mut limit: Option<usize> = None;
+        let mut at: usize = from;
+        while at < args.len() && args.len() - at >= 2
+            decreases args.len() - at,
+        {
+            let which: u8 = if args[at] == "--budget" {
+                1
+            } else if args[at] == "--offset" {
+                2
+            } else if args[at] == "--limit" {
+                3
+            } else {
+                0
+            };
+            if which == 0 {
+                break;
+            }
+            let n: usize = match parse_usize(args[at + 1].as_str()) {
+                None => { return Windowed { why: Some(types::cat5(args[at].as_str(), " takes a count, not `", args[at + 1].as_str(), "`", "")), window: None, next: at }; },
+                Some(v) => v,
+            };
+            if which == 1 {
+                budget = Some(n);
+            } else if which == 2 {
+                offset = Some(n);
+            } else {
+                limit = Some(n);
+            }
+            at = at + 2;
+        }
+        let any: bool = is_set(&budget) || is_set(&offset) || is_set(&limit);
+        if !any {
+            return Windowed { why: None, window: None, next: at };
+        }
+        let b: usize = match budget {
+            None => 18446744073709551615,
+            Some(bv) => bv,
+        };
+        let o: usize = match offset {
+            None => 0,
+            Some(ov) => ov,
+        };
+        Windowed { why: None, window: Some(Window { budget: b, offset: o, limit: limit }), next: at }
+    }
+}

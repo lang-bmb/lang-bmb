@@ -4108,6 +4108,317 @@
         ],
         "chunk": 1
       }
+    },
+    {
+      "name": "map-l0",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L0",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L0",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-l0-together",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L0",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L0",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "map-l2",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L2",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-l2-together",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L2",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "map-l1",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/sat/*.bmb",
+          "tests/run/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-l1-together",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "lib/std/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "map-all",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "except": [
+          "tests/port/gen/g28.txt",
+          "tests/port/gen/g34.txt",
+          "tests/port/gen/g35.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-fake-models",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{bmb}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/prove/fake.sh",
+        "unknown sat",
+        "{build:stage1}",
+        "map",
+        "L1",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/*.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-window",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "--budget",
+        "2000",
+        "--offset",
+        "3",
+        "--limit",
+        "25",
+        "L2",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "--budget",
+        "2000",
+        "--offset",
+        "3",
+        "--limit",
+        "25",
+        "L2",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "tests/port/types/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "map-window-together",
+      "component": "C5",
+      "a": [
+        "{bmb}",
+        "map",
+        "--offset",
+        "100",
+        "--budget",
+        "32768",
+        "L0",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "map",
+        "--offset",
+        "100",
+        "--budget",
+        "32768",
+        "L0",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "map-ends",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/map/ends.sh",
+        "{bmb}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/map/ends.sh",
+        "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "map-cache",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/map/cache.sh",
+        "{bmb}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/map/cache.sh",
+        "{build:stage1}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/series.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/verify/pass/traits.bmb",
+          "tests/verify/pass/closure_context.bmb",
+          "tests/verify/pass/const_division.bmb",
+          "tests/run/escapes.bmb"
+        ],
+        "chunk": 1
+      }
     }
   ]
 }
