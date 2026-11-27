@@ -272,11 +272,23 @@ def spawn(argv, stdin, cwd, timeout, out, err):
                threading.Thread(target=feed)]
     for t in threads:
         t.start()
-    timer = threading.Timer(timeout, os.killpg, (p.pid, signal.SIGKILL))
+    fired = threading.Event()
+
+    def end():
+        # Set before the signal: the wait below can return before this
+        # thread has finished, so whether the timer's thread is alive does
+        # not tell whether it ended the run.
+        fired.set()
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # it ended by itself at the limit
+
+    timer = threading.Timer(timeout, end)
     timer.start()
     _, status, usage = os.wait4(p.pid, 0)
-    timed_out = not timer.is_alive()
     timer.cancel()
+    timed_out = fired.is_set()
     p.returncode = os.waitstatus_to_exitcode(status)
     for t in threads:
         t.join()
