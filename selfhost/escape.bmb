@@ -9,7 +9,7 @@ mod escape {
     #[summary("One #[rationale(..)] (stage0 Rationale): where it is, its kind, and the hash it carries")]
     struct Rationale { span: source::Span, kind: Option<String>, hash: Option<String> }
 
-    #[summary("The escapes in block b (block of stage0 of): an `assume` with its rationale; the initializer of a `let`, the value of an assignment, the bodies of loops and `proof` blocks and the expression statements are entered")]
+    #[summary("The escapes in block b (block of stage0 of): an `assume` with its rationale, and every expression of every statement is entered in the order written")]
     #[effects(alloc)]
     fn block(b: &ast::Block, out: &mut DefEscapes, f: usize) -> ()
         decreases f,
@@ -22,13 +22,13 @@ mod escape {
         {
             match &b.stmts[i] {
                 ast::Stmt::Let(l) => expr(&l.init, out, f - 1),
-                ast::Stmt::Assign(a) => expr(&a.value, out, f - 1),
-                ast::Stmt::While(w) => block(&w.body, out, f - 1),
-                ast::Stmt::For(x) => block(&x.body, out, f - 1),
-                ast::Stmt::Assert(at) => {},
-                ast::Stmt::Assume(am) => { out.assumes = out.assumes.saturating_add(1); match &am.rationale { None => {}, Some(r) => out.rationales.push(rationale(r)), } },
+                ast::Stmt::Assign(a) => { expr(&a.target, out, f - 1); expr(&a.value, out, f - 1); },
+                ast::Stmt::While(w) => { expr(&w.cond, out, f - 1); exprs(w.invariants.as_slice(), out, f - 1); match &w.measure { None => {}, Some(wm) => expr(wm, out, f - 1), } block(&w.body, out, f - 1); },
+                ast::Stmt::For(x) => { expr(&x.lo, out, f - 1); expr(&x.hi, out, f - 1); exprs(x.invariants.as_slice(), out, f - 1); block(&x.body, out, f - 1); },
+                ast::Stmt::Assert(at) => expr(&at.cond, out, f - 1),
+                ast::Stmt::Assume(am) => { out.assumes = out.assumes.saturating_add(1); match &am.rationale { None => {}, Some(r) => out.rationales.push(rationale(r)), } expr(&am.cond, out, f - 1); },
                 ast::Stmt::Proof(p) => block(&p.body, out, f - 1),
-                ast::Stmt::LetFields(lf) => {},
+                ast::Stmt::LetFields(lf) => expr(&lf.init, out, f - 1),
                 ast::Stmt::Expr(e) => expr(e, out, f - 1),
             }
         }
@@ -55,7 +55,7 @@ mod escape {
         true
     }
 
-    #[summary("The escapes in expression e (expr of stage0 of): blocks, the bodies of `loop`, the branches of `if` and the arms of `match` are entered, nothing else")]
+    #[summary("The escapes in expression e (expr of stage0 of): every expression inside it is entered in the order written, since a block with an `assume` can stand wherever an expression can")]
     #[effects(alloc)]
     fn expr(e: &ast::Expr, out: &mut DefEscapes, f: usize) -> ()
         decreases f,
@@ -73,32 +73,47 @@ mod escape {
             ast::ExprKind::Bool(xbo) => {},
             ast::ExprKind::Unit => {},
             ast::ExprKind::Var(var) => {},
-            ast::ExprKind::Call(c) => {},
-            ast::ExprKind::Method(m) => {},
-            ast::ExprKind::Index(ib, ii) => {},
-            ast::ExprKind::Unary(uo, ux) => {},
-            ast::ExprKind::Binary(bo, bl, br) => {},
-            ast::ExprKind::Ref(rm, rx) => {},
-            ast::ExprKind::If(ife) => { block(&ife.then, out, f - 1); match &ife.els { None => {}, Some(el) => expr(&**el, out, f - 1), } },
+            ast::ExprKind::Call(c) => exprs(c.args.as_slice(), out, f - 1),
+            ast::ExprKind::Method(m) => { expr(&*m.recv, out, f - 1); exprs(m.args.as_slice(), out, f - 1); },
+            ast::ExprKind::Index(ib, ii) => { expr(&**ib, out, f - 1); expr(&**ii, out, f - 1); },
+            ast::ExprKind::Unary(uo, ux) => expr(&**ux, out, f - 1),
+            ast::ExprKind::Binary(bo, bl, br) => { expr(&**bl, out, f - 1); expr(&**br, out, f - 1); },
+            ast::ExprKind::Ref(rm, rx) => expr(&**rx, out, f - 1),
+            ast::ExprKind::If(ife) => { expr(&*ife.cond, out, f - 1); block(&ife.then, out, f - 1); match &ife.els { None => {}, Some(el) => expr(&**el, out, f - 1), } },
             ast::ExprKind::Block(blk) => block(blk, out, f - 1),
-            ast::ExprKind::Array(arr) => {},
-            ast::ExprKind::Repeat(rp) => {},
-            ast::ExprKind::Old(ox) => {},
-            ast::ExprKind::Quant(qu) => {},
-            ast::ExprKind::Trigger(tx) => {},
-            ast::ExprKind::Closure(clo) => {},
-            ast::ExprKind::StructLit(sl) => {},
+            ast::ExprKind::Array(arr) => exprs(arr.as_slice(), out, f - 1),
+            ast::ExprKind::Repeat(rp) => expr(&*rp.value, out, f - 1),
+            ast::ExprKind::Old(ox) => expr(&**ox, out, f - 1),
+            ast::ExprKind::Quant(qu) => expr(&*qu.body, out, f - 1),
+            ast::ExprKind::Trigger(tx) => expr(&**tx, out, f - 1),
+            ast::ExprKind::Closure(clo) => { exprs(clo.pre.as_slice(), out, f - 1); exprs(clo.post.as_slice(), out, f - 1); block(&clo.body, out, f - 1); },
+            ast::ExprKind::StructLit(sl) => { for i in 0..sl.fields.len() invariant 0 <= i && i <= sl.fields.len(), { expr(&sl.fields[i].value, out, f - 1); } match &sl.rest { None => {}, Some(sr) => expr(&**sr, out, f - 1), } },
             ast::ExprKind::Path(pa) => {},
-            ast::ExprKind::Deref(dx) => {},
-            ast::ExprKind::Field(fb, fname) => {},
-            ast::ExprKind::Match(ma) => { for i in 0..ma.arms.len() invariant 0 <= i && i <= ma.arms.len(), { expr(&ma.arms[i].body, out, f - 1); } },
-            ast::ExprKind::Return(ret) => {},
-            ast::ExprKind::Try(trx) => {},
-            ast::ExprKind::Loop(lo) => block(&lo.body, out, f - 1),
-            ast::ExprKind::Break(br2) => {},
+            ast::ExprKind::Deref(dx) => expr(&**dx, out, f - 1),
+            ast::ExprKind::Field(fb, fname) => expr(&**fb, out, f - 1),
+            ast::ExprKind::Match(ma) => { expr(&*ma.scrut, out, f - 1); for i in 0..ma.arms.len() invariant 0 <= i && i <= ma.arms.len(), { expr(&ma.arms[i].body, out, f - 1); } },
+            ast::ExprKind::Return(ret) => { match ret { None => {}, Some(rv) => expr(&**rv, out, f - 1), } },
+            ast::ExprKind::Try(trx) => expr(&**trx, out, f - 1),
+            ast::ExprKind::Loop(lo) => { exprs(lo.invariants.as_slice(), out, f - 1); match &lo.measure { None => {}, Some(lm) => expr(&**lm, out, f - 1), } block(&lo.body, out, f - 1); },
+            ast::ExprKind::Break(br2) => { match &br2.value { None => {}, Some(bv) => expr(&**bv, out, f - 1), } },
             ast::ExprKind::Continue(cl) => {},
-            ast::ExprKind::Range(ra) => {},
+            ast::ExprKind::Range(ra) => { expr(&*ra.lo, out, f - 1); expr(&*ra.hi, out, f - 1); },
             ast::ExprKind::Error => {},
+        }
+    }
+
+    #[summary("The escapes in each expression of es, in order")]
+    #[effects(alloc)]
+    fn exprs(es: &[ast::Expr], out: &mut DefEscapes, f: usize) -> ()
+        decreases f,
+    {
+        if f == 0 {
+            return;
+        }
+        for i in 0..es.len()
+            invariant 0 <= i && i <= es.len(),
+        {
+            expr(&es[i], out, f - 1);
         }
     }
 

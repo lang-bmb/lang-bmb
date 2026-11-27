@@ -114,39 +114,142 @@ pub fn of(f: &FnDef) -> DefEscapes {
             expr(e, out);
         }
     }
+    fn exprs(es: &[Expr], out: &mut DefEscapes) {
+        for e in es {
+            expr(e, out);
+        }
+    }
     fn stmt(s: &Stmt, out: &mut DefEscapes) {
         match s {
             Stmt::Assume {
-                rationale: r, span, ..
+                cond,
+                rationale: r,
+                span,
             } => {
                 out.assumes.push(*span);
                 if let Some(a) = r {
                     out.rationales.push(rationale(a));
                 }
+                expr(cond, out);
             }
-            Stmt::Let { init, .. } => expr(init, out),
-            Stmt::Assign { value, .. } => expr(value, out),
-            Stmt::While { body, .. } | Stmt::For { body, .. } => block(body, out),
+            Stmt::Let { init, .. } | Stmt::LetFields { init, .. } => expr(init, out),
+            Stmt::Assign { target, value, .. } => {
+                expr(target, out);
+                expr(value, out);
+            }
+            Stmt::While {
+                cond,
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                expr(cond, out);
+                exprs(invariants, out);
+                if let Some(e) = decreases {
+                    expr(e, out);
+                }
+                block(body, out);
+            }
+            Stmt::For {
+                lo,
+                hi,
+                invariants,
+                body,
+                ..
+            } => {
+                expr(lo, out);
+                expr(hi, out);
+                exprs(invariants, out);
+                block(body, out);
+            }
+            Stmt::Assert { cond, .. } => expr(cond, out),
             Stmt::Proof { body, .. } => block(body, out),
             Stmt::Expr(e) => expr(e, out),
-            _ => {}
         }
     }
+    // Every expression is entered, in the order it is written: a block
+    // with an `assume` can stand wherever an expression can (an argument of
+    // a call, an operand, the value of a `return`), and an escape that is
+    // not counted is a trusted fact nobody sees.
     fn expr(e: &Expr, out: &mut DefEscapes) {
         match &e.kind {
-            ExprKind::Block(b) | ExprKind::Loop { body: b, .. } => block(b, out),
-            ExprKind::If { then, els, .. } => {
+            ExprKind::Int(..)
+            | ExprKind::Float(_)
+            | ExprKind::ByteLit(_)
+            | ExprKind::ByteStr(_)
+            | ExprKind::StrLit(_)
+            | ExprKind::CharLit(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Unit
+            | ExprKind::Var(_)
+            | ExprKind::Path(_)
+            | ExprKind::Continue { .. }
+            | ExprKind::Error => {}
+            ExprKind::Call { args, .. } | ExprKind::Array(args) => exprs(args, out),
+            ExprKind::Method { recv, args, .. } => {
+                expr(recv, out);
+                exprs(args, out);
+            }
+            ExprKind::Index { base: a, index: b }
+            | ExprKind::Binary(_, a, b)
+            | ExprKind::Range { lo: a, hi: b, .. } => {
+                expr(a, out);
+                expr(b, out);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Ref { expr: x, .. }
+            | ExprKind::Repeat { value: x, .. }
+            | ExprKind::Old(x)
+            | ExprKind::Trigger(x)
+            | ExprKind::Deref(x)
+            | ExprKind::Field { base: x, .. }
+            | ExprKind::Try(x)
+            | ExprKind::Quant { body: x, .. } => expr(x, out),
+            ExprKind::If { cond, then, els } => {
+                expr(cond, out);
                 block(then, out);
                 if let Some(x) = els {
                     expr(x, out);
                 }
             }
-            ExprKind::Match { arms, .. } => {
+            ExprKind::Block(b) => block(b, out),
+            ExprKind::Closure(c) => {
+                exprs(&c.requires, out);
+                exprs(&c.ensures, out);
+                block(&c.body, out);
+            }
+            ExprKind::StructLit { fields, rest, .. } => {
+                for (_, x) in fields {
+                    expr(x, out);
+                }
+                if let Some(x) = rest {
+                    expr(x, out);
+                }
+            }
+            ExprKind::Match { scrut, arms } => {
+                expr(scrut, out);
                 for a in arms {
                     expr(&a.body, out);
                 }
             }
-            _ => {}
+            ExprKind::Return(x) | ExprKind::Break { value: x, .. } => {
+                if let Some(x) = x {
+                    expr(x, out);
+                }
+            }
+            ExprKind::Loop {
+                invariants,
+                decreases,
+                body,
+                ..
+            } => {
+                exprs(invariants, out);
+                if let Some(e) = decreases {
+                    expr(e, out);
+                }
+                block(body, out);
+            }
         }
     }
     block(&f.body, &mut out);

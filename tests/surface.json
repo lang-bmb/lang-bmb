@@ -1026,8 +1026,8 @@
    "src": "56405956302b89e5"
   },
   "tests/verify/fail/verdict_rows.bmb": {
-   "out": "74eaed7f81aa395b",
-   "src": "5e66e0402ee04978"
+   "out": "d4b4c3ba69794158",
+   "src": "994f645c77e83da3"
   },
   "tests/verify/fail/weak_witness.bmb": {
    "out": "63a980e491a1651c",

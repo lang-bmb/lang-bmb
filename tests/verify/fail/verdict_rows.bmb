@@ -46,6 +46,33 @@ mod rows {
         x + 1
     }
 
+    #[effects(panic)]
+    fn same(x: i64) -> (r: i64)
+        ensures r == x,
+    {
+        x
+    }
+
+    // An `assume` is counted wherever its block stands: in an argument of
+    // a call and in the value of a `return`.
+    #[effects(panic)]
+    fn inside(x: i64) -> (r: i64)
+        ensures r < 100,
+    {
+        if x == 0 {
+            return {
+                #[rationale(kind = boundary, "callers pass small values")]
+                assume(small(x));
+                x
+            };
+        }
+        same({
+            #[rationale(kind = boundary, "callers pass small values")]
+            assume(small(x));
+            x
+        })
+    }
+
     // A loop that runs until the input ends (ADR-0094): proved without its
     // termination, as is its caller.
     #[effects(alloc, io, nondet)]

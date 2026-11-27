@@ -8,8 +8,8 @@
 # definition, of two and of a unit; `surface`, `impact` and `edges` of a
 # type), a scope that holds no definition, windows on answers (also one
 # that proves), a file that cannot be read, a program that does not check,
-# an `assume` where the walk over a body for escapes does not go (in an
-# argument of a call: the rows of `verify` and of `status` count none),
+# an `assume` inside an expression (in an argument of a call: the rows of
+# `verify` and of `status` count it),
 # `status` with no solver on PATH, and the caches: written, found again,
 # not made by a query that proves nothing or cannot be answered, one whose
 # proofs cannot be written and one under a path that is no directory. A
