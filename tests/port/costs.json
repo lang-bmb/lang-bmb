@@ -165,6 +165,22 @@
     "query-fake-models": 1.8,
     "query-ends": 3.3,
     "apply": 105.5,
-    "apply-ends": 13.0
+    "apply-ends": 13.0,
+    "ast": 13.2,
+    "ast-together": 2.4,
+    "tree-roundtrip": 42.2,
+    "tree-roundtrip-together": 11.3,
+    "tree-refusals": 45.2,
+    "tree-patch": 24.5,
+    "tree-spans": 5.9,
+    "tree-spans-together": 0.6,
+    "udiff": 43.3,
+    "udiff-edges": 0.3,
+    "compact": 23.9,
+    "compact-together": 7.9,
+    "compact-proved": 15.0,
+    "compact-edges": 0.1,
+    "plan-edits": 0.9,
+    "plan-ends": 1.6
   }
 }

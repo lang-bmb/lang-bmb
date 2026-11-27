@@ -1,0 +1,61 @@
+{"level":"L1","path":"app::report","def_kind":"fn","signature":"fn report(a: &[i64]) -> ()","requires":["report_ok(a)","stats::bounded_elems(a)"],"ensures":[],"decreases":null,"effects":"io","uses":["app::report_ok"],"status":"verified","obligations":5,"failed":0,"body":"sha256:1f00","iface":"sha256:4543","id":"sha256:1f00","file":"src/app.bmb","line":23,"rlimit_max":771}
+{"code":"E0802","severity":"error","message":"m","file":"f","line":1}
+{"def":"a::f","status":"verified","obligations":1,"failed":0,"rlimit":2,"rlimit_max":2}
+{"def":"a::g","status":"failed","obligations":3,"failed":1,"rlimit":9,"rlimit_max":5}
+{"hash":"sha256:22ccbc315f497d6212143024bc833446be6b1189a4c9e0d243a81a417a7c7bc5","defs":["a::f","b::g"],"none":[]}
+not json
+{"schema":"bmb.map","version":1}
+{"schema":"bmb.map"}
+{"version":1}
+{"schema":null,"version":null,"level":"L1"}
+{"def":"a::h","status":"unknown","obligations":2,"failed":0,"rlimit":1,"extra":[1,{"a":null}],"def":"twice"}
+{"def":"a::h","status":7,"obligations":2}
+{"def":"a::h","status":"verified","obligations":null}
+{"def":"a::h","status":"verified"}
+{"def":1,"status":"verified","obligations":1,"failed":0,"status":"failed"}
+{"level":"L1"}
+{"level":"L1","path":"p","def_kind":"spec fn","signature":"spec fn p() -> bool","effects":"io","status":"failed","failed":2,"obligations":"3","decreases":"n","uses":["a",7,null,"b"],"requires":"r","ensures":["e"]}
+{"level":"L1","path":"p","def_kind":"fn","signature":"fn p() -> ()","effects":"","status":"failed","failed":1.0,"obligations":9223372036854775808,"decreases":"","uses":[],"requires":[null],"ensures":[]}
+{"level":"L1","path":"p","def_kind":"fn","signature":7,"effects":["io"],"status":"failed","failed":-9223372036854775808,"obligations":9223372036854775807,"decreases":7}
+{"level":"L1","path":"p","def_kind":"proof fn","status":"other","failed":"+1","obligations":1e2}
+{"level":"L0","kind":"unit","path":"a::b","summary":"quotes \" and \\ and \u00e9 \u0001 \n end"}
+{"level":"L0","kind":"unit"}
+{"level":"L0","kind":"unit","path":7,"summary":null}
+{"level":"L0","kind":"def","path":"a::f","def_kind":"fn","hash":"sha256:06911490a407"}
+{"level":"L0","kind":7,"path":"a::f"}
+{"level":"L0"}
+{"level":"L2","from":"a","to":"b","kind":"calls"}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":2,"type_args":"i64, T"}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":"2","type_args":""}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":2.0}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":-0}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":+2}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":9223372036854775807,"type_args":7}
+{"level":"L2","from":"a","to":"b","kind":"passes","arg":9223372036854775808}
+{"level":"L2"}
+{"level":"L3","from":"a","hash":"sha256:22ccbc315f497d6212143024bc833446be6b1189a4c9e0d243a81a417a7c7bc5"}
+{"level":7,"kind":"unit","path":"a"}
+{"path":"a::f","code":"fn f() -> () {\n}\n","deps":[]}
+{"path":"a::f","code":"fn f() -> () {}","deps":[{"path":"a::g","text":"fn g() -> () {\n}\n"},{"path":"a::h","text":"no line end"}]}
+{"path":"a::f","code":"","deps":[]}
+{"code":"","deps":7}
+{"code":7,"deps":null,"path":7}
+{"path":"a::f","code":"x","deps":[7,null,"s",[],{},{"path":7,"text":7},{"text":"only text\n"},{"path":"only path"}]}
+{"code":"E0001","severity":"warning","deps":[],"path":"both a slice and a diagnostic"}
+{"code":"E0001","severity":null,"level":"keep","empty":"","none":null,"list":[]}
+{"code":"E0001","level":"L9","empty":"","none":null,"list":[],"object":{},"zero":0,"false":false,"nested":{"level":"kept","empty":""}}
+{"hash":"sha256:","body":"sha256:123456789012","iface":"sha256:1234567890123","id":"sha256:12345678901"}
+{"hash":"SHA256:22ccbc315f497d6212143024bc833446","body":" sha256:22ccbc315f497d6212143024bc833446","iface":7,"id":["sha256:22ccbc315f497d6212143024bc833446"]}
+{"hash":"sha256:\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9","other":"sha256:22ccbc315f497d6212143024bc833446be6b1189a4c9e0d243a81a417a7c7bc5","id":"sha256:\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00"}
+{"level":"dropped","level":"dropped too","a":1,"a":2}
+{}
+[]
+[{"level":"L1"}]
+"text"
+7
+null
+ {"level":"L0","kind":"def","path":"spaces","def_kind":"fn"}  
+{"level":"L0","kind":"def","path":"cut"
+{"a":1} trailing
+
+	

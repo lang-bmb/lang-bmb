@@ -61,6 +61,18 @@
       "except": [
         "selfhost/main.bmb"
       ]
+    },
+    "edit_ref": {
+      "example": "edit_ref"
+    },
+    "edit": {
+      "bmb": [
+        "selfhost/*.bmb",
+        "tests/port/edit.bmb"
+      ],
+      "except": [
+        "selfhost/main.bmb"
+      ]
     }
   },
   "cases": [
@@ -4671,6 +4683,450 @@
         "sh",
         "{root}/tests/port/apply/ends.sh",
         "{build:stage1}"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "ast",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "ast",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "ast",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/parser/*.txt",
+          "tests/port/lower/*.txt",
+          "tests/port/decls/*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/emit/*.txt",
+          "tests/port/smt/*.txt",
+          "tests/port/incr/*.txt",
+          "tests/port/fmt/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "ast-together",
+      "component": "C10",
+      "a": [
+        "{bmb}",
+        "ast",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:stage1}",
+        "ast",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "selfhost/*.bmb",
+          "tests/port/parser/dup-units.txt",
+          "tests/port/decls/dup_*.txt"
+        ],
+        "chunk": 40
+      }
+    },
+    {
+      "name": "tree-roundtrip",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/tree/roundtrip.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/tree/roundtrip.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "*.bmb",
+          "tests/port/parser/*.txt",
+          "tests/port/lower/*.txt",
+          "tests/port/decls/*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/gen/*.txt",
+          "tests/port/emit/*.txt",
+          "tests/port/smt/*.txt",
+          "tests/port/incr/*.txt",
+          "tests/port/fmt/*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "tree-roundtrip-together",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/tree/roundtrip.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/tree/roundtrip.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "selfhost/*.bmb"
+        ],
+        "chunk": 100
+      }
+    },
+    {
+      "name": "tree-refusals",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/tree/mutate.py",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/tree/mutate.py",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/emit/*.txt",
+          "tests/port/lower/c*.txt",
+          "tests/port/parser/order.txt",
+          "tests/port/smt/exec-proof.txt",
+          "tests/port/smt/traits.txt",
+          "tests/port/smt/spec-rec.txt",
+          "tests/port/smt/text.txt",
+          "tests/port/decls/attrs.txt",
+          "tests/port/types/calls.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "tree-patch",
+      "component": "C10",
+      "a": [
+        "python3",
+        "{root}/tests/port/tree/patch.py",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "python3",
+        "{root}/tests/port/tree/patch.py",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/lower/c*.txt",
+          "tests/port/parser/order.txt",
+          "tests/port/smt/exec-proof.txt",
+          "tests/port/smt/exec-loops.txt",
+          "tests/port/smt/traits.txt",
+          "lib/std/collections.bmb",
+          "lib/std/num.bmb",
+          "tests/port/incr/base.txt",
+          "tests/port/emit/c1-*.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "tree-spans",
+      "component": "C10",
+      "a": [
+        "{build:edit_ref}",
+        "spans",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:edit}",
+        "spans",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "tests/verify/pass/*.bmb",
+          "tests/verify/fail/*.bmb",
+          "tests/check/ok/*.bmb",
+          "tests/check/err/*.bmb",
+          "lib/std/*.bmb",
+          "tests/port/parser/err-*.txt",
+          "tests/port/parser/order.txt",
+          "tests/port/parser/dup-units.txt",
+          "tests/port/lower/*.txt",
+          "tests/port/decls/*.txt",
+          "tests/port/types/*.txt",
+          "tests/port/smt/*.txt",
+          "tests/port/emit/*.txt",
+          "tests/port/gen/*.txt"
+        ],
+        "except": [
+          "tests/check/err/nesting.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "tree-spans-together",
+      "component": "C10",
+      "a": [
+        "{build:edit_ref}",
+        "spans",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:edit}",
+        "spans",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "lib/std/*.bmb",
+          "tests/port/incr/*.txt",
+          "tests/port/emit/c*.txt"
+        ],
+        "chunk": 12
+      }
+    },
+    {
+      "name": "udiff",
+      "component": "C10",
+      "a": [
+        "sh",
+        "{root}/tests/port/udiff/each.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/udiff/each.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/run/*.bmb",
+          "lib/std/*.bmb",
+          "tests/port/incr/*.txt",
+          "tests/port/parser/*.txt",
+          "tests/port/lexer/*.txt",
+          "tests/port/types/*.txt",
+          "selfhost/json.bmb",
+          "selfhost/source.bmb",
+          "selfhost/table.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "udiff-edges",
+      "component": "C10",
+      "a": [
+        "{build:edit_ref}",
+        "udiff",
+        "{inputs}",
+        "{root}/tests/port/udiff/file.txt",
+        "{root}/tests/port/udiff/empty.txt",
+        "{root}/tests/port/udiff/crlf.txt",
+        "{root}/tests/port/udiff/noeol.txt",
+        "{root}/tests/port/udiff/blank.txt"
+      ],
+      "b": [
+        "{build:edit}",
+        "udiff",
+        "{inputs}",
+        "{root}/tests/port/udiff/file.txt",
+        "{root}/tests/port/udiff/empty.txt",
+        "{root}/tests/port/udiff/crlf.txt",
+        "{root}/tests/port/udiff/noeol.txt",
+        "{root}/tests/port/udiff/blank.txt"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/udiff/edges/*.diff"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "compact",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/view/each.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/view/each.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/types/*.txt",
+          "tests/port/gen/g0*.txt",
+          "lib/std/*.bmb",
+          "tests/port/prove/*.bmb",
+          "tests/port/incr/base.txt"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "compact-together",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/view/each.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/view/each.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "lib/std/*.bmb",
+          "selfhost/json.bmb",
+          "selfhost/sha256.bmb",
+          "selfhost/source.bmb",
+          "selfhost/table.bmb"
+        ],
+        "chunk": 20
+      }
+    },
+    {
+      "name": "compact-proved",
+      "component": "C5",
+      "a": [
+        "sh",
+        "{root}/tests/port/view/proved.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{inputs}"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/view/proved.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/prove/trust.bmb",
+          "tests/port/prove/shapes.bmb",
+          "tests/verify/fail/proofs.bmb",
+          "tests/verify/pass/vecs.bmb",
+          "tests/port/sat/lint.bmb"
+        ],
+        "chunk": 1
+      }
+    },
+    {
+      "name": "compact-edges",
+      "component": "C5",
+      "a": [
+        "{build:edit_ref}",
+        "compact",
+        "{inputs}"
+      ],
+      "b": [
+        "{build:edit}",
+        "compact",
+        "{inputs}"
+      ],
+      "inputs": {
+        "files": [
+          "tests/port/view/edges*.jsonl",
+          "tests/check/err/*.jsonl",
+          "tests/port/json_tree.txt",
+          "tests/port/json_edge.txt"
+        ],
+        "chunk": 4
+      }
+    },
+    {
+      "name": "plan-edits",
+      "component": "C11",
+      "a": [
+        "sh",
+        "{root}/tests/port/plan/edits.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/plan/edits.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{root}/"
+      ],
+      "inputs": {
+        "none": true
+      }
+    },
+    {
+      "name": "plan-ends",
+      "component": "C11",
+      "a": [
+        "sh",
+        "{root}/tests/port/plan/ends.sh",
+        "{bmb}",
+        "{build:edit_ref}",
+        "{root}/"
+      ],
+      "b": [
+        "sh",
+        "{root}/tests/port/plan/ends.sh",
+        "{bmb}",
+        "{build:edit}",
+        "{root}/"
       ],
       "inputs": {
         "none": true

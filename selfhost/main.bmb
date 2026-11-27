@@ -1,4 +1,4 @@
-#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), import and apply (the workspace and its transactions; every command reads a workspace directory among its files), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
+#[summary("Driver of the compiler written in BMB (port of stage0 compiler/src/main.rs). Commands grow with each phase: for now codes, dump tokens, dump parse, dump std, dump lower, dump decls, dump types, dump moves, dump texts, dump lowered, dump layout, dump smt-decls, dump smt, dump smt-queries, check, fmt, hash, verify (with the proof cache and the proof side of the per-definition cache), lint --select (the satisfiability checks), examples, stability, map (the three levels, with the caches and the window flags), query (every read query, with the caches and the window flags), import and apply (the workspace and its transactions; every command reads a workspace directory among its files), ast (the syntax tree as a JSON document), emit-llvm and build, without or with --all-checks (ported syntax only: for the rest, writes the reasons and exits 2)")]
 mod main {
     #[summary("The line apply ends with: whether the transaction was committed, the definitions whose text changed or was added and those removed")]
     #[effects(alloc)]
@@ -510,6 +510,19 @@ mod main {
             }
             return;
         }
+        if args.len() > 2 && args[1] == "ast" {
+            let ast_files: Vec<lib::Input> = read_files(args.as_slice(), 2);
+            let parsed: workspace::Parsed = workspace::parse_files(ast_files.as_slice());
+            if parsed.diags.has_errors() {
+                print_str(parsed.diags.to_jsonl(&parsed.sm).as_str());
+                std::process::exit(1);
+            }
+            match ast_json::export(&parsed.program) {
+                Ok(doc) => { print_str(json::to_json(&doc).as_str()); print_str("\n"); },
+                Err(ast_why) => { eprint_str("bmb: "); eprint_str(ast_why.as_str()); eprint_str("\n"); std::process::exit(1); },
+            }
+            return;
+        }
         if args.len() > 2 && args[1] == "hash" {
             let hashed: Vec<lib::Input> = read_files(args.as_slice(), 2);
             let hr: lib::Outcome = lib::hash(hashed.as_slice());
@@ -519,7 +532,7 @@ mod main {
             }
             return;
         }
-        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | import DIR FILE.. | apply DIR OPS.json | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
+        eprint_str("usage: stage1 codes [--md] | dump tokens FILE.. | dump parse FILE.. | dump std FILE.. | dump lower FILE.. | dump decls FILE.. | dump types FILE.. | dump moves FILE.. | dump texts FILE.. | dump lowered FILE.. | dump layout FILE.. | dump smt-decls FILE.. | dump smt FILE.. | dump smt-queries FILE.. | check FILE.. | fmt [--check] FILE.. | hash FILE.. | verify [--emit-smt DIR] [--cache DIR] [--stats FILE] [--audit] [--bounded-search] [--def PATH].. FILE.. | stability [--seeds N] FILE.. | map [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] [L0|L1|L2|all] FILE.. | query [--cache DIR] [--budget BYTES] [--offset ROWS] [--limit ROWS] QUERY [ARG..] -- FILE.. | import DIR FILE.. | apply DIR OPS.json | ast FILE.. | emit-llvm [--cache DIR] [--stats FILE] [--audit] [--all-checks] FILE.. -o OUT.ll | build [--cache DIR] [--stats FILE] [--audit] FILE.. -o OUT\n");
         std::process::exit(2);
     }
 

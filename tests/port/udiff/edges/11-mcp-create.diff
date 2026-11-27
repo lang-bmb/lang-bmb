@@ -1,0 +1,10 @@
+--- /dev/null
++++ b/src/calc.bmb
+@@ -0,0 +1,7 @@
++#[summary("calc")]
++mod calc {
++    #[effects(pure)]
++    fn twice(x: i64) -> bool {
++        x
++    }
++}

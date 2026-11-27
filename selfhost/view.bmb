@@ -1,0 +1,360 @@
+#[summary("The compact agent view of tool output (port of stage0 compiler/src/view.rs, ADR-0068): a projection of the JSONL text for the model, computed from it alone. A map header is dropped; an L1 row is the definition's normal form without its body after a line with its path and proof status; an L0 row is a unit's summary or a definition's kind and path; an L2 row is its edge; a slice is the texts under their paths; diagnostics stay as they are; the status lines of verified definitions become one count and the others lose their proof cost; any other row loses level, empty values and all but 12 digits of its hashes. A line that is no JSON object passes through")]
+mod view {
+    #[summary("The compact view of a tool result (stage0 compact)")]
+    #[effects(alloc)]
+    fn compact(text: &str) -> String {
+        let mut out: String = String::new();
+        let mut verified: u64 = 0;
+        let lines: Vec<String> = cache::lines_of(text);
+        for i in 0..lines.len()
+            invariant 0 <= i && i <= lines.len(),
+        {
+            match json::parse(lines[i].as_str()) {
+                Ok(v) => { if row(&mut out, &v, lines[i].as_str()) { verified = verified.saturating_add(1); } },
+                Err(e) => { out.push_str(lines[i].as_str()); out.push_str("\n"); },
+            }
+        }
+        if verified > 0 {
+            out.push_str("{\"verified\":");
+            std::num::push_u64(&mut out, verified);
+            out.push_str("}\n");
+        }
+        out
+    }
+
+    #[summary("Whether the value is null, an empty string or an empty array")]
+    #[effects(pure)]
+    fn empty(v: &json::Value) -> bool {
+        match v {
+            json::Value::Null => true,
+            json::Value::Bool(b) => false,
+            json::Value::Num(n) => false,
+            json::Value::Str(s) => s.len() == 0,
+            json::Value::Array(xs) => xs.len() == 0,
+            json::Value::Object(kv) => false,
+        }
+    }
+
+    #[summary("A row without level and without its empty values, its hashes cut to sha256: and 12 digits")]
+    #[effects(alloc)]
+    fn generic(kv: &[json::Member]) -> json::Value {
+        let mut out: Vec<json::Member> = Vec::new();
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key != "level" && !empty(&kv[i].value) {
+                let mut cut: Option<String> = None;
+                if kv[i].key == "hash" || kv[i].key == "body" || kv[i].key == "iface" || kv[i].key == "id" {
+                    match json::as_str(&kv[i].value) {
+                        None => {},
+                        Some(s) => { if std::str::starts_with(s.as_str(), "sha256:") { cut = Some(head(s.as_str(), 19)); } },
+                    }
+                }
+                match cut {
+                    None => out.push(json::Member { key: kv[i].key.clone(), value: kv[i].value.clone() }),
+                    Some(c) => out.push(json::Member { key: kv[i].key.clone(), value: json::Value::Str(c) }),
+                }
+            }
+        }
+        json::Value::Object(out)
+    }
+
+    #[summary("Whether the row has a member key")]
+    #[effects(pure)]
+    fn has(kv: &[json::Member], key: &str) -> bool {
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key.as_str() == key {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[summary("The first n characters of s")]
+    #[effects(alloc)]
+    fn head(s: &str, n: usize) -> String {
+        let mut seen: usize = 0;
+        for i in 0..s.len()
+            invariant 0 <= i && i <= s.len(), seen <= i,
+        {
+            let b: u8 = s.as_bytes()[i];
+            if b < 128 || b >= 192 {
+                if seen == n {
+                    return lexer::cut(s, 0, i);
+                }
+                seen = seen + 1;
+            }
+        }
+        String::from(s)
+    }
+
+    #[summary("The value of the first member key as an i64; None when there is none or it is no such number")]
+    #[effects(pure)]
+    fn int_of(kv: &[json::Member], key: &str) -> Option<i64> {
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key.as_str() == key {
+                return json::as_i64(&kv[i].value);
+            }
+        }
+        None
+    }
+
+    #[summary("Whether the text is there and is want")]
+    #[effects(pure)]
+    fn is(o: &Option<String>, want: &str) -> bool {
+        match o {
+            None => false,
+            Some(s) => s.as_str() == want,
+        }
+    }
+
+    #[summary("The row with the members named in keys (joined by a comma and a space) only")]
+    #[effects(alloc)]
+    fn keep(kv: &[json::Member], keys: &str) -> json::Value {
+        let mut out: Vec<json::Member> = Vec::new();
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if ast_json::allows(keys, kv[i].key.as_str()) {
+                out.push(json::Member { key: kv[i].key.clone(), value: kv[i].value.clone() });
+            }
+        }
+        json::Value::Object(out)
+    }
+
+    #[summary("An L1 row as the definition's normal form without a body: a line with the path and proof status, one attribute per line, the signature, each contract clause on its own line")]
+    #[effects(alloc)]
+    fn l1(kv: &[json::Member]) -> String {
+        let mut out: String = String::from("// ");
+        out.push_str(str_of(kv, "path").as_str());
+        let status: String = str_of(kv, "status");
+        if status == "verified" {
+            out.push_str(": verified");
+        } else if status == "failed" {
+            out.push_str(": failed ");
+            std::num::push_i64(&mut out, num_of(kv, "failed"));
+            out.push_str(" of ");
+            std::num::push_i64(&mut out, num_of(kv, "obligations"));
+            out.push_str(" obligations");
+        }
+        out.push_str("\n");
+        if str_of(kv, "def_kind") == "fn" {
+            let effects: String = str_of(kv, "effects");
+            if effects.len() > 0 {
+                out.push_str("#[effects(");
+                out.push_str(effects.as_str());
+                out.push_str(")]\n");
+            }
+        }
+        let uses: Vec<String> = strs_of(kv, "uses");
+        if uses.len() > 0 {
+            out.push_str("#[uses(");
+            out.push_str(types::join(uses.as_slice(), ", ").as_str());
+            out.push_str(")]\n");
+        }
+        out.push_str(str_of(kv, "signature").as_str());
+        out.push_str("\n");
+        let pre: Vec<String> = strs_of(kv, "requires");
+        if pre.len() > 0 {
+            out.push_str("    requires ");
+            out.push_str(types::join(pre.as_slice(), ", ").as_str());
+            out.push_str(",\n");
+        }
+        let post: Vec<String> = strs_of(kv, "ensures");
+        if post.len() > 0 {
+            out.push_str("    ensures ");
+            out.push_str(types::join(post.as_slice(), ", ").as_str());
+            out.push_str(",\n");
+        }
+        let dec: String = str_of(kv, "decreases");
+        if dec.len() > 0 {
+            out.push_str("    decreases ");
+            out.push_str(dec.as_str());
+            out.push_str(",\n");
+        }
+        out
+    }
+
+    #[summary("An L2 row as its edge: from, kind and to, then the argument position and the type arguments when it has them")]
+    #[effects(alloc)]
+    fn l2(kv: &[json::Member]) -> String {
+        let mut out: String = str_of(kv, "from");
+        out.push_str(" ");
+        out.push_str(str_of(kv, "kind").as_str());
+        out.push_str(" ");
+        out.push_str(str_of(kv, "to").as_str());
+        match int_of(kv, "arg") {
+            None => {},
+            Some(a) => { out.push_str(" arg "); std::num::push_i64(&mut out, a); },
+        }
+        let targs: String = str_of(kv, "type_args");
+        if targs.len() > 0 {
+            out.push_str(" <");
+            out.push_str(targs.as_str());
+            out.push_str(">");
+        }
+        out.push_str("\n");
+        out
+    }
+
+    #[summary("The value of the member key as an i64; 0 when there is none")]
+    #[effects(pure)]
+    fn num_of(kv: &[json::Member], key: &str) -> i64 {
+        match int_of(kv, key) {
+            None => 0,
+            Some(n) => n,
+        }
+    }
+
+    #[summary("Appends the view of one line whose value is v; true when it is the status line of a verified definition, which only counts")]
+    #[effects(alloc)]
+    fn row(out: &mut String, v: &json::Value, line: &str) -> bool {
+        match v {
+            json::Value::Null => { out.push_str(line); out.push_str("\n"); false },
+            json::Value::Bool(b) => { out.push_str(line); out.push_str("\n"); false },
+            json::Value::Num(n) => { out.push_str(line); out.push_str("\n"); false },
+            json::Value::Str(s) => { out.push_str(line); out.push_str("\n"); false },
+            json::Value::Array(xs) => { out.push_str(line); out.push_str("\n"); false },
+            json::Value::Object(kv) => row_of(out, kv.as_slice(), v),
+        }
+    }
+
+    #[summary("row, with the members of the object")]
+    #[effects(alloc)]
+    fn row_of(out: &mut String, kv: &[json::Member], v: &json::Value) -> bool {
+        if has(kv, "schema") && has(kv, "version") {
+            return false;
+        }
+        if has(kv, "def") && has(kv, "status") && has(kv, "obligations") {
+            if str_of(kv, "status") == "verified" {
+                return true;
+            }
+            out.push_str(json::to_json(&keep(kv, "def, status, obligations, failed")).as_str());
+            out.push_str("\n");
+            return false;
+        }
+        let level: Option<String> = text_of(kv, "level");
+        let kind: Option<String> = text_of(kv, "kind");
+        if is(&level, "L1") {
+            out.push_str(l1(kv).as_str());
+        } else if is(&level, "L0") && is(&kind, "unit") {
+            out.push_str("#[summary(");
+            std::json::push_string(out, str_of(kv, "summary").as_str());
+            out.push_str(")] mod ");
+            out.push_str(str_of(kv, "path").as_str());
+            out.push_str(";\n");
+        } else if is(&level, "L0") {
+            out.push_str(str_of(kv, "def_kind").as_str());
+            out.push_str(" ");
+            out.push_str(str_of(kv, "path").as_str());
+            out.push_str("\n");
+        } else if is(&level, "L2") {
+            out.push_str(l2(kv).as_str());
+        } else if has(kv, "code") && has(kv, "deps") {
+            out.push_str(slice(kv).as_str());
+        } else if has(kv, "code") && has(kv, "severity") {
+            out.push_str(json::to_json(v).as_str());
+            out.push_str("\n");
+        } else {
+            out.push_str(json::to_json(&generic(kv)).as_str());
+            out.push_str("\n");
+        }
+        false
+    }
+
+    #[summary("A slice row: the definition's text under its path, then each dependency's text under its path, with a line end at the end")]
+    #[effects(alloc)]
+    fn slice(kv: &[json::Member]) -> String {
+        let mut out: String = String::from("// ");
+        out.push_str(str_of(kv, "path").as_str());
+        out.push_str("\n");
+        out.push_str(str_of(kv, "code").as_str());
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key == "deps" {
+                slice_deps(&mut out, &kv[i].value);
+                return slice_end(out);
+            }
+        }
+        slice_end(out)
+    }
+
+    #[summary("Appends the dependencies of a slice row, when deps is an array")]
+    #[effects(alloc)]
+    fn slice_deps(out: &mut String, deps: &json::Value) -> () {
+        match deps {
+            json::Value::Null => {},
+            json::Value::Bool(b) => {},
+            json::Value::Num(n) => {},
+            json::Value::Str(s) => {},
+            json::Value::Array(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { out.push_str("// "); match json::get_str(&xs[i], "path") { None => {}, Some(p) => out.push_str(p.as_str()), } out.push_str("\n"); match json::get_str(&xs[i], "text") { None => {}, Some(t) => out.push_str(t.as_str()), } } },
+            json::Value::Object(kv) => {},
+        }
+    }
+
+    #[summary("The text with a line end at its end")]
+    #[effects(alloc)]
+    fn slice_end(text: String) -> String {
+        let mut out: String = text;
+        let n: usize = out.len();
+        if n == 0 || out.as_bytes()[n - 1] != 10 {
+            out.push_str("\n");
+        }
+        out
+    }
+
+    #[summary("The text of the first member key when it is a string; the empty text otherwise")]
+    #[effects(alloc)]
+    fn str_of(kv: &[json::Member], key: &str) -> String {
+        match text_of(kv, key) {
+            None => String::new(),
+            Some(s) => s,
+        }
+    }
+
+    #[summary("The strings of an array; none for another value")]
+    #[effects(alloc)]
+    fn strs(v: &json::Value) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        match v {
+            json::Value::Null => {},
+            json::Value::Bool(b) => {},
+            json::Value::Num(n) => {},
+            json::Value::Str(s) => {},
+            json::Value::Array(xs) => { for i in 0..xs.len() invariant 0 <= i && i <= xs.len(), { match json::as_str(&xs[i]) { None => {}, Some(t) => out.push(t), } } },
+            json::Value::Object(kv) => {},
+        }
+        out
+    }
+
+    #[summary("The strings of the array of the first member key")]
+    #[effects(alloc)]
+    fn strs_of(kv: &[json::Member], key: &str) -> Vec<String> {
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key.as_str() == key {
+                return strs(&kv[i].value);
+            }
+        }
+        Vec::new()
+    }
+
+    #[summary("The text of the first member key when it is a string")]
+    #[effects(alloc)]
+    fn text_of(kv: &[json::Member], key: &str) -> Option<String> {
+        for i in 0..kv.len()
+            invariant 0 <= i && i <= kv.len(),
+        {
+            if kv[i].key.as_str() == key {
+                return json::as_str(&kv[i].value);
+            }
+        }
+        None
+    }
+}

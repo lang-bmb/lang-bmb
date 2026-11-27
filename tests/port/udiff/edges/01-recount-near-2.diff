@@ -1,0 +1,6 @@
+--- a/src/x.bmb
++++ b/src/x.bmb
+@@ -2 +2 @@
+ b
+-c
++C

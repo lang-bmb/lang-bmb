@@ -1,0 +1,10 @@
+diff --git a/src/x.bmb b/src/x.bmb
+--- /dev/null
++++ b/src/n.bmb
+@@ -0,0 +1,2 @@
++x
++y
+
+diff --git a/src/o.bmb b/src/o.bmb
+--- a/src/o.bmb
++++ /dev/null

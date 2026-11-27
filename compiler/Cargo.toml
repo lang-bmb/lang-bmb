@@ -20,4 +20,9 @@ path = "../tests/port/smt_terms_ref.rs"
 name = "smt_answers_ref"
 path = "../tests/port/smt_answers_ref.rs"
 
+# The stage0 side of the differential cases `tree-*`, `udiff*`, `compact*` and `plan*` (tests/port/README.md).
+[[example]]
+name = "edit_ref"
+path = "../tests/port/edit_ref.rs"
+
 [dependencies]

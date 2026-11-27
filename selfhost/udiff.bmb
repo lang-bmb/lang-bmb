@@ -1,0 +1,397 @@
+#[summary("Unified diffs (port of stage0 compiler/src/udiff.rs, ADR-0073): the file diff edit surface. Parsing and applying follow git apply --recount: a hunk is its lines, the counts of its header are not trusted, the line number is where to look first, and context and removed lines must match the file exactly")]
+mod udiff {
+    #[summary("The changes to one file. A path is None for /dev/null (a created or deleted file)")]
+    struct FilePatch { old_path: Option<String>, new_path: Option<String>, hunks: Vec<Hunk> }
+
+    #[summary("One hunk: the header as written, the old start line (from 1) when the header gives one, and the lines")]
+    struct Hunk { header: String, old_start: Option<usize>, lines: Vec<Line> }
+
+    #[summary("One line of a hunk: the byte of its kind (space for context, - or +) and its text")]
+    struct Line { tag: u8, text: String }
+
+    #[summary("The lines the hunk leaves in the file (context and added)")]
+    #[effects(alloc)]
+    fn after(h: &Hunk) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..h.lines.len()
+            invariant 0 <= i && i <= h.lines.len(),
+        {
+            if h.lines[i].tag != 45 {
+                out.push(h.lines[i].text.clone());
+            }
+        }
+        out
+    }
+
+    #[summary("Applies the hunks to text in order (stage0 apply). Each hunk's context and removed lines must be in the file, after the hunk before it, exactly; among several places the one nearest the header's line number is taken, and without a line number a hunk must match in one place only. The error is stage0's message")]
+    #[effects(alloc)]
+    fn apply(text: &str, hunks: &[Hunk]) -> Result<String, String> {
+        let lines: Vec<String> = cache::lines_of(text);
+        let mut out: Vec<String> = Vec::new();
+        let mut pos: usize = 0;
+        for k in 0..hunks.len()
+            invariant 0 <= k && k <= hunks.len(), pos <= lines.len(),
+        {
+            let want: Vec<String> = before(&hunks[k]);
+            let mut at: usize = 0;
+            if want.len() == 0 {
+                match hunks[k].old_start {
+                    None => { if lines.len() > 0 { return Err(types::cat2(which(k, hunks[k].header.as_str()).as_str(), ": a hunk with only added lines needs a line number (`@@ -LINE,0 +..`)")); } },
+                    Some(a) => { if a >= pos && a <= lines.len() { at = a; } else { let mut m: String = which(k, hunks[k].header.as_str()); m.push_str(": line "); std::num::push_u64(&mut m, a as u64); m.push_str(" is outside the file ("); std::num::push_u64(&mut m, lines.len() as u64); m.push_str(" lines) or before the previous hunk"); return Err(m); } },
+                }
+            } else {
+                let found: Vec<usize> = places(lines.as_slice(), want.as_slice(), pos);
+                if found.len() == 0 {
+                    return Err(types::cat3(which(k, hunks[k].header.as_str()).as_str(), ": ", mismatch(lines.as_slice(), pos, want.as_slice()).as_str()));
+                }
+                if found.len() == 1 {
+                    at = found[0];
+                } else {
+                    match hunks[k].old_start {
+                        None => { let mut many: String = which(k, hunks[k].header.as_str()); many.push_str(": matches at lines "); for j in 0..found.len() invariant 0 <= j && j <= found.len(), { if j > 0 { many.push_str(", "); } std::num::push_u64(&mut many, (found[j] as u64).saturating_add(1)); } many.push_str("; give the line number or more context"); return Err(many); },
+                        Some(line) => { at = nearest(found.as_slice(), line); },
+                    }
+                }
+            }
+            if at < pos || at > lines.len() || lines.len() - at < want.len() {
+                return Err(String::new());
+            }
+            for c in pos..at
+                invariant pos <= c && c <= at, at <= lines.len(),
+            {
+                out.push(lines[c].clone());
+            }
+            let left: Vec<String> = after(&hunks[k]);
+            for n in 0..left.len()
+                invariant 0 <= n && n <= left.len(),
+            {
+                out.push(left[n].clone());
+            }
+            pos = at + want.len();
+        }
+        for r in pos..lines.len()
+            invariant pos <= r && r <= lines.len(),
+        {
+            out.push(lines[r].clone());
+        }
+        let mut joined: String = String::new();
+        for o in 0..out.len()
+            invariant 0 <= o && o <= out.len(),
+        {
+            joined.push_str(out[o].as_str());
+            joined.push_str("\n");
+        }
+        Ok(joined)
+    }
+
+    #[summary("The lines the hunk expects in the file (context and removed)")]
+    #[effects(alloc)]
+    fn before(h: &Hunk) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for i in 0..h.lines.len()
+            invariant 0 <= i && i <= h.lines.len(),
+        {
+            if h.lines[i].tag != 43 {
+                out.push(h.lines[i].text.clone());
+            }
+        }
+        out
+    }
+
+    #[summary("The distance of place p from the line a of a header, as stage0 computes it in 64 signed bits that wrap: |p - (a - 1)|")]
+    #[effects(pure)]
+    fn distance(p: usize, a: usize) -> i64 {
+        let mut ai: i64 = 0;
+        if a <= 9223372036854775807 {
+            ai = a as i64;
+        } else {
+            ai = 0 - (18446744073709551615 - a) as i64 - 1;
+        }
+        let mut pi: i64 = 9223372036854775807;
+        if p <= 9223372036854775807 {
+            pi = p as i64;
+        }
+        let d: i64 = pi.wrapping_sub(ai.wrapping_sub(1));
+        let zero: i64 = 0;
+        if d < 0 {
+            return zero.wrapping_sub(d);
+        }
+        d
+    }
+
+    #[summary("Whether a file's header starts at line i: a --- line and a +++ line after it")]
+    #[effects(pure)]
+    fn header_at(lines: &[String], i: usize) -> bool {
+        i < lines.len() && i + 1 < lines.len() && std::str::starts_with(lines[i].as_str(), "--- ") && std::str::starts_with(lines[i + 1].as_str(), "+++ ")
+    }
+
+    #[summary("A path of a --- or +++ line: None for /dev/null, otherwise the path up to a tab, without white space at its end and without git's a/ or b/ before it")]
+    #[effects(alloc)]
+    fn header_path(s: &str) -> Option<String> {
+        let parts: Vec<String> = encode_terms::split(s, 9);
+        let mut p: String = String::new();
+        if parts.len() > 0 {
+            p = parser::trim_end(parts[0].as_str());
+        }
+        if p == "/dev/null" {
+            return None;
+        }
+        if std::str::starts_with(p.as_str(), "a/") || std::str::starts_with(p.as_str(), "b/") {
+            return Some(lexer::cut(p.as_str(), 2, p.len()));
+        }
+        Some(p)
+    }
+
+    #[summary("Whether line i belongs to the hunk before it: it is no hunk header and starts no file, and it is empty or starts with a space, -, + or a backslash")]
+    #[effects(pure)]
+    fn in_hunk(lines: &[String], i: usize) -> bool
+        requires i < lines.len(),
+    {
+        if std::str::starts_with(lines[i].as_str(), "@@") || header_at(lines, i) {
+            return false;
+        }
+        if lines[i].len() == 0 {
+            return true;
+        }
+        let c: u8 = lines[i].as_bytes()[0];
+        c == 32 || c == 45 || c == 43 || c == 92
+    }
+
+    #[summary("Whether l is one of git's lines that may stand between files")]
+    #[effects(pure)]
+    fn metadata(l: &str) -> bool {
+        std::str::starts_with(l, "diff ") || std::str::starts_with(l, "index ") || std::str::starts_with(l, "new file mode") || std::str::starts_with(l, "deleted file mode") || std::str::starts_with(l, "old mode") || std::str::starts_with(l, "new mode") || std::str::starts_with(l, "similarity index")
+    }
+
+    #[summary("Why want is not in the lines from pos on: its first line that is not there, said to be there with other white space when it is; or that the lines are there but not together")]
+    #[effects(alloc)]
+    fn mismatch(lines: &[String], pos: usize, want: &[String]) -> String {
+        for i in 0..want.len()
+            invariant 0 <= i && i <= want.len(),
+        {
+            let mut there: bool = false;
+            let mut loose: bool = false;
+            let bare: String = fmt::trim(want[i].as_str());
+            for j in pos..lines.len()
+                invariant pos <= j,
+            {
+                if lines[j] == want[i] {
+                    there = true;
+                }
+                if fmt::trim(lines[j].as_str()) == bare {
+                    loose = true;
+                }
+            }
+            if !there {
+                let mut m: String = String::from("the context or removed line `");
+                m.push_str(want[i].as_str());
+                m.push_str("` is not in the file");
+                if loose {
+                    m.push_str(" (it is, with other whitespace: indentation is part of the line)");
+                }
+                return m;
+            }
+        }
+        String::from("its context and removed lines are in the file, but not together in this order")
+    }
+
+    #[summary("The place of found nearest the line a of the header; the first of those equally near")]
+    #[effects(pure)]
+    fn nearest(found: &[usize], a: usize) -> usize
+        requires found.len() > 0,
+    {
+        let mut best: usize = 0;
+        for i in 1..found.len()
+            invariant 1 <= i && i <= found.len(), best < found.len(),
+        {
+            if distance(found[i], a) < distance(found[best], a) {
+                best = i;
+            }
+        }
+        found[best]
+    }
+
+    #[summary("The old start line of a hunk header: a of @@ -a,b +c,d @@, None for a header without numbers. The error is stage0's message")]
+    #[effects(alloc)]
+    fn old_start(header: &str) -> Result<Option<usize>, String> {
+        let mut i: usize = 0;
+        while i < header.len() && header.as_bytes()[i] == 64
+            decreases header.len() - i,
+        {
+            i = i + 1;
+        }
+        let rest: String = fmt::trim_start(lexer::cut(header, i, header.len()).as_str());
+        if rest.len() == 0 || rest.as_bytes()[0] != 45 {
+            return Ok(None);
+        }
+        let mut v: usize = 0;
+        let mut over: bool = false;
+        let mut j: usize = 1;
+        while j < rest.len() && rest.as_bytes()[j] >= 48 && rest.as_bytes()[j] <= 57
+            decreases rest.len() - j,
+        {
+            let d: usize = (rest.as_bytes()[j] - 48) as usize;
+            if v > (18446744073709551615 - d) / 10 {
+                over = true;
+            } else {
+                v = v * 10 + d;
+            }
+            j = j + 1;
+        }
+        if j == 1 {
+            return Err(types::cat3("hunk header `", header, "`: expected `@@ -LINE,COUNT +LINE,COUNT @@`"));
+        }
+        if over {
+            return Err(types::cat3("hunk header `", header, "`: line number out of range"));
+        }
+        Ok(Some(v))
+    }
+
+    #[summary("Parses a unified diff (stage0 parse). Text before the first --- line is ignored; inside a file every line belongs to a hunk; an empty line in a hunk is an empty context line, and empty lines at a hunk's end are dropped. The error is stage0's message")]
+    #[effects(alloc)]
+    fn parse(diff: &str) -> Result<Vec<FilePatch>, String> {
+        let raw: Vec<String> = encode_terms::split(diff, 10);
+        let mut lines: Vec<String> = Vec::new();
+        for r in 0..raw.len()
+            invariant 0 <= r && r <= raw.len(),
+        {
+            let n: usize = raw[r].len();
+            if n > 0 && raw[r].as_bytes()[n - 1] == 13 {
+                lines.push(lexer::cut(raw[r].as_str(), 0, n - 1));
+            } else {
+                lines.push(raw[r].clone());
+            }
+        }
+        let mut out: Vec<FilePatch> = Vec::new();
+        let mut i: usize = 0;
+        while i < lines.len()
+            decreases lines.len() - i,
+        {
+            if std::str::starts_with(lines[i].as_str(), "@@") {
+                let mut early: String = String::from("line ");
+                std::num::push_u64(&mut early, (i as u64).saturating_add(1));
+                early.push_str(": a hunk before any `--- PATH` / `+++ PATH` lines");
+                return Err(early);
+            }
+            let at0: usize = i;
+            if !(i + 1 < lines.len() && header_at(lines.as_slice(), i)) {
+                i = i + 1;
+            } else {
+                let was: Option<String> = header_path(lexer::cut(lines[i].as_str(), 4, lines[i].len()).as_str());
+                let now: Option<String> = header_path(lexer::cut(lines[i + 1].as_str(), 4, lines[i + 1].len()).as_str());
+                i = i + 2;
+                let mut hunks: Vec<Hunk> = Vec::new();
+                while i < lines.len() && std::str::starts_with(lines[i].as_str(), "@@")
+                    invariant at0 + 2 <= i && i <= lines.len(),
+                    decreases lines.len() - i,
+                {
+                    let header: String = lines[i].clone();
+                    let start: Option<usize> = old_start(header.as_str())?;
+                    let h0: usize = i;
+                    i = i + 1;
+                    let mut body: Vec<Line> = Vec::new();
+                    let mut kept: usize = 0;
+                    while i < lines.len() && in_hunk(lines.as_slice(), i)
+                        invariant kept <= body.len(), h0 < i && i <= lines.len(), at0 + 2 <= i,
+                        decreases lines.len() - i,
+                    {
+                        if lines[i].len() == 0 {
+                            body.push(Line { tag: 32, text: String::new() });
+                        } else {
+                            let c: u8 = lines[i].as_bytes()[0];
+                            if c != 92 {
+                                body.push(Line { tag: c, text: lexer::cut(lines[i].as_str(), 1, lines[i].len()) });
+                                kept = body.len();
+                            }
+                        }
+                        i = i + 1;
+                    }
+                    body.truncate(kept);
+                    if body.len() == 0 {
+                        return Err(types::cat3("hunk `", header.as_str(), "` has no lines"));
+                    }
+                    hunks.push(Hunk { header: header, old_start: start, lines: body });
+                }
+                if i < lines.len() && !header_at(lines.as_slice(), i) && !metadata(lines[i].as_str()) {
+                    let mut blank: bool = true;
+                    for t in i..lines.len()
+                        invariant i <= t,
+                    {
+                        if fmt::trim(lines[t].as_str()).len() > 0 {
+                            blank = false;
+                        }
+                    }
+                    if blank {
+                        i = lines.len();
+                    } else {
+                        let mut bad: String = String::from("line ");
+                        std::num::push_u64(&mut bad, (i as u64).saturating_add(1));
+                        bad.push_str(": `");
+                        bad.push_str(lines[i].as_str());
+                        bad.push_str("` is not a diff line (in a hunk, each line starts with ' ' for context, '-' or '+')");
+                        return Err(bad);
+                    }
+                }
+                if hunks.len() == 0 && fmt::is_some_text(&now) {
+                    let mut none: String = String::from("`--- ");
+                    none.push_str(shown(&was).as_str());
+                    none.push_str("` / `+++ ");
+                    none.push_str(shown(&now).as_str());
+                    none.push_str("` has no hunk (`@@ -LINE,COUNT +LINE,COUNT @@`)");
+                    return Err(none);
+                }
+                out.push(FilePatch { old_path: was, new_path: now, hunks: hunks });
+            }
+        }
+        Ok(out)
+    }
+
+    #[summary("The places from pos on where the lines want stand in lines")]
+    #[effects(alloc)]
+    fn places(lines: &[String], want: &[String], pos: usize) -> Vec<usize> {
+        let mut out: Vec<usize> = Vec::new();
+        if want.len() > lines.len() {
+            return out;
+        }
+        let last: usize = lines.len() - want.len();
+        let mut p: usize = pos;
+        while p <= last
+            invariant last + want.len() == lines.len(),
+            decreases last + 1 - p,
+        {
+            let mut same: bool = true;
+            for j in 0..want.len()
+                invariant 0 <= j && j <= want.len(), p <= last,
+            {
+                if lines[p + j] != want[j] {
+                    same = false;
+                }
+            }
+            if same {
+                out.push(p);
+            }
+            p = p + 1;
+        }
+        out
+    }
+
+    #[summary("A path as a message shows it: /dev/null for None")]
+    #[effects(alloc)]
+    fn shown(p: &Option<String>) -> String {
+        match p {
+            None => String::from("/dev/null"),
+            Some(s) => s.clone(),
+        }
+    }
+
+    #[summary("The name of hunk k in a message: its number from 1 and its header")]
+    #[effects(alloc)]
+    fn which(k: usize, header: &str) -> String {
+        let mut m: String = String::from("hunk ");
+        std::num::push_u64(&mut m, (k as u64).saturating_add(1));
+        m.push_str(" (`");
+        m.push_str(header);
+        m.push_str("`)");
+        m
+    }
+}

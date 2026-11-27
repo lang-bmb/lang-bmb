@@ -1,0 +1,6 @@
+{"def":"a::f","status":"verified","obligations":1}
+{"level":"L0","kind":"def","path":"a::f","def_kind":"fn"}
+not json
+
+{"a":"\r"}{"b":1}
+{"def":"a::g","status":"verified","obligations":1}

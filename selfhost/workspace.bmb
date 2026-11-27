@@ -44,6 +44,9 @@ mod workspace {
     #[summary("One operation of a transaction. Unit(path, summary) creates a unit or replaces its summary; Put(unit, code) adds or replaces definitions; Remove(def) removes a definition by full path; RemoveUnit(path) a unit and everything in it; Rename(def, to) renames a function, type, trait or unit and every reference to it; Expect(def, id) commits only if def has identity id in the workspace the transaction starts from; Move(def, to) moves a function of a unit into unit to")]
     enum Op { Unit(String, String), Put(String, String), Remove(String), RemoveUnit(String), Rename(String, String), Expect(String, String), Move(String, String) }
 
+    #[summary("What parse_files gives: the program, its source map and the syntax diagnostics")]
+    struct Parsed { program: ast::Program, sm: source::SourceMap, diags: diag::Diags }
+
     #[summary("The result of plan: the commit and, when it is accepted, the new normal-form files (unit name and text, in name order)")]
     struct Planned { commit: Commit, units: Option<Vec<fmt::Unit>> }
 
@@ -317,6 +320,35 @@ mod workspace {
             refs::DeclKind::TraitFn => 5,
             refs::DeclKind::TraitImplFn => 6,
         }
+    }
+
+    #[summary("The name of the file of a path without its last extension, as Rust's Path::file_stem gives it: the last component that is not empty or a dot; nothing for two dots; the whole name when its only dot is its first byte")]
+    #[effects(alloc)]
+    fn file_stem(path: &str) -> String {
+        let parts: Vec<String> = encode_terms::split(path, 47);
+        let mut name: String = String::new();
+        for i in 0..parts.len()
+            invariant 0 <= i && i <= parts.len(),
+        {
+            if parts[i].len() > 0 && parts[i] != "." {
+                name = parts[i].clone();
+            }
+        }
+        if name == ".." {
+            return String::new();
+        }
+        let mut dot: usize = 0;
+        for k in 0..name.len()
+            invariant 0 <= k && k <= name.len(), dot <= k,
+        {
+            if name.as_bytes()[k] == 46 {
+                dot = k;
+            }
+        }
+        if dot == 0 {
+            return name;
+        }
+        lexer::cut(name.as_str(), 0, dot)
     }
 
     #[summary("The unit at segs with the positions down to it (stage0's find_mod: at each level the first unit of that name, and no other is tried when the rest is not found in it). None for an empty path")]
@@ -992,6 +1024,21 @@ mod workspace {
         }
     }
 
+    #[summary("Parses the files without checking them (stage0 parse_files): the program, its source map and the syntax diagnostics")]
+    #[effects(alloc)]
+    fn parse_files(files: &[lib::Input]) -> Parsed {
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut program: ast::Program = ast::Program { mods: Vec::new() };
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            let p: ast::Program = parse_into(&mut sm, &mut diags, files[i].name.as_str(), files[i].text.as_str());
+            ast::append::<ast::Mod>(&mut program.mods, p.mods);
+        }
+        Parsed { program: program, sm: sm, diags: diags }
+    }
+
     #[summary("Reads one file into the source map and parses it")]
     #[effects(alloc)]
     #[uses(source::room, source::small)]
@@ -1054,6 +1101,54 @@ mod workspace {
                     Op::Move(md, mt) => op_move(&mut program, &mut problems, k, md.as_str(), mt.as_str()),
                 }
             }
+        }
+        finish(program, sm, diags, problems.as_slice(), &before.hashes)
+    }
+
+    #[summary("Replaces the workspace's files with now (stage0 plan_files: the file diff and JSON AST edit surfaces, ADR-0073): was and now are whole files named src/UNIT.bmb. As a transaction: the result must have no structural or type error, and each file must hold exactly the top-level unit its name says. Nothing is written; a commit carries the new normal-form files")]
+    #[effects(alloc)]
+    fn plan_files(was: &[lib::Input], now: &[lib::Input]) -> Planned {
+        let mut sm0: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags0: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut before_program: ast::Program = ast::Program { mods: Vec::new() };
+        for i in 0..was.len()
+            invariant 0 <= i && i <= was.len(),
+        {
+            let p0: ast::Program = parse_into(&mut sm0, &mut diags0, was[i].name.as_str(), was[i].text.as_str());
+            ast::append::<ast::Mod>(&mut before_program.mods, p0.mods);
+        }
+        let before: Before = before_state(&before_program, &diags0);
+        let mut sm: source::SourceMap = source::SourceMap { files: Vec::new() };
+        let mut diags: diag::Diags = diag::Diags { items: Vec::new(), aliases: Vec::new() };
+        let mut program: ast::Program = ast::Program { mods: Vec::new() };
+        let mut problems: Vec<String> = Vec::new();
+        for j in 0..now.len()
+            invariant 0 <= j && j <= now.len(),
+        {
+            let parsed: ast::Program = parse_into(&mut sm, &mut diags, now[j].name.as_str(), now[j].text.as_str());
+            let unit: String = file_stem(now[j].name.as_str());
+            if !(parsed.mods.len() == 1 && parsed.mods[0].name.name == unit) && !diags.has_errors() {
+                let mut m: String = now[j].name.clone();
+                m.push_str(" must hold exactly one top-level unit, `mod ");
+                m.push_str(unit.as_str());
+                m.push_str("` (it holds ");
+                if parsed.mods.len() == 0 {
+                    m.push_str("none");
+                }
+                for u in 0..parsed.mods.len()
+                    invariant 0 <= u && u <= parsed.mods.len(),
+                {
+                    if u > 0 {
+                        m.push_str(", ");
+                    }
+                    m.push_str("`mod ");
+                    m.push_str(parsed.mods[u].name.name.as_str());
+                    m.push_str("`");
+                }
+                m.push_str(")");
+                problems.push(m);
+            }
+            ast::append::<ast::Mod>(&mut program.mods, parsed.mods);
         }
         finish(program, sm, diags, problems.as_slice(), &before.hashes)
     }
@@ -1203,6 +1298,36 @@ mod workspace {
             Ok(m) => { if m.is_symlink { return Err(types::cat2(p, " is a symbolic link; workspace files must be plain files and directories")); } Ok(()) },
             Err(e) => Ok(()),
         }
+    }
+
+    #[summary("The workspace files src/UNIT.bmb with names relative to the workspace (src/calc.bmb), in name order (stage0 relative_sources); none when the workspace has no src")]
+    #[effects(alloc, io, nondet)]
+    fn relative_sources(root: &str) -> Result<Vec<lib::Input>, String> {
+        let mut out: Vec<lib::Input> = Vec::new();
+        if !is_dir(src_dir(root).as_str()) {
+            return Ok(out);
+        }
+        let files: Vec<lib::Input> = read_dir_sources(root)?;
+        let mut names: Vec<String> = Vec::new();
+        for i in 0..files.len()
+            invariant 0 <= i && i <= files.len(),
+        {
+            let parts: Vec<String> = encode_terms::split(files[i].name.as_str(), 47);
+            let mut name: String = String::from("src/");
+            if parts.len() > 0 {
+                name.push_str(parts[parts.len() - 1].as_str());
+            }
+            names.push(name);
+        }
+        let ord: Vec<usize> = fmt::order(names.as_slice());
+        for o in 0..ord.len()
+            invariant 0 <= o && o <= ord.len(),
+        {
+            if ord[o] < files.len() && ord[o] < names.len() {
+                out.push(lib::Input { name: names[ord[o]].clone(), text: files[ord[o]].text.clone() });
+            }
+        }
+        Ok(out)
     }
 
     #[summary("Removes the item at segs (ADR-0074 §3): a constant, a function, a type with its impl blocks, a trait with its default bodies, an impl function (and the blocks of its type when it was the last of the first one). The error says why nothing was removed")]

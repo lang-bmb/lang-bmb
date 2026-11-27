@@ -1,0 +1,352 @@
+#[summary("Differential test: the port's side of what only the MCP server reaches of the editing surfaces (selfhost/ast_json.bmb: import, apply_patch, pointer, resolve, export_spans, node_at; selfhost/udiff.bmb; selfhost/view.bmb; selfhost/workspace.bmb: relative_sources, plan_files, parse_files). The reference is edit_ref.rs, which does the same job with stage0's functions and whose head describes the arguments and what is printed")]
+mod app {
+    #[summary("One answer of node_at")]
+    #[effects(alloc)]
+    fn ask(out: &mut String, marks: &[ast_json::Mark], file: u32, lo: u32, hi: u32) -> () {
+        out.push_str("at ");
+        std::num::push_u64(out, file as u64);
+        out.push_str(" ");
+        std::num::push_u64(out, lo as u64);
+        out.push_str(" ");
+        std::num::push_u64(out, hi as u64);
+        out.push_str(" -> ");
+        match ast_json::node_at(marks, file, lo, hi) {
+            None => out.push_str("none"),
+            Some(p) => out.push_str(p.as_str()),
+        }
+        out.push_str("\n");
+    }
+
+    #[summary("The document of a file; None, with the reader's error printed, when it is no JSON")]
+    #[effects(alloc, io, nondet)]
+    fn document(path: &str) -> Option<json::Value> {
+        match json::parse(read(path).as_str()) {
+            Ok(d) => Some(d),
+            Err(e) => { print_str("json: "); print_str(e.as_str()); print_str("\n"); None },
+        }
+    }
+
+    #[summary("import: each line of each file as a document")]
+    #[effects(alloc, io, nondet)]
+    fn import(args: &[String]) -> ()
+        requires args.len() >= 2,
+    {
+        for a in 2..args.len()
+            invariant 2 <= a && a <= args.len(),
+        {
+            let lines: Vec<String> = cache::lines_of(read(args[a].as_str()).as_str());
+            for i in 0..lines.len()
+                invariant 0 <= i && i <= lines.len(),
+            {
+                print_str(import_line(lines[i].as_str()).as_str());
+            }
+        }
+    }
+
+    #[summary("What import prints of one document")]
+    #[effects(alloc)]
+    fn import_line(line: &str) -> String {
+        let mut out: String = String::new();
+        match json::parse(line) {
+            Ok(doc) => { match ast_json::import(&doc) { Ok(p) => { push_units(&mut out, fmt::format_units(&p).as_slice()); match ast_json::export(&p) { Ok(v) => { let text: String = json::to_json(&v); if text == json::to_json(&doc) { out.push_str("tree same\n"); } else { out.push_str("tree "); out.push_str(text.as_str()); out.push_str("\n"); } }, Err(bad) => { out.push_str("tree error: "); out.push_str(bad.as_str()); out.push_str("\n"); }, } }, Err(why) => { out.push_str("error: "); out.push_str(why.as_str()); out.push_str("\n"); }, } },
+            Err(e) => { out.push_str("json: "); out.push_str(e.as_str()); out.push_str("\n"); },
+        }
+        out
+    }
+
+    #[effects(alloc, io, nondet)]
+    fn main() -> () {
+        let args: Vec<String> = std::env::args();
+        if args.len() > 1 && args[1] == "import" {
+            import(args.as_slice());
+            return;
+        }
+        if args.len() == 4 && args[1] == "patch" {
+            patch(args[2].as_str(), args[3].as_str());
+            return;
+        }
+        if args.len() == 4 && args[1] == "pointer" {
+            pointer(args[2].as_str(), args[3].as_str());
+            return;
+        }
+        if args.len() > 1 && args[1] == "spans" {
+            spans(args.as_slice());
+            return;
+        }
+        if args.len() > 2 && args[1] == "udiff" {
+            udiff(args.as_slice());
+            return;
+        }
+        if args.len() > 1 && args[1] == "compact" {
+            for a in 2..args.len()
+                invariant 2 <= a && a <= args.len(),
+            {
+                print_str(view::compact(read(args[a].as_str()).as_str()).as_str());
+            }
+            return;
+        }
+        if args.len() > 3 && args[1] == "plan" {
+            plan(args.as_slice());
+            return;
+        }
+        eprint_str("usage: edit import FILE.. | patch DOC FILE | pointer DOC FILE | spans FILE.. | udiff DIFF TEXT.. | compact FILE.. | plan OLD NEW [NAME FILE]..\n");
+        std::process::exit(2);
+    }
+
+    #[summary("A list of texts as a JSON array")]
+    #[effects(alloc)]
+    fn names(xs: &[String]) -> String {
+        let mut out: String = String::from("[");
+        for i in 0..xs.len()
+            invariant 0 <= i && i <= xs.len(),
+        {
+            if i > 0 {
+                out.push_str(",");
+            }
+            std::json::push_string(&mut out, xs[i].as_str());
+        }
+        out.push_str("]");
+        out
+    }
+
+    #[summary("patch: each line of the file as a JSON Patch on the document")]
+    #[effects(alloc, io, nondet)]
+    fn patch(doc_path: &str, patches: &str) -> () {
+        match document(doc_path) {
+            None => {},
+            Some(doc) => { let lines: Vec<String> = cache::lines_of(read(patches).as_str()); for i in 0..lines.len() invariant 0 <= i && i <= lines.len(), { print_str(patch_line(&doc, lines[i].as_str()).as_str()); } },
+        }
+    }
+
+    #[summary("What patch prints of one line")]
+    #[effects(alloc)]
+    fn patch_line(doc: &json::Value, line: &str) -> String {
+        let mut out: String = String::new();
+        match json::parse(line) {
+            Ok(p) => { match ast_json::apply_patch(doc, &p) { Ok(work) => { let text: String = json::to_json(&work); out.push_str("ok "); std::num::push_u64(&mut out, text.len() as u64); out.push_str(" "); out.push_str(sha256::hex(text.as_bytes()).as_str()); out.push_str("\n"); match ast_json::import(&work) { Ok(program) => { out.push_str("  imports "); std::num::push_u64(&mut out, program.mods.len() as u64); out.push_str("\n"); }, Err(bad) => { out.push_str("  import error: "); out.push_str(bad.as_str()); out.push_str("\n"); }, } }, Err(why) => { out.push_str("error: "); out.push_str(why.as_str()); out.push_str("\n"); }, } },
+            Err(e) => { out.push_str("json: "); out.push_str(e.as_str()); out.push_str("\n"); },
+        }
+        out
+    }
+
+    #[summary("plan: the two workspaces, the extra files, and what plan_files makes of them")]
+    #[effects(alloc, io, nondet)]
+    fn plan(args: &[String]) -> ()
+        requires args.len() > 3,
+    {
+        let was: Vec<lib::Input> = match workspace::relative_sources(args[2].as_str()) {
+            Ok(fs) => fs,
+            Err(e) => { print_str("error: "); print_str(e.as_str()); print_str("\n"); return; },
+        };
+        let mut now: Vec<lib::Input> = match workspace::relative_sources(args[3].as_str()) {
+            Ok(fs2) => fs2,
+            Err(e2) => { print_str("error: "); print_str(e2.as_str()); print_str("\n"); return; },
+        };
+        let mut a: usize = 4;
+        while a < args.len() && a + 1 < args.len()
+            decreases args.len() - a,
+        {
+            now.push(lib::Input { name: args[a].clone(), text: read(args[a + 1].as_str()) });
+            a = a + 2;
+        }
+        let mut out: String = String::new();
+        for i in 0..now.len()
+            invariant 0 <= i && i <= now.len(),
+        {
+            out.push_str("file ");
+            std::json::push_string(&mut out, now[i].name.as_str());
+            out.push_str("\n");
+        }
+        let planned: workspace::Planned = workspace::plan_files(was.as_slice(), now.as_slice());
+        if planned.commit.ok {
+            out.push_str("ok true\n");
+        } else {
+            out.push_str("ok false\n");
+        }
+        out.push_str(planned.commit.diagnostics.as_str());
+        out.push_str("changed ");
+        out.push_str(names(planned.commit.changed.as_slice()).as_str());
+        out.push_str("\nremoved ");
+        out.push_str(names(planned.commit.removed.as_slice()).as_str());
+        out.push_str("\n");
+        match &planned.units {
+            None => out.push_str("no units\n"),
+            Some(units) => push_units(&mut out, units.as_slice()),
+        }
+        print_str(out.as_str());
+    }
+
+    #[summary("pointer: each line of the file as a JSON Pointer into the document")]
+    #[effects(alloc, io, nondet)]
+    fn pointer(doc_path: &str, pointers: &str) -> () {
+        match document(doc_path) {
+            None => {},
+            Some(doc) => { let lines: Vec<String> = cache::lines_of(read(pointers).as_str()); for i in 0..lines.len() invariant 0 <= i && i <= lines.len(), { print_str(pointer_line(&doc, lines[i].as_str()).as_str()); } },
+        }
+    }
+
+    #[summary("What pointer prints of one line")]
+    #[effects(alloc)]
+    fn pointer_line(doc: &json::Value, line: &str) -> String {
+        let mut out: String = String::new();
+        match ast_json::pointer(line) {
+            Ok(segs) => { out.push_str("segs "); out.push_str(names(segs.as_slice()).as_str()); out.push_str("\n"); match ast_json::resolve(doc, segs.as_slice()) { Ok(v) => { let text: String = json::to_json(&v); out.push_str("  value "); std::num::push_u64(&mut out, text.len() as u64); out.push_str(" "); out.push_str(sha256::hex(text.as_bytes()).as_str()); out.push_str("\n"); if text.len() <= 200 { out.push_str("  "); out.push_str(text.as_str()); out.push_str("\n"); } }, Err(why) => { out.push_str("  error: "); out.push_str(why.as_str()); out.push_str("\n"); }, } },
+            Err(e) => { out.push_str("error: "); out.push_str(e.as_str()); out.push_str("\n"); },
+        }
+        out
+    }
+
+    #[summary("Appends each unit as its name and its text")]
+    #[effects(alloc)]
+    fn push_units(out: &mut String, units: &[fmt::Unit]) -> () {
+        for i in 0..units.len()
+            invariant 0 <= i && i <= units.len(),
+        {
+            out.push_str("unit ");
+            out.push_str(units[i].name.as_str());
+            out.push_str("\n");
+            out.push_str(units[i].text.as_str());
+        }
+    }
+
+    #[summary("The text of a file; ends the run with exit code 2 when it cannot be read")]
+    #[effects(alloc, io, nondet)]
+    fn read(path: &str) -> String {
+        match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) => { eprint_str("cannot read "); eprint_str(path); eprint_str("\n"); std::process::exit(2); String::new() },
+        }
+    }
+
+    #[summary("A path of a diff as JSON: null for /dev/null")]
+    #[effects(alloc)]
+    fn shown(p: &Option<String>) -> String {
+        let mut out: String = String::new();
+        match p {
+            None => out.push_str("null"),
+            Some(s) => std::json::push_string(&mut out, s.as_str()),
+        }
+        out
+    }
+
+    #[summary("spans: the files parsed together, every span with its pointer, and node_at at the range of every k-th node, at its start, at its first byte and past its end")]
+    #[effects(alloc, io, nondet)]
+    fn spans(args: &[String]) -> ()
+        requires args.len() >= 2,
+    {
+        let mut files: Vec<lib::Input> = Vec::new();
+        for a in 2..args.len()
+            invariant 2 <= a && a <= args.len(),
+        {
+            files.push(lib::Input { name: args[a].clone(), text: read(args[a].as_str()) });
+        }
+        let parsed: workspace::Parsed = workspace::parse_files(files.as_slice());
+        if parsed.diags.has_errors() {
+            print_str(parsed.diags.to_jsonl(&parsed.sm).as_str());
+            return;
+        }
+        let mut marks: Vec<ast_json::Mark> = Vec::new();
+        let mut out: String = String::new();
+        match ast_json::export_spans(&parsed.program, &mut marks) {
+            Ok(v) => {},
+            Err(e) => { out.push_str("error: "); out.push_str(e.as_str()); out.push_str("\n"); },
+        }
+        for i in 0..marks.len()
+            invariant 0 <= i && i <= marks.len(),
+        {
+            std::num::push_u64(&mut out, marks[i].span.file as u64);
+            out.push_str(" ");
+            std::num::push_u64(&mut out, marks[i].span.lo as u64);
+            out.push_str(" ");
+            std::num::push_u64(&mut out, marks[i].span.hi as u64);
+            out.push_str(" ");
+            out.push_str(marks[i].ptr.as_str());
+            out.push_str("\n");
+        }
+        let mut step: usize = marks.len() / 200;
+        if step == 0 {
+            step = 1;
+        }
+        let mut k: usize = 0;
+        while k < marks.len()
+            invariant step > 0,
+            decreases marks.len() - k,
+        {
+            let s: source::Span = marks[k].span;
+            ask(&mut out, marks.as_slice(), s.file, s.lo, s.hi);
+            ask(&mut out, marks.as_slice(), s.file, s.lo, s.lo);
+            if s.lo < s.hi {
+                ask(&mut out, marks.as_slice(), s.file, s.lo, s.lo + 1);
+            } else {
+                ask(&mut out, marks.as_slice(), s.file, s.lo, s.lo);
+            }
+            ask(&mut out, marks.as_slice(), s.file, s.hi, s.hi.saturating_add(1));
+            k = k.saturating_add(step);
+        }
+        print_str(out.as_str());
+    }
+
+    #[summary("udiff: the patches of the diff, then its hunks applied to each text")]
+    #[effects(alloc, io, nondet)]
+    fn udiff(args: &[String]) -> ()
+        requires args.len() > 2,
+    {
+        let patches: Vec<udiff::FilePatch> = match udiff::parse(read(args[2].as_str()).as_str()) {
+            Ok(ps) => ps,
+            Err(e) => { print_str("error: "); print_str(e.as_str()); print_str("\n"); return; },
+        };
+        let mut out: String = String::new();
+        for i in 0..patches.len()
+            invariant 0 <= i && i <= patches.len(),
+        {
+            out.push_str("patch old=");
+            out.push_str(shown(&patches[i].old_path).as_str());
+            out.push_str(" new=");
+            out.push_str(shown(&patches[i].new_path).as_str());
+            out.push_str("\n");
+            for h in 0..patches[i].hunks.len()
+                invariant 0 <= h && h <= patches[i].hunks.len(),
+            {
+                out.push_str("hunk ");
+                std::json::push_string(&mut out, patches[i].hunks[h].header.as_str());
+                out.push_str(" start=");
+                match patches[i].hunks[h].old_start {
+                    None => out.push_str("none"),
+                    Some(n) => std::num::push_u64(&mut out, n as u64),
+                }
+                out.push_str(" before=");
+                std::num::push_u64(&mut out, udiff::before(&patches[i].hunks[h]).len() as u64);
+                out.push_str(" after=");
+                std::num::push_u64(&mut out, udiff::after(&patches[i].hunks[h]).len() as u64);
+                out.push_str("\n");
+                for l in 0..patches[i].hunks[h].lines.len()
+                    invariant 0 <= l && l <= patches[i].hunks[h].lines.len(),
+                {
+                    if patches[i].hunks[h].lines[l].tag == 43 {
+                        out.push_str("+");
+                    } else if patches[i].hunks[h].lines[l].tag == 45 {
+                        out.push_str("-");
+                    } else {
+                        out.push_str(" ");
+                    }
+                    std::json::push_string(&mut out, patches[i].hunks[h].lines[l].text.as_str());
+                    out.push_str("\n");
+                }
+            }
+        }
+        for t in 3..args.len()
+            invariant 3 <= t && t <= args.len(),
+        {
+            let text: String = read(args[t].as_str());
+            for k in 0..patches.len()
+                invariant 0 <= k && k <= patches.len(),
+            {
+                match udiff::apply(text.as_str(), patches[k].hunks.as_slice()) {
+                    Ok(done) => { out.push_str("applied "); std::num::push_u64(&mut out, k as u64); out.push_str(" "); std::json::push_string(&mut out, done.as_str()); out.push_str("\n"); },
+                    Err(why) => { out.push_str("apply error "); std::num::push_u64(&mut out, k as u64); out.push_str(": "); out.push_str(why.as_str()); out.push_str("\n"); },
+                }
+            }
+        }
+        print_str(out.as_str());
+    }
+}

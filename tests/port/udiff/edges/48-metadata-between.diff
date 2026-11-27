@@ -1,0 +1,15 @@
+--- a/x
++++ b/x
+@@ -1 +1 @@
+-a
++A
+new file mode 100644
+--- a/y
++++ b/y
+@@ -5 +5 @@
+-e
++E
+old mode 1
+new mode 2
+deleted file mode 3
+similarity index 4
