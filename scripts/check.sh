@@ -61,6 +61,14 @@ if ! "$BMB_PROOF_BMB" verify --cache target/port-proof selfhost/*.bmb > "$built.
   rm -f "$built.port"
   exit 1
 fi
+# The bounds of the port's self-proof (ADR-0162): no row with a trusted
+# fact, an escape or termination left unproved, which the exit code above
+# does not tell, and the places trusted by reading where the record lists
+# them.
+if ! python3 scripts/trusted_steps.py rows "$built.port" || ! python3 scripts/trusted_steps.py steps; then
+  rm -f "$built.port"
+  exit 1
+fi
 rm -f "$built.port"
 
 # The programs the port's differential cases compare (stage1 and the
@@ -86,7 +94,7 @@ step "test, surface, port checks, port difftest 1..$port_shards, bootstrap fixed
 python3 scripts/gate_jobs.py --cargo-json "$built" "${power_jobs[@]}" "${port_jobs[@]}" \
   --job "test doc=cargo test --doc --quiet" \
   --job "surface=python3 scripts/test_surface.py" \
-  --job "port checks=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb && target/debug/bmb fmt --check lib/std/*.bmb" \
+  --job "port checks=python3 scripts/test_difftest.py && python3 scripts/test_port_proof.py > /dev/null && python3 scripts/test_trusted_steps.py 2> /dev/null && python3 scripts/std_units.py check > /dev/null && python3 scripts/codegen_text.py check > /dev/null && python3 scripts/builtins.py check > /dev/null && target/debug/bmb fmt --check selfhost/*.bmb && target/debug/bmb fmt --check lib/std/*.bmb" \
   --job "bootstrap fixed point=python3 scripts/bootstrap.py run > /dev/null" \
   --job "gate scripts=python3 scripts/test_gate_scripts.py" \
   --job "gate power rules=python3 scripts/test_gate_power.py" \
