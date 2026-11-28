@@ -425,6 +425,14 @@ mod prove {
         diag::fix(d, "outside `by (bit_vector)` the `f64` operations are uninterpreted (ADR-0061 §5): prove the `f64` fact the obligation needs with `assert(e) by (bit_vector);` before it", None)
     }
 
+    #[summary("A proof r, if present, is one the cache of store holds under a key equal to key (cache::held); without a cache there is none")]
+    spec fn found(store: &Option<cache::ProofCache>, key: &str, r: Option<cache::Entry>) -> bool {
+        match store {
+            None => match r { None => true, Some(e) => false, },
+            Some(c) => cache::held(c, key, r),
+        }
+    }
+
     #[summary("Whether some term of text (commands) multiplies two factors that are no constants (stage0 has_nonlinear_product)")]
     #[effects(alloc)]
     fn has_nonlinear_product(text: &str) -> bool {
@@ -575,9 +583,12 @@ mod prove {
         solver::limit_reason(a.text.as_str(), who)
     }
 
-    #[summary("The proof the cache holds under key, when there is a cache")]
+    #[summary("The proof the cache holds under key, when there is a cache. A proof is given only when there is a cache and it stores the proof under a key equal to key (found): the one way an obligation counts as proved without an answer of its own (ADR-0162, decision 1)")]
     #[effects(alloc)]
-    fn lookup(store: &mut Option<cache::ProofCache>, key: &str) -> Option<cache::Entry> {
+    #[uses(found)]
+    fn lookup(store: &mut Option<cache::ProofCache>, key: &str) -> (r: Option<cache::Entry>)
+        ensures found(store, key, r),
+    {
         match store {
             None => None,
             Some(c) => cache::get(c, key),
@@ -646,7 +657,7 @@ mod prove {
         start(slot, z3, at, opts.who, t, diags);
         match std::mem::replace(slot, None) {
             None => { t.failed = t.failed.saturating_add(1); },
-            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let ended: u64 = sol.timeouts; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); if sol.timeouts == ended { remember(store, key.as_str(), t.total.saturating_sub(before), v.ob_max, v.stages); } } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let ended: u64 = sol.timeouts; let v: Verdict = decide(&mut sol, &e.cx, pg, &e.obls[k], k, &pl, e.inputs.as_slice(), path, unit, names, opts, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); if sol.timeouts == ended { remember(store, key.as_str(), &v, t.total.saturating_sub(before), v.ob_max, v.stages); } } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
         }
     }
 
@@ -728,9 +739,11 @@ mod prove {
         out
     }
 
-    #[summary("Stores a proof under key, when there is a cache")]
+    #[summary("Stores a proof under key, when there is a cache. v is the verdict of the obligation whose proof it is, and it is proved: nothing else is stored, and a proved verdict was decided by the answer unsat (ADR-0153, P1), so what a later run finds under the key was proved")]
     #[effects(alloc)]
-    fn remember(store: &mut Option<cache::ProofCache>, key: &str, total: u64, max: u64, stages: u8) -> () {
+    fn remember(store: &mut Option<cache::ProofCache>, key: &str, v: &Verdict, total: u64, max: u64, stages: u8) -> ()
+        requires v.proved,
+    {
         match store {
             None => {},
             Some(c) => cache::insert(c, key, total, max, stages),
@@ -976,7 +989,7 @@ mod prove {
         start(slot, z3, at, who, t, diags);
         match std::mem::replace(slot, None) {
             None => { t.failed = t.failed.saturating_add(1); },
-            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide_sub(&mut sol, &e.obls[k], q, base.as_str(), neg.as_str(), path, who, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); remember(store, key.as_str(), t.total.saturating_sub(before), t.total.saturating_sub(before), 0); } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
+            Some(held) => { let mut sol: solver::Solver = held; let before: u64 = t.total; let v: Verdict = decide_sub(&mut sol, &e.obls[k], q, base.as_str(), neg.as_str(), path, who, t, diags); if v.proved { t.proved.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); remember(store, key.as_str(), &v, t.total.saturating_sub(before), t.total.saturating_sub(before), 0); } else { t.failed = t.failed.saturating_add(1); t.lost.push(encode_spec::Trivial { code: e.obls[k].code.clone(), span: e.obls[k].span }); } if v.broken { let status: Option<i32> = solver::close(&mut sol); t.down = true; } else { *slot = Some(sol); } },
         }
     }
 

@@ -239,9 +239,12 @@ mod toolchain {
         out
     }
 
-    #[summary("Z3_VERSION of scripts/toolchain.env")]
+    #[summary("Z3_VERSION of scripts/toolchain.env. It is one line: the proof cache's key ends it with a line feed (cache::one_reading)")]
     #[effects(alloc)]
-    fn z3_version() -> String {
+    #[uses(cache::one_line)]
+    fn z3_version() -> (r: String)
+        ensures cache::one_line(r.as_str()),
+    {
         String::from("4.15.4")
     }
 }

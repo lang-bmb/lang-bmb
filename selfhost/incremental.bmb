@@ -118,9 +118,11 @@ mod incremental {
         h
     }
 
-    #[summary("Checks one line's digest (stage0 check_line): its key and payload when the payload unescapes and the digest holds")]
+    #[summary("Checks one line's digest (stage0 check_line): its key and payload when the payload unescapes and the digest holds. The entry's key is the line's (line_key)")]
     #[effects(alloc)]
-    fn check_line(kind: &str, path: &str, raw: &Raw) -> Option<Entry> {
+    fn check_line(kind: &str, path: &str, raw: &Raw) -> (r: Option<Entry>)
+        ensures line_key(r, raw),
+    {
         let payload: String = unescape(raw.payload.as_str())?;
         if line_digest(kind, path, raw.key.as_str(), payload.as_str()) == raw.sum {
             Some(Entry { kind: String::from(kind), path: String::from(path), key: raw.key.clone(), payload: payload })
@@ -227,9 +229,12 @@ mod incremental {
         encode_terms::replace(escape(s).as_str(), " ", "\\s")
     }
 
-    #[summary("Any entry of kind stored under key, whatever its path (stage0 Store::find): the settled entries in slot order first, then the slots of a lazy load, each by its last line whose digest holds. Proof keys name nothing, so a renamed definition finds the entry its old name stored")]
+    #[summary("Any entry of kind stored under key, whatever its path (stage0 Store::find): the settled entries in slot order first, then the slots of a lazy load, each by its last line whose digest holds. Proof keys name nothing, so a renamed definition finds the entry its old name stored. A payload is given only when the store keeps an entry or a line whose key is equal to key (stored)")]
     #[effects(alloc)]
-    fn find(st: &Store, kind: &str, key: &str) -> Option<String> {
+    #[uses(from_lines, kept, settled, waiting)]
+    fn find(st: &Store, kind: &str, key: &str) -> (r: Option<String>)
+        ensures stored(st, key, r),
+    {
         for n in 0..st.entries.len()
             invariant 0 <= n,
         {
@@ -247,6 +252,14 @@ mod incremental {
             }
         }
         None
+    }
+
+    #[summary("An entry r, if present, has the key of one of the lines of ls")]
+    spec fn from_lines(r: Option<Entry>, ls: &Lines) -> bool {
+        match r {
+            None => true,
+            Some(e) => exists|k: usize| k < ls.raws.len() && #[trigger] ls.raws[k].key == e.key,
+        }
     }
 
     #[summary("The proved obligations of a node list, relocated to definition d's current spans (stage0 from_nodes): `-` is none, otherwise `CODE@INDEX` items split by commas; None when an item does not parse, names no code of the compiler or no node of d")]
@@ -272,9 +285,12 @@ mod incremental {
         Some(out)
     }
 
-    #[summary("The payload stored in slot (kind, path) when its key is key (stage0 Store::get): the settled entry, or for a lazy load the last line whose digest holds")]
+    #[summary("The payload stored in slot (kind, path) when its key is key (stage0 Store::get): the settled entry, or for a lazy load the last line whose digest holds. A payload is given only when the store keeps an entry or a line whose key is equal to key (stored)")]
     #[effects(alloc)]
-    fn get(st: &Store, kind: &str, path: &str, key: &str) -> Option<String> {
+    #[uses(from_lines, kept, settled, waiting)]
+    fn get(st: &Store, kind: &str, path: &str, key: &str) -> (r: Option<String>)
+        ensures stored(st, key, r),
+    {
         let slot: String = slot_of(kind, path);
         let e: Entry = match st.entries.find(slot.as_str()) {
             None => { let pa: usize = st.pending.find(slot.as_str())?; last_valid(&st.pending.items[pa])? },
@@ -574,6 +590,11 @@ mod incremental {
         put(&mut s.store, "I", slot.as_str(), key.as_str(), payload.as_str());
     }
 
+    #[summary("Whether st keeps something under a key equal to key: a settled entry, or a line of a lazy load not checked yet")]
+    spec fn kept(st: &Store, key: &str) -> bool {
+        settled(st, key) || waiting(st, key)
+    }
+
     #[summary("The proved obligations as a sorted set of texts, to compare two lists as sets (stage0 sorts and dedups (code, file, lo, hi))")]
     #[effects(alloc)]
     fn key_set(xs: &[encode_spec::Trivial]) -> Vec<String> {
@@ -586,6 +607,11 @@ mod incremental {
             texts.push(t);
         }
         body::sorted_set(texts.as_slice())
+    }
+
+    #[summary("Whether the session holds a key for path, in a slot of its keys that a node of key path names, and its store keeps an entry or a line under an equal key (under)")]
+    spec fn keyed_hit(s: &Session, path: &str) -> bool {
+        exists|i: usize| i < s.keys.items.len() && table::node_of(s.keys.nodes.as_slice(), path, i) && #[trigger] under(s, i)
     }
 
     #[summary("The keys of the definitions (stage0 Session::keys, the proof keys): every definition with a body of the checked program, or those of only when it names some. The key of a definition is the SHA-256 of the solver version, the memory limit of the gate, the digest of the head of every query (options at seed 0 under the gate's limit, the bounded search's line when it is on, the prelude) and its nameless reads")]
@@ -668,9 +694,12 @@ mod incremental {
         }
     }
 
-    #[summary("The last line of a slot whose digest holds (a slot's value in stage0's lazy load)")]
+    #[summary("The last line of a slot whose digest holds (a slot's value in stage0's lazy load). The entry's key is that of one of the slot's lines (from_lines)")]
     #[effects(alloc)]
-    fn last_valid(ls: &Lines) -> Option<Entry> {
+    #[uses(from_lines, line_key)]
+    fn last_valid(ls: &Lines) -> (r: Option<Entry>)
+        ensures from_lines(r, ls),
+    {
         let mut k: usize = ls.raws.len();
         while k > 0
             invariant k <= ls.raws.len(),
@@ -691,6 +720,14 @@ mod incremental {
         let mut text: String = types::cat4(kind, "\n", path, "\n");
         text.push_str(types::cat4(key, "\n", payload, "").as_str());
         sha256::hex(text.as_bytes())
+    }
+
+    #[summary("An entry r, if present, has the key of the line raw")]
+    spec fn line_key(r: Option<Entry>, raw: &Raw) -> bool {
+        match r {
+            None => true,
+            Some(e) => e.key == raw.key,
+        }
     }
 
     #[summary("Loads `dir/defs` (stage0 Store::load_lazy, and with eager every line checked as Store::load does). A file that cannot be read is an empty store; one with another first line or another compiler is an empty store to be written back, and so is every file under the identity of a build that cannot name itself. A line is `KIND PATH KEY DIGEST PAYLOAD` split at its first four spaces with an escaped path; any other line is damaged")]
@@ -720,15 +757,19 @@ mod incremental {
         st
     }
 
-    #[summary("The stored proof result of definition path, relocated to d's current spans (stage0 proof_lookup). An entry stored under the same key for another path (a rename, or a definition equal up to names) is kept under this path too, so that it stays when the other one changes. A payload is the obligations, the resource units in all and at most, the script's digest and the node list, split at single spaces; anything else is no hit")]
+    #[summary("The stored proof result of definition path, relocated to d's current spans (stage0 proof_lookup). An entry stored under the same key for another path (a rename, or a definition equal up to names) is kept under this path too, so that it stays when the other one changes. A payload is the obligations, the resource units in all and at most, the script's digest and the node list, split at single spaces; anything else is no hit. A hit is given only when the store kept, before the call, an entry or a line whose key is equal to the key the session holds for path (reused): a stored proof result is reused only under an equal key (ADR-0162, decision 1)")]
     #[effects(alloc)]
-    fn lookup(s: &mut Session, path: &str, d: &ast::FnDef) -> Option<Hit> {
+    #[uses(keyed_hit, reused, stored, under)]
+    fn lookup(s: &mut Session, path: &str, d: &ast::FnDef) -> (r: Option<Hit>)
+        ensures reused(old(s), path, r),
+    {
         let at: usize = s.keys.find(path)?;
         let key: String = s.keys.items[at].clone();
         let payload: String = match get(&s.store, "P", path, key.as_str()) {
             None => { let p2: String = find(&s.store, "P", key.as_str())?; put(&mut s.store, "P", path, key.as_str(), p2.as_str()); p2 },
             Some(p) => p,
         };
+        assert(under(old(s), at));
         let words: Vec<String> = encode_terms::split(payload.as_str(), 32);
         if words.len() != 5 {
             return None;
@@ -1664,6 +1705,14 @@ mod incremental {
         Some(encode_terms::join(out.as_slice(), ","))
     }
 
+    #[summary("A hit r, if present, is of a key the session holds for path and its store keeps (keyed_hit)")]
+    spec fn reused(s: &Session, path: &str, r: Option<Hit>) -> bool {
+        match r {
+            None => true,
+            Some(h) => keyed_hit(s, path),
+        }
+    }
+
     #[summary("Whether two lists hold the same texts in the same order")]
     #[effects(pure)]
     fn same_list(a: &[String], b: &[String]) -> bool {
@@ -1786,6 +1835,11 @@ mod incremental {
         }
     }
 
+    #[summary("Whether an entry of st has a key equal to key")]
+    spec fn settled(st: &Store, key: &str) -> bool {
+        exists|i: usize| i < st.entries.items.len() && #[trigger] st.entries.items[i].key == key
+    }
+
     #[summary("The key of slot (kind, path) in the tables of a store, ordered as stage0 orders the pair: kind with each NUL byte as NUL and 1, then NUL NUL, then path")]
     #[effects(alloc)]
     fn slot_of(kind: &str, path: &str) -> String {
@@ -1877,6 +1931,14 @@ mod incremental {
         }
     }
 
+    #[summary("A payload r, if present, is of something st keeps under a key equal to key (kept)")]
+    spec fn stored(st: &Store, key: &str, r: Option<String>) -> bool {
+        match r {
+            None => true,
+            Some(p) => kept(st, key),
+        }
+    }
+
     #[summary("The text another definition's key reads of definition r (a spec fn's qualified text with its body, any other's caller text), each computed once into memo")]
     #[effects(alloc)]
     fn text_of(pr: &mut fmt::Printer, heads: &table::Table<String>, by_path: &table::Table<encode_decls::Def>, memo: &mut table::Table<String>, r: &str) -> String {
@@ -1959,6 +2021,11 @@ mod incremental {
         }
     }
 
+    #[summary("Whether the store of s keeps an entry or a line under a key equal to the one in slot i of the session's keys")]
+    spec fn under(s: &Session, i: usize) -> bool {
+        kept(&s.store, s.keys.items[i].as_str())
+    }
+
     #[summary("s with the escapes of escape_path undone (stage0 unescape): `\\\\`, `\\n` and `\\s`; None for any other backslash")]
     #[effects(alloc)]
     fn unescape(s: &str) -> Option<String> {
@@ -1998,6 +2065,11 @@ mod incremental {
     #[effects(alloc)]
     fn unknown_id() -> String {
         String::from("port+unknown")
+    }
+
+    #[summary("Whether a line of a lazy load of st, not checked yet, has a key equal to key")]
+    spec fn waiting(st: &Store, key: &str) -> bool {
+        exists|i: usize, k: usize| i < st.pending.items.len() && k < st.pending.items[i].raws.len() && #[trigger] st.pending.items[i].raws[k].key == key
     }
 
     #[summary("Gives the session the IR keys of the program and the key lines of its data types, for a run that lowers it (stage0 computes them in Session::new)")]

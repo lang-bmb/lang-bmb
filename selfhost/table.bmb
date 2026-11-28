@@ -7,11 +7,11 @@ mod table {
     struct Table<V> { nodes: Vec<Node>, root: usize, items: Vec<V> }
 
     impl<V> Table<V> {
-        #[summary("Slot of the value of key k (index in items)")]
+        #[summary("Slot of the value of key k (index in items): a slot is given only as the slot of a node whose key is k (keyed)")]
         #[effects(pure)]
-        #[uses(within)]
+        #[uses(keyed, names, node_of, within)]
         fn find(self: &Table<V>, k: &str) -> (r: Option<usize>)
-            ensures within(r, self.items.len()),
+            ensures within(r, self.items.len()), keyed(self.nodes.as_slice(), k, r),
         {
             let t: usize = seek(self.nodes.as_slice(), self.root, k);
             if t == 0 || t > self.nodes.len() {
@@ -107,6 +107,14 @@ mod table {
         }
     }
 
+    #[summary("A slot r, if present, is the slot of a node of ns whose key is k (node_of): what a lookup by key may give")]
+    spec fn keyed(ns: &[Node], k: &str, r: Option<usize>) -> bool {
+        match r {
+            None => true,
+            Some(i) => node_of(ns, k, i),
+        }
+    }
+
     #[summary("Rotates to rebalance if the heights of the two children of node t differ by two or more. Number of the new root")]
     #[effects(pure)]
     fn level(ns: &mut Vec<Node>, t: usize) -> usize
@@ -141,12 +149,22 @@ mod table {
         t
     }
 
+    #[summary("A node number t, if not 0, is that of a node of ns whose key is k")]
+    spec fn names(ns: &[Node], t: usize, k: &str) -> bool {
+        t == 0 || t <= ns.len() && ns[t - 1].key == k
+    }
+
     #[summary("Empty table")]
     #[effects(alloc)]
     fn new<V>() -> Table<V> {
         let items: Vec<V> = Vec::new();
         let nodes: Vec<Node> = Vec::new();
         Table { nodes: nodes, root: 0, items: items }
+    }
+
+    #[summary("Whether slot i is the slot of a node of ns whose key is k. A caller of a lookup sees this by name only, so the lookup's contract costs it nothing; a proof about keys reveals it")]
+    spec fn node_of(ns: &[Node], k: &str, i: usize) -> bool {
+        exists|j: usize| j < ns.len() && #[trigger] ns[j].key == k && ns[j].at == i
     }
 
     #[summary("Number of the n-th node in key order under root root. 0 if out of range")]
@@ -221,9 +239,12 @@ mod table {
         ns[t - 1].n = count(ns.as_slice(), l).saturating_add(count(ns.as_slice(), r)).saturating_add(1);
     }
 
-    #[summary("Node number of key k. 0 if absent")]
+    #[summary("Node number of key k. 0 if absent. A number other than 0 is that of a node whose key is k (names): the text order has no two different texts of which neither is before the other")]
     #[effects(pure)]
-    fn seek(ns: &[Node], root: usize, k: &str) -> usize {
+    #[uses(names)]
+    fn seek(ns: &[Node], root: usize, k: &str) -> (r: usize)
+        ensures names(ns, r, k),
+    {
         let mut t: usize = root;
         let mut f: usize = 1000000000;
         while t != 0 && t <= ns.len() && f > 0

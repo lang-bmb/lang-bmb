@@ -1,4 +1,4 @@
-#[summary("The proof cache (port of stage0 compiler/src/cache.rs). An obligation is cached only once proved, and its key is the SHA-256 of the exact text the solver received (canonical symbols, ADR-0063) with the solver version and the memory limit the query is asked under (ADR-0129). The same text gives the same answer from the pinned solver under the same limits, so a hit is as good as running it. The file `DIR/proofs` is trusted like the source tree")]
+#[summary("The proof cache (port of stage0 compiler/src/cache.rs). An obligation is cached only once proved, and its key is the SHA-256 of the exact text the solver received (canonical symbols, ADR-0063) with the solver version and the memory limit the query is asked under (ADR-0129). The same text gives the same answer from the pinned solver under the same limits, so a hit is as good as running it. The file `DIR/proofs` is trusted like the source tree. What is proved of it (ADR-0162, decision 1): an entry is given only for a key equal to the key it is stored under (get, held), and the text the key is the digest of is the three things read and nothing else, each of which it gives back (material, framed, one_reading, one_text)")]
 mod cache {
     #[summary("What a proved obligation added to its definition's status: to the `rlimit` total, to the largest single run, and the retries that ran (bit 1: the ground-instance retry at the probe's share; bit 2: the one after the full query, which proved), so that a hit writes the script of the run that stored it")]
     struct Entry { total: u64, max: u64, stages: u8 }
@@ -18,12 +18,28 @@ mod cache {
         ProofCache { known: table::new::<Entry>(), added: 0, hits: 0, misses: 0 }
     }
 
-    #[summary("The entry of key, counted as a hit or a miss (stage0 ProofCache::get)")]
+    #[summary("Whether r is the text of version, the text of memory and asked as the key writes them: version, a line feed, `memory `, memory, a line feed, asked, and no byte more")]
+    spec fn framed(r: &str, version: &str, memory: &str, asked: &str) -> bool {
+        r.len() == version.len() + 8 + memory.len() + 1 + asked.len() && part(r, 0, version) && part(r, version.len(), "\nmemory ") && part(r, version.len() + 8, memory) && part(r, version.len() + 8 + memory.len(), "\n") && part(r, version.len() + 9 + memory.len(), asked)
+    }
+
+    #[summary("The entry of key, counted as a hit or a miss (stage0 ProofCache::get). An entry is given only when the cache stores it under a key equal to key (held)")]
     #[effects(alloc)]
-    fn get(c: &mut ProofCache, key: &str) -> Option<Entry> {
+    #[uses(held)]
+    fn get(c: &mut ProofCache, key: &str) -> (r: Option<Entry>)
+        ensures held(c, key, r),
+    {
         match c.known.find(key) {
             None => { c.misses = c.misses.saturating_add(1); None },
             Some(at) => { c.hits = c.hits.saturating_add(1); if at < c.known.items.len() { Some(c.known.items[at]) } else { None } },
+        }
+    }
+
+    #[summary("An entry r, if present, is the one c stores in the slot of a node whose key is key: a proof is reused only under an equal key (ADR-0162, decision 1)")]
+    spec fn held(c: &ProofCache, key: &str, r: Option<Entry>) -> bool {
+        match r {
+            None => true,
+            Some(e) => exists|i: usize| i < c.known.items.len() && table::node_of(c.known.nodes.as_slice(), key, i) && #[trigger] c.known.items[i] == e,
         }
     }
 
@@ -36,15 +52,24 @@ mod cache {
         c.known.insert(key, Entry { total: total, max: max, stages: stages });
     }
 
-    #[summary("The key of query as the encoder writes it, asked by who (stage0 ProofCache::key): the SHA-256 of the pinned solver version, the memory limit that decides the query and its canonical text, so a renamed program's query has the same key")]
+    #[summary("The key of query as the encoder writes it, asked by who (stage0 ProofCache::key): the SHA-256 of the pinned solver version, the memory limit that decides the query and its canonical text, so a renamed program's query has the same key. This function reads the version and the limit; the key is made of them and the query by key_from, which reads nothing")]
     #[effects(alloc, io, nondet)]
     fn key(query: &str, who: solver::Asker) -> String {
-        let mut text: String = toolchain::z3_version();
-        text.push_str("\nmemory ");
-        text.push_str(encode_terms::dec(solver::query_memory_mb(who)).as_str());
-        text.push_str("\n");
-        text.push_str(encode_query::canonical(query).as_str());
-        sha256::hex(text.as_bytes())
+        key_from(toolchain::z3_version().as_str(), solver::query_memory_mb(who), query)
+    }
+
+    #[summary("The key of what was read: the solver's version, the memory limit in megabytes and the query (ADR-0162, decision 1). Its effects are `alloc` alone, so nothing else enters the key: no file, no variable of the environment, no clock. The digest is of the text material frames, whose parts are each one line where a line feed ends them, so that the text has one reading (one_reading)")]
+    #[effects(alloc)]
+    #[uses(one_line, std::num::digit, std::num::digits, std::num::reads_as, std::num::text_of, std::num::wrote)]
+    fn key_from(version: &str, memory_mb: u64, query: &str) -> String
+        requires one_line(version),
+    {
+        let mut memory: String = String::new();
+        std::num::push_u64(&mut memory, memory_mb);
+        proof {
+            std::num::dec_reads(memory.as_bytes(), 0, memory.len(), memory_mb);
+        }
+        sha256::hex(material(version, memory.as_str(), encode_query::canonical(query).as_str()).as_bytes())
     }
 
     #[summary("The stage bit of the ground-instance retry after the full query (stage0 LATE_RETRY)")]
@@ -111,6 +136,21 @@ mod cache {
         String::from("bmb proof cache v5")
     }
 
+    #[summary("The text the key is the digest of: version, the memory limit's text and the query asked, framed (framed). version and memory hold no line feed, the byte that ends each")]
+    #[effects(alloc)]
+    #[uses(part)]
+    fn material(version: &str, memory: &str, asked: &str) -> (r: String)
+        requires one_line(version), one_line(memory),
+        ensures framed(r.as_str(), version, memory, asked),
+    {
+        let mut text: String = String::from(version);
+        text.push_str("\nmemory ");
+        text.push_str(memory);
+        text.push_str("\n");
+        text.push_str(asked);
+        text
+    }
+
     #[summary("The u64 Rust reads from text a: digits after an optional `+`")]
     #[effects(pure)]
     fn number(a: &str) -> Option<u64> {
@@ -120,6 +160,53 @@ mod cache {
         } else {
             None
         }
+    }
+
+    #[summary("Whether s holds no line feed")]
+    spec fn one_line(s: &str) -> bool {
+        forall|i: usize| i < s.len() ==> #[trigger] s.as_bytes()[i] != 10
+    }
+
+    #[summary("The text of a key has one reading (ADR-0162, decision 1): a text that frames two versions, two limits and two queries frames the same three, when the versions and the limits are each one line. So two keys made of different things read are digests of different texts")]
+    #[uses(framed, one_line, part)]
+    proof fn one_reading(r: &str, v1: &str, m1: &str, q1: &str, v2: &str, m2: &str, q2: &str)
+        requires framed(r, v1, m1, q1), framed(r, v2, m2, q2), one_line(v1), one_line(v2), one_line(m1), one_line(m2),
+        ensures v1 == v2 && m1 == m2 && q1 == q2,
+    {
+        assert(r.as_bytes()[v1.len()] == 10);
+        assert(r.as_bytes()[v2.len()] == 10);
+        assert(v1.len() < v2.len() ==> v2.as_bytes()[v1.len()] == r.as_bytes()[v1.len()]);
+        assert(v2.len() < v1.len() ==> v1.as_bytes()[v2.len()] == r.as_bytes()[v2.len()]);
+        assert(v1.len() == v2.len());
+        assert(forall|i: usize| i < v1.len() ==> #[trigger] v1.as_bytes()[i] == r.as_bytes()[i]);
+        assert(forall|i: usize| i < v2.len() ==> #[trigger] v2.as_bytes()[i] == r.as_bytes()[i]);
+        assert(v1 == v2);
+        let a: usize = v1.len() + 8;
+        assert(r.as_bytes()[a + m1.len()] == 10);
+        assert(r.as_bytes()[a + m2.len()] == 10);
+        assert(m1.len() < m2.len() ==> m2.as_bytes()[m1.len()] == r.as_bytes()[a + m1.len()]);
+        assert(m2.len() < m1.len() ==> m1.as_bytes()[m2.len()] == r.as_bytes()[a + m2.len()]);
+        assert(m1.len() == m2.len());
+        assert(forall|i: usize| i < m1.len() ==> #[trigger] m1.as_bytes()[i] == r.as_bytes()[a + i]);
+        assert(forall|i: usize| i < m2.len() ==> #[trigger] m2.as_bytes()[i] == r.as_bytes()[a + i]);
+        assert(m1 == m2);
+        let b: usize = a + m1.len() + 1;
+        assert(q1.len() == q2.len());
+        assert(forall|i: usize| i < q1.len() ==> #[trigger] q1.as_bytes()[i] == r.as_bytes()[b + i]);
+        assert(forall|i: usize| i < q2.len() ==> #[trigger] q2.as_bytes()[i] == r.as_bytes()[b + i]);
+        assert(q1 == q2);
+    }
+
+    #[summary("The text of a key is a function of what was read (ADR-0162, decision 1): two texts that frame the same version, limit and query are the same text")]
+    #[uses(framed, part)]
+    proof fn one_text(r1: &str, r2: &str, version: &str, memory: &str, asked: &str)
+        requires framed(r1, version, memory, asked), framed(r2, version, memory, asked),
+        ensures r1 == r2,
+    {}
+
+    #[summary("Whether the bytes of r from at on are those of p")]
+    spec fn part(r: &str, at: usize, p: &str) -> bool {
+        at + p.len() <= r.len() && (forall|i: usize| at <= i && i < at + p.len() ==> #[trigger] r.as_bytes()[i] == p.as_bytes()[i - at])
     }
 
     #[summary("The file of the cache in directory dir (stage0 ProofCache::path)")]
