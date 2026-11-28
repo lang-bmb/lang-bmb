@@ -87,6 +87,13 @@ class Steps(unittest.TestCase):
         s["prove.bmb"] = PROVE.replace("fn decide_sub", "fn decide_other")
         self.assertEqual(len(ts.bad_steps(s)), 2)  # one new place, one missing
 
+    def test_a_second_storer_of_proofs_fails(self):
+        s = self.base()
+        s["prove.bmb"] = PROVE + "mod more {\n    fn remember() -> () {\n        cache::insert(c, key, 1, 1, 1)\n    }\n}\n"
+        self.assertEqual(ts.bad_steps(s), [])
+        s["lint.bmb"] = "mod lint {\n    fn keep() -> () {\n        cache::insert(c, key, 1, 1, 1)\n    }\n}\n"
+        self.assertEqual(len(ts.bad_steps(s)), 1)
+
     def test_a_dropped_check_without_the_question_fails(self):
         s = self.base()
         s["codegen.bmb"] = CODEGEN.replace('self.proved("E0805", e)', "true")

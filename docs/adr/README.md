@@ -213,3 +213,4 @@ appears as (a), (b), (c), or as (i), (ii), (iii) where the record already used L
 | [0160](0160-a-status-row-carries-escapes-and-termination.md) | A status row of `bmb verify` carries escapes and unproved termination | Accepted |
 | [0161](0161-a-counterexample-shows-what-it-assumes-of-a-hidden-spec-fn.md) | A counterexample shows what it assumes of a spec fn seen only by name | Accepted |
 | [0162](0162-the-values-of-self-proof-after-the-minimal-experiment.md) | The values of self-proof after the minimal experiment | Accepted |
+| [0163](0163-the-steps-read-after-the-cache-was-proved.md) | The steps read after the reuse of a cached proof was proved | Accepted |

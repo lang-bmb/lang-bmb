@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Holds the bounds of the port's self-proof (ADR-0162, decisions 2 and 3).
+"""Holds the bounds of the port's self-proof (ADR-0162, decisions 2 and 3;
+ADR-0163 decision 2).
 
     trusted_steps.py rows FILE     the status rows of `bmb verify` over the port
     trusted_steps.py steps [DIR]   the text of the port (default `selfhost/`)
@@ -16,7 +17,9 @@ found somewhere else than the record lists it:
 - an obligation is marked proved in `prove::decide` and
   `prove::decide_sub` and nowhere else;
 - code generation writes `; proved Exxxx` only in a function that asks
-  `Gen::proved` about that code.
+  `Gen::proved` about that code;
+- a proof is put into the proof cache (`cache::insert`) in `prove::remember`
+  and nowhere else.
 
 These are checks of the text, not proofs: they keep the closed list from
 growing without a record, and a new place fails here until the record and
@@ -31,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BOUND_KEYS = ("trust", "escapes", "termination")
 UNSAT_MAKERS = {("solver.bmb", "verdict_word")}
 PROVED_SETTERS = {("prove.bmb", "decide"), ("prove.bmb", "decide_sub")}
+PROOF_STORERS = {("prove.bmb", "remember")}
 FN = re.compile(r"^\s+fn (\w+)\b")
 
 
@@ -82,6 +86,8 @@ def bad_steps(sources):
                 makers.add((file, name))
             if re.search(r"\bproved\s*=\s*true\b|\bproved:\s*true\b", body):
                 setters.add((file, name))
+            if re.search(r"\bcache::insert\(", body) and (file, name) not in PROOF_STORERS:
+                out.append(f"{file}: `{name}` stores a proof in the cache and is not in the closed list")
             for code in sorted(set(re.findall(r'"[^"\n]*; proved (E\d{4})', body))):
                 if f'proved("{code}"' not in body:
                     out.append(f"{file}: `{name}` writes `; proved {code}` without asking `proved(\"{code}\", ..)`")
